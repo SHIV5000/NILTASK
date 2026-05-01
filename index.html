@@ -116,7 +116,7 @@
             const [groupForm, setGroupForm] = useState({ name: "", members: [] });
             const [editingGroup, setEditingGroup] = useState(null);
 
-            // Admin Filters
+            // Admin Filters (RESTORED)
             const [adminFilterUser, setAdminFilterUser] = useState("");
             const [adminFilterDate, setAdminFilterDate] = useState("");
             const [allAdminReminders, setAllAdminReminders] = useState([]);
@@ -247,9 +247,7 @@
             const formatMessage = (txt) => {
                 if(!txt.trim()) return txt;
                 let formatted = txt.trim();
-                // Auto-capitalize first letter
                 formatted = formatted.charAt(0).toUpperCase() + formatted.slice(1);
-                // Ensure proper ending punctuation if none exists
                 if (!/[.!?]$/.test(formatted) && !formatted.includes('\n')) {
                     formatted += '.';
                 }
@@ -276,6 +274,19 @@
                         originalText: replyingTo.text || replyingTo.fileName || 'Attachment', 
                         originalSender: replyingTo.sender.split('@')[0] 
                     };
+
+                    // ENHANCED: Real-time notification for Replies
+                    if (replyingTo.senderUid !== user.uid) {
+                        try {
+                            await window.addDoc(window.collection(window.db, "notifications"), {
+                                userId: replyingTo.senderUid,
+                                type: "reply",
+                                text: `${user.email.split('@')[0]} replied to your message in ${activeGroup.name}.`,
+                                timestamp: window.serverTimestamp(),
+                                isRead: false
+                            });
+                        } catch (e) { console.log("Failed to send reply notification"); }
+                    }
                 }
 
                 try {
@@ -306,7 +317,7 @@
                 }
             };
 
-            // Feature: Universal Reactions
+            // Feature: Universal Reactions with Notifications
             const handleReaction = async (msgId, emoji) => {
                 const msg = messages.find(m => m.id === msgId);
                 if(!msg) return;
@@ -332,7 +343,6 @@
                         reactions: updatedReactions 
                     });
                     
-                    // Trigger notification for the original sender if someone else reacts
                     if (isAdding && msg.senderUid !== user.uid) {
                         await window.addDoc(window.collection(window.db, "notifications"), {
                             userId: msg.senderUid, 
@@ -424,7 +434,7 @@
                 );
             };
 
-            // Group Form Submission (Create or Edit)
+            // Group Form Submission
             const handleGroupSubmit = async (e) => {
                 e.preventDefault();
                 if(!groupForm.name.trim()) return;
@@ -450,7 +460,6 @@
                 } catch (error) { alert("Failed to save group."); }
             };
 
-            // Update Group Members from Context Menu
             const handleUpdateGroupMembers = async (e) => {
                 e.preventDefault();
                 try {
@@ -602,7 +611,7 @@
                 } catch (error) {}
             };
 
-            // Feature: Admin Functions
+            // Admin Functions
             const handleRemoveUser = async (uid) => { 
                 if (window.confirm("Delete user entirely?")) await window.deleteDoc(window.doc(window.db, "users", uid)); 
             };
@@ -656,6 +665,16 @@
                 );
             }
 
+            // Feature: RESTORED Admin Dashboard Filtering Logic
+            const filteredAuditMessages = [...messages].reverse().filter(msg => {
+                const safeSender = msg.sender || "";
+                const safeAssignee = msg.taskData?.currentAssignee || "";
+                const safeDate = msg.dateString || "";
+                const matchUser = adminFilterUser === "" || safeSender === adminFilterUser || (msg.isTask && safeAssignee === adminFilterUser);
+                const matchDate = adminFilterDate === "" || safeDate === adminFilterDate;
+                return matchUser && matchDate;
+            });
+
             // Chat Pre-processing
             const visibleMessages = messages.filter(checkVisibility).filter(handleSearchFilter);
             const childrenMap = {};
@@ -684,13 +703,13 @@
                 const hasReplies = childrenMap[msg.id] && childrenMap[msg.id].length > 0;
                 const hasReactions = Object.keys(msg.reactions || {}).length > 0;
                 
-                // Feature: Constraints on edit/delete
+                // Constraints on edit/delete
                 const canModify = msg.isMine && !hasReplies && !hasReactions;
                 const isEditingThis = editingMessageId === msg.id;
 
-                // Feature: Universal Action Bar for All users and All message types (Visible fully on mobile, hover on desktop)
+                // Feature: STRICT HOVER-ONLY Universal Action Bar
                 const ActionBar = () => (
-                    <div className="flex items-center gap-1 bg-white shadow-sm border border-gray-200 rounded-full px-2 py-1 shrink-0 opacity-100 lg:opacity-0 lg:group-hover/msg:opacity-100 transition-opacity">
+                    <div className="opacity-0 group-hover/msg:opacity-100 transition-opacity flex items-center gap-1 bg-white shadow-sm border border-gray-200 rounded-full px-2 py-1 shrink-0">
                         {canModify && (
                             <>
                                 <button onClick={()=>handleDeleteMessage(msg.id)} className="text-red-400 hover:text-red-600 px-1.5 text-xs" title="Delete">
@@ -842,6 +861,23 @@
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+                                
+                                {/* Feature: RESTORED Filter Block */}
+                                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-end">
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Filter by User</label>
+                                        <select value={adminFilterUser} onChange={(e)=>setAdminFilterUser(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 min-w-[200px] outline-none focus:border-blue-500">
+                                            <option value="">All Users</option>
+                                            {dbUsers.map(u => <option key={u.uid} value={u.email}>{u.name} ({u.email})</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Filter by Date</label>
+                                        <input type="date" value={adminFilterDate} onChange={(e)=>setAdminFilterDate(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 outline-none focus:border-blue-500" />
+                                    </div>
+                                    <button onClick={()=>{setAdminFilterUser(""); setAdminFilterDate("");}} className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-300">Clear</button>
+                                </div>
+
                                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                                     
                                     {/* Users Block */}
@@ -896,8 +932,45 @@
                                             </table>
                                         </div>
                                     </div>
+
+                                    {/* Feature: RESTORED Global Chat & Task Audit */}
+                                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden lg:col-span-4 flex flex-col max-h-[500px]">
+                                        <div className="bg-slate-50 p-4 border-b border-slate-200 shrink-0">
+                                            <h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-list-check text-purple-600"></i> Global Chat & Task Audit</h2>
+                                        </div>
+                                        <div className="p-0 overflow-y-auto flex-1">
+                                            <table className="w-full text-left text-sm">
+                                                <thead className="bg-slate-50 text-slate-500 text-xs uppercase sticky top-0 shadow-sm z-10">
+                                                    <tr><th className="px-4 py-2">Time</th><th className="px-4 py-2">Type</th><th className="px-4 py-2">Details</th><th className="px-4 py-2 text-right">Action</th></tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {filteredAuditMessages.length === 0 && <tr><td colSpan="4" className="text-center py-4 text-slate-500 italic">No records found matching filters.</td></tr>}
+                                                    {filteredAuditMessages.map(msg => (
+                                                        // Feature: Admin can click tasks to see trail
+                                                        <tr key={msg.id} className={`hover:bg-slate-50 ${msg.isTask ? 'cursor-pointer hover:bg-blue-50' : ''}`} onClick={() => { if(msg.isTask) { setSelectedMessage(msg); setActiveModal('task_trail'); } }}>
+                                                            <td className="px-4 py-2 text-xs text-slate-500">{msg.dateString}<br/>{msg.time}</td>
+                                                            <td className="px-4 py-2">
+                                                                {msg.isTask ? <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded">TASK</span> : 
+                                                                msg.isPrivateMention ? <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded">PRIVATE</span> : 
+                                                                msg.fileUrl ? <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-1 rounded">MEDIA</span> : 
+                                                                msg.replyToId ? <span className="text-[10px] font-bold bg-teal-100 text-teal-700 px-2 py-1 rounded">REPLY</span> :
+                                                                <span className="text-[10px] font-bold bg-gray-100 text-gray-700 px-2 py-1 rounded">PUBLIC</span>}
+                                                            </td>
+                                                            <td className="px-4 py-2">
+                                                                <div className="font-semibold text-slate-700 text-xs">From: {(msg.sender||'').split('@')[0]} {msg.isTask && `→ To: ${(msg.taskData?.currentAssignee||'').split('@')[0]}`}</div>
+                                                                <div className="text-slate-600 italic truncate max-w-[200px] text-xs">{msg.text || msg.fileName}</div>
+                                                            </td>
+                                                            <td className="px-4 py-2 text-right">
+                                                                <button onClick={(e) => { e.stopPropagation(); handleAdminDeleteMessage(msg.id); }} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded"><i className="fa-solid fa-trash"></i></button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
                                     
-                                    {/* Feature: Restored Global Reminders Log */}
+                                    {/* Reminders Block */}
                                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden lg:col-span-4 flex flex-col max-h-[300px]">
                                         <div className="bg-slate-50 p-4 border-b border-slate-200 shrink-0">
                                             <h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-clock text-yellow-600"></i> Global Reminders Log</h2>
@@ -920,6 +993,7 @@
                                             </table>
                                         </div>
                                     </div>
+
                                 </div>
                             </div>
                         </div>
@@ -1021,9 +1095,12 @@
                                                         </div>
                                                     ))}
                                                     {genericNotifications.map(n => (
-                                                        <div key={n.id} className="p-3 border-b bg-amber-50 hover:bg-amber-100 text-xs text-amber-900 cursor-default">
-                                                            <div className="font-bold mb-0.5"><i className="fa-solid fa-bolt text-amber-500 mr-1"></i> New Reaction</div>
-                                                            <div className="italic text-amber-800/80">{n.text}</div>
+                                                        <div key={n.id} className="p-3 border-b bg-amber-50 hover:bg-amber-100 text-xs text-amber-900 cursor-default flex items-start gap-2">
+                                                            {n.type === 'reply' ? <i className="fa-solid fa-reply mt-0.5 text-amber-500"></i> : <i className="fa-solid fa-bolt mt-0.5 text-amber-500"></i>}
+                                                            <div>
+                                                                <div className="font-bold mb-0.5">{n.type === 'reply' ? 'New Reply' : 'New Reaction'}</div>
+                                                                <div className="italic text-amber-800/80">{n.text}</div>
+                                                            </div>
                                                         </div>
                                                     ))}
                                                 </>
@@ -1201,6 +1278,7 @@
                         </div>
                     )}
 
+                    {/* Feature: Task Trail Restored */}
                     {activeModal === 'task_trail' && selectedMessage?.taskData && (
                         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center md:p-4 animate-in fade-in">
                             <div className="bg-white w-full h-full md:h-auto md:max-h-[90vh] md:max-w-2xl md:rounded-3xl flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom-8 md:zoom-in-95">
@@ -1275,8 +1353,9 @@
                                         <div className="flex items-center bg-slate-50 border rounded-xl px-4 py-2 relative">
                                             <input type="text" value={trailComment} onChange={(e) => setTrailComment(e.target.value)} placeholder="Add comment..." className="bg-transparent w-full outline-none text-sm" onKeyDown={(e)=> e.key === 'Enter' && handleAddComment()}/>
                                             <input type="file" ref={trailFileInputRef} className="hidden" onChange={handleTrailFileUpload} />
-                                            <button onClick={() => trailFileInputRef.current.click()} disabled={trailFileUploading} className={`text-gray-400 hover:text-purple-600 mx-2 transition-colors ${trailFileUploading ? 'animate-pulse text-purple-400' : ''}`}>
-                                                <i className="fa-solid fa-paperclip text-lg"></i>
+                                            {/* Feature: Obvious Task Update File Upload */}
+                                            <button onClick={() => trailFileInputRef.current.click()} disabled={trailFileUploading} className={`text-gray-500 hover:text-purple-600 mx-2 transition-colors flex items-center gap-1 font-bold text-xs ${trailFileUploading ? 'animate-pulse text-purple-400' : ''}`}>
+                                                <i className="fa-solid fa-paperclip text-lg"></i> <span className="hidden md:inline">Attach</span>
                                             </button>
                                             <button onClick={handleAddComment} className="text-blue-600 ml-2">
                                                 <i className="fa-solid fa-paper-plane text-lg"></i>

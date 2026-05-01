@@ -87,22 +87,22 @@
             const [selectedMessage, setSelectedMessage] = useState(null);
             const [inputText, setInputText] = useState("");
             const [messages, setMessages] = useState([]);
-            const [reactions, setReactions] = useState({}); // msgId -> { emoji: count }
+            const [reactions, setReactions] = useState({});
             const messagesEndRef = useRef(null);
             const textareaRef = useRef(null);
             const [showEmojiPicker, setShowEmojiPicker] = useState(false);
             
-            // Profile states
+            // Profile
             const [showProfilePanel, setShowProfilePanel] = useState(false);
             const [displayName, setDisplayName] = useState("");
             const [profilePhotoURL, setProfilePhotoURL] = useState(null);
             const [uploadingPhoto, setUploadingPhoto] = useState(false);
             
-            // Typing indicator
+            // Typing
             const [typingUsers, setTypingUsers] = useState([]);
             const typingTimeoutRef = useRef(null);
             
-            // Tasks & groups
+            // Task & Delegate
             const [taskAssignee, setTaskAssignee] = useState("");
             const [taskDeadline, setTaskDeadline] = useState("");
             const [delegateAssignee, setDelegateAssignee] = useState("");
@@ -113,7 +113,7 @@
             const [groupForm, setGroupForm] = useState({ name: "", members: [] });
             const [currentUserData, setCurrentUserData] = useState(null);
             
-            // Notifications, search, admin
+            // Search, Notifications, Admin
             const [searchQuery, setSearchQuery] = useState("");
             const [debouncedSearch, setDebouncedSearch] = useState("");
             const [showNotifications, setShowNotifications] = useState(false);
@@ -131,9 +131,16 @@
             const [activeReminders, setActiveReminders] = useState([]);
             const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
             
-            // Edit message state
+            // Edit message
             const [editingMessage, setEditingMessage] = useState(null);
             const [editText, setEditText] = useState("");
+            
+            // Task update modal
+            const [taskUpdateComment, setTaskUpdateComment] = useState("");
+            const [taskUpdateDelegate, setTaskUpdateDelegate] = useState("");
+            
+            // Notifications list
+            const [notifications, setNotifications] = useState([]);
             
             // Debounce search
             useEffect(() => {
@@ -141,7 +148,7 @@
                 return () => clearTimeout(timer);
             }, [searchQuery]);
             
-            // Load user profile photo & name
+            // Profile data
             useEffect(() => {
                 const fetchUserData = async () => {
                     const userDoc = await window.getDoc(window.doc(window.db, "users", user.uid));
@@ -156,14 +163,13 @@
                 fetchUserData();
             }, [user.uid]);
             
-            // Update Firestore when displayName changes
             useEffect(() => {
                 if (displayName && user.uid) {
                     window.setDoc(window.doc(window.db, "users", user.uid), { name: displayName }, { merge: true });
                 }
             }, [displayName]);
             
-            // Real-time notifications (my tasks)
+            // My tasks notifications
             useEffect(() => {
                 const qMyTasks = window.query(
                     window.collection(window.db, "messages"),
@@ -177,22 +183,7 @@
                 return () => unsub();
             }, [user.email]);
             
-            // Typing indicators listener
-            useEffect(() => {
-                if (!activeGroup.id) return;
-                const typingRef = window.collection(window.db, "typing");
-                const qTyping = window.query(typingRef, window.where("groupId", "==", activeGroup.id));
-                const unsub = window.onSnapshot(qTyping, (snap) => {
-                    const now = Date.now();
-                    const active = snap.docs
-                        .map(doc => ({ uid: doc.data().uid, name: doc.data().name, updatedAt: doc.data().updatedAt?.toMillis?.() || 0 }))
-                        .filter(t => t.uid !== user.uid && (now - t.updatedAt) < 3000);
-                    setTypingUsers(active);
-                });
-                return () => unsub();
-            }, [activeGroup.id, user.uid]);
-            
-            // Send typing indicator
+            // Typing indicator
             const sendTyping = useCallback(() => {
                 if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
                 const typingDoc = window.doc(window.db, "typing", `${activeGroup.id}_${user.uid}`);
@@ -206,6 +197,20 @@
                     window.deleteDoc(typingDoc).catch(() => {});
                 }, 2000);
             }, [activeGroup.id, user.uid, displayName]);
+            
+            useEffect(() => {
+                if (!activeGroup.id) return;
+                const typingRef = window.collection(window.db, "typing");
+                const qTyping = window.query(typingRef, window.where("groupId", "==", activeGroup.id));
+                const unsub = window.onSnapshot(qTyping, (snap) => {
+                    const now = Date.now();
+                    const active = snap.docs
+                        .map(doc => ({ uid: doc.data().uid, name: doc.data().name, updatedAt: doc.data().updatedAt?.toMillis?.() || 0 }))
+                        .filter(t => t.uid !== user.uid && (now - t.updatedAt) < 3000);
+                    setTypingUsers(active);
+                });
+                return () => unsub();
+            }, [activeGroup.id, user.uid]);
             
             // Reactions listener
             useEffect(() => {
@@ -225,7 +230,7 @@
                 return () => unsubscribers.forEach(unsub => unsub());
             }, [messages]);
             
-            // Reminders & messages
+            // Reminders
             useEffect(() => {
                 const qPersonal = window.query(window.collection(window.db, "reminders"), window.where("userId", "==", user.uid), window.where("isTriggered", "==", false));
                 const unsubPersonal = window.onSnapshot(qPersonal, (snapshot) => setActiveReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
@@ -250,7 +255,7 @@
                 return () => clearInterval(interval);
             }, [activeReminders]);
             
-            // Load users, groups
+            // Users & groups
             useEffect(() => {
                 const unsubUsers = window.onSnapshot(window.query(window.collection(window.db, "users"), window.orderBy("email")), (snapshot) => setDbUsers(snapshot.docs.map(d => d.data())));
                 const unsubGroups = window.onSnapshot(window.collection(window.db, "groups"), (snapshot) => setGroups(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
@@ -260,7 +265,7 @@
                 return () => { unsubUsers(); unsubGroups(); unsubCurrent(); };
             }, [user.uid]);
             
-            // Messages realtime
+            // Messages
             useEffect(() => {
                 const q = window.query(window.collection(window.db, "messages"), window.orderBy("timestamp", "asc"));
                 const unsubscribe = window.onSnapshot(q, (snapshot) => {
@@ -312,7 +317,7 @@
             
             const addEmoji = (emoji) => { setInputText(prev => prev + emoji.native); setShowEmojiPicker(false); };
             
-            // Profile photo upload
+            // Photo upload
             const handlePhotoUpload = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -327,7 +332,7 @@
                 });
             };
             
-            // Message reactions
+            // Reactions
             const addReaction = async (msgId, emoji) => {
                 const reactionId = `${user.uid}_${emoji}`;
                 const reactionRef = window.doc(window.db, "messages", msgId, "reactions", reactionId);
@@ -339,7 +344,7 @@
                 }
             };
             
-            // Edit message
+            // Edit/Delete own messages
             const startEditMessage = (msg) => {
                 setEditingMessage(msg);
                 setEditText(msg.text);
@@ -357,16 +362,13 @@
                 }
             };
             
-            // Task update modal (reverted to modal)
+            // Task update modal
             const openTaskUpdateModal = (msg) => {
                 setSelectedMessage(msg);
                 setTaskUpdateComment("");
                 setTaskUpdateDelegate("");
                 setActiveModal('task_update');
             };
-            
-            const [taskUpdateComment, setTaskUpdateComment] = useState("");
-            const [taskUpdateDelegate, setTaskUpdateDelegate] = useState("");
             const submitTaskUpdate = async () => {
                 if (!selectedMessage) return;
                 const now = new Date();
@@ -385,7 +387,7 @@
                 setActiveModal(null);
             };
             
-            // Convert to task modal
+            // Convert to task
             const convertToTask = async () => {
                 if (!selectedMessage || !taskDeadline || !taskAssignee) return alert("Fill all fields");
                 await window.setDoc(window.doc(window.db, "messages", selectedMessage.id), {
@@ -396,7 +398,6 @@
             };
             
             // Clear notifications
-            const [notifications, setNotifications] = useState([]);
             const clearAllNotifications = async () => {
                 for (let t of notifications) {
                     await window.updateDoc(window.doc(window.db, "messages", t.id), { "taskData.status": "Completed" });
@@ -437,15 +438,109 @@
                 return <div className="flex h-screen items-center justify-center"><div className="bg-white p-8 rounded-3xl shadow-xl text-center"><i className="fa-solid fa-user-clock text-5xl text-orange-500"></i><h2 className="text-xl font-bold mt-4">Pending Approval</h2><button onClick={onLogout} className="mt-4 bg-gray-200 px-6 py-2 rounded-full">Sign Out</button></div></div>;
             }
             
-            // Admin Console (same as before, omitted for brevity but fully functional)
+            // ========== ADMIN CONSOLE (FULLY RESTORED) ==========
             if (viewMode === "admin") {
-                return (/* Admin console - same as original, keep intact */);
+                // Admin-specific filtered messages
+                const adminAuditMessages = [...messages].reverse().filter(msg => {
+                    const safeSender = msg.sender || "";
+                    const safeAssignee = msg.taskData?.currentAssignee || "";
+                    const safeDate = msg.dateString || "";
+                    const matchUser = adminFilterUser === "" || safeSender === adminFilterUser || (msg.isTask && safeAssignee === adminFilterUser);
+                    const matchDate = adminFilterDate === "" || safeDate === adminFilterDate;
+                    return matchUser && matchDate;
+                });
+                const filteredAdminReminders = [...allAdminReminders].filter(rem => {
+                    const safeEmail = rem.userEmail || rem.userId || "";
+                    const safeDate = rem.remindAt || "";
+                    const matchUser = adminFilterUser === "" || safeEmail === adminFilterUser;
+                    const matchDate = adminFilterDate === "" || safeDate.startsWith(adminFilterDate);
+                    return matchUser && matchDate;
+                });
+                
+                return (
+                    <div className="flex flex-col h-full w-full bg-gray-100 overflow-auto">
+                        <div className="bg-white shadow-sm border-b p-4 flex justify-between items-center sticky top-0 z-10">
+                            <h2 className="text-xl font-bold text-gray-800"><i className="fa-solid fa-shield-halved text-blue-600 mr-2"></i>Admin Console</h2>
+                            <button onClick={() => setViewMode("chat")} className="bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-lg text-sm font-medium">← Back to Chat</button>
+                        </div>
+                        <div className="p-6 space-y-6">
+                            {/* Filters */}
+                            <div className="bg-white rounded-2xl shadow p-4 flex flex-wrap gap-4 items-end">
+                                <div><label className="text-xs font-bold text-gray-500 uppercase">Filter by User</label><select value={adminFilterUser} onChange={(e)=>setAdminFilterUser(e.target.value)} className="p-2 border rounded-lg text-sm bg-white min-w-[200px]"><option value="">All Users</option>{dbUsers.map(u => <option key={u.uid} value={u.email}>{u.name} ({u.email})</option>)}</select></div>
+                                <div><label className="text-xs font-bold text-gray-500 uppercase">Filter by Date</label><input type="date" value={adminFilterDate} onChange={(e)=>setAdminFilterDate(e.target.value)} className="p-2 border rounded-lg text-sm bg-white" /></div>
+                                <button onClick={()=>{setAdminFilterUser(""); setAdminFilterDate("");}} className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold">Clear</button>
+                            </div>
+                            
+                            <div className="grid lg:grid-cols-2 gap-6">
+                                {/* Users Card */}
+                                <div className="bg-white rounded-2xl shadow overflow-hidden">
+                                    <div className="bg-gray-50 p-4 border-b flex justify-between items-center"><h3 className="font-bold text-gray-800"><i className="fa-solid fa-users text-blue-500 mr-2"></i>Users & Roles</h3><button onClick={() => { setAdminForm({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false }); setActiveModal('admin_add_user'); }} className="bg-blue-600 text-white text-xs px-3 py-1 rounded"><i className="fa-solid fa-plus"></i> Add</button></div>
+                                    <div className="max-h-96 overflow-auto p-2">
+                                        {dbUsers.map(u => (
+                                            <div key={u.uid} className="flex justify-between items-center border-b p-2">
+                                                <div><span className="font-medium">{u.name}</span><span className="text-xs text-gray-500 ml-2">{u.email}</span>{u.isAdmin && <span className="ml-2 text-xs bg-yellow-100 px-2 py-0.5 rounded">Admin</span>}</div>
+                                                <div><button onClick={() => handleToggleApprove(u)} className={`px-2 py-0.5 text-xs rounded ${u.isApproved ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>{u.isApproved ? "Approved" : "Pending"}</button><button onClick={() => { setAdminForm({ ...u, canCreateGroups: u.canCreateGroups || false }); setActiveModal('admin_edit_user'); }} className="ml-2 text-blue-500"><i className="fa-solid fa-pen"></i></button><button onClick={() => handleRemoveUser(u.uid)} disabled={u.email === user.email} className="ml-2 text-red-500"><i className="fa-solid fa-trash-can"></i></button></div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                
+                                {/* Groups Card */}
+                                <div className="bg-white rounded-2xl shadow overflow-hidden">
+                                    <div className="bg-gray-50 p-4 border-b flex justify-between items-center"><h3 className="font-bold text-gray-800"><i className="fa-solid fa-layer-group text-emerald-500 mr-2"></i>Groups</h3><button onClick={() => setActiveModal('create_group')} className="bg-emerald-600 text-white text-xs px-3 py-1 rounded"><i className="fa-solid fa-plus"></i> New</button></div>
+                                    <div className="max-h-96 overflow-auto p-2 space-y-2">
+                                        {groups.map(g => (
+                                            <div key={g.id} className="border rounded-xl p-3"><div className="font-semibold">{g.name}</div><div className="text-xs text-gray-500">{g.members?.length || 0} members | Admins: {g.admins?.join(', ') || 'none'}</div></div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {/* Global Audit Log (with task trail click) */}
+                            <div className="bg-white rounded-2xl shadow overflow-hidden">
+                                <div className="bg-gray-50 p-4 border-b"><h3 className="font-bold text-gray-800"><i className="fa-solid fa-list-check text-purple-500 mr-2"></i>Global Audit Log (click on any task row to see trail)</h3></div>
+                                <div className="overflow-auto max-h-96">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-gray-100 sticky top-0"><tr><th className="p-2 text-left">Time</th><th className="p-2 text-left">Type</th><th className="p-2 text-left">From → To</th><th className="p-2 text-left">Content</th><th className="p-2 text-left">Actions</th></tr></thead>
+                                        <tbody>
+                                            {adminAuditMessages.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-gray-500">No records</td></tr>}
+                                            {adminAuditMessages.map(msg => (
+                                                <tr key={msg.id} className={`border-b hover:bg-gray-50 ${msg.isTask ? 'cursor-pointer' : ''}`} onClick={() => { if(msg.isTask) { setSelectedMessage(msg); setActiveModal('task_trail'); } }}>
+                                                    <td className="p-2 text-xs">{msg.dateString}<br/>{msg.time}</td>
+                                                    <td className="p-2">{msg.isTask ? <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded">TASK</span> : msg.fileUrl ? <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-1 rounded">MEDIA</span> : <span className="text-[10px] font-bold bg-gray-100 text-gray-700 px-2 py-1 rounded">MSG</span>}</td>
+                                                    <td className="p-2 text-xs">From: {msg.sender?.split('@')[0]}{msg.isTask && ` → ${msg.taskData?.currentAssignee?.split('@')[0]}`}</td>
+                                                    <td className="p-2 truncate max-w-xs">{msg.text || msg.fileName}</td>
+                                                    <td className="p-2"><button onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id); }} className="text-red-500 text-xs"><i className="fa-solid fa-trash"></i></button></td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            
+                            {/* Reminders Log */}
+                            <div className="bg-white rounded-2xl shadow overflow-hidden">
+                                <div className="bg-gray-50 p-4 border-b"><h3 className="font-bold text-gray-800"><i className="fa-solid fa-clock text-yellow-500 mr-2"></i>Global Reminders Log</h3></div>
+                                <div className="overflow-auto max-h-64">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-gray-100"><tr><th className="p-2 text-left">Status</th><th className="p-2 text-left">Set By</th><th className="p-2 text-left">Target Date</th><th className="p-2 text-left">Content</th></tr></thead>
+                                        <tbody>
+                                            {filteredAdminReminders.map(rem => (
+                                                <tr key={rem.id} className="border-b"><td className="p-2">{rem.isTriggered ? <span className="text-green-600 text-xs">Fired</span> : <span className="text-yellow-600 text-xs">Pending</span>}</td><td className="p-2">{(rem.userEmail || rem.userId || 'Unknown').split('@')[0]}</td><td className="p-2 text-xs">{new Date(rem.remindAt).toLocaleString()}</td><td className="p-2 italic truncate max-w-md">"{rem.messageText}"</td></tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
             }
             
-            // Main Chat UI
+            // ========== MAIN CHAT UI ==========
             return (
                 <div className="flex h-screen w-full bg-white overflow-hidden">
-                    {/* Sidebar (same as original) */}
+                    {/* Sidebar (same as before) */}
                     <div className={`fixed md:relative z-50 w-80 bg-white border-r shadow-sm h-full flex flex-col transition-transform duration-300 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
                         <div className="p-5 border-b flex items-center gap-3">
                             <div onClick={() => setShowProfilePanel(true)} className="relative avatar-upload">
@@ -505,7 +600,6 @@
                                                 </div>
                                                 <div className="flex flex-col">
                                                     <div className="text-xs text-gray-500 mb-0.5 ml-1">{msg.sender?.split('@')[0]}</div>
-                                                    {/* Message bubble */}
                                                     <div className="relative">
                                                         <div onClick={() => { setSelectedMessage(msg); setActiveModal(msg.isTask ? 'task_trail' : 'context'); }} className="bg-white shadow-sm p-3 rounded-2xl message-bubble-received cursor-pointer">
                                                             {msg.isTask ? (
@@ -515,7 +609,6 @@
                                                             )}
                                                             <div className="text-[10px] text-gray-400 text-right mt-1">{msg.time} {msg.hasReminder && <i className="fa-regular fa-clock ml-1 text-amber-500"></i>}</div>
                                                         </div>
-                                                        {/* Reactions bar */}
                                                         <div className="reaction-bar absolute -bottom-2 left-0 flex gap-1 bg-white rounded-full shadow-md px-1 py-0.5 z-10">
                                                             {["👍", "❤️", "😆", "😮", "😢", "🙏"].map(emoji => (
                                                                 <button key={emoji} onClick={(e) => { e.stopPropagation(); addReaction(msg.id, emoji); }} className="reaction-button text-sm hover:scale-110 transition-transform px-1">{emoji} {reactions[msg.id]?.[emoji] || 0}</button>
@@ -536,13 +629,11 @@
                                                         )}
                                                         <div className="text-[10px] text-blue-100 text-right mt-1">{msg.time} {msg.hasReminder && <i className="fa-regular fa-clock ml-1"></i>}<i className="fa-regular fa-check-double ml-1"></i></div>
                                                     </div>
-                                                    {/* Reaction bar for sent messages */}
                                                     <div className="reaction-bar absolute -bottom-2 right-0 flex gap-1 bg-white rounded-full shadow-md px-1 py-0.5 z-10">
                                                         {["👍", "❤️", "😆", "😮", "😢", "🙏"].map(emoji => (
                                                             <button key={emoji} onClick={(e) => { e.stopPropagation(); addReaction(msg.id, emoji); }} className="reaction-button text-sm hover:scale-110 transition-transform px-1">{emoji} {reactions[msg.id]?.[emoji] || 0}</button>
                                                         ))}
                                                     </div>
-                                                    {/* Edit/Delete menu for own messages */}
                                                     <div className="absolute -top-2 -right-2 flex gap-1 bg-white rounded-full shadow-md px-1 py-0.5">
                                                         <button onClick={() => startEditMessage(msg)} className="text-gray-500 text-xs hover:text-blue-600"><i className="fa-regular fa-pen-to-square"></i></button>
                                                         <button onClick={() => deleteMessage(msg.id)} className="text-gray-500 text-xs hover:text-red-600"><i className="fa-regular fa-trash-can"></i></button>
@@ -570,7 +661,7 @@
                         {showEmojiPicker && <EmojiMart.Picker onSelect={addEmoji} theme="light" set="apple" className="emoji-mart" />}
                     </div>
                     
-                    {/* Profile Panel */}
+                    {/* Modals (all restored) */}
                     {showProfilePanel && (
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowProfilePanel(false)}>
                             <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl" onClick={e => e.stopPropagation()}>
@@ -588,78 +679,49 @@
                             </div>
                         </div>
                     )}
-                    
-                    {/* Edit Message Inline Modal */}
                     {editingMessage && (
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                            <div className="bg-white rounded-2xl p-5 w-96">
-                                <h3 className="font-bold mb-2">Edit Message</h3>
-                                <textarea className="w-full p-2 border rounded-lg" rows="3" value={editText} onChange={e => setEditText(e.target.value)}></textarea>
-                                <div className="flex gap-2 mt-3"><button onClick={saveEditMessage} className="bg-blue-600 text-white px-4 py-2 rounded-lg">Save</button><button onClick={() => setEditingMessage(null)} className="bg-gray-200 px-4 py-2 rounded-lg">Cancel</button></div>
-                            </div>
+                            <div className="bg-white rounded-2xl p-5 w-96"><h3 className="font-bold mb-2">Edit Message</h3><textarea className="w-full p-2 border rounded-lg" rows="3" value={editText} onChange={e => setEditText(e.target.value)}></textarea><div className="flex gap-2 mt-3"><button onClick={saveEditMessage} className="bg-blue-600 text-white px-4 py-2 rounded-lg">Save</button><button onClick={() => setEditingMessage(null)} className="bg-gray-200 px-4 py-2 rounded-lg">Cancel</button></div></div>
                         </div>
                     )}
-                    
-                    {/* MODALS (same as original) */}
                     {activeModal === 'context' && selectedMessage && (
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white rounded-2xl w-80 p-5" onClick={e => e.stopPropagation()}>
-                                <p className="italic text-gray-700 mb-4">"{selectedMessage.text || selectedMessage.fileName}"</p>
-                                <button onClick={() => setActiveModal('reminder')} className="w-full mb-2 p-2 bg-yellow-100 rounded-lg text-yellow-800">⏰ Set Reminder</button>
-                                <button onClick={() => setActiveModal('task_convert')} className="w-full p-2 bg-blue-100 rounded-lg text-blue-800">📌 Convert to Task</button>
-                                <button onClick={() => setActiveModal(null)} className="mt-3 text-gray-400 text-sm w-full">Cancel</button>
-                            </div>
+                            <div className="bg-white rounded-2xl w-80 p-5" onClick={e => e.stopPropagation()}><p className="italic text-gray-700 mb-4">"{selectedMessage.text || selectedMessage.fileName}"</p><button onClick={() => setActiveModal('reminder')} className="w-full mb-2 p-2 bg-yellow-100 rounded-lg text-yellow-800">⏰ Set Reminder</button><button onClick={() => setActiveModal('task_convert')} className="w-full p-2 bg-blue-100 rounded-lg text-blue-800">📌 Convert to Task</button><button onClick={() => setActiveModal(null)} className="mt-3 text-gray-400 text-sm w-full">Cancel</button></div>
                         </div>
                     )}
                     {activeModal === 'reminder' && (
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white rounded-2xl p-5 w-80" onClick={e => e.stopPropagation()}>
-                                <h3 className="font-bold mb-2">Set Reminder</h3>
-                                <input type="datetime-local" value={reminderDateTime} onChange={e => setReminderDateTime(e.target.value)} className="w-full p-2 border rounded-lg mb-3"/>
-                                <button onClick={setReminder} className="w-full bg-yellow-500 text-white py-2 rounded-lg">Save</button>
-                            </div>
+                            <div className="bg-white rounded-2xl p-5 w-80" onClick={e => e.stopPropagation()}><h3 className="font-bold mb-2">Set Reminder</h3><input type="datetime-local" value={reminderDateTime} onChange={e => setReminderDateTime(e.target.value)} className="w-full p-2 border rounded-lg mb-3"/><button onClick={setReminder} className="w-full bg-yellow-500 text-white py-2 rounded-lg">Save</button></div>
                         </div>
                     )}
                     {activeModal === 'task_convert' && (
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white rounded-2xl p-5 w-96" onClick={e => e.stopPropagation()}>
-                                <h3 className="font-bold text-lg mb-3">Create Task</h3>
-                                <select value={taskAssignee} onChange={e => setTaskAssignee(e.target.value)} className="w-full p-2 border rounded-lg mb-2"><option value="">Assign to...</option>{groupMembersForMentions.map(u => <option key={u.email} value={u.email}>{u.name}</option>)}</select>
-                                <input type="datetime-local" value={taskDeadline} onChange={e => setTaskDeadline(e.target.value)} className="w-full p-2 border rounded-lg mb-3"/>
-                                <button onClick={convertToTask} className="w-full bg-blue-600 text-white py-2 rounded-lg">Create Task</button>
-                            </div>
+                            <div className="bg-white rounded-2xl p-5 w-96" onClick={e => e.stopPropagation()}><h3 className="font-bold text-lg mb-3">Create Task</h3><select value={taskAssignee} onChange={e => setTaskAssignee(e.target.value)} className="w-full p-2 border rounded-lg mb-2"><option value="">Assign to...</option>{groupMembersForMentions.map(u => <option key={u.email} value={u.email}>{u.name}</option>)}</select><input type="datetime-local" value={taskDeadline} onChange={e => setTaskDeadline(e.target.value)} className="w-full p-2 border rounded-lg mb-3"/><button onClick={convertToTask} className="w-full bg-blue-600 text-white py-2 rounded-lg">Create Task</button></div>
                         </div>
                     )}
                     {activeModal === 'task_update' && selectedMessage && (
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white rounded-2xl p-5 w-96" onClick={e => e.stopPropagation()}>
-                                <h3 className="font-bold text-lg mb-2">Update Task</h3>
-                                <textarea rows="2" placeholder="Add comment..." className="w-full p-2 border rounded-lg mb-2" value={taskUpdateComment} onChange={e => setTaskUpdateComment(e.target.value)}></textarea>
-                                <select className="w-full p-2 border rounded-lg mb-3" value={taskUpdateDelegate} onChange={e => setTaskUpdateDelegate(e.target.value)}><option value="">Delegate to...</option>{(activeGroup.members || []).map(email => <option key={email} value={email}>{dbUsers.find(u=>u.email===email)?.name || email}</option>)}</select>
-                                <button onClick={submitTaskUpdate} className="w-full bg-blue-600 text-white py-2 rounded-lg">Submit Update</button>
-                            </div>
+                            <div className="bg-white rounded-2xl p-5 w-96" onClick={e => e.stopPropagation()}><h3 className="font-bold text-lg mb-2">Update Task</h3><textarea rows="2" placeholder="Add comment..." className="w-full p-2 border rounded-lg mb-2" value={taskUpdateComment} onChange={e => setTaskUpdateComment(e.target.value)}></textarea><select className="w-full p-2 border rounded-lg mb-3" value={taskUpdateDelegate} onChange={e => setTaskUpdateDelegate(e.target.value)}><option value="">Delegate to...</option>{(activeGroup.members || []).map(email => <option key={email} value={email}>{dbUsers.find(u=>u.email===email)?.name || email}</option>)}</select><button onClick={submitTaskUpdate} className="w-full bg-blue-600 text-white py-2 rounded-lg">Submit Update</button></div>
                         </div>
                     )}
                     {activeModal === 'task_trail' && selectedMessage?.taskData && (
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white rounded-2xl max-w-lg w-full max-h-[80vh] overflow-auto p-5" onClick={e => e.stopPropagation()}>
-                                <div className="flex justify-between items-center mb-3"><h3 className="font-bold text-lg">Task Trail</h3><i className="fa-solid fa-xmark cursor-pointer text-gray-400" onClick={() => setActiveModal(null)}></i></div>
-                                <div className="space-y-3">{selectedMessage.taskData.trail.map((item, idx) => (<div key={idx} className="border-l-2 border-blue-300 pl-3 py-1"><div className="text-xs font-bold text-blue-600">{item.action}</div><div className="text-sm">by {item.by?.split('@')[0]} {item.to && `→ ${item.to.split('@')[0]}`}</div>{item.comment && <div className="text-xs italic mt-1">"{item.comment}"</div>}<div className="text-[10px] text-gray-400 mt-0.5">{item.time}</div></div>))}</div>
-                                <button onClick={() => setActiveModal(null)} className="mt-4 text-gray-500 text-sm">Close</button>
-                            </div>
+                            <div className="bg-white rounded-2xl max-w-lg w-full max-h-[80vh] overflow-auto p-5" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-3"><h3 className="font-bold text-lg">Task Trail</h3><i className="fa-solid fa-xmark cursor-pointer text-gray-400" onClick={() => setActiveModal(null)}></i></div><div className="space-y-3">{selectedMessage.taskData.trail.map((item, idx) => (<div key={idx} className="border-l-2 border-blue-300 pl-3 py-1"><div className="text-xs font-bold text-blue-600">{item.action}</div><div className="text-sm">by {item.by?.split('@')[0]} {item.to && `→ ${item.to.split('@')[0]}`}</div>{item.comment && <div className="text-xs italic mt-1">"{item.comment}"</div>}<div className="text-[10px] text-gray-400 mt-0.5">{item.time}</div></div>))}</div><button onClick={() => setActiveModal(null)} className="mt-4 text-gray-500 text-sm">Close</button></div>
+                        </div>
+                    )}
+                    {activeModal === 'admin_add_user' && (
+                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
+                            <div className="bg-white rounded-2xl p-6 w-96" onClick={e => e.stopPropagation()}><h3 className="font-bold text-lg mb-3">Add User</h3><form onSubmit={handleAddUserSubmit}><input type="text" placeholder="Full Name" value={adminForm.name} onChange={e => setAdminForm({...adminForm, name: e.target.value})} className="w-full p-2 border rounded-lg mb-2" required/><input type="email" placeholder="Email" value={adminForm.email} onChange={e => setAdminForm({...adminForm, email: e.target.value})} className="w-full p-2 border rounded-lg mb-2" required/><input type="password" placeholder="Password" value={adminForm.password} onChange={e => setAdminForm({...adminForm, password: e.target.value})} className="w-full p-2 border rounded-lg mb-2" required/><label className="flex items-center gap-2 mb-2"><input type="checkbox" checked={adminForm.isAdmin} onChange={e => setAdminForm({...adminForm, isAdmin: e.target.checked})}/> Admin</label><button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-lg">Create</button></form></div>
+                        </div>
+                    )}
+                    {activeModal === 'admin_edit_user' && (
+                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
+                            <div className="bg-white rounded-2xl p-6 w-96" onClick={e => e.stopPropagation()}><h3 className="font-bold text-lg mb-3">Edit User</h3><form onSubmit={handleEditUserSubmit}><input type="email" disabled value={adminForm.email} className="w-full p-2 border rounded-lg mb-2 bg-gray-100"/><input type="text" value={adminForm.name} onChange={e => setAdminForm({...adminForm, name: e.target.value})} className="w-full p-2 border rounded-lg mb-2"/><label className="flex items-center gap-2 mb-2"><input type="checkbox" checked={adminForm.isAdmin} onChange={e => setAdminForm({...adminForm, isAdmin: e.target.checked})}/> Admin</label><label className="flex items-center gap-2 mb-2"><input type="checkbox" checked={adminForm.canCreateGroups} onChange={e => setAdminForm({...adminForm, canCreateGroups: e.target.checked})}/> Can Create Groups</label><button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-lg">Save</button></form></div>
                         </div>
                     )}
                     {activeModal === 'create_group' && (
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white rounded-2xl p-6 w-96" onClick={e => e.stopPropagation()}>
-                                <h3 className="font-bold text-lg mb-3">New Group</h3>
-                                <form onSubmit={handleCreateGroup}>
-                                    <input placeholder="Group Name" value={groupForm.name} onChange={e => setGroupForm({...groupForm, name: e.target.value})} className="w-full p-2 border rounded-lg mb-3" required/>
-                                    <div className="font-medium mb-1">Members</div>
-                                    <div className="max-h-40 overflow-auto border rounded-lg p-2 space-y-1 mb-3">{dbUsers.map(u => <label key={u.uid} className="flex items-center gap-2"><input type="checkbox" checked={groupForm.members.includes(u.email)} onChange={e => { if(e.target.checked) setGroupForm({...groupForm, members:[...groupForm.members, u.email]}); else setGroupForm({...groupForm, members: groupForm.members.filter(m=>m!==u.email)}) }}/><span>{u.name}</span></label>)}</div>
-                                    <button type="submit" className="w-full bg-emerald-600 text-white py-2 rounded-lg">Create</button>
-                                </form>
-                            </div>
+                            <div className="bg-white rounded-2xl p-6 w-96" onClick={e => e.stopPropagation()}><h3 className="font-bold text-lg mb-3">New Group</h3><form onSubmit={handleCreateGroup}><input placeholder="Group Name" value={groupForm.name} onChange={e => setGroupForm({...groupForm, name: e.target.value})} className="w-full p-2 border rounded-lg mb-3" required/><div className="font-medium mb-1">Members</div><div className="max-h-40 overflow-auto border rounded-lg p-2 space-y-1 mb-3">{dbUsers.map(u => <label key={u.uid} className="flex items-center gap-2"><input type="checkbox" checked={groupForm.members.includes(u.email)} onChange={e => { if(e.target.checked) setGroupForm({...groupForm, members:[...groupForm.members, u.email]}); else setGroupForm({...groupForm, members: groupForm.members.filter(m=>m!==u.email)}) }}/><span>{u.name}</span></label>)}</div><button type="submit" className="w-full bg-emerald-600 text-white py-2 rounded-lg">Create</button></form></div>
                         </div>
                     )}
                     {isUploading && (

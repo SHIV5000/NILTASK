@@ -5,20 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Corporate Chat App - Enterprise Edition</title>
     
-    <!-- Load Tailwind CSS for styling -->
+    <!-- Tailwind CSS + FontAwesome + React + Babel -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Load FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <!-- Load React and ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-    
-    <!-- Load Babel to compile JSX in the browser -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Initialize Firebase -->
+    <!-- Firebase 10.8.1 -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
@@ -67,7 +61,6 @@
     </script>
 
     <style>
-        /* Telegram-like custom scrollbar and background */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 10px; }
@@ -88,26 +81,22 @@
             const [messages, setMessages] = useState([]); 
             const messagesEndRef = useRef(null); 
 
-            // Task & Delegate States
             const [taskAssignee, setTaskAssignee] = useState("");
             const [taskDeadline, setTaskDeadline] = useState("");
             const [delegateAssignee, setDelegateAssignee] = useState("");
             const [trailComment, setTrailComment] = useState(""); 
             const [dbUsers, setDbUsers] = useState([]); 
             
-            // Search, Notifications & Admin
             const [searchQuery, setSearchQuery] = useState("");
             const [showNotifications, setShowNotifications] = useState(false);
             const [viewMode, setViewMode] = useState("chat"); 
             const [currentUserData, setCurrentUserData] = useState(null);
             const [adminForm, setAdminForm] = useState({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false });
             
-            // Group Management States
             const [groups, setGroups] = useState([]);
             const [activeGroup, setActiveGroup] = useState({ id: "main", name: "Academic Council Group" });
             const [groupForm, setGroupForm] = useState({ name: "", members: [] });
 
-            // Admin Filters
             const [adminFilterUser, setAdminFilterUser] = useState("");
             const [adminFilterDate, setAdminFilterDate] = useState("");
             const [allAdminReminders, setAllAdminReminders] = useState([]);
@@ -118,6 +107,13 @@
 
             const [reminderDateTime, setReminderDateTime] = useState("");
             const [activeReminders, setActiveReminders] = useState([]);
+
+            // --- Helper to open group settings with preloaded members ---
+            const openGroupSettings = () => {
+                if (activeGroup.id === 'main') return;
+                setGroupForm(prev => ({ ...prev, members: activeGroup.members || [] }));
+                setActiveModal('group_settings');
+            };
 
             useEffect(() => {
                 if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
@@ -157,10 +153,10 @@
                                 alert(`⏰ Reminder: "${rem.messageText}"`);
                             }
                             try { await window.updateDoc(window.doc(window.db, "reminders", rem.id), { isTriggered: true }); } 
-                            catch (error) {}
+                            catch (error) { console.warn(error); }
                         }
                     });
-                }, 15000); 
+                }, 15000);
                 return () => clearInterval(interval);
             }, [activeReminders]);
 
@@ -170,7 +166,7 @@
                         await window.setDoc(window.doc(window.db, "users", user.uid), {
                             uid: user.uid, email: user.email, name: user.email.split('@')[0].toUpperCase(), 
                         }, { merge: true });
-                    } catch (error) {}
+                    } catch (error) { console.warn(error); }
                 };
                 syncUserToDB();
 
@@ -182,7 +178,6 @@
                     setDbUsers(snapshot.docs.map(doc => doc.data()));
                 });
 
-                // Fetch Groups
                 const unsubGroups = window.onSnapshot(window.collection(window.db, "groups"), (snapshot) => {
                     let loadedGroups = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     setGroups(loadedGroups);
@@ -240,6 +235,7 @@
             };
 
             const handleFileUpload = async (e) => {
+                if (isUploading) return; // prevent duplicate uploads
                 const file = e.target.files[0];
                 if (!file) return;
                 setIsUploading(true);
@@ -262,7 +258,7 @@
                                 fileUrl: downloadURL, fileName: file.name, fileType: file.type,
                                 groupId: activeGroup.id
                             });
-                        } catch (err) {} 
+                        } catch (err) { console.warn(err); } 
                         finally {
                             setIsUploading(false); setUploadProgress(0);
                             if(fileInputRef.current) fileInputRef.current.value = ""; 
@@ -271,12 +267,10 @@
                 );
             };
 
-            // Group Management Functions
             const handleCreateGroup = async (e) => {
                 e.preventDefault();
                 if(!groupForm.name.trim()) return;
                 try {
-                    // Include creator in members automatically
                     const finalMembers = [...new Set([...groupForm.members, user.email])];
                     await window.addDoc(window.collection(window.db, "groups"), {
                         name: groupForm.name,
@@ -292,21 +286,19 @@
 
             const handleUpdateGroupMembers = async (e) => {
                 e.preventDefault();
+                const groupAdmins = activeGroup.admins || [];
+                const finalMembers = [...new Set([...groupForm.members, ...groupAdmins])];
                 try {
-                    // Ensure current admins stay in the group to prevent lockouts
-                    const finalMembers = [...new Set([...groupForm.members, ...activeGroup.admins])];
                     await window.updateDoc(window.doc(window.db, "groups", activeGroup.id), {
                         members: finalMembers
                     });
                     setActiveModal(null);
-                    // Update active group local state
                     setActiveGroup({...activeGroup, members: finalMembers});
                 } catch (error) { alert("Failed to update members."); }
             };
 
-
             const checkVisibility = (msg) => {
-                if (msg.groupId !== activeGroup.id) return false; // Filter by Active Group
+                if (msg.groupId !== activeGroup.id) return false;
                 if (msg.isTask) {
                     if (msg.sender === user.email) return true;
                     if (msg.taskData?.currentAssignee === user.email) return true;
@@ -323,7 +315,6 @@
                 return msg.text?.toLowerCase().includes(q) || msg.sender?.toLowerCase().includes(q) || (msg.isTask && msg.taskData?.currentAssignee?.toLowerCase().includes(q));
             };
 
-            // Only count tasks assigned to me that belong to the active groups I am in
             const activeActionableTasks = messages.filter(m => m.isTask && m.taskData?.currentAssignee === user.email && m.taskData?.status !== "Completed");
             const notificationCount = activeActionableTasks.length;
 
@@ -361,7 +352,8 @@
             };
 
             const handleDelegateTask = async () => {
-                if (!selectedMessage || !delegateAssignee) return;
+                if (!selectedMessage?.taskData) return;
+                if (!delegateAssignee) return;
                 try {
                     const now = new Date();
                     const updatedTrail = [...selectedMessage.taskData.trail, { action: "Delegated", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: delegateAssignee }];
@@ -373,7 +365,7 @@
             };
 
             const handleCompleteTask = async () => {
-                if (!selectedMessage) return;
+                if (!selectedMessage?.taskData) return;
                 if (user.email !== selectedMessage.taskData.currentAssignee && !currentUserData?.isAdmin) return alert("Only the Assignee or Admin can complete this.");
                 try {
                     const now = new Date();
@@ -384,7 +376,7 @@
             };
 
             const handleAddComment = async () => {
-                if (!selectedMessage || !trailComment.trim()) return;
+                if (!selectedMessage?.taskData || !trailComment.trim()) return;
                 try {
                     const now = new Date();
                     const updatedTrail = [...selectedMessage.taskData.trail, { action: "Update Added", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), comment: trailComment }];
@@ -394,11 +386,11 @@
                 } catch (error) { alert("Failed to post update."); }
             };
 
-            // Admin Functions
             const handleRemoveUser = async (targetUid) => {
                 if (window.confirm("Delete user entirely?")) await window.deleteDoc(window.doc(window.db, "users", targetUid));
             };
             const handleToggleApprove = async (u) => await window.updateDoc(window.doc(window.db, "users", u.uid), { isApproved: !u.isApproved });
+            
             const handleAddUserSubmit = async (e) => { 
                 e.preventDefault(); 
                 try { 
@@ -407,6 +399,7 @@
                     window.signOut(window.secondaryAuth); setActiveModal(null); setAdminForm({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false }); 
                 } catch(err){alert(err.message);} 
             };
+            
             const handleEditUserSubmit = async (e) => { e.preventDefault(); await window.updateDoc(window.doc(window.db, "users", adminForm.uid), { name: adminForm.name, isAdmin: adminForm.isAdmin, canCreateGroups: adminForm.canCreateGroups }); setActiveModal(null); };
             const handleAdminDeleteMessage = async (msgId) => {
                 if(window.confirm("Delete this record globally?")) await window.deleteDoc(window.doc(window.db, "messages", msgId));
@@ -425,7 +418,6 @@
                 );
             }
 
-            // Safe Filtering for Admin Board to prevent crashes
             const filteredAuditMessages = [...messages].reverse().filter(msg => {
                 const safeSender = msg.sender || "";
                 const safeAssignee = msg.taskData?.currentAssignee || "";
@@ -443,16 +435,14 @@
                 return matchUser && matchDate;
             });
 
-            // Calculate visible groups for sidebar
             const myGroups = [{id: "main", name: "Academic Council Group"}, ...groups.filter(g => g.members?.includes(user.email) || currentUserData?.isAdmin)];
 
-            // --- MAIN TELEGRAM / WHATSAPP WEB LAYOUT ---
             return (
                 <div className="flex h-screen w-full bg-white font-sans text-gray-800 overflow-hidden">
                     
                     {viewMode === "admin" ? (
                         /* --- ADMIN DASHBOARD --- */
-                        <div className="flex flex-col h-full w-full bg-slate-100 overflow-hidden animate-in fade-in">
+                        <div className="flex flex-col h-full w-full bg-slate-100 overflow-hidden">
                             <div className="bg-slate-900 text-white p-4 flex items-center justify-between shadow-md shrink-0">
                                 <div className="flex items-center gap-3">
                                     <i className="fa-solid fa-shield-halved text-2xl text-blue-400"></i>
@@ -574,10 +564,10 @@
                             </div>
                         </div>
                     ) : (
-                        /* --- TELEGRAM / WHATSAPP UI --- */
+                        /* --- MAIN CHAT UI --- */
                         <div className="flex h-full w-full">
                             
-                            {/* Left Sidebar (Groups & Settings) */}
+                            {/* Left Sidebar */}
                             <div className="hidden md:flex w-80 bg-white border-r border-gray-200 flex-col shrink-0 z-20">
                                 <div className="p-4 bg-slate-50 border-b border-gray-200 flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-sm">{user.email.substring(0,1).toUpperCase()}</div>
@@ -592,7 +582,6 @@
                                     </div>
                                 </div>
                                 
-                                {/* Group List */}
                                 <div className="flex-1 overflow-y-auto">
                                     <div className="px-4 pt-4 pb-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Your Departments</div>
                                     {myGroups.map(g => (
@@ -608,7 +597,6 @@
                                     ))}
                                 </div>
 
-                                {/* Sidebar Bottom Controls */}
                                 <div className="p-3 bg-gray-50 border-t border-gray-200 space-y-1">
                                     <button onClick={() => setShowNotifications(!showNotifications)} className="w-full flex items-center gap-3 p-2 hover:bg-gray-200 rounded-lg text-left text-sm font-semibold text-gray-700 transition-colors">
                                         <i className="fa-solid fa-bell text-gray-500 w-5 text-center"></i> Notifications
@@ -625,10 +613,9 @@
                                 </div>
                             </div>
 
-                            {/* Right Side: Active Chat Area */}
+                            {/* Chat Area */}
                             <div className="flex-1 flex flex-col relative h-full">
                                 
-                                {/* Active Chat Header */}
                                 <div className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 md:px-6 shrink-0 z-10 shadow-sm">
                                     <div className="flex items-center gap-3">
                                         <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-sm ${activeGroup.id==='main' ? 'bg-gradient-to-br from-blue-500 to-indigo-600' : 'bg-gradient-to-br from-emerald-400 to-teal-600'}`}>
@@ -636,13 +623,12 @@
                                         </div>
                                         <div>
                                             <h1 className="font-bold text-sm md:text-base text-gray-800">{activeGroup.name}</h1>
-                                            <p className="text-xs text-gray-500 cursor-pointer hover:text-blue-500" onClick={()=>{ if(activeGroup.id!=='main') setActiveModal('group_settings'); }}>
+                                            <p className="text-xs text-gray-500 cursor-pointer hover:text-blue-500" onClick={openGroupSettings}>
                                                 {activeGroup.id==='main' ? 'All Staff' : `${activeGroup.members?.length||0} Members (Click to view)`}
                                             </p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-4">
-                                        {/* Search inside chat header */}
                                         <div className="hidden md:flex items-center bg-gray-100 rounded-full px-3 py-1.5 transition-all focus-within:ring-2 focus-within:ring-blue-100">
                                             <i className="fa-solid fa-magnifying-glass text-gray-400 text-xs"></i>
                                             <input type="text" placeholder="Search..." className="bg-transparent outline-none text-xs ml-2 w-32 focus:w-48 transition-all text-gray-700" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
@@ -651,9 +637,8 @@
                                     </div>
                                 </div>
 
-                                {/* Notifications Dropdown (Absolute overlay) */}
                                 {showNotifications && (
-                                    <div className="absolute top-16 right-4 w-72 bg-white rounded-xl shadow-2xl border border-gray-200 z-30 overflow-hidden animate-in fade-in">
+                                    <div className="absolute top-16 right-4 w-72 bg-white rounded-xl shadow-2xl border border-gray-200 z-30 overflow-hidden">
                                         <div className="bg-gray-50 p-3 border-b border-gray-200 flex justify-between items-center"><span className="font-bold text-sm text-gray-800">Your Pending Tasks</span><i className="fa-solid fa-xmark cursor-pointer text-gray-400" onClick={() => setShowNotifications(false)}></i></div>
                                         <div className="max-h-80 overflow-y-auto">
                                             {activeActionableTasks.length === 0 ? <div className="p-4 text-center text-xs text-gray-500">All caught up!</div> : 
@@ -669,14 +654,11 @@
                                     </div>
                                 )}
 
-                                {/* The Chat Area (Scrollable flex region) */}
                                 <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4 telegram-bg relative">
                                     <div className="text-center"><span className="text-xs text-gray-500 bg-white/70 px-3 py-1 rounded-full shadow-sm backdrop-blur-sm font-semibold">End-to-End Encrypted</span></div>
 
                                     {messages.filter(checkVisibility).filter(handleSearchFilter).map((msg) => (
-                                        <div key={msg.id} className={`flex flex-col ${msg.isMine ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-2`}>
-                                            
-                                            {/* Sender Name above bubble if not mine */}
+                                        <div key={msg.id} className={`flex flex-col ${msg.isMine ? 'items-end' : 'items-start'}`}>
                                             {!msg.isMine && <div className="text-[11px] font-bold text-slate-500 mb-0.5 ml-1 drop-shadow-sm">{msg.sender.split('@')[0]}</div>}
                                             
                                             {!msg.isTask && (
@@ -722,7 +704,7 @@
                                     <div ref={messagesEndRef} className="h-8"></div>
                                 </div>
 
-                                {/* Phase 3.4: @Mention Pop-up */}
+                                {/* @mention popup */}
                                 {inputText.split(' ').pop().startsWith('@') && inputText.split(' ').pop().length > 0 && (
                                     <div className="absolute bottom-[80px] left-4 md:left-24 bg-white shadow-2xl border border-gray-200 rounded-xl w-72 max-h-48 overflow-y-auto z-20">
                                         {dbUsers.filter(u => u.name.toLowerCase().includes(inputText.split(' ').pop().substring(1).toLowerCase())).map(u => (
@@ -734,7 +716,6 @@
                                     </div>
                                 )}
 
-                                {/* Telegram Style Input Area (Flex child, no longer absolute) */}
                                 <div className="min-h-[64px] bg-white px-4 py-3 flex items-end gap-3 shrink-0 z-10 shadow-[0_-2px_10px_rgba(0,0,0,0.02)]">
                                     <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"/>
                                     <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors shrink-0 mb-1" onClick={() => fileInputRef.current.click()} disabled={isUploading}>
@@ -751,12 +732,11 @@
                         </div>
                     )}
 
-                    {/* --- NEW OVERLAYS & MODALS --- */}
+                    {/* ---------- MODALS ---------- */}
                     
-                    {/* Group Creation Modal */}
                     {activeModal === 'create_group' && (
                         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center justify-between mb-4 border-b pb-3">
                                     <h3 className="font-bold text-lg"><i className="fa-solid fa-layer-group text-blue-500 mr-2"></i> Create Department</h3>
                                     <i className="fa-solid fa-xmark cursor-pointer text-gray-400" onClick={() => setActiveModal(null)}></i>
@@ -786,10 +766,9 @@
                         </div>
                     )}
 
-                    {/* Group Settings Modal (View/Edit members) */}
                     {activeModal === 'group_settings' && (
                         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center justify-between mb-4 border-b pb-3">
                                     <h3 className="font-bold text-lg"><i className="fa-solid fa-users-gear text-blue-500 mr-2"></i> {activeGroup.name}</h3>
                                     <i className="fa-solid fa-xmark cursor-pointer text-gray-400" onClick={() => setActiveModal(null)}></i>
@@ -797,12 +776,12 @@
                                 <div className="space-y-4">
                                     <div className="h-48 overflow-y-auto border border-slate-200 rounded-xl bg-slate-50 p-2 space-y-1">
                                         {dbUsers.map(u => {
-                                            const isAdmin = activeGroup.admins?.includes(user.email) || currentUserData?.isAdmin;
+                                            const isGroupAdmin = activeGroup.admins?.includes(user.email) || currentUserData?.isAdmin;
                                             const isMember = activeGroup.members?.includes(u.email);
                                             return (
-                                                <label key={u.uid} className={`flex items-center gap-2 p-2 rounded ${isAdmin ? 'hover:bg-gray-200 cursor-pointer' : ''}`}>
-                                                    <input type="checkbox" disabled={!isAdmin || activeGroup.admins?.includes(u.email)} checked={groupForm.members.includes(u.email) || isMember} onChange={(e) => {
-                                                        if(!isAdmin) return;
+                                                <label key={u.uid} className={`flex items-center gap-2 p-2 rounded ${isGroupAdmin ? 'hover:bg-gray-200 cursor-pointer' : ''}`}>
+                                                    <input type="checkbox" disabled={!isGroupAdmin || activeGroup.admins?.includes(u.email)} checked={groupForm.members.includes(u.email) || isMember} onChange={(e) => {
+                                                        if(!isGroupAdmin) return;
                                                         const newMembers = e.target.checked ? [...groupForm.members, u.email] : groupForm.members.filter(m => m !== u.email);
                                                         setGroupForm({...groupForm, members: newMembers});
                                                     }} className="w-4 h-4 rounded text-blue-600 disabled:opacity-50"/>
@@ -819,10 +798,9 @@
                         </div>
                     )}
 
-                    {/* Shared Modals */}
                     {activeModal === 'context' && (
-                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center gap-3 mb-5 border-b pb-4">
                                     <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center"><i className="fa-solid fa-quote-left"></i></div>
                                     <p className="text-sm font-semibold text-slate-700 line-clamp-2 flex-1 italic">"{selectedMessage?.text || selectedMessage?.fileName}"</p>
@@ -842,8 +820,8 @@
                     )}
 
                     {activeModal === 'task_trail' && selectedMessage?.taskData && (
-                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center md:p-4 animate-in fade-in">
-                            <div className="bg-white w-full h-full md:h-auto md:max-h-[90vh] md:max-w-2xl md:rounded-3xl flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom-8 md:zoom-in-95">
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center md:p-4">
+                            <div className="bg-white w-full h-full md:h-auto md:max-h-[90vh] md:max-w-2xl md:rounded-3xl flex flex-col shadow-2xl overflow-hidden">
                                 <div className="bg-blue-900 text-white p-5 flex items-center justify-between shadow-md shrink-0">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 rounded-xl bg-blue-800 border border-blue-700 flex items-center justify-center text-blue-300"><i className="fa-solid fa-route"></i></div>
@@ -908,7 +886,7 @@
 
                     {activeModal === 'admin_add_user' && (
                         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl animate-in zoom-in-95">
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl">
                                 <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl"><i className="fa-solid fa-user-plus text-blue-600 mr-2"></i> Register Staff</h3><i className="fa-solid fa-xmark cursor-pointer text-slate-400" onClick={() => setActiveModal(null)}></i></div>
                                 <form onSubmit={handleAddUserSubmit} className="space-y-4">
                                     <input required type="text" placeholder="Full Name" value={adminForm.name} onChange={(e) => setAdminForm({...adminForm, name: e.target.value})} className="w-full p-3 border rounded-xl text-sm" />
@@ -924,7 +902,7 @@
 
                     {activeModal === 'admin_edit_user' && (
                         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl animate-in zoom-in-95">
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl">
                                 <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl"><i className="fa-solid fa-user-pen text-blue-600 mr-2"></i> Edit User</h3><i className="fa-solid fa-xmark cursor-pointer text-slate-400" onClick={() => setActiveModal(null)}></i></div>
                                 <form onSubmit={handleEditUserSubmit} className="space-y-4">
                                     <input disabled type="email" value={adminForm.email} className="w-full p-3 border rounded-xl text-sm bg-gray-100 text-gray-500" />
@@ -939,7 +917,7 @@
 
                     {activeModal === 'reminder' && (
                         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl animate-in zoom-in-95">
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl">
                                 <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl"><i className="fa-regular fa-clock text-yellow-500 mr-2"></i> Schedule Alert</h3><i className="fa-solid fa-xmark cursor-pointer text-slate-400" onClick={() => setActiveModal(null)}></i></div>
                                 <div className="space-y-4">
                                     <input type="datetime-local" value={reminderDateTime} onChange={(e) => setReminderDateTime(e.target.value)} className="w-full p-3 border rounded-xl text-sm" />
@@ -951,7 +929,7 @@
 
                     {activeModal === 'task_convert' && (
                         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-                            <div className="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl animate-in zoom-in-95">
+                            <div className="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl">
                                 <div className="flex justify-between items-center mb-6 border-b pb-4"><h3 className="font-bold text-xl"><i className="fa-regular fa-square-check text-blue-600 mr-2"></i> Official Task</h3><i className="fa-solid fa-xmark cursor-pointer text-slate-400" onClick={() => setActiveModal(null)}></i></div>
                                 <div className="space-y-4">
                                     <select value={taskAssignee} onChange={(e) => setTaskAssignee(e.target.value)} className="w-full p-3 border rounded-xl text-sm">
@@ -970,14 +948,13 @@
 
                     {isUploading && (
                         <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-[80] flex items-center justify-center p-4">
-                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95">
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center">
                                 <i className="fa-solid fa-cloud-arrow-up text-4xl text-blue-600 mb-4 animate-bounce"></i>
                                 <h3 className="font-bold text-xl mb-4">Uploading...</h3>
                                 <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden"><div className="bg-blue-600 h-full transition-all" style={{ width: `${uploadProgress}%` }}></div></div>
                             </div>
                         </div>
                     )}
-
                 </div>
             );
         }
@@ -1018,7 +995,7 @@
             if (!user) {
                 return (
                     <div className="flex items-center justify-center min-h-screen bg-slate-100 p-4">
-                        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 border-t-[8px] border-blue-800 animate-in zoom-in-95">
+                        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 border-t-[8px] border-blue-800">
                             <h1 className="text-2xl font-black text-center text-slate-900 mb-8"><i className="fa-solid fa-building-shield text-blue-800"></i> Corporate Portal</h1>
                             {authError && <div className="bg-red-50 text-red-700 p-3 rounded-xl mb-4 text-xs font-bold border border-red-200">{authError}</div>}
                             <form className="space-y-4">

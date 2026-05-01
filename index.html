@@ -737,4 +737,306 @@
                                 {/* Telegram Style Input Area (Flex child, no longer absolute) */}
                                 <div className="min-h-[64px] bg-white px-4 py-3 flex items-end gap-3 shrink-0 z-10 shadow-[0_-2px_10px_rgba(0,0,0,0.02)]">
                                     <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"/>
-                                    <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors shrink-
+                                    <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors shrink-0 mb-1" onClick={() => fileInputRef.current.click()} disabled={isUploading}>
+                                        <i className="fa-solid fa-paperclip text-xl md:text-2xl"></i>
+                                    </button>
+                                    <div className="flex-1 bg-gray-100 rounded-2xl md:rounded-full px-4 py-2 flex items-center min-h-[44px]">
+                                        <input type="text" placeholder="Message..." className="bg-transparent w-full outline-none text-[15px] text-gray-800" value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}/>
+                                    </div>
+                                    <button onClick={handleSendMessage} className="shrink-0 mb-1 w-11 h-11 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors flex justify-center items-center shadow-sm">
+                                        <i className="fa-solid fa-paper-plane text-lg md:ml-[-2px] md:mt-[2px]"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* --- NEW OVERLAYS & MODALS --- */}
+                    
+                    {/* Group Creation Modal */}
+                    {activeModal === 'create_group' && (
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center justify-between mb-4 border-b pb-3">
+                                    <h3 className="font-bold text-lg"><i className="fa-solid fa-layer-group text-blue-500 mr-2"></i> Create Department</h3>
+                                    <i className="fa-solid fa-xmark cursor-pointer text-gray-400" onClick={() => setActiveModal(null)}></i>
+                                </div>
+                                <form onSubmit={handleCreateGroup} className="space-y-4">
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 uppercase">Group Name</label>
+                                        <input required type="text" value={groupForm.name} onChange={(e) => setGroupForm({...groupForm, name: e.target.value})} className="w-full mt-1 p-3 border border-slate-300 rounded-xl text-sm bg-slate-50 outline-none" placeholder="e.g., Sales Team" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 uppercase">Select Members</label>
+                                        <div className="mt-1 h-32 overflow-y-auto border border-slate-300 rounded-xl bg-slate-50 p-2 space-y-1">
+                                            {dbUsers.map(u => (
+                                                <label key={u.uid} className="flex items-center gap-2 p-2 hover:bg-gray-200 rounded cursor-pointer">
+                                                    <input type="checkbox" checked={groupForm.members.includes(u.email)} onChange={(e) => {
+                                                        const newMembers = e.target.checked ? [...groupForm.members, u.email] : groupForm.members.filter(m => m !== u.email);
+                                                        setGroupForm({...groupForm, members: newMembers});
+                                                    }} className="w-4 h-4 rounded text-blue-600"/>
+                                                    <span className="text-sm font-semibold text-gray-700">{u.name}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <button type="submit" className="w-full bg-emerald-500 text-white py-3 rounded-xl font-bold hover:bg-emerald-600 shadow-md">Create Group</button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Group Settings Modal (View/Edit members) */}
+                    {activeModal === 'group_settings' && (
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center justify-between mb-4 border-b pb-3">
+                                    <h3 className="font-bold text-lg"><i className="fa-solid fa-users-gear text-blue-500 mr-2"></i> {activeGroup.name}</h3>
+                                    <i className="fa-solid fa-xmark cursor-pointer text-gray-400" onClick={() => setActiveModal(null)}></i>
+                                </div>
+                                <div className="space-y-4">
+                                    <div className="h-48 overflow-y-auto border border-slate-200 rounded-xl bg-slate-50 p-2 space-y-1">
+                                        {dbUsers.map(u => {
+                                            const isAdmin = activeGroup.admins?.includes(user.email) || currentUserData?.isAdmin;
+                                            const isMember = activeGroup.members?.includes(u.email);
+                                            return (
+                                                <label key={u.uid} className={`flex items-center gap-2 p-2 rounded ${isAdmin ? 'hover:bg-gray-200 cursor-pointer' : ''}`}>
+                                                    <input type="checkbox" disabled={!isAdmin || activeGroup.admins?.includes(u.email)} checked={groupForm.members.includes(u.email) || isMember} onChange={(e) => {
+                                                        if(!isAdmin) return;
+                                                        const newMembers = e.target.checked ? [...groupForm.members, u.email] : groupForm.members.filter(m => m !== u.email);
+                                                        setGroupForm({...groupForm, members: newMembers});
+                                                    }} className="w-4 h-4 rounded text-blue-600 disabled:opacity-50"/>
+                                                    <span className="text-sm font-semibold text-gray-700">{u.name} {activeGroup.admins?.includes(u.email) && <span className="ml-1 text-[9px] bg-blue-100 text-blue-800 px-1 py-0.5 rounded">Group Admin</span>}</span>
+                                                </label>
+                                            )
+                                        })}
+                                    </div>
+                                    {(activeGroup.admins?.includes(user.email) || currentUserData?.isAdmin) && (
+                                        <button onClick={handleUpdateGroupMembers} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 shadow-md">Update Members</button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Shared Modals */}
+                    {activeModal === 'context' && (
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in" onClick={() => setActiveModal(null)}>
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center gap-3 mb-5 border-b pb-4">
+                                    <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center"><i className="fa-solid fa-quote-left"></i></div>
+                                    <p className="text-sm font-semibold text-slate-700 line-clamp-2 flex-1 italic">"{selectedMessage?.text || selectedMessage?.fileName}"</p>
+                                </div>
+                                <div className="space-y-3">
+                                    <button onClick={() => setActiveModal('reminder')} className="w-full flex items-center gap-4 p-4 hover:bg-yellow-50 rounded-xl transition-all border border-transparent hover:border-yellow-200 text-left group shadow-sm">
+                                        <div className="bg-yellow-100 p-3 rounded-xl text-yellow-600 group-hover:scale-110 transition-transform"><i className="fa-regular fa-clock text-xl"></i></div>
+                                        <div><div className="font-bold text-sm text-yellow-800">Set Push Reminder</div><div className="text-xs font-semibold text-yellow-600/70 mt-0.5">Alert me about this later</div></div>
+                                    </button>
+                                    <button onClick={() => setActiveModal('task_convert')} className="w-full flex items-center gap-4 p-4 hover:bg-blue-50 rounded-xl transition-all border border-transparent hover:border-blue-200 text-left group shadow-sm">
+                                        <div className="bg-blue-100 p-3 rounded-xl text-blue-600 group-hover:scale-110 transition-transform"><i className="fa-regular fa-square-check text-xl"></i></div>
+                                        <div><div className="font-bold text-sm text-blue-800">Convert to Official Task</div><div className="text-xs font-semibold text-blue-600/70 mt-0.5">Assign with deadline and tracking</div></div>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeModal === 'task_trail' && selectedMessage?.taskData && (
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center md:p-4 animate-in fade-in">
+                            <div className="bg-white w-full h-full md:h-auto md:max-h-[90vh] md:max-w-2xl md:rounded-3xl flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom-8 md:zoom-in-95">
+                                <div className="bg-blue-900 text-white p-5 flex items-center justify-between shadow-md shrink-0">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-blue-800 border border-blue-700 flex items-center justify-center text-blue-300"><i className="fa-solid fa-route"></i></div>
+                                        <div><h2 className="font-bold text-lg leading-tight">Secure Task Trail</h2></div>
+                                    </div>
+                                    <button onClick={() => setActiveModal(null)} className="w-10 h-10 rounded-full bg-blue-800 hover:bg-blue-700 flex items-center justify-center"><i className="fa-solid fa-xmark"></i></button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-5 md:p-8 space-y-6 bg-slate-50">
+                                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                                        <p className="text-sm md:text-base font-semibold text-slate-800 bg-slate-50 p-4 rounded-xl border border-slate-100">"{selectedMessage.text}"</p>
+                                        <div className="mt-4 flex gap-4">
+                                            <div className="flex-1 bg-blue-50 p-3 rounded-xl border border-blue-100"><p className="text-[10px] font-bold text-blue-600 uppercase">Holder</p><p className="text-sm font-bold text-blue-900 truncate">{(selectedMessage.taskData.currentAssignee||'').split('@')[0]}</p></div>
+                                            <div className="flex-1 bg-red-50 p-3 rounded-xl border border-red-100"><p className="text-[10px] font-bold text-red-600 uppercase">Deadline</p><p className="text-sm font-bold text-red-900">{new Date(selectedMessage.taskData.deadline).toLocaleDateString()}</p></div>
+                                        </div>
+                                    </div>
+                                    {selectedMessage.taskData.status !== "Completed" && (
+                                        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                                <select value={delegateAssignee} onChange={(e) => setDelegateAssignee(e.target.value)} className="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-white font-semibold outline-none focus:border-blue-500 mb-2">
+                                                    <option value="" disabled>Select Delegate...</option>
+                                                    {activeGroup.members?.map(email => <option key={email} value={email}>{(dbUsers.find(u=>u.email===email)?.name || email)}</option>)}
+                                                </select>
+                                                <button onClick={handleDelegateTask} disabled={!delegateAssignee} className={`w-full py-2.5 rounded-lg text-sm font-bold text-white ${delegateAssignee ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-300'}`}>Execute Transfer</button>
+                                            </div>
+                                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-center">
+                                                <button onClick={handleCompleteTask} className={`w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 ${user.email === selectedMessage.taskData.currentAssignee || currentUserData?.isAdmin ? "bg-green-600 text-white hover:bg-green-700" : "bg-slate-300 text-slate-500"}`}>
+                                                    <i className="fa-solid fa-shield-check text-lg"></i> Mark Completed
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                                        <div className="space-y-4">
+                                            {selectedMessage.taskData.trail.map((item, idx) => (
+                                                <div key={idx} className="flex gap-4 items-start">
+                                                    <div className={`mt-1 w-8 h-8 rounded-full shadow shrink-0 flex items-center justify-center text-white text-xs ${item.action === 'Marked Completed' ? 'bg-green-500' : item.action === 'Update Added' ? 'bg-amber-500' : 'bg-blue-600'}`}>
+                                                        {idx === 0 ? <i className="fa-solid fa-flag"></i> : <i className="fa-solid fa-arrow-right"></i>}
+                                                    </div>
+                                                    <div className="flex-1 bg-white border border-slate-100 p-3 rounded-xl shadow-sm">
+                                                        <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-1">
+                                                            <span className="uppercase text-blue-600">{item.action}</span><span>{item.time.split(',')[0]}</span>
+                                                        </div>
+                                                        <div className="text-sm font-semibold text-slate-700">{(item.by||'').split('@')[0]} {item.to && item.to !== 'System' && `→ ${(item.to||'').split('@')[0]}`}</div>
+                                                        {item.comment && <div className="mt-2 text-xs text-slate-600 italic">"{item.comment}"</div>}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                {selectedMessage.taskData.status !== "Completed" && (
+                                    <div className="p-4 bg-white border-t shrink-0">
+                                        <div className="flex items-center bg-slate-50 border rounded-xl px-4 py-2">
+                                            <input type="text" value={trailComment} onChange={(e) => setTrailComment(e.target.value)} placeholder="Add comment..." className="bg-transparent w-full outline-none text-sm"/>
+                                            <button onClick={handleAddComment} className="text-blue-600 ml-2"><i className="fa-solid fa-paper-plane"></i></button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {activeModal === 'admin_add_user' && (
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl animate-in zoom-in-95">
+                                <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl"><i className="fa-solid fa-user-plus text-blue-600 mr-2"></i> Register Staff</h3><i className="fa-solid fa-xmark cursor-pointer text-slate-400" onClick={() => setActiveModal(null)}></i></div>
+                                <form onSubmit={handleAddUserSubmit} className="space-y-4">
+                                    <input required type="text" placeholder="Full Name" value={adminForm.name} onChange={(e) => setAdminForm({...adminForm, name: e.target.value})} className="w-full p-3 border rounded-xl text-sm" />
+                                    <input required type="email" placeholder="Email" value={adminForm.email} onChange={(e) => setAdminForm({...adminForm, email: e.target.value})} className="w-full p-3 border rounded-xl text-sm" />
+                                    <input required minLength="6" type="password" placeholder="Password" value={adminForm.password} onChange={(e) => setAdminForm({...adminForm, password: e.target.value})} className="w-full p-3 border rounded-xl text-sm" />
+                                    <label className="flex items-center gap-2 text-xs font-bold text-indigo-700 cursor-pointer"><input type="checkbox" checked={adminForm.isAdmin} onChange={(e) => setAdminForm({...adminForm, isAdmin: e.target.checked})} className="w-4 h-4"/> Grant Admin Access</label>
+                                    <label className="flex items-center gap-2 text-xs font-bold text-teal-700 cursor-pointer"><input type="checkbox" checked={adminForm.canCreateGroups} onChange={(e) => setAdminForm({...adminForm, canCreateGroups: e.target.checked})} className="w-4 h-4"/> Grant Group Creation Access</label>
+                                    <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">Create Account</button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeModal === 'admin_edit_user' && (
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl animate-in zoom-in-95">
+                                <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl"><i className="fa-solid fa-user-pen text-blue-600 mr-2"></i> Edit User</h3><i className="fa-solid fa-xmark cursor-pointer text-slate-400" onClick={() => setActiveModal(null)}></i></div>
+                                <form onSubmit={handleEditUserSubmit} className="space-y-4">
+                                    <input disabled type="email" value={adminForm.email} className="w-full p-3 border rounded-xl text-sm bg-gray-100 text-gray-500" />
+                                    <input required type="text" value={adminForm.name} onChange={(e) => setAdminForm({...adminForm, name: e.target.value})} className="w-full p-3 border rounded-xl text-sm" />
+                                    <label className="flex items-center gap-2 text-xs font-bold text-indigo-700 cursor-pointer"><input type="checkbox" checked={adminForm.isAdmin} onChange={(e) => setAdminForm({...adminForm, isAdmin: e.target.checked})} className="w-4 h-4"/> Grant Admin Access</label>
+                                    <label className="flex items-center gap-2 text-xs font-bold text-teal-700 cursor-pointer"><input type="checkbox" checked={adminForm.canCreateGroups} onChange={(e) => setAdminForm({...adminForm, canCreateGroups: e.target.checked})} className="w-4 h-4"/> Grant Group Creation Access</label>
+                                    <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">Save Changes</button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeModal === 'reminder' && (
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl animate-in zoom-in-95">
+                                <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl"><i className="fa-regular fa-clock text-yellow-500 mr-2"></i> Schedule Alert</h3><i className="fa-solid fa-xmark cursor-pointer text-slate-400" onClick={() => setActiveModal(null)}></i></div>
+                                <div className="space-y-4">
+                                    <input type="datetime-local" value={reminderDateTime} onChange={(e) => setReminderDateTime(e.target.value)} className="w-full p-3 border rounded-xl text-sm" />
+                                    <button onClick={setReminder} className="w-full bg-yellow-500 text-white py-3 rounded-xl font-bold">Save Reminder</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeModal === 'task_convert' && (
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl animate-in zoom-in-95">
+                                <div className="flex justify-between items-center mb-6 border-b pb-4"><h3 className="font-bold text-xl"><i className="fa-regular fa-square-check text-blue-600 mr-2"></i> Official Task</h3><i className="fa-solid fa-xmark cursor-pointer text-slate-400" onClick={() => setActiveModal(null)}></i></div>
+                                <div className="space-y-4">
+                                    <select value={taskAssignee} onChange={(e) => setTaskAssignee(e.target.value)} className="w-full p-3 border rounded-xl text-sm">
+                                        <option value="" disabled>Select Assignee...</option>
+                                        {activeGroup.id === 'main' ? 
+                                            dbUsers.map(u => <option key={u.uid} value={u.email}>{u.name} ({u.email})</option>) :
+                                            activeGroup.members?.map(email => <option key={email} value={email}>{(dbUsers.find(u=>u.email===email)?.name || email)}</option>)
+                                        }
+                                    </select>
+                                    <input type="datetime-local" value={taskDeadline} onChange={(e) => setTaskDeadline(e.target.value)} className="w-full p-3 border rounded-xl text-sm" />
+                                    <button onClick={convertToTask} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">Assign Task</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {isUploading && (
+                        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-[80] flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95">
+                                <i className="fa-solid fa-cloud-arrow-up text-4xl text-blue-600 mb-4 animate-bounce"></i>
+                                <h3 className="font-bold text-xl mb-4">Uploading...</h3>
+                                <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden"><div className="bg-blue-600 h-full transition-all" style={{ width: `${uploadProgress}%` }}></div></div>
+                            </div>
+                        </div>
+                    )}
+
+                </div>
+            );
+        }
+
+        function App() {
+            const [user, setUser] = useState(null);
+            const [isFirebaseLoaded, setIsFirebaseLoaded] = useState(false);
+            const [email, setEmail] = useState("");
+            const [password, setPassword] = useState("");
+            const [authError, setAuthError] = useState("");
+
+            useEffect(() => {
+                const setupAuth = () => { window.onAuthStateChanged(window.auth, setUser); setIsFirebaseLoaded(true); };
+                if (window.auth) setupAuth();
+                else window.addEventListener('firebaseReady', setupAuth);
+                return () => window.removeEventListener('firebaseReady', setupAuth);
+            }, []);
+
+            const handleLogin = (e) => {
+                e.preventDefault(); setAuthError("");
+                window.signInWithEmailAndPassword(window.auth, email, password).catch(err => setAuthError("Login Failed: " + err.message));
+            };
+
+            const handleRegister = async (e) => {
+                e.preventDefault(); setAuthError("");
+                try {
+                    const cred = await window.createUserWithEmailAndPassword(window.auth, email, password);
+                    const isVp = cred.user.email.toLowerCase() === 'viceprincipal@mpgs.edu.in';
+                    await window.setDoc(window.doc(window.db, "users", cred.user.uid), {
+                        uid: cred.user.uid, email: cred.user.email, name: cred.user.email.split('@')[0].toUpperCase(),
+                        isApproved: isVp, isAdmin: isVp, canCreateGroups: isVp
+                    });
+                } catch (err) { setAuthError("Registration Failed: " + err.message); }
+            };
+
+            if (!isFirebaseLoaded) return <div className="flex justify-center items-center h-screen bg-slate-100 font-bold text-blue-800 text-xl animate-pulse">Connecting...</div>;
+
+            if (!user) {
+                return (
+                    <div className="flex items-center justify-center min-h-screen bg-slate-100 p-4">
+                        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 border-t-[8px] border-blue-800 animate-in zoom-in-95">
+                            <h1 className="text-2xl font-black text-center text-slate-900 mb-8"><i className="fa-solid fa-building-shield text-blue-800"></i> Corporate Portal</h1>
+                            {authError && <div className="bg-red-50 text-red-700 p-3 rounded-xl mb-4 text-xs font-bold border border-red-200">{authError}</div>}
+                            <form className="space-y-4">
+                                <input type="email" placeholder="Corporate Email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-4 border rounded-xl bg-slate-50 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                                <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-4 border rounded-xl bg-slate-50 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                                <div className="flex gap-2 pt-4">
+                                    <button onClick={handleLogin} className="flex-1 bg-blue-800 text-white py-4 rounded-xl font-bold hover:bg-blue-900 shadow-lg transition-all">Sign In</button>
+                                    <button onClick={handleRegister} className="flex-1 bg-white border border-slate-300 text-slate-700 py-4 rounded-xl font-bold hover:bg-slate-50 transition-all">Register</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                );
+            }
+            return <ChatApp user={user} onLogout={() => window.signOut(window.auth)} />;
+        }
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

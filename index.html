@@ -81,7 +81,6 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
         
-        // Feature: Corporate Notification Sound
         const notificationSound = new Audio('https://cdn.freesound.org/previews/536/536420_4397472-lq.mp3');
 
         function ChatApp({ user, onLogout }) {
@@ -116,7 +115,7 @@
             const [groupForm, setGroupForm] = useState({ name: "", members: [] });
             const [editingGroup, setEditingGroup] = useState(null);
 
-            // Admin Filters (RESTORED)
+            // Admin Filters
             const [adminFilterUser, setAdminFilterUser] = useState("");
             const [adminFilterDate, setAdminFilterDate] = useState("");
             const [allAdminReminders, setAllAdminReminders] = useState([]);
@@ -136,6 +135,7 @@
 
             // Feature: Typing and Online States
             const [typingStatus, setTypingStatus] = useState([]);
+            const lastTypingTime = useRef(0); // Throttle typing events
 
             // Request Notification Permission
             useEffect(() => {
@@ -187,19 +187,19 @@
                 return () => clearInterval(interval);
             }, [activeReminders]);
 
-            // Synchronize User Data
+            // Synchronize User Data & Online Heartbeat
             useEffect(() => {
                 const syncUserToDB = async () => {
                     try { 
                         await window.setDoc(window.doc(window.db, "users", user.uid), { 
                             uid: user.uid, email: user.email, name: user.email.split('@')[0].toUpperCase(),
-                            lastActive: window.serverTimestamp() // Real-time Heartbeat
+                            lastActive: window.serverTimestamp() // Initial Heartbeat
                         }, { merge: true }); 
                     } catch (error) {}
                 };
                 syncUserToDB();
 
-                // Feature: Online Heartbeat Interval (Updates every 1 minute)
+                // Feature: Constant Online Heartbeat Interval (Updates every 60 seconds)
                 const heartbeatInterval = setInterval(() => {
                     window.updateDoc(window.doc(window.db, "users", user.uid), { 
                         lastActive: window.serverTimestamp() 
@@ -254,7 +254,7 @@
                 prevNotifCountRef.current = totalNotifications;
             }, [totalNotifications]);
 
-            // Feature: Typing Indicator Listener
+            // Feature: Typing Indicator Listener (Using Date.now for instant updates)
             useEffect(() => {
                 const q = window.query(window.collection(window.db, "typing"), window.where("groupId", "==", activeGroup.id));
                 const unsubTyping = window.onSnapshot(q, (snapshot) => {
@@ -262,17 +262,21 @@
                     const typingUsers = snapshot.docs
                         .map(d => ({ id: d.id, ...d.data() }))
                         .filter(d => d.id !== `${activeGroup.id}_${user.uid}`) // Exclude self
-                        .filter(d => d.timestamp && (now - d.timestamp.toMillis() < 4000)); // Only show if active within 4 seconds
+                        .filter(d => d.timestamp && (now - d.timestamp < 3500)); // Only show if active within last 3.5 seconds
                     setTypingStatus(typingUsers);
                 });
                 return () => unsubTyping();
             }, [activeGroup.id, user.uid]);
 
-            // Feature: Auto-Grammar formatting
+            // Feature: Intelligent Auto-Grammar formatting
             const formatMessage = (txt) => {
                 if(!txt.trim()) return txt;
                 let formatted = txt.trim();
+                
+                // Capitalize first letter
                 formatted = formatted.charAt(0).toUpperCase() + formatted.slice(1);
+                
+                // Add period if ending lacks punctuation, but skip if it's a multi-line list to preserve formatting
                 if (!/[.!?]$/.test(formatted) && !formatted.includes('\n')) {
                     formatted += '.';
                 }
@@ -300,7 +304,7 @@
                         originalSender: replyingTo.sender.split('@')[0] 
                     };
 
-                    // ENHANCED: Real-time notification for Replies
+                    // Real-time notification for Replies
                     if (replyingTo.senderUid !== user.uid) {
                         try {
                             await window.addDoc(window.collection(window.db, "notifications"), {
@@ -310,7 +314,7 @@
                                 timestamp: window.serverTimestamp(),
                                 isRead: false
                             });
-                        } catch (e) { console.log("Failed to send reply notification"); }
+                        } catch (e) {}
                     }
                 }
 
@@ -342,17 +346,22 @@
                 }
             };
 
+            // Optimize typing event writing to Firebase
             const handleTypingEvent = () => {
-                try {
-                    window.setDoc(window.doc(window.db, "typing", `${activeGroup.id}_${user.uid}`), {
-                        groupId: activeGroup.id,
-                        name: currentUserData?.name || user.email.split('@')[0],
-                        timestamp: window.serverTimestamp()
-                    }, { merge: true });
-                } catch (e) {}
+                const now = Date.now();
+                if (now - lastTypingTime.current > 1500) { // Throttle writes to once every 1.5 seconds
+                    lastTypingTime.current = now;
+                    try {
+                        window.setDoc(window.doc(window.db, "typing", `${activeGroup.id}_${user.uid}`), {
+                            groupId: activeGroup.id,
+                            name: currentUserData?.name || user.email.split('@')[0],
+                            timestamp: now // Use exact integer for immediate sync resolving
+                        }, { merge: true });
+                    } catch (e) {}
+                }
             };
 
-            // Feature: Universal Reactions with Notifications
+            // Universal Reactions with Notifications
             const handleReaction = async (msgId, emoji) => {
                 const msg = messages.find(m => m.id === msgId);
                 if(!msg) return;
@@ -553,7 +562,10 @@
             };
 
             const handleSaveEdit = async (msgId) => {
-                if (!editMessageText.trim()) return;
+                if (!editMessageText.trim()) {
+                    setEditingMessageId(null);
+                    return;
+                }
                 await window.updateDoc(window.doc(window.db, "messages", msgId), { 
                     text: editMessageText, 
                     isEdited: true 
@@ -700,7 +712,7 @@
                 );
             }
 
-            // Feature: RESTORED Admin Dashboard Filtering Logic
+            // Admin Dashboard Filtering Logic
             const filteredAuditMessages = [...messages].reverse().filter(msg => {
                 const safeSender = msg.sender || "";
                 const safeAssignee = msg.taskData?.currentAssignee || "";
@@ -725,7 +737,7 @@
                 }
             });
 
-            // Feature: Distinct Bubbles & Oval Replies
+            // Feature: Distinct Bubbles & Explicit Oval Replies
             const getBubbleStyles = (msg, isChild) => {
                 let baseStyles = "";
                 if (msg.isTask) baseStyles = "bg-blue-50 text-blue-900 border-2 border-blue-400";
@@ -733,9 +745,9 @@
                 else if (msg.replyToId) baseStyles = msg.isMine ? "bg-teal-50 text-teal-900 border border-teal-300" : "bg-teal-50 text-teal-900 border border-teal-200";
                 else baseStyles = msg.isMine ? "bg-[#e4ebd3] text-gray-800 border border-[#c0d1a1]" : "bg-white text-gray-800 border border-gray-200";
                 
-                // Shape modifier
-                if (isChild) return `${baseStyles} rounded-[30px] px-6`; // Distinct Oval Bubble Shape for Replies
-                return `${baseStyles} ${msg.isMine ? 'rounded-2xl rounded-tr-none' : 'rounded-2xl rounded-tl-none'}`;
+                // Feature 1: Shape modifier forces true oval for nested replies
+                if (isChild) return `${baseStyles} rounded-[30px] px-5 py-2 shadow-md border-opacity-70`; 
+                return `${baseStyles} ${msg.isMine ? 'rounded-2xl rounded-tr-none' : 'rounded-2xl rounded-tl-none'} shadow-sm`;
             };
 
             // Recursive Message Node Renderer
@@ -743,11 +755,11 @@
                 const hasReplies = childrenMap[msg.id] && childrenMap[msg.id].length > 0;
                 const hasReactions = Object.keys(msg.reactions || {}).length > 0;
                 
-                // Constraints on edit/delete
-                const canModify = msg.isMine && !hasReplies && !hasReactions;
+                // Feature 2: Constraints on edit/delete (Must be owner, not a task, no replies, no reactions)
+                const canModify = msg.isMine && !msg.isTask && !hasReplies && !hasReactions;
                 const isEditingThis = editingMessageId === msg.id;
 
-                // Feature: STRICT HOVER-ONLY Universal Action Bar
+                // STRICT HOVER-ONLY Universal Action Bar
                 const ActionBar = () => (
                     <div className="opacity-0 group-hover/msg:opacity-100 transition-opacity flex items-center gap-1 bg-white shadow-sm border border-gray-200 rounded-full px-2 py-1 shrink-0">
                         {canModify && (
@@ -776,8 +788,18 @@
                             {/* Actions Left (If Mine) */}
                             {msg.isMine && <ActionBar />}
 
-                            <div className={`max-w-[85vw] md:max-w-[45vw] p-3 shadow-sm relative ${getBubbleStyles(msg, isChild)}`}>
-                                {!msg.isMine && !msg.isTask && <div className="text-[11px] font-bold text-slate-500 mb-1 ml-1">{msg.sender.split('@')[0]}</div>}
+                            <div className={`max-w-[85vw] md:max-w-[45vw] relative ${getBubbleStyles(msg, isChild)} ${!isChild ? 'p-3' : ''}`}>
+                                
+                                {/* Feature 1: Child Reply Header logic */}
+                                {isChild && (
+                                    <div className="flex items-center gap-2 mb-0.5">
+                                        <div className="text-[10px] font-bold text-teal-800">{msg.sender.split('@')[0]}</div>
+                                        <div className="text-[9px] bg-teal-200 text-teal-900 px-1.5 rounded-full font-bold">Reply #{msg.replyNumber}</div>
+                                    </div>
+                                )}
+                                {!isChild && !msg.isMine && !msg.isTask && (
+                                    <div className="text-[11px] font-bold text-slate-500 mb-1 ml-1">{msg.sender.split('@')[0]}</div>
+                                )}
 
                                 {isEditingThis ? (
                                     <div className="flex flex-col gap-2 min-w-[200px] md:min-w-[300px]">
@@ -809,16 +831,6 @@
                                             </div>
                                         )}
                                         
-                                        {msg.replyToId && !isChild && (
-                                            <div className="bg-black/5 p-2 rounded-lg mb-2 border-l-2 border-teal-500 text-xs">
-                                                <div className="font-bold text-teal-800 flex justify-between">
-                                                    <span><i className="fa-solid fa-reply mr-1"></i> Replying to {msg.originalSender}</span>
-                                                    <span className="text-[9px] bg-teal-200 text-teal-900 px-1.5 py-0.5 rounded">Thread #{msg.replyNumber}</span>
-                                                </div>
-                                                <div className="text-teal-900/70 italic line-clamp-1 mt-0.5">"{msg.originalText}"</div>
-                                            </div>
-                                        )}
-                                        
                                         {/* Main Content */}
                                         {msg.fileUrl ? (
                                             <div className="flex flex-col gap-2">
@@ -832,7 +844,7 @@
                                                 )}
                                             </div>
                                         ) : (
-                                            <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                                            <p className="text-[14px] md:text-[15px] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
                                         )}
 
                                         {/* Task Footer */}
@@ -858,7 +870,7 @@
 
                                 {/* Reactions Bar Display */}
                                 {Object.keys(msg.reactions || {}).length > 0 && (
-                                    <div className={`absolute -bottom-3 ${msg.isMine ? 'right-2' : 'left-2'} flex gap-1 z-10`}>
+                                    <div className={`absolute -bottom-3 ${msg.isMine ? 'right-4' : 'left-4'} flex gap-1 z-10`}>
                                         {Object.entries(msg.reactions).map(([emoji, users]) => (
                                             <div key={emoji} onClick={(e)=>{e.stopPropagation(); handleReaction(msg.id, emoji);}} className={`text-xs bg-white border border-gray-200 rounded-full px-1.5 py-0.5 shadow-sm flex items-center gap-1 cursor-pointer ${users.includes(user.email) ? 'bg-blue-50 border-blue-200' : ''}`}>
                                                 <span>{emoji}</span><span className="text-[9px] font-bold text-gray-500">{users.length}</span>
@@ -873,9 +885,9 @@
                             
                         </div>
 
-                        {/* Thread Replies Recurse */}
+                        {/* Feature 1: Beautifully Nested, Threaded Ovals */}
                         {childrenMap[msg.id] && (
-                            <div className={`mt-3 w-full flex flex-col ${msg.isMine ? 'items-end pr-6 md:pr-12 border-r-2 border-teal-300' : 'items-start pl-6 md:pl-12 border-l-2 border-teal-300'} space-y-2`}>
+                            <div className={`mt-2 w-full flex flex-col ${msg.isMine ? 'items-end pr-6 md:pr-12 border-r-2 border-teal-300' : 'items-start pl-6 md:pl-12 border-l-2 border-teal-300'} space-y-2`}>
                                 {childrenMap[msg.id].map(child => renderMessageNode(child, true))}
                             </div>
                         )}
@@ -902,7 +914,6 @@
 
                             <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
                                 
-                                {/* Feature: RESTORED Filter Block */}
                                 <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-end">
                                     <div>
                                         <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Filter by User</label>
@@ -973,7 +984,7 @@
                                         </div>
                                     </div>
 
-                                    {/* Feature: RESTORED Global Chat & Task Audit */}
+                                    {/* Global Audit */}
                                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden lg:col-span-4 flex flex-col max-h-[500px]">
                                         <div className="bg-slate-50 p-4 border-b border-slate-200 shrink-0">
                                             <h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-list-check text-purple-600"></i> Global Chat & Task Audit</h2>
@@ -986,7 +997,6 @@
                                                 <tbody className="divide-y divide-slate-100">
                                                     {filteredAuditMessages.length === 0 && <tr><td colSpan="4" className="text-center py-4 text-slate-500 italic">No records found matching filters.</td></tr>}
                                                     {filteredAuditMessages.map(msg => (
-                                                        // Feature: Admin can click tasks to see trail
                                                         <tr key={msg.id} className={`hover:bg-slate-50 ${msg.isTask ? 'cursor-pointer hover:bg-blue-50' : ''}`} onClick={() => { if(msg.isTask) { setSelectedMessage(msg); setActiveModal('task_trail'); } }}>
                                                             <td className="px-4 py-2 text-xs text-slate-500">{msg.dateString}<br/>{msg.time}</td>
                                                             <td className="px-4 py-2">
@@ -1038,7 +1048,7 @@
                             </div>
                         </div>
                     ) : (
-                        /* --- TELEGRAM / WHATSAPP UI --- */
+                        /* --- MAIN CHAT UI --- */
                         <div className="flex h-full w-full">
                             
                             {/* Sidebar */}
@@ -1105,21 +1115,21 @@
                                         </div>
                                     </div>
 
-                                    {/* Feature: Online Active Users Presence */}
+                                    {/* Feature 4: Online Active Users Presence */}
                                     <div className="hidden lg:flex items-center gap-2 overflow-hidden mx-4 flex-1 justify-end px-2">
                                         {dbUsers.filter(u => {
                                             if (activeGroup.id !== 'main' && !activeGroup.members?.includes(u.email)) return false;
                                             return u.lastActive && (Date.now() - u.lastActive.toMillis() < 180000) && u.uid !== user.uid; // Active in last 3 mins
                                         }).slice(0, 5).map(onlineUser => (
                                             <div key={onlineUser.uid} className="relative group cursor-default" title={`${onlineUser.name} is Online`}>
-                                                <div className="w-7 h-7 rounded-full bg-slate-200 border border-slate-300 flex items-center justify-center text-[10px] font-bold text-slate-600 shadow-sm">
+                                                <div className="w-8 h-8 rounded-full bg-slate-200 border border-slate-300 flex items-center justify-center text-xs font-bold text-slate-600 shadow-sm">
                                                     {onlineUser.name.substring(0,2)}
                                                 </div>
-                                                <div className="absolute bottom-0 right-0 w-2 h-2 bg-green-500 border border-white rounded-full"></div>
+                                                <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-white rounded-full"></div>
                                             </div>
                                         ))}
                                         {dbUsers.filter(u => u.lastActive && (Date.now() - u.lastActive.toMillis() < 180000) && u.uid !== user.uid).length > 5 && (
-                                            <div className="w-7 h-7 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">
+                                            <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-xs font-bold text-slate-500 shadow-sm">
                                                 +{dbUsers.filter(u => u.lastActive && (Date.now() - u.lastActive.toMillis() < 180000) && u.uid !== user.uid).length - 5}
                                             </div>
                                         )}
@@ -1178,7 +1188,7 @@
                                     
                                     {parentsToRender.map(m => renderMessageNode(m))}
                                     
-                                    {/* Feature: Animated Typing Indicator */}
+                                    {/* Feature 3: Animated Typing Indicator */}
                                     {typingStatus.length > 0 && (
                                         <div className="flex items-start animate-in fade-in slide-in-from-bottom-2 mb-2">
                                             <div className="bg-white px-4 py-2 rounded-2xl rounded-tl-none shadow-sm border border-gray-100 text-xs font-semibold text-gray-500 flex items-center gap-2">
@@ -1355,7 +1365,6 @@
                         </div>
                     )}
 
-                    {/* Feature: Task Trail Restored */}
                     {activeModal === 'task_trail' && selectedMessage?.taskData && (
                         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center md:p-4 animate-in fade-in">
                             <div className="bg-white w-full h-full md:h-auto md:max-h-[90vh] md:max-w-2xl md:rounded-3xl flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom-8 md:zoom-in-95">
@@ -1430,7 +1439,6 @@
                                         <div className="flex items-center bg-slate-50 border rounded-xl px-4 py-2 relative">
                                             <input type="text" value={trailComment} onChange={(e) => setTrailComment(e.target.value)} placeholder="Add comment..." className="bg-transparent w-full outline-none text-sm" onKeyDown={(e)=> e.key === 'Enter' && handleAddComment()}/>
                                             <input type="file" ref={trailFileInputRef} className="hidden" onChange={handleTrailFileUpload} />
-                                            {/* Feature: Obvious Task Update File Upload */}
                                             <button onClick={() => trailFileInputRef.current.click()} disabled={trailFileUploading} className={`text-gray-500 hover:text-purple-600 mx-2 transition-colors flex items-center gap-1 font-bold text-xs ${trailFileUploading ? 'animate-pulse text-purple-400' : ''}`}>
                                                 <i className="fa-solid fa-paperclip text-lg"></i> <span className="hidden md:inline">Attach</span>
                                             </button>
@@ -1544,7 +1552,6 @@
             );
         }
 
-        // --- AUTHENTICATION ROOT COMPONENT ---
         function App() {
             const [user, setUser] = useState(null);
             const [isFirebaseLoaded, setIsFirebaseLoaded] = useState(false);
@@ -1575,7 +1582,6 @@
                 setAuthError("");
                 try {
                     const cred = await window.createUserWithEmailAndPassword(window.auth, email, password);
-                    // Automatic Admin designation for Vice Principal
                     const isVp = cred.user.email.toLowerCase() === 'viceprincipal@mpgs.edu.in';
                     
                     await window.setDoc(window.doc(window.db, "users", cred.user.uid), {

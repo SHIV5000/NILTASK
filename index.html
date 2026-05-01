@@ -90,6 +90,7 @@
             const [inputText, setInputText] = useState("");
             const [messages, setMessages] = useState([]); 
             const messagesEndRef = useRef(null); 
+            const chatInputRef = useRef(null);
 
             // Thread Reply & Edit States
             const [replyingTo, setReplyingTo] = useState(null);
@@ -105,14 +106,14 @@
             
             // Search, Notifications, Filter & Admin
             const [searchQuery, setSearchQuery] = useState("");
-            const [chatFilter, setChatFilter] = useState("all"); // 'all', 'tasks', 'messages', 'today'
+            const [chatFilter, setChatFilter] = useState("all"); 
             const [showFilterMenu, setShowFilterMenu] = useState(false);
             const [showNotifications, setShowNotifications] = useState(false);
             const [viewMode, setViewMode] = useState("chat"); 
             const [currentUserData, setCurrentUserData] = useState(null);
             const [adminForm, setAdminForm] = useState({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false });
             
-            // Profile States (Added Font Preferences)
+            // Profile States (Font Preferences)
             const [profileForm, setProfileForm] = useState({ name: "", fontSize: "text-[15px] md:text-[16px]", fontFamily: "font-sans" });
             const [profileUploadProgress, setProfileUploadProgress] = useState(0);
             const profilePicInputRef = useRef(null);
@@ -141,7 +142,7 @@
             const [genericNotifications, setGenericNotifications] = useState([]);
             const prevNotifCountRef = useRef(0);
 
-            // Feature: Typing and Online States
+            // Typing and Online States
             const [typingStatus, setTypingStatus] = useState([]);
             const lastTypingTime = useRef(0); 
 
@@ -630,22 +631,10 @@
             // Chat Pre-processing and Top Filtering
             let visibleMessages = messages.filter(checkVisibility).filter(handleSearchFilter);
             
-            // Reconstruct Thread mapping before specific message filtering
-            const childrenMap = {};
-            let parentsToRender = [];
-            
-            visibleMessages.forEach(m => {
-                if (m.replyToId && visibleMessages.some(parent => parent.id === m.replyToId)) {
-                    if(!childrenMap[m.replyToId]) childrenMap[m.replyToId] = [];
-                    childrenMap[m.replyToId].push(m);
-                } else { 
-                    parentsToRender.push(m); 
-                }
-            });
-
-            // Feature: Apply the Top Dot Chat Filter
-            parentsToRender = parentsToRender.filter(m => {
-                if (chatFilter === 'tasks') return m.isTask;
+            // Feature: Apply the Top Dot Chat Filter & Flatten array for WhatsApp style replies
+            let messagesToRender = visibleMessages.filter(m => {
+                if (chatFilter === 'tasks-pending') return m.isTask && m.taskData?.status !== 'Completed';
+                if (chatFilter === 'tasks-completed') return m.isTask && m.taskData?.status === 'Completed';
                 if (chatFilter === 'messages') return !m.isTask && !m.fileUrl;
                 if (chatFilter === 'today') return m.dateString === new Date().toISOString().split('T')[0];
                 return true; // 'all'
@@ -664,7 +653,8 @@
 
             const renderMessageNode = (msg) => {
                 const hasReactions = Object.keys(msg.reactions || {}).length > 0;
-                const hasReplies = visibleMessages.some(m => m.replyToId === msg.id);
+                // Constraints: Cannot edit/delete if task, has reactions, or if anyone replied to it anywhere
+                const hasReplies = messages.some(m => m.replyToId === msg.id);
                 const canModify = msg.isMine && !msg.isTask && !hasReplies && !hasReactions;
                 const isEditingThis = editingMessageId === msg.id;
 
@@ -676,7 +666,8 @@
                                 <button onClick={()=>{setEditingMessageId(msg.id); setEditMessageText(msg.text);}} className="text-gray-400 hover:text-blue-500 px-1.5 text-xs" title="Edit"><i className="fa-solid fa-pen"></i></button>
                             </>
                         )}
-                        <button onClick={()=>setReplyingTo(msg)} className="text-gray-400 hover:text-teal-500 px-1.5 text-xs" title="Reply"><i className="fa-solid fa-reply"></i></button>
+                        {/* Feature: Reply auto-focuses text area */}
+                        <button onClick={(e)=>{e.stopPropagation(); setReplyingTo(msg); setTimeout(()=>chatInputRef.current?.focus(), 100);}} className="text-gray-400 hover:text-teal-500 px-1.5 text-xs" title="Reply"><i className="fa-solid fa-reply"></i></button>
                         {['👍', '❤️', '😂', '😮'].map(e => <button key={e} onClick={()=>handleReaction(msg.id, e)} className="hover:scale-125 transition-transform text-sm">{e}</button>)}
                     </div>
                 );
@@ -690,6 +681,7 @@
                                 
                                 {!msg.isMine && !msg.isTask && <div className="text-[11px] font-bold text-slate-500 mb-1 ml-1">{msg.sender.split('@')[0]}</div>}
 
+                                {/* Feature: WhatsApp Style Inline Quoted Reply */}
                                 {msg.replyToId && (
                                     <div onClick={(e) => { e.stopPropagation(); scrollToMessage(msg.replyToId); }} className={`p-2 rounded-lg mb-2 border-l-4 text-xs cursor-pointer opacity-90 transition-opacity hover:opacity-100 ${msg.isMine ? 'bg-black/10 border-teal-600' : 'bg-black/5 border-blue-500'}`}>
                                         <div className="font-bold mb-0.5" style={{ color: msg.isMine ? '#0f766e' : '#1e3a8a' }}>{msg.originalSender}</div>
@@ -855,7 +847,6 @@
                         /* --- MAIN CHAT UI --- */
                         <div className="flex h-full w-full">
                             
-                            {/* Feature: Max Space Sidebar (Reduced width to w-72) */}
                             <div className="hidden md:flex w-72 bg-white border-r border-gray-200 flex-col shrink-0 z-20">
                                 <div className="p-4 bg-slate-50 border-b border-gray-200 flex items-center gap-3 relative group">
                                     {currentUserData?.profilePicUrl ? (
@@ -867,7 +858,6 @@
                                         <h2 className="font-bold text-sm text-gray-800 truncate">{currentUserData?.name || user.email.split('@')[0]}</h2>
                                         <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
                                     </div>
-                                    {/* Edit Profile Button */}
                                     <button onClick={()=>{setActiveModal('edit_profile');}} className="text-gray-400 hover:text-blue-600 absolute right-4 opacity-0 group-hover:opacity-100 transition-opacity" title="Edit Profile"><i className="fa-solid fa-pen-to-square"></i></button>
                                 </div>
                                 
@@ -887,7 +877,6 @@
                                         ))}
                                     </div>
 
-                                    {/* Feature: My Active Tasks Block */}
                                     <div className="px-4 pt-4 pb-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider border-t border-gray-100">Assigned To Me</div>
                                     <div className="flex-1 overflow-y-auto px-2 space-y-1">
                                         {myActiveTasksSidebar.length === 0 ? (
@@ -925,11 +914,11 @@
                                         <div><h1 className="font-bold text-sm md:text-base text-gray-800">{activeGroup.name}</h1><p className="text-xs text-gray-500 cursor-pointer hover:text-blue-500" onClick={()=>{ if(activeGroup.id!=='main') setActiveModal('group_settings'); }}>{activeGroup.id==='main' ? 'All Staff' : `${activeGroup.members?.length||0} Members`}</p></div>
                                     </div>
 
-                                    {/* Online Active Users (15 min window) */}
+                                    {/* Online Active Users */}
                                     <div className="hidden lg:flex items-center gap-2 overflow-hidden mx-4 flex-1 justify-end px-2">
                                         {dbUsers.filter(u => {
                                             if (activeGroup.id !== 'main' && !activeGroup.members?.includes(u.email)) return false;
-                                            return u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000) && u.uid !== user.uid; // 15 mins (900000 ms)
+                                            return u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000) && u.uid !== user.uid;
                                         }).slice(0, 5).map(onlineUser => (
                                             <div key={onlineUser.uid} className="relative group cursor-default" title={`${onlineUser.name} is Online`}>
                                                 {onlineUser.profilePicUrl ? (
@@ -943,18 +932,19 @@
                                     </div>
 
                                     <div className="flex items-center gap-2 md:gap-4">
-                                        {/* Feature: Top Dot Icon / Chat Filter */}
+                                        {/* Chat Filter */}
                                         <div className="relative">
                                             <button onClick={() => setShowFilterMenu(!showFilterMenu)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${chatFilter !== 'all' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-gray-100'}`} title="Filter Chat">
                                                 <i className="fa-solid fa-filter text-sm"></i>
                                             </button>
                                             {showFilterMenu && (
-                                                <div className="absolute right-0 mt-2 w-40 bg-white shadow-2xl rounded-xl border border-gray-100 z-50 overflow-hidden animate-in fade-in zoom-in-95">
+                                                <div className="absolute right-0 mt-2 w-48 bg-white shadow-2xl rounded-xl border border-gray-100 z-50 overflow-hidden animate-in fade-in zoom-in-95">
                                                     <div className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase border-b bg-gray-50">Filter View</div>
-                                                    {['all', 'tasks', 'messages', 'today'].map(f => (
+                                                    {['all', 'tasks-pending', 'tasks-completed', 'messages', 'today'].map(f => (
                                                         <div key={f} onClick={() => { setChatFilter(f); setShowFilterMenu(false); }} className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-blue-50 transition-colors ${chatFilter === f ? 'font-bold text-blue-600 bg-blue-50/50' : 'text-gray-700 font-semibold'}`}>
                                                             {f === 'all' && <><i className="fa-solid fa-layer-group w-5 text-center"></i> All Content</>}
-                                                            {f === 'tasks' && <><i className="fa-regular fa-square-check w-5 text-center"></i> Tasks Only</>}
+                                                            {f === 'tasks-pending' && <><i className="fa-regular fa-clock w-5 text-center"></i> Tasks - Pending</>}
+                                                            {f === 'tasks-completed' && <><i className="fa-regular fa-square-check w-5 text-center"></i> Tasks - Completed</>}
                                                             {f === 'messages' && <><i className="fa-regular fa-comment w-5 text-center"></i> Messages Only</>}
                                                             {f === 'today' && <><i className="fa-regular fa-calendar-day w-5 text-center"></i> Today</>}
                                                         </div>
@@ -1001,11 +991,11 @@
                                     </div>
                                 )}
 
-                                {/* Main Message Area - Maximized Space */}
+                                {/* Main Message Area */}
                                 <div className="flex-1 overflow-y-auto p-2 md:p-4 space-y-3 telegram-bg relative pb-10" onClick={() => setShowFilterMenu(false)}>
                                     <div className="text-center mb-6 mt-2"><span className="text-[11px] text-gray-500 bg-white/80 px-3 py-1 rounded-full shadow-sm backdrop-blur-sm font-semibold">End-to-End Encrypted</span></div>
                                     
-                                    {parentsToRender.map(m => renderMessageNode(m))}
+                                    {messagesToRender.map(m => renderMessageNode(m))}
                                     
                                     {/* Animated Typing Indicator */}
                                     {typingStatus.length > 0 && (
@@ -1050,7 +1040,7 @@
                                     <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"/>
                                     <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors shrink-0 mb-1" onClick={() => fileInputRef.current.click()} disabled={isUploading}><i className="fa-solid fa-paperclip text-xl"></i></button>
                                     <div className="flex-1 bg-gray-100 rounded-2xl px-4 py-2 flex items-center min-h-[40px]">
-                                        <textarea rows={1} placeholder="Type a message... (Shift+Enter for new line)" className="bg-transparent w-full outline-none text-[14px] md:text-[15px] text-gray-800 resize-none" style={{ minHeight: '22px', maxHeight: '120px' }} value={inputText} onChange={(e) => { setInputText(e.target.value); handleTypingEvent(); e.target.style.height = 'auto'; e.target.style.height = (e.target.scrollHeight < 120 ? e.target.scrollHeight : 120) + 'px'; }} onKeyDown={handleKeyDown} />
+                                        <textarea ref={chatInputRef} rows={1} placeholder="Type a message... (Shift+Enter for new line)" className="bg-transparent w-full outline-none text-[14px] md:text-[15px] text-gray-800 resize-none" style={{ minHeight: '22px', maxHeight: '120px' }} value={inputText} onChange={(e) => { setInputText(e.target.value); handleTypingEvent(); e.target.style.height = 'auto'; e.target.style.height = (e.target.scrollHeight < 120 ? e.target.scrollHeight : 120) + 'px'; }} onKeyDown={handleKeyDown} />
                                     </div>
                                     <button onClick={handleSendMessage} className="shrink-0 mb-1 w-10 h-10 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors flex justify-center items-center shadow-sm"><i className="fa-solid fa-paper-plane text-base md:ml-[-2px] md:mt-[2px]"></i></button>
                                 </div>
@@ -1136,7 +1126,7 @@
                             <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center gap-3 mb-5 border-b pb-4"><div className="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center"><i className="fa-solid fa-quote-left"></i></div><p className="text-sm font-semibold text-slate-700 line-clamp-2 flex-1 italic">"{selectedMessage?.text || selectedMessage?.fileName}"</p></div>
                                 <div className="space-y-3">
-                                    <button onClick={() => { setActiveModal(null); setReplyingTo(selectedMessage); }} className="w-full flex items-center gap-4 p-4 hover:bg-teal-50 rounded-xl transition-all border border-transparent hover:border-teal-200 text-left group shadow-sm"><div className="bg-teal-100 p-3 rounded-xl text-teal-600 group-hover:scale-110 transition-transform"><i className="fa-solid fa-reply text-xl"></i></div><div><div className="font-bold text-sm text-teal-800">Reply to Message</div><div className="text-xs font-semibold text-teal-600/70 mt-0.5">Quote this in your next message</div></div></button>
+                                    <button onClick={() => { setActiveModal(null); setReplyingTo(selectedMessage); setTimeout(()=>chatInputRef.current?.focus(), 100); }} className="w-full flex items-center gap-4 p-4 hover:bg-teal-50 rounded-xl transition-all border border-transparent hover:border-teal-200 text-left group shadow-sm"><div className="bg-teal-100 p-3 rounded-xl text-teal-600 group-hover:scale-110 transition-transform"><i className="fa-solid fa-reply text-xl"></i></div><div><div className="font-bold text-sm text-teal-800">Reply to Message</div><div className="text-xs font-semibold text-teal-600/70 mt-0.5">Quote this in your next message</div></div></button>
                                     <button onClick={() => setActiveModal('reminder')} className="w-full flex items-center gap-4 p-4 hover:bg-yellow-50 rounded-xl transition-all border border-transparent hover:border-yellow-200 text-left group shadow-sm"><div className="bg-yellow-100 p-3 rounded-xl text-yellow-600 group-hover:scale-110 transition-transform"><i className="fa-regular fa-clock text-xl"></i></div><div><div className="font-bold text-sm text-yellow-800">Set Push Reminder</div><div className="text-xs font-semibold text-yellow-600/70 mt-0.5">Alert me about this later</div></div></button>
                                     <button onClick={() => setActiveModal('task_convert')} className="w-full flex items-center gap-4 p-4 hover:bg-blue-50 rounded-xl transition-all border border-transparent hover:border-blue-200 text-left group shadow-sm"><div className="bg-blue-100 p-3 rounded-xl text-blue-600 group-hover:scale-110 transition-transform"><i className="fa-regular fa-square-check text-xl"></i></div><div><div className="font-bold text-sm text-blue-800">Convert to Official Task</div><div className="text-xs font-semibold text-blue-600/70 mt-0.5">Assign with deadline and tracking</div></div></button>
                                 </div>

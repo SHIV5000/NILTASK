@@ -2,20 +2,21 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Corporate Chat - Ultimate Edition</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corporate Chat App - Enterprise Edition</title>
+    
+    <!-- Tailwind CSS + FontAwesome + React + Babel -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Emoji Mart -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/emoji-mart@5.5.2/css/emoji-mart.css">
-    <script src="https://cdn.jsdelivr.net/npm/emoji-mart@5.5.2/dist/browser.js"></script>
+
+    <!-- Firebase 10.8.1 -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, updateDoc, setDoc, getDocs, where, deleteDoc, getDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, updateDoc, setDoc, getDocs, where, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
         import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
 
         const firebaseConfig = {
@@ -26,15 +27,17 @@
             messagingSenderId: "868641827920",
             appId: "1:868641827920:web:70d9db79a361a76468f555"
         };
+
         const app = initializeApp(firebaseConfig);
         window.auth = getAuth(app);
-        window.updateProfile = updateProfile;
         window.signInWithEmailAndPassword = signInWithEmailAndPassword;
         window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
         window.signOut = signOut;
         window.onAuthStateChanged = onAuthStateChanged;
+        
         window.secondaryApp = initializeApp(firebaseConfig, "Secondary");
         window.secondaryAuth = getAuth(window.secondaryApp);
+
         window.db = getFirestore(app);
         window.collection = collection;
         window.addDoc = addDoc;
@@ -48,723 +51,969 @@
         window.getDocs = getDocs;
         window.where = where;
         window.deleteDoc = deleteDoc;
-        window.getDoc = getDoc;
-        window.Timestamp = Timestamp;
+        
         window.storage = getStorage(app);
         window.ref = ref;
         window.uploadBytesResumable = uploadBytesResumable;
         window.getDownloadURL = getDownloadURL;
+
         window.dispatchEvent(new Event('firebaseReady'));
     </script>
+
     <style>
         ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 10px; }
-        .chat-bg { background-color: #f0f2f5; background-image: radial-gradient(circle at 25% 40%, rgba(255,255,255,0.4) 2%, transparent 2.5%), radial-gradient(circle at 75% 60%, rgba(0,0,0,0.02) 1%, transparent 1.5%); background-size: 40px 40px, 30px 30px; }
-        .emoji-mart { position: absolute; bottom: 70px; right: 20px; z-index: 60; }
-        @media (max-width: 640px) { .emoji-mart { right: 10px; } }
-        .animate-in { animation: fadeInUp 0.2s ease-out; }
-        @keyframes fadeInUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-        .message-bubble-sent { border-radius: 24px 8px 24px 24px; }
-        .message-bubble-received { border-radius: 8px 24px 24px 24px; }
-        .avatar-upload { cursor: pointer; transition: all 0.2s; }
-        .avatar-upload:hover { opacity: 0.8; transform: scale(1.02); }
-        .reaction-bar { opacity: 0; transition: opacity 0.2s; }
-        .message-wrapper:hover .reaction-bar { opacity: 1; }
-        .reaction-button { transition: transform 0.1s; }
-        .reaction-button:hover { transform: scale(1.2); }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
+        .telegram-bg { background-color: #E6EBE9; background-image: url('https://www.transparenttextures.com/patterns/cubes.png'); }
     </style>
 </head>
 <body class="bg-gray-100 overflow-hidden">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef, useMemo, useCallback } = React;
-        const EmojiMart = window.EmojiMart;
+        const { useState, useEffect, useRef } = React;
 
         function ChatApp({ user, onLogout }) {
             const [activeModal, setActiveModal] = useState(null);
             const [selectedMessage, setSelectedMessage] = useState(null);
             const [inputText, setInputText] = useState("");
-            const [messages, setMessages] = useState([]);
-            const [reactions, setReactions] = useState({});
-            const messagesEndRef = useRef(null);
-            const textareaRef = useRef(null);
-            const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-            
-            // Profile
-            const [showProfilePanel, setShowProfilePanel] = useState(false);
-            const [displayName, setDisplayName] = useState("");
-            const [profilePhotoURL, setProfilePhotoURL] = useState(null);
-            const [uploadingPhoto, setUploadingPhoto] = useState(false);
-            
-            // Typing
-            const [typingUsers, setTypingUsers] = useState([]);
-            const typingTimeoutRef = useRef(null);
-            
-            // Task & Delegate
+            const [messages, setMessages] = useState([]); 
+            const messagesEndRef = useRef(null); 
+
             const [taskAssignee, setTaskAssignee] = useState("");
             const [taskDeadline, setTaskDeadline] = useState("");
             const [delegateAssignee, setDelegateAssignee] = useState("");
-            const [trailComment, setTrailComment] = useState("");
-            const [dbUsers, setDbUsers] = useState([]);
-            const [groups, setGroups] = useState([]);
-            const [activeGroup, setActiveGroup] = useState({ id: "main", name: "Executive Board", admins: [], members: [] });
-            const [groupForm, setGroupForm] = useState({ name: "", members: [] });
-            const [currentUserData, setCurrentUserData] = useState(null);
+            const [trailComment, setTrailComment] = useState(""); 
+            const [dbUsers, setDbUsers] = useState([]); 
             
-            // Search, Notifications, Admin
             const [searchQuery, setSearchQuery] = useState("");
-            const [debouncedSearch, setDebouncedSearch] = useState("");
             const [showNotifications, setShowNotifications] = useState(false);
-            const [viewMode, setViewMode] = useState("chat");
+            const [viewMode, setViewMode] = useState("chat"); 
+            const [currentUserData, setCurrentUserData] = useState(null);
+            const [adminForm, setAdminForm] = useState({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false });
+            
+            const [groups, setGroups] = useState([]);
+            const [activeGroup, setActiveGroup] = useState({ id: "main", name: "Academic Council Group" });
+            const [groupForm, setGroupForm] = useState({ name: "", members: [] });
+
             const [adminFilterUser, setAdminFilterUser] = useState("");
             const [adminFilterDate, setAdminFilterDate] = useState("");
             const [allAdminReminders, setAllAdminReminders] = useState([]);
-            const [adminForm, setAdminForm] = useState({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false });
-            
+
             const [uploadProgress, setUploadProgress] = useState(0);
             const [isUploading, setIsUploading] = useState(false);
             const fileInputRef = useRef(null);
-            const photoInputRef = useRef(null);
+
             const [reminderDateTime, setReminderDateTime] = useState("");
             const [activeReminders, setActiveReminders] = useState([]);
-            const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-            
-            // Edit message
-            const [editingMessage, setEditingMessage] = useState(null);
-            const [editText, setEditText] = useState("");
-            
-            // Task update modal
-            const [taskUpdateComment, setTaskUpdateComment] = useState("");
-            const [taskUpdateDelegate, setTaskUpdateDelegate] = useState("");
-            
-            // Notifications list
-            const [notifications, setNotifications] = useState([]);
-            
-            // Debounce search
+
+            // --- Helper to open group settings with preloaded members ---
+            const openGroupSettings = () => {
+                if (activeGroup.id === 'main') return;
+                setGroupForm(prev => ({ ...prev, members: activeGroup.members || [] }));
+                setActiveModal('group_settings');
+            };
+
             useEffect(() => {
-                const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
-                return () => clearTimeout(timer);
-            }, [searchQuery]);
-            
-            // Profile data
-            useEffect(() => {
-                const fetchUserData = async () => {
-                    const userDoc = await window.getDoc(window.doc(window.db, "users", user.uid));
-                    if (userDoc.exists()) {
-                        const data = userDoc.data();
-                        setDisplayName(data.name || user.email.split('@')[0]);
-                        setProfilePhotoURL(data.photoURL || null);
-                    } else {
-                        setDisplayName(user.email.split('@')[0]);
-                    }
-                };
-                fetchUserData();
-            }, [user.uid]);
-            
-            useEffect(() => {
-                if (displayName && user.uid) {
-                    window.setDoc(window.doc(window.db, "users", user.uid), { name: displayName }, { merge: true });
+                if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
+                    Notification.requestPermission();
                 }
-            }, [displayName]);
-            
-            // My tasks notifications
+            }, []);
+
             useEffect(() => {
-                const qMyTasks = window.query(
-                    window.collection(window.db, "messages"),
-                    window.where("isTask", "==", true),
-                    window.where("taskData.currentAssignee", "==", user.email),
-                    window.where("taskData.status", "!=", "Completed")
+                const qPersonal = window.query(
+                    window.collection(window.db, "reminders"),
+                    window.where("userId", "==", user.uid),
+                    window.where("isTriggered", "==", false)
                 );
-                const unsub = window.onSnapshot(qMyTasks, (snap) => {
-                    setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                const unsubPersonal = window.onSnapshot(qPersonal, (snapshot) => {
+                    setActiveReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
                 });
-                return () => unsub();
-            }, [user.email]);
-            
-            // Typing indicator
-            const sendTyping = useCallback(() => {
-                if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-                const typingDoc = window.doc(window.db, "typing", `${activeGroup.id}_${user.uid}`);
-                window.setDoc(typingDoc, {
-                    groupId: activeGroup.id,
-                    uid: user.uid,
-                    name: displayName,
-                    updatedAt: window.Timestamp.now()
-                }, { merge: true });
-                typingTimeoutRef.current = setTimeout(() => {
-                    window.deleteDoc(typingDoc).catch(() => {});
-                }, 2000);
-            }, [activeGroup.id, user.uid, displayName]);
-            
-            useEffect(() => {
-                if (!activeGroup.id) return;
-                const typingRef = window.collection(window.db, "typing");
-                const qTyping = window.query(typingRef, window.where("groupId", "==", activeGroup.id));
-                const unsub = window.onSnapshot(qTyping, (snap) => {
-                    const now = Date.now();
-                    const active = snap.docs
-                        .map(doc => ({ uid: doc.data().uid, name: doc.data().name, updatedAt: doc.data().updatedAt?.toMillis?.() || 0 }))
-                        .filter(t => t.uid !== user.uid && (now - t.updatedAt) < 3000);
-                    setTypingUsers(active);
-                });
-                return () => unsub();
-            }, [activeGroup.id, user.uid]);
-            
-            // Reactions listener
-            useEffect(() => {
-                const unsubscribers = [];
-                messages.forEach(msg => {
-                    const reactionsRef = window.collection(window.db, "messages", msg.id, "reactions");
-                    const unsub = window.onSnapshot(reactionsRef, (snap) => {
-                        const emojiCounts = {};
-                        snap.docs.forEach(doc => {
-                            const emoji = doc.data().emoji;
-                            emojiCounts[emoji] = (emojiCounts[emoji] || 0) + 1;
-                        });
-                        setReactions(prev => ({ ...prev, [msg.id]: emojiCounts }));
-                    });
-                    unsubscribers.push(unsub);
-                });
-                return () => unsubscribers.forEach(unsub => unsub());
-            }, [messages]);
-            
-            // Reminders
-            useEffect(() => {
-                const qPersonal = window.query(window.collection(window.db, "reminders"), window.where("userId", "==", user.uid), window.where("isTriggered", "==", false));
-                const unsubPersonal = window.onSnapshot(qPersonal, (snapshot) => setActiveReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
+
                 let unsubAdmin = () => {};
                 if (currentUserData?.isAdmin) {
                     const qAdmin = window.query(window.collection(window.db, "reminders"), window.orderBy("remindAt", "desc"));
-                    unsubAdmin = window.onSnapshot(qAdmin, (snapshot) => setAllAdminReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
+                    unsubAdmin = window.onSnapshot(qAdmin, (snapshot) => {
+                        setAllAdminReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+                    });
                 }
                 return () => { unsubPersonal(); unsubAdmin(); };
             }, [user.uid, currentUserData?.isAdmin]);
-            
+
             useEffect(() => {
                 const interval = setInterval(() => {
                     const now = new Date();
                     activeReminders.forEach(async (rem) => {
-                        if (new Date(rem.remindAt) <= now) {
-                            if (Notification.permission === "granted") new Notification("Reminder", { body: rem.messageText });
-                            await window.updateDoc(window.doc(window.db, "reminders", rem.id), { isTriggered: true });
+                        const remindTime = new Date(rem.remindAt);
+                        if (remindTime <= now) {
+                            if ("Notification" in window && Notification.permission === "granted") {
+                                new Notification("Corporate Chat Reminder", { body: `⏰ "${rem.messageText}"`, icon: "https://cdn-icons-png.flaticon.com/512/825/825590.png" });
+                            } else {
+                                alert(`⏰ Reminder: "${rem.messageText}"`);
+                            }
+                            try { await window.updateDoc(window.doc(window.db, "reminders", rem.id), { isTriggered: true }); } 
+                            catch (error) { console.warn(error); }
                         }
                     });
                 }, 15000);
                 return () => clearInterval(interval);
             }, [activeReminders]);
-            
-            // Users & groups
+
             useEffect(() => {
-                const unsubUsers = window.onSnapshot(window.query(window.collection(window.db, "users"), window.orderBy("email")), (snapshot) => setDbUsers(snapshot.docs.map(d => d.data())));
-                const unsubGroups = window.onSnapshot(window.collection(window.db, "groups"), (snapshot) => setGroups(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
+                const syncUserToDB = async () => {
+                    try {
+                        await window.setDoc(window.doc(window.db, "users", user.uid), {
+                            uid: user.uid, email: user.email, name: user.email.split('@')[0].toUpperCase(), 
+                        }, { merge: true });
+                    } catch (error) { console.warn(error); }
+                };
+                syncUserToDB();
+
                 const unsubCurrent = window.onSnapshot(window.doc(window.db, "users", user.uid), (doc) => {
                     if (doc.exists()) setCurrentUserData(doc.data());
                 });
-                return () => { unsubUsers(); unsubGroups(); unsubCurrent(); };
-            }, [user.uid]);
-            
-            // Messages
+
+                const unsubUsers = window.onSnapshot(window.query(window.collection(window.db, "users"), window.orderBy("email", "asc")), (snapshot) => {
+                    setDbUsers(snapshot.docs.map(doc => doc.data()));
+                });
+
+                const unsubGroups = window.onSnapshot(window.collection(window.db, "groups"), (snapshot) => {
+                    let loadedGroups = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setGroups(loadedGroups);
+                });
+
+                return () => { unsubCurrent(); unsubUsers(); unsubGroups(); };
+            }, [user]);
+
             useEffect(() => {
                 const q = window.query(window.collection(window.db, "messages"), window.orderBy("timestamp", "asc"));
                 const unsubscribe = window.onSnapshot(q, (snapshot) => {
-                    const loaded = snapshot.docs.map(doc => {
+                    const loadedMessages = snapshot.docs.map(doc => {
                         const data = doc.data();
                         return {
                             id: doc.id,
                             text: data.text,
                             sender: data.senderEmail,
-                            senderUid: data.senderUid,
-                            isMine: data.senderUid === user.uid,
-                            time: data.timestamp ? new Date(data.timestamp.toDate()).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '',
-                            dateString: data.timestamp ? new Date(data.timestamp.toDate()).toISOString().split('T')[0] : '',
-                            isTask: data.isTask === true,
+                            isMine: data.senderUid === user.uid, 
+                            time: data.timestamp ? new Date(data.timestamp.toDate()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Sending...',
+                            dateString: data.timestamp ? new Date(data.timestamp.toDate()).toISOString().split('T')[0] : '', 
+                            isTask: data.isTask === true, 
                             hasReminder: data.hasReminder === true,
                             taskData: data.taskData || null,
                             isPrivateMention: data.isPrivateMention || false,
                             allowedUsers: data.allowedUsers || [],
-                            fileUrl: data.fileUrl, fileName: data.fileName, fileType: data.fileType,
+                            fileUrl: data.fileUrl || null, fileName: data.fileName || null, fileType: data.fileType || null,
                             groupId: data.groupId || "main"
                         };
                     });
-                    setMessages(loaded);
-                    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+                    setMessages(loadedMessages);
+                    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
                 });
                 return () => unsubscribe();
             }, [user.uid]);
-            
-            // Send message
+
             const handleSendMessage = async () => {
                 if (!inputText.trim()) return;
-                const text = inputText;
-                setInputText("");
-                const groupMembers = activeGroup.id === "main" ? dbUsers.map(u => u.email) : (activeGroup.members || []);
-                const mentionedEmails = groupMembers.filter(email => text.includes(`@${dbUsers.find(u => u.email === email)?.name}`));
-                const isPrivate = mentionedEmails.length > 0;
-                await window.addDoc(window.collection(window.db, "messages"), {
-                    text, senderUid: user.uid, senderEmail: user.email, timestamp: window.serverTimestamp(),
-                    isTask: false, hasReminder: false, isPrivateMention: isPrivate,
-                    allowedUsers: isPrivate ? [user.email, ...mentionedEmails] : [],
-                    fileUrl: null, fileName: null, fileType: null, groupId: activeGroup.id
-                });
+                const messageText = inputText;
+                setInputText(""); 
+                
+                const mentions = [];
+                dbUsers.forEach(u => { if (messageText.includes(`@${u.name}`)) mentions.push(u.email); });
+                const isPrivate = mentions.length > 0;
+                const allowedUsers = isPrivate ? [user.email, ...mentions] : [];
+
+                try {
+                    await window.addDoc(window.collection(window.db, "messages"), {
+                        text: messageText, senderUid: user.uid, senderEmail: user.email,
+                        timestamp: window.serverTimestamp(),
+                        isTask: false, hasReminder: false, isPrivateMention: isPrivate, allowedUsers: allowedUsers,
+                        fileUrl: null, fileName: null, fileType: null,
+                        groupId: activeGroup.id
+                    });
+                } catch (error) { alert("Failed to send message."); }
             };
-            
-            const handleKeyDown = (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); }
-                else { sendTyping(); }
-            };
-            
-            const addEmoji = (emoji) => { setInputText(prev => prev + emoji.native); setShowEmojiPicker(false); };
-            
-            // Photo upload
-            const handlePhotoUpload = async (e) => {
+
+            const handleFileUpload = async (e) => {
+                if (isUploading) return; // prevent duplicate uploads
                 const file = e.target.files[0];
                 if (!file) return;
-                setUploadingPhoto(true);
-                const storageRef = window.ref(window.storage, `profile_photos/${user.uid}`);
+                setIsUploading(true);
+                setUploadProgress(0);
+
+                const uniqueFileName = `${Date.now()}_${file.name}`;
+                const storageRef = window.ref(window.storage, `chat_uploads/${uniqueFileName}`);
                 const uploadTask = window.uploadBytesResumable(storageRef, file);
-                uploadTask.on('state_changed', null, (err) => { alert("Upload failed"); setUploadingPhoto(false); }, async () => {
-                    const downloadURL = await window.getDownloadURL(uploadTask.snapshot.ref);
-                    await window.updateDoc(window.doc(window.db, "users", user.uid), { photoURL: downloadURL });
-                    setProfilePhotoURL(downloadURL);
-                    setUploadingPhoto(false);
-                });
+
+                uploadTask.on('state_changed', 
+                    (snapshot) => setUploadProgress((snapshot.bytesTransferred / snapshot.totalBytes) * 100), 
+                    (error) => { setIsUploading(false); alert("File upload failed."); }, 
+                    async () => {
+                        try {
+                            const downloadURL = await window.getDownloadURL(uploadTask.snapshot.ref);
+                            await window.addDoc(window.collection(window.db, "messages"), {
+                                text: `Shared a file: ${file.name}`, senderUid: user.uid, senderEmail: user.email,
+                                timestamp: window.serverTimestamp(),
+                                isTask: false, hasReminder: false, isPrivateMention: false, allowedUsers: [],
+                                fileUrl: downloadURL, fileName: file.name, fileType: file.type,
+                                groupId: activeGroup.id
+                            });
+                        } catch (err) { console.warn(err); } 
+                        finally {
+                            setIsUploading(false); setUploadProgress(0);
+                            if(fileInputRef.current) fileInputRef.current.value = ""; 
+                        }
+                    }
+                );
             };
-            
-            // Reactions
-            const addReaction = async (msgId, emoji) => {
-                const reactionId = `${user.uid}_${emoji}`;
-                const reactionRef = window.doc(window.db, "messages", msgId, "reactions", reactionId);
-                const existing = await window.getDoc(reactionRef);
-                if (existing.exists()) {
-                    await window.deleteDoc(reactionRef);
-                } else {
-                    await window.setDoc(reactionRef, { emoji, uid: user.uid, name: displayName });
-                }
+
+            const handleCreateGroup = async (e) => {
+                e.preventDefault();
+                if(!groupForm.name.trim()) return;
+                try {
+                    const finalMembers = [...new Set([...groupForm.members, user.email])];
+                    await window.addDoc(window.collection(window.db, "groups"), {
+                        name: groupForm.name,
+                        members: finalMembers,
+                        admins: [user.email],
+                        createdBy: user.email,
+                        createdAt: window.serverTimestamp()
+                    });
+                    setActiveModal(null);
+                    setGroupForm({name: "", members: []});
+                } catch (error) { alert("Failed to create group."); }
             };
-            
-            // Edit/Delete own messages
-            const startEditMessage = (msg) => {
-                setEditingMessage(msg);
-                setEditText(msg.text);
-                setActiveModal(null);
+
+            const handleUpdateGroupMembers = async (e) => {
+                e.preventDefault();
+                const groupAdmins = activeGroup.admins || [];
+                const finalMembers = [...new Set([...groupForm.members, ...groupAdmins])];
+                try {
+                    await window.updateDoc(window.doc(window.db, "groups", activeGroup.id), {
+                        members: finalMembers
+                    });
+                    setActiveModal(null);
+                    setActiveGroup({...activeGroup, members: finalMembers});
+                } catch (error) { alert("Failed to update members."); }
             };
-            const saveEditMessage = async () => {
-                if (!editingMessage || !editText.trim()) return;
-                await window.updateDoc(window.doc(window.db, "messages", editingMessage.id), { text: editText });
-                setEditingMessage(null);
-                setEditText("");
-            };
-            const deleteMessage = async (msgId) => {
-                if (window.confirm("Delete this message permanently?")) {
-                    await window.deleteDoc(window.doc(window.db, "messages", msgId));
-                }
-            };
-            
-            // Task update modal
-            const openTaskUpdateModal = (msg) => {
-                setSelectedMessage(msg);
-                setTaskUpdateComment("");
-                setTaskUpdateDelegate("");
-                setActiveModal('task_update');
-            };
-            const submitTaskUpdate = async () => {
-                if (!selectedMessage) return;
-                const now = new Date();
-                let newTrail = [...selectedMessage.taskData.trail];
-                if (taskUpdateComment) newTrail.push({ action: "Update Added", by: user.email, time: now.toLocaleString(), comment: taskUpdateComment });
-                let newAssignee = selectedMessage.taskData.currentAssignee;
-                if (taskUpdateDelegate && taskUpdateDelegate !== selectedMessage.taskData.currentAssignee) {
-                    newAssignee = taskUpdateDelegate;
-                    newTrail.push({ action: "Delegated", by: user.email, time: now.toLocaleString(), to: taskUpdateDelegate });
-                }
-                await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), {
-                    "taskData.currentAssignee": newAssignee,
-                    "taskData.status": newAssignee !== selectedMessage.taskData.currentAssignee ? "In Progress" : selectedMessage.taskData.status,
-                    "taskData.trail": newTrail
-                });
-                setActiveModal(null);
-            };
-            
-            // Convert to task
-            const convertToTask = async () => {
-                if (!selectedMessage || !taskDeadline || !taskAssignee) return alert("Fill all fields");
-                await window.setDoc(window.doc(window.db, "messages", selectedMessage.id), {
-                    isTask: true,
-                    taskData: { deadline: taskDeadline, currentAssignee: taskAssignee, status: "Pending", trail: [{ action: "Task Created", by: user.email, time: new Date().toLocaleString(), to: taskAssignee }] }
-                }, { merge: true });
-                setActiveModal(null);
-            };
-            
-            // Clear notifications
-            const clearAllNotifications = async () => {
-                for (let t of notifications) {
-                    await window.updateDoc(window.doc(window.db, "messages", t.id), { "taskData.status": "Completed" });
-                }
-                setShowNotifications(false);
-            };
-            
-            // Visibility & search
+
             const checkVisibility = (msg) => {
                 if (msg.groupId !== activeGroup.id) return false;
-                if (msg.isTask) return (msg.sender === user.email || msg.taskData?.currentAssignee === user.email || msg.taskData?.trail?.some(t => t.by === user.email || t.to === user.email));
+                if (msg.isTask) {
+                    if (msg.sender === user.email) return true;
+                    if (msg.taskData?.currentAssignee === user.email) return true;
+                    if (msg.taskData?.trail?.some(t => t.by === user.email || t.to === user.email)) return true;
+                    return false; 
+                }
                 if (msg.isPrivateMention) return msg.allowedUsers.includes(user.email);
                 return true;
             };
+
+            const handleSearchFilter = (msg) => {
+                if (!searchQuery.trim()) return true;
+                const q = searchQuery.toLowerCase();
+                return msg.text?.toLowerCase().includes(q) || msg.sender?.toLowerCase().includes(q) || (msg.isTask && msg.taskData?.currentAssignee?.toLowerCase().includes(q));
+            };
+
+            const activeActionableTasks = messages.filter(m => m.isTask && m.taskData?.currentAssignee === user.email && m.taskData?.status !== "Completed");
+            const notificationCount = activeActionableTasks.length;
+
+            const handleMessageClick = (msg) => {
+                setSelectedMessage(msg);
+                setActiveModal(msg.isTask ? 'task_trail' : 'context');
+            };
+
+            const setReminder = async () => {
+                if (!selectedMessage || !reminderDateTime) return alert("Please select a valid date and time.");
+                try {
+                    await window.addDoc(window.collection(window.db, "reminders"), {
+                        userId: user.uid, userEmail: user.email, messageId: selectedMessage.id,
+                        messageText: selectedMessage.text || selectedMessage.fileName || "File Attachment",
+                        remindAt: reminderDateTime, isTriggered: false
+                    });
+                    await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { hasReminder: true });
+                    setActiveModal(null); setReminderDateTime("");
+                } catch (error) { alert("Failed to save reminder."); }
+            };
+
+            const convertToTask = async () => {
+                if (!selectedMessage || !taskDeadline || !taskAssignee) return alert("Please select Assignee and Deadline.");
+                try {
+                    const now = new Date();
+                    await window.setDoc(window.doc(window.db, "messages", selectedMessage.id), {
+                        isTask: true,
+                        taskData: {
+                            deadline: taskDeadline, currentAssignee: taskAssignee, status: "Pending",
+                            trail: [{ action: "Task Created", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: taskAssignee }]
+                        }
+                    }, { merge: true });
+                    setActiveModal(null);
+                } catch (error) { alert("Failed to create task."); }
+            };
+
+            const handleDelegateTask = async () => {
+                if (!selectedMessage?.taskData) return;
+                if (!delegateAssignee) return;
+                try {
+                    const now = new Date();
+                    const updatedTrail = [...selectedMessage.taskData.trail, { action: "Delegated", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: delegateAssignee }];
+                    await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), {
+                        "taskData.currentAssignee": delegateAssignee, "taskData.status": "In Progress", "taskData.trail": updatedTrail
+                    });
+                    setActiveModal(null);
+                } catch (error) { alert("Failed to delegate task."); }
+            };
+
+            const handleCompleteTask = async () => {
+                if (!selectedMessage?.taskData) return;
+                if (user.email !== selectedMessage.taskData.currentAssignee && !currentUserData?.isAdmin) return alert("Only the Assignee or Admin can complete this.");
+                try {
+                    const now = new Date();
+                    const updatedTrail = [...selectedMessage.taskData.trail, { action: "Marked Completed", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: "System" }];
+                    await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.status": "Completed", "taskData.trail": updatedTrail });
+                    setActiveModal(null);
+                } catch (error) { alert("Failed to complete task."); }
+            };
+
+            const handleAddComment = async () => {
+                if (!selectedMessage?.taskData || !trailComment.trim()) return;
+                try {
+                    const now = new Date();
+                    const updatedTrail = [...selectedMessage.taskData.trail, { action: "Update Added", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), comment: trailComment }];
+                    await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.trail": updatedTrail });
+                    setTrailComment(""); 
+                    setSelectedMessage(prev => ({...prev, taskData: {...prev.taskData, trail: updatedTrail}}));
+                } catch (error) { alert("Failed to post update."); }
+            };
+
+            const handleRemoveUser = async (targetUid) => {
+                if (window.confirm("Delete user entirely?")) await window.deleteDoc(window.doc(window.db, "users", targetUid));
+            };
+            const handleToggleApprove = async (u) => await window.updateDoc(window.doc(window.db, "users", u.uid), { isApproved: !u.isApproved });
             
-            const filteredMessages = useMemo(() => {
-                let filtered = messages.filter(checkVisibility);
-                if (debouncedSearch) {
-                    const q = debouncedSearch.toLowerCase();
-                    filtered = filtered.filter(msg => msg.text?.toLowerCase().includes(q) || msg.sender?.toLowerCase().includes(q));
-                }
-                return filtered;
-            }, [messages, checkVisibility, debouncedSearch]);
+            const handleAddUserSubmit = async (e) => { 
+                e.preventDefault(); 
+                try { 
+                    const cred = await window.createUserWithEmailAndPassword(window.secondaryAuth, adminForm.email, adminForm.password); 
+                    await window.setDoc(window.doc(window.db, "users", cred.user.uid), { uid: cred.user.uid, email: cred.user.email, name: adminForm.name || cred.user.email.split('@')[0].toUpperCase(), isApproved: true, isAdmin: adminForm.isAdmin, canCreateGroups: adminForm.canCreateGroups }); 
+                    window.signOut(window.secondaryAuth); setActiveModal(null); setAdminForm({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false }); 
+                } catch(err){alert(err.message);} 
+            };
             
-            const myGroups = [{ id: "main", name: "Executive Board", admins: [], members: [] }, ...groups.filter(g => g.members?.includes(user.email) || currentUserData?.isAdmin)];
-            const notificationCount = notifications.length;
-            const groupMembersForMentions = activeGroup.id === "main" ? dbUsers : dbUsers.filter(u => (activeGroup.members || []).includes(u.email));
-            
-            // Admin functions
-            const handleToggleApprove = async (u) => { await window.updateDoc(window.doc(window.db, "users", u.uid), { isApproved: !u.isApproved }); };
-            const handleRemoveUser = async (uid) => { if(confirm("Delete user?")) await window.deleteDoc(window.doc(window.db, "users", uid)); };
-            const handleAddUserSubmit = async (e) => { e.preventDefault(); try { const cred = await window.createUserWithEmailAndPassword(window.secondaryAuth, adminForm.email, adminForm.password); await window.setDoc(window.doc(window.db, "users", cred.user.uid), { uid: cred.user.uid, email: cred.user.email, name: adminForm.name, isApproved: true, isAdmin: adminForm.isAdmin, canCreateGroups: adminForm.canCreateGroups }); window.signOut(window.secondaryAuth); setActiveModal(null); } catch(err){alert(err.message);} };
             const handleEditUserSubmit = async (e) => { e.preventDefault(); await window.updateDoc(window.doc(window.db, "users", adminForm.uid), { name: adminForm.name, isAdmin: adminForm.isAdmin, canCreateGroups: adminForm.canCreateGroups }); setActiveModal(null); };
-            const handleCreateGroup = async (e) => { e.preventDefault(); await window.addDoc(window.collection(window.db, "groups"), { name: groupForm.name, members: [...groupForm.members, user.email], admins: [user.email], createdAt: window.serverTimestamp() }); setActiveModal(null); setGroupForm({name:"", members:[]}); };
-            const setReminder = async () => { if(!selectedMessage||!reminderDateTime) return; await window.addDoc(window.collection(window.db,"reminders"),{userId:user.uid, messageId:selectedMessage.id, messageText:selectedMessage.text, remindAt:reminderDateTime, isTriggered:false}); await window.updateDoc(window.doc(window.db,"messages",selectedMessage.id),{hasReminder:true}); setActiveModal(null); setReminderDateTime(""); };
-            
-            if (currentUserData && !currentUserData.isApproved && !currentUserData.isAdmin) {
-                return <div className="flex h-screen items-center justify-center"><div className="bg-white p-8 rounded-3xl shadow-xl text-center"><i className="fa-solid fa-user-clock text-5xl text-orange-500"></i><h2 className="text-xl font-bold mt-4">Pending Approval</h2><button onClick={onLogout} className="mt-4 bg-gray-200 px-6 py-2 rounded-full">Sign Out</button></div></div>;
-            }
-            
-            // ========== ADMIN CONSOLE (FULLY RESTORED) ==========
-            if (viewMode === "admin") {
-                // Admin-specific filtered messages
-                const adminAuditMessages = [...messages].reverse().filter(msg => {
-                    const safeSender = msg.sender || "";
-                    const safeAssignee = msg.taskData?.currentAssignee || "";
-                    const safeDate = msg.dateString || "";
-                    const matchUser = adminFilterUser === "" || safeSender === adminFilterUser || (msg.isTask && safeAssignee === adminFilterUser);
-                    const matchDate = adminFilterDate === "" || safeDate === adminFilterDate;
-                    return matchUser && matchDate;
-                });
-                const filteredAdminReminders = [...allAdminReminders].filter(rem => {
-                    const safeEmail = rem.userEmail || rem.userId || "";
-                    const safeDate = rem.remindAt || "";
-                    const matchUser = adminFilterUser === "" || safeEmail === adminFilterUser;
-                    const matchDate = adminFilterDate === "" || safeDate.startsWith(adminFilterDate);
-                    return matchUser && matchDate;
-                });
-                
+            const handleAdminDeleteMessage = async (msgId) => {
+                if(window.confirm("Delete this record globally?")) await window.deleteDoc(window.doc(window.db, "messages", msgId));
+            };
+
+            if (currentUserData && currentUserData.isApproved !== true && currentUserData.isAdmin !== true) {
                 return (
-                    <div className="flex flex-col h-full w-full bg-gray-100 overflow-auto">
-                        <div className="bg-white shadow-sm border-b p-4 flex justify-between items-center sticky top-0 z-10">
-                            <h2 className="text-xl font-bold text-gray-800"><i className="fa-solid fa-shield-halved text-blue-600 mr-2"></i>Admin Console</h2>
-                            <button onClick={() => setViewMode("chat")} className="bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-lg text-sm font-medium">← Back to Chat</button>
-                        </div>
-                        <div className="p-6 space-y-6">
-                            {/* Filters */}
-                            <div className="bg-white rounded-2xl shadow p-4 flex flex-wrap gap-4 items-end">
-                                <div><label className="text-xs font-bold text-gray-500 uppercase">Filter by User</label><select value={adminFilterUser} onChange={(e)=>setAdminFilterUser(e.target.value)} className="p-2 border rounded-lg text-sm bg-white min-w-[200px]"><option value="">All Users</option>{dbUsers.map(u => <option key={u.uid} value={u.email}>{u.name} ({u.email})</option>)}</select></div>
-                                <div><label className="text-xs font-bold text-gray-500 uppercase">Filter by Date</label><input type="date" value={adminFilterDate} onChange={(e)=>setAdminFilterDate(e.target.value)} className="p-2 border rounded-lg text-sm bg-white" /></div>
-                                <button onClick={()=>{setAdminFilterUser(""); setAdminFilterDate("");}} className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold">Clear</button>
-                            </div>
-                            
-                            <div className="grid lg:grid-cols-2 gap-6">
-                                {/* Users Card */}
-                                <div className="bg-white rounded-2xl shadow overflow-hidden">
-                                    <div className="bg-gray-50 p-4 border-b flex justify-between items-center"><h3 className="font-bold text-gray-800"><i className="fa-solid fa-users text-blue-500 mr-2"></i>Users & Roles</h3><button onClick={() => { setAdminForm({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false }); setActiveModal('admin_add_user'); }} className="bg-blue-600 text-white text-xs px-3 py-1 rounded"><i className="fa-solid fa-plus"></i> Add</button></div>
-                                    <div className="max-h-96 overflow-auto p-2">
-                                        {dbUsers.map(u => (
-                                            <div key={u.uid} className="flex justify-between items-center border-b p-2">
-                                                <div><span className="font-medium">{u.name}</span><span className="text-xs text-gray-500 ml-2">{u.email}</span>{u.isAdmin && <span className="ml-2 text-xs bg-yellow-100 px-2 py-0.5 rounded">Admin</span>}</div>
-                                                <div><button onClick={() => handleToggleApprove(u)} className={`px-2 py-0.5 text-xs rounded ${u.isApproved ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>{u.isApproved ? "Approved" : "Pending"}</button><button onClick={() => { setAdminForm({ ...u, canCreateGroups: u.canCreateGroups || false }); setActiveModal('admin_edit_user'); }} className="ml-2 text-blue-500"><i className="fa-solid fa-pen"></i></button><button onClick={() => handleRemoveUser(u.uid)} disabled={u.email === user.email} className="ml-2 text-red-500"><i className="fa-solid fa-trash-can"></i></button></div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                
-                                {/* Groups Card */}
-                                <div className="bg-white rounded-2xl shadow overflow-hidden">
-                                    <div className="bg-gray-50 p-4 border-b flex justify-between items-center"><h3 className="font-bold text-gray-800"><i className="fa-solid fa-layer-group text-emerald-500 mr-2"></i>Groups</h3><button onClick={() => setActiveModal('create_group')} className="bg-emerald-600 text-white text-xs px-3 py-1 rounded"><i className="fa-solid fa-plus"></i> New</button></div>
-                                    <div className="max-h-96 overflow-auto p-2 space-y-2">
-                                        {groups.map(g => (
-                                            <div key={g.id} className="border rounded-xl p-3"><div className="font-semibold">{g.name}</div><div className="text-xs text-gray-500">{g.members?.length || 0} members | Admins: {g.admins?.join(', ') || 'none'}</div></div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            {/* Global Audit Log (with task trail click) */}
-                            <div className="bg-white rounded-2xl shadow overflow-hidden">
-                                <div className="bg-gray-50 p-4 border-b"><h3 className="font-bold text-gray-800"><i className="fa-solid fa-list-check text-purple-500 mr-2"></i>Global Audit Log (click on any task row to see trail)</h3></div>
-                                <div className="overflow-auto max-h-96">
-                                    <table className="w-full text-sm">
-                                        <thead className="bg-gray-100 sticky top-0"><tr><th className="p-2 text-left">Time</th><th className="p-2 text-left">Type</th><th className="p-2 text-left">From → To</th><th className="p-2 text-left">Content</th><th className="p-2 text-left">Actions</th></tr></thead>
-                                        <tbody>
-                                            {adminAuditMessages.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-gray-500">No records</td></tr>}
-                                            {adminAuditMessages.map(msg => (
-                                                <tr key={msg.id} className={`border-b hover:bg-gray-50 ${msg.isTask ? 'cursor-pointer' : ''}`} onClick={() => { if(msg.isTask) { setSelectedMessage(msg); setActiveModal('task_trail'); } }}>
-                                                    <td className="p-2 text-xs">{msg.dateString}<br/>{msg.time}</td>
-                                                    <td className="p-2">{msg.isTask ? <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded">TASK</span> : msg.fileUrl ? <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-1 rounded">MEDIA</span> : <span className="text-[10px] font-bold bg-gray-100 text-gray-700 px-2 py-1 rounded">MSG</span>}</td>
-                                                    <td className="p-2 text-xs">From: {msg.sender?.split('@')[0]}{msg.isTask && ` → ${msg.taskData?.currentAssignee?.split('@')[0]}`}</td>
-                                                    <td className="p-2 truncate max-w-xs">{msg.text || msg.fileName}</td>
-                                                    <td className="p-2"><button onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id); }} className="text-red-500 text-xs"><i className="fa-solid fa-trash"></i></button></td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            
-                            {/* Reminders Log */}
-                            <div className="bg-white rounded-2xl shadow overflow-hidden">
-                                <div className="bg-gray-50 p-4 border-b"><h3 className="font-bold text-gray-800"><i className="fa-solid fa-clock text-yellow-500 mr-2"></i>Global Reminders Log</h3></div>
-                                <div className="overflow-auto max-h-64">
-                                    <table className="w-full text-sm">
-                                        <thead className="bg-gray-100"><tr><th className="p-2 text-left">Status</th><th className="p-2 text-left">Set By</th><th className="p-2 text-left">Target Date</th><th className="p-2 text-left">Content</th></tr></thead>
-                                        <tbody>
-                                            {filteredAdminReminders.map(rem => (
-                                                <tr key={rem.id} className="border-b"><td className="p-2">{rem.isTriggered ? <span className="text-green-600 text-xs">Fired</span> : <span className="text-yellow-600 text-xs">Pending</span>}</td><td className="p-2">{(rem.userEmail || rem.userId || 'Unknown').split('@')[0]}</td><td className="p-2 text-xs">{new Date(rem.remindAt).toLocaleString()}</td><td className="p-2 italic truncate max-w-md">"{rem.messageText}"</td></tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
+                    <div className="flex items-center justify-center h-screen bg-gray-100 p-4 font-sans text-gray-800">
+                        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 border-t-8 border-orange-500 text-center">
+                            <i className="fa-solid fa-user-clock text-5xl text-orange-500 mb-4 animate-pulse"></i>
+                            <h1 className="text-2xl font-bold text-gray-800 mb-2">Pending Approval</h1>
+                            <p className="text-sm text-gray-600 mb-6">Account requires Admin verification.</p>
+                            <button onClick={onLogout} className="bg-gray-100 border border-gray-200 text-gray-700 py-2 px-6 rounded-xl font-bold hover:bg-gray-200 shadow-sm">Sign Out</button>
                         </div>
                     </div>
                 );
             }
-            
-            // ========== MAIN CHAT UI ==========
+
+            const filteredAuditMessages = [...messages].reverse().filter(msg => {
+                const safeSender = msg.sender || "";
+                const safeAssignee = msg.taskData?.currentAssignee || "";
+                const safeDate = msg.dateString || "";
+                const matchUser = adminFilterUser === "" || safeSender === adminFilterUser || (msg.isTask && safeAssignee === adminFilterUser);
+                const matchDate = adminFilterDate === "" || safeDate === adminFilterDate;
+                return matchUser && matchDate;
+            });
+
+            const filteredAdminReminders = [...allAdminReminders].filter(rem => {
+                const safeEmail = rem.userEmail || rem.userId || "";
+                const safeDate = rem.remindAt || "";
+                const matchUser = adminFilterUser === "" || safeEmail === adminFilterUser;
+                const matchDate = adminFilterDate === "" || safeDate.startsWith(adminFilterDate);
+                return matchUser && matchDate;
+            });
+
+            const myGroups = [{id: "main", name: "Academic Council Group"}, ...groups.filter(g => g.members?.includes(user.email) || currentUserData?.isAdmin)];
+
             return (
-                <div className="flex h-screen w-full bg-white overflow-hidden">
-                    {/* Sidebar (same as before) */}
-                    <div className={`fixed md:relative z-50 w-80 bg-white border-r shadow-sm h-full flex flex-col transition-transform duration-300 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-                        <div className="p-5 border-b flex items-center gap-3">
-                            <div onClick={() => setShowProfilePanel(true)} className="relative avatar-upload">
-                                {profilePhotoURL ? <img src={profilePhotoURL} className="w-12 h-12 rounded-full object-cover border-2 border-blue-200" /> : <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xl">{displayName.charAt(0).toUpperCase()}</div>}
-                            </div>
-                            <div className="flex-1"><h2 className="font-bold text-gray-800">{displayName}</h2><p className="text-xs text-gray-500 truncate">{user.email}</p></div>
-                            <i className="fa-solid fa-xmark md:hidden text-gray-500 text-xl cursor-pointer" onClick={() => setMobileMenuOpen(false)}></i>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                            {myGroups.map(g => (
-                                <div key={g.id} onClick={() => { setActiveGroup({ ...g, admins: g.admins || [], members: g.members || [] }); setMobileMenuOpen(false); }} className={`p-3 rounded-xl cursor-pointer transition-all ${activeGroup.id === g.id ? 'bg-blue-50 border-l-4 border-blue-500' : 'hover:bg-gray-50'}`}>
-                                    <div className="font-semibold flex items-center gap-2"><i className="fa-regular fa-comment-dots text-blue-500"></i>{g.name}</div>
-                                    <div className="text-xs text-gray-500 pl-6">{g.id === "main" ? "Company-wide" : `${g.members?.length || 0} members`}</div>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="p-4 border-t space-y-2">
-                            <button onClick={() => setShowNotifications(!showNotifications)} className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100"><i className="fa-regular fa-bell text-gray-500 w-5"></i><span>Notifications</span>{notificationCount > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full ml-auto">{notificationCount}</span>}</button>
-                            {currentUserData?.isAdmin && <button onClick={() => setViewMode("admin")} className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100"><i className="fa-solid fa-shield-halved text-gray-500 w-5"></i><span>Admin Dashboard</span></button>}
-                            <button onClick={onLogout} className="w-full flex items-center gap-3 p-2 rounded-lg text-red-600 hover:bg-red-50"><i className="fa-solid fa-arrow-right-from-bracket w-5"></i><span>Logout</span></button>
-                        </div>
-                    </div>
+                <div className="flex h-screen w-full bg-white font-sans text-gray-800 overflow-hidden">
                     
-                    {/* Chat area */}
-                    <div className="flex-1 flex flex-col h-full relative">
-                        {/* Top bar with typing indicator */}
-                        <div className="h-16 px-5 flex items-center justify-between border-b bg-white/90 backdrop-blur-sm shadow-sm">
-                            <div className="flex items-center gap-3">
-                                <i className="fa-solid fa-bars text-xl md:hidden cursor-pointer text-gray-600" onClick={() => setMobileMenuOpen(true)}></i>
-                                <div><h1 className="font-bold text-lg text-gray-800">{activeGroup.name}</h1>
-                                    {typingUsers.length > 0 && <p className="text-xs text-gray-500 animate-pulse">{typingUsers.map(t => t.name).join(', ')} is typing...</p>}
+                    {viewMode === "admin" ? (
+                        /* --- ADMIN DASHBOARD --- */
+                        <div className="flex flex-col h-full w-full bg-slate-100 overflow-hidden">
+                            <div className="bg-slate-900 text-white p-4 flex items-center justify-between shadow-md shrink-0">
+                                <div className="flex items-center gap-3">
+                                    <i className="fa-solid fa-shield-halved text-2xl text-blue-400"></i>
+                                    <div><h1 className="font-bold text-lg">Admin Control Center</h1></div>
+                                </div>
+                                <button onClick={() => setViewMode("chat")} className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                                    <i className="fa-solid fa-arrow-left"></i> Back to Chat
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+                                {/* Admin Filters */}
+                                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-end">
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Filter by User</label>
+                                        <select value={adminFilterUser} onChange={(e)=>setAdminFilterUser(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 min-w-[200px]">
+                                            <option value="">All Users</option>
+                                            {dbUsers.map(u => <option key={u.uid} value={u.email}>{u.name} ({u.email})</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Filter by Date</label>
+                                        <input type="date" value={adminFilterDate} onChange={(e)=>setAdminFilterDate(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50" />
+                                    </div>
+                                    <button onClick={()=>{setAdminFilterUser(""); setAdminFilterDate("");}} className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-300">Clear</button>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                    {/* Users Directory */}
+                                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden lg:col-span-1 flex flex-col max-h-[600px]">
+                                        <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center shrink-0">
+                                            <h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-users text-blue-600"></i> Users & Roles</h2>
+                                            <button onClick={() => { setAdminForm({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false }); setActiveModal('admin_add_user'); }} className="bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded hover:bg-blue-700"><i className="fa-solid fa-plus"></i></button>
+                                        </div>
+                                        <div className="p-0 overflow-y-auto flex-1">
+                                            <table className="w-full text-left text-sm">
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {dbUsers.map(u => (
+                                                        <tr key={u.uid} className="hover:bg-slate-50">
+                                                            <td className="px-4 py-3">
+                                                                <div className="font-semibold text-slate-800 flex items-center gap-1">
+                                                                    {u.name} 
+                                                                    {u.isAdmin && <i className="fa-solid fa-star text-yellow-400 text-[10px]" title="Admin"></i>}
+                                                                    {u.canCreateGroups && <i className="fa-solid fa-layer-group text-blue-400 text-[10px]" title="Can Create Groups"></i>}
+                                                                </div>
+                                                                <div className="text-[10px] text-slate-500">{u.email}</div>
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right">
+                                                                <button onClick={() => handleToggleApprove(u)} className={`mr-2 px-2 py-1 rounded-full text-[9px] font-bold ${u.isApproved ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>{u.isApproved ? 'Approved' : 'Pending'}</button>
+                                                                <button onClick={() => { setAdminForm({ ...u, canCreateGroups: u.canCreateGroups || false }); setActiveModal('admin_edit_user'); }} className="text-blue-500 hover:text-blue-700 mr-2"><i className="fa-solid fa-pen"></i></button>
+                                                                <button onClick={() => handleRemoveUser(u.uid)} disabled={u.email === user.email} className="text-red-500 hover:text-red-700"><i className="fa-solid fa-trash"></i></button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    {/* Global Audit */}
+                                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden lg:col-span-2 flex flex-col max-h-[600px]">
+                                        <div className="bg-slate-50 p-4 border-b border-slate-200 shrink-0">
+                                            <h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-list-check text-purple-600"></i> Global Chat & Task Audit</h2>
+                                        </div>
+                                        <div className="p-0 overflow-y-auto flex-1">
+                                            <table className="w-full text-left text-sm">
+                                                <thead className="bg-slate-50 text-slate-500 text-xs uppercase sticky top-0 shadow-sm z-10">
+                                                    <tr><th className="px-4 py-2">Time</th><th className="px-4 py-2">Type</th><th className="px-4 py-2">Details</th><th className="px-4 py-2 text-right">Action</th></tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {filteredAuditMessages.length === 0 && <tr><td colSpan="4" className="text-center py-4 text-slate-500 italic">No records found.</td></tr>}
+                                                    {filteredAuditMessages.map(msg => (
+                                                        <tr key={msg.id} className={`hover:bg-slate-50 ${msg.isTask ? 'cursor-pointer hover:bg-blue-50' : ''}`} onClick={() => { if(msg.isTask) { setSelectedMessage(msg); setActiveModal('task_trail'); } }}>
+                                                            <td className="px-4 py-2 text-xs text-slate-500">{msg.dateString}<br/>{msg.time}</td>
+                                                            <td className="px-4 py-2">
+                                                                {msg.isTask ? <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded">TASK</span> : 
+                                                                msg.isPrivateMention ? <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded">PRIVATE</span> : 
+                                                                msg.fileUrl ? <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-1 rounded">MEDIA</span> : 
+                                                                <span className="text-[10px] font-bold bg-gray-100 text-gray-700 px-2 py-1 rounded">PUBLIC</span>}
+                                                            </td>
+                                                            <td className="px-4 py-2">
+                                                                <div className="font-semibold text-slate-700 text-xs">From: {(msg.sender||'').split('@')[0]} {msg.isTask && `→ To: ${(msg.taskData?.currentAssignee||'').split('@')[0]}`}</div>
+                                                                <div className="text-slate-600 italic truncate max-w-[200px] text-xs">{msg.text || msg.fileName}</div>
+                                                            </td>
+                                                            <td className="px-4 py-2 text-right">
+                                                                <button onClick={(e) => { e.stopPropagation(); handleAdminDeleteMessage(msg.id); }} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded"><i className="fa-solid fa-trash"></i></button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Reminders Log */}
+                                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden lg:col-span-3 flex flex-col max-h-[400px]">
+                                        <div className="bg-slate-50 p-4 border-b border-slate-200 shrink-0">
+                                            <h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-clock text-yellow-600"></i> Global Reminders Log</h2>
+                                        </div>
+                                        <div className="p-0 overflow-y-auto flex-1">
+                                            <table className="w-full text-left text-sm">
+                                                <thead className="bg-slate-50 text-slate-500 text-xs uppercase sticky top-0 shadow-sm z-10">
+                                                    <tr><th className="px-4 py-2">Status</th><th className="px-4 py-2">Set By</th><th className="px-4 py-2">Target Date</th><th className="px-4 py-2">Content</th></tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {filteredAdminReminders.map(rem => (
+                                                        <tr key={rem.id} className="hover:bg-slate-50">
+                                                            <td className="px-4 py-2">{rem.isTriggered ? <span className="text-[10px] font-bold text-green-600">Fired</span> : <span className="text-[10px] font-bold text-yellow-600">Pending</span>}</td>
+                                                            <td className="px-4 py-2 font-semibold text-slate-700 text-xs">{(rem.userEmail || rem.userId || 'Unknown').split('@')[0]}</td>
+                                                            <td className="px-4 py-2 text-xs text-slate-600">{new Date(rem.remindAt).toLocaleString()}</td>
+                                                            <td className="px-4 py-2 text-slate-600 italic truncate max-w-[300px] text-xs">"{rem.messageText}"</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-4">
-                                <div className="relative"><i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i><input type="text" placeholder="Search" className="pl-9 pr-4 py-2 bg-gray-100 rounded-full text-sm w-44 focus:w-64 transition-all outline-none" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}/></div>
-                                <button className="relative" onClick={() => setShowNotifications(!showNotifications)}><i className="fa-regular fa-bell text-xl text-gray-600"></i>{notificationCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">{notificationCount}</span>}</button>
-                            </div>
                         </div>
-                        
-                        {/* Notifications dropdown */}
-                        {showNotifications && (
-                            <div className="absolute top-16 right-4 w-80 bg-white rounded-2xl shadow-xl border z-30 overflow-hidden animate-in">
-                                <div className="flex justify-between items-center p-3 border-b bg-gray-50"><span className="font-bold">Your Tasks</span><button onClick={clearAllNotifications} className="text-xs text-red-500">Clear All</button><i className="fa-solid fa-xmark cursor-pointer" onClick={()=>setShowNotifications(false)}></i></div>
-                                <div className="max-h-80 overflow-auto">{notifications.length === 0 ? <div className="p-4 text-center text-gray-500">No pending tasks</div> : notifications.map(t => (<div key={t.id} className="p-3 border-b hover:bg-gray-50 cursor-pointer" onClick={() => { setShowNotifications(false); setSelectedMessage(t); setActiveModal('task_trail'); }}><div className="font-medium">{t.text}</div><div className="text-xs text-gray-500">Due {new Date(t.taskData.deadline).toLocaleDateString()}</div></div>))}</div>
+                    ) : (
+                        /* --- MAIN CHAT UI --- */
+                        <div className="flex h-full w-full">
+                            
+                            {/* Left Sidebar */}
+                            <div className="hidden md:flex w-80 bg-white border-r border-gray-200 flex-col shrink-0 z-20">
+                                <div className="p-4 bg-slate-50 border-b border-gray-200 flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-sm">{user.email.substring(0,1).toUpperCase()}</div>
+                                    <div className="overflow-hidden">
+                                        <h2 className="font-bold text-sm text-gray-800 truncate">{currentUserData?.name || user.email.split('@')[0]}</h2>
+                                        <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
+                                    </div>
+                                    <div className="ml-auto flex gap-2">
+                                        {(currentUserData?.isAdmin || currentUserData?.canCreateGroups) && (
+                                            <button onClick={()=>setActiveModal('create_group')} className="text-gray-500 hover:text-blue-600" title="New Group"><i className="fa-solid fa-pen-to-square"></i></button>
+                                        )}
+                                    </div>
+                                </div>
+                                
+                                <div className="flex-1 overflow-y-auto">
+                                    <div className="px-4 pt-4 pb-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Your Departments</div>
+                                    {myGroups.map(g => (
+                                        <div key={g.id} onClick={() => setActiveGroup(g)} className={`flex items-center gap-3 p-3 mx-2 rounded-xl cursor-pointer transition-colors ${activeGroup.id === g.id ? 'bg-blue-50 border border-blue-100' : 'hover:bg-gray-50 border border-transparent'}`}>
+                                            <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm ${g.id==='main' ? 'bg-gradient-to-br from-blue-500 to-indigo-600' : 'bg-gradient-to-br from-emerald-400 to-teal-600'}`}>
+                                                {g.name.substring(0,1).toUpperCase()}
+                                            </div>
+                                            <div className="flex-1 overflow-hidden">
+                                                <div className="font-bold text-sm text-gray-800 truncate">{g.name}</div>
+                                                <div className="text-[11px] text-gray-500 truncate">{g.id==='main' ? 'Organization Wide' : `${g.members?.length || 0} Members`}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="p-3 bg-gray-50 border-t border-gray-200 space-y-1">
+                                    <button onClick={() => setShowNotifications(!showNotifications)} className="w-full flex items-center gap-3 p-2 hover:bg-gray-200 rounded-lg text-left text-sm font-semibold text-gray-700 transition-colors">
+                                        <i className="fa-solid fa-bell text-gray-500 w-5 text-center"></i> Notifications
+                                        {notificationCount > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full ml-auto">{notificationCount}</span>}
+                                    </button>
+                                    {currentUserData?.isAdmin && (
+                                        <button onClick={() => setViewMode("admin")} className="w-full flex items-center gap-3 p-2 hover:bg-gray-200 rounded-lg text-left text-sm font-semibold text-gray-700 transition-colors">
+                                            <i className="fa-solid fa-shield-halved text-gray-500 w-5 text-center"></i> Admin Dashboard
+                                        </button>
+                                    )}
+                                    <button onClick={onLogout} className="w-full flex items-center gap-3 p-2 hover:bg-red-50 rounded-lg text-left text-sm font-semibold text-red-600 transition-colors">
+                                        <i className="fa-solid fa-right-from-bracket w-5 text-center"></i> Logout
+                                    </button>
+                                </div>
                             </div>
-                        )}
-                        
-                        {/* Messages */}
-                        <div className="flex-1 overflow-y-auto p-5 chat-bg">
-                            <div className="max-w-4xl mx-auto space-y-3">
-                                {filteredMessages.map(msg => (
-                                    <div key={msg.id} className={`message-wrapper flex ${msg.isMine ? 'justify-end' : 'justify-start'}`}>
-                                        {!msg.isMine && (
-                                            <div className="flex items-start gap-2 max-w-[85%] md:max-w-[65%]">
-                                                <div className="w-8 h-8 rounded-full bg-gray-300 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold overflow-hidden">
-                                                    {msg.sender?.charAt(0).toUpperCase()}
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <div className="text-xs text-gray-500 mb-0.5 ml-1">{msg.sender?.split('@')[0]}</div>
-                                                    <div className="relative">
-                                                        <div onClick={() => { setSelectedMessage(msg); setActiveModal(msg.isTask ? 'task_trail' : 'context'); }} className="bg-white shadow-sm p-3 rounded-2xl message-bubble-received cursor-pointer">
-                                                            {msg.isTask ? (
-                                                                <div><div className="flex justify-between"><span className="text-xs font-bold text-blue-600">📋 TASK</span><span className={`text-xs px-2 rounded-full ${msg.taskData.status==='Completed'?'bg-green-100 text-green-700':'bg-yellow-100'}`}>{msg.taskData.status}</span></div><p className="mt-1 text-sm">{msg.text}</p><div className="mt-2 flex justify-between text-xs text-gray-500"><span>👤 {msg.taskData.currentAssignee.split('@')[0]}</span><span>📅 {new Date(msg.taskData.deadline).toLocaleDateString()}</span></div></div>
+
+                            {/* Chat Area */}
+                            <div className="flex-1 flex flex-col relative h-full">
+                                
+                                <div className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 md:px-6 shrink-0 z-10 shadow-sm">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-sm ${activeGroup.id==='main' ? 'bg-gradient-to-br from-blue-500 to-indigo-600' : 'bg-gradient-to-br from-emerald-400 to-teal-600'}`}>
+                                            {activeGroup.name.substring(0,1).toUpperCase()}
+                                        </div>
+                                        <div>
+                                            <h1 className="font-bold text-sm md:text-base text-gray-800">{activeGroup.name}</h1>
+                                            <p className="text-xs text-gray-500 cursor-pointer hover:text-blue-500" onClick={openGroupSettings}>
+                                                {activeGroup.id==='main' ? 'All Staff' : `${activeGroup.members?.length||0} Members (Click to view)`}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <div className="hidden md:flex items-center bg-gray-100 rounded-full px-3 py-1.5 transition-all focus-within:ring-2 focus-within:ring-blue-100">
+                                            <i className="fa-solid fa-magnifying-glass text-gray-400 text-xs"></i>
+                                            <input type="text" placeholder="Search..." className="bg-transparent outline-none text-xs ml-2 w-32 focus:w-48 transition-all text-gray-700" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                                        </div>
+                                        <i className="fa-solid fa-ellipsis-vertical text-gray-500 cursor-pointer hover:text-gray-800 p-2"></i>
+                                    </div>
+                                </div>
+
+                                {showNotifications && (
+                                    <div className="absolute top-16 right-4 w-72 bg-white rounded-xl shadow-2xl border border-gray-200 z-30 overflow-hidden">
+                                        <div className="bg-gray-50 p-3 border-b border-gray-200 flex justify-between items-center"><span className="font-bold text-sm text-gray-800">Your Pending Tasks</span><i className="fa-solid fa-xmark cursor-pointer text-gray-400" onClick={() => setShowNotifications(false)}></i></div>
+                                        <div className="max-h-80 overflow-y-auto">
+                                            {activeActionableTasks.length === 0 ? <div className="p-4 text-center text-xs text-gray-500">All caught up!</div> : 
+                                                activeActionableTasks.map(task => (
+                                                    <div key={task.id} className="p-3 border-b hover:bg-blue-50 cursor-pointer" onClick={() => { setShowNotifications(false); setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'main',name:'Academic Council'}); handleMessageClick(task); }}>
+                                                        <div className="text-xs font-bold text-blue-600 mb-1 flex items-center gap-1"><i className="fa-regular fa-square-check"></i> Pending</div>
+                                                        <div className="text-xs text-gray-700 line-clamp-2 italic">"{task.text}"</div>
+                                                        <div className="text-[10px] text-red-500 mt-1 font-semibold">Due: {new Date(task.taskData.deadline).toLocaleDateString()}</div>
+                                                    </div>
+                                                ))
+                                            }
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4 telegram-bg relative">
+                                    <div className="text-center"><span className="text-xs text-gray-500 bg-white/70 px-3 py-1 rounded-full shadow-sm backdrop-blur-sm font-semibold">End-to-End Encrypted</span></div>
+
+                                    {messages.filter(checkVisibility).filter(handleSearchFilter).map((msg) => (
+                                        <div key={msg.id} className={`flex flex-col ${msg.isMine ? 'items-end' : 'items-start'}`}>
+                                            {!msg.isMine && <div className="text-[11px] font-bold text-slate-500 mb-0.5 ml-1 drop-shadow-sm">{msg.sender.split('@')[0]}</div>}
+                                            
+                                            {!msg.isTask && (
+                                                <div onClick={() => handleMessageClick(msg)} className={`max-w-[85%] md:max-w-[65%] p-2.5 md:p-3 rounded-2xl shadow-sm cursor-pointer relative ${msg.isMine ? (msg.isPrivateMention ? 'bg-purple-200 text-purple-900 rounded-tr-none' : 'bg-[#e4ebd3] text-gray-800 rounded-tr-none') : (msg.isPrivateMention ? 'bg-purple-50 text-purple-900 border border-purple-200 rounded-tl-none' : 'bg-white text-gray-800 rounded-tl-none')}`}>
+                                                    {msg.isPrivateMention && <div className="text-[10px] font-bold flex items-center gap-1 mb-1 pb-1 border-b border-black/10 text-purple-700"><i className="fa-solid fa-lock"></i> Private</div>}
+                                                    
+                                                    {msg.fileUrl ? (
+                                                        <div className="flex flex-col gap-2">
+                                                            {msg.fileType && msg.fileType.startsWith('image/') ? (
+                                                                <img src={msg.fileUrl} alt="Shared Image" className="rounded-lg max-w-full max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity" onClick={(e) => { e.stopPropagation(); window.open(msg.fileUrl, '_blank'); }}/>
                                                             ) : (
-                                                                <div>{msg.isPrivateMention && <div className="text-xs text-purple-600 mb-1"><i className="fa-solid fa-lock"></i> Private</div>}{msg.fileUrl ? (msg.fileType?.startsWith('image/') ? <img src={msg.fileUrl} className="rounded-lg max-h-60" onClick={e=>{e.stopPropagation(); window.open(msg.fileUrl);}}/> : <div className="flex items-center gap-2"><i className="fa-regular fa-file"></i> {msg.fileName}</div>) : <p className="whitespace-pre-wrap">{msg.text}</p>}</div>
+                                                                <div className={`flex items-center gap-3 p-3 rounded-lg border hover:shadow-md transition-shadow ${msg.isMine ? 'bg-[#d2e0b8] border-[#c0d1a1]' : 'bg-gray-50 border-gray-200'}`} onClick={(e) => { e.stopPropagation(); window.open(msg.fileUrl, '_blank'); }}>
+                                                                    <div className={`w-12 h-12 rounded flex items-center justify-center text-2xl ${msg.isMine ? 'bg-white/40 text-[#4a6327]' : 'bg-blue-100 text-blue-600'}`}><i className="fa-regular fa-file-lines"></i></div>
+                                                                    <div className="flex-1 overflow-hidden"><p className="text-sm font-bold truncate" title={msg.fileName}>{msg.fileName}</p></div>
+                                                                </div>
                                                             )}
-                                                            <div className="text-[10px] text-gray-400 text-right mt-1">{msg.time} {msg.hasReminder && <i className="fa-regular fa-clock ml-1 text-amber-500"></i>}</div>
                                                         </div>
-                                                        <div className="reaction-bar absolute -bottom-2 left-0 flex gap-1 bg-white rounded-full shadow-md px-1 py-0.5 z-10">
-                                                            {["👍", "❤️", "😆", "😮", "😢", "🙏"].map(emoji => (
-                                                                <button key={emoji} onClick={(e) => { e.stopPropagation(); addReaction(msg.id, emoji); }} className="reaction-button text-sm hover:scale-110 transition-transform px-1">{emoji} {reactions[msg.id]?.[emoji] || 0}</button>
-                                                            ))}
-                                                        </div>
+                                                    ) : ( <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{msg.text}</p> )}
+
+                                                    <div className="flex items-center justify-end gap-1 mt-1 text-[10px] font-semibold text-black/40">
+                                                        {msg.hasReminder && <i className="fa-regular fa-clock text-amber-600 text-[11px] mr-0.5"></i>}
+                                                        <span>{msg.time}</span>
+                                                        {msg.isMine && <i className="fa-solid fa-check-double text-blue-500"></i>}
                                                     </div>
                                                 </div>
-                                            </div>
-                                        )}
-                                        {msg.isMine && (
-                                            <div className="flex flex-col items-end max-w-[85%] md:max-w-[65%]">
-                                                <div className="relative">
-                                                    <div onClick={() => { setSelectedMessage(msg); setActiveModal(msg.isTask ? 'task_trail' : 'context'); }} className="bg-blue-500 text-white shadow-sm p-3 rounded-2xl message-bubble-sent cursor-pointer">
-                                                        {msg.isTask ? (
-                                                            <div><div className="flex justify-between"><span className="text-xs font-bold">📋 TASK</span><span className={`text-xs px-2 rounded-full ${msg.taskData.status==='Completed'?'bg-green-200 text-green-800':'bg-yellow-200 text-yellow-800'}`}>{msg.taskData.status}</span></div><p className="mt-1 text-sm">{msg.text}</p><div className="mt-2 flex justify-between text-xs text-blue-100"><span>👤 {msg.taskData.currentAssignee.split('@')[0]}</span><span>📅 {new Date(msg.taskData.deadline).toLocaleDateString()}</span></div></div>
-                                                        ) : (
-                                                            <div>{msg.isPrivateMention && <div className="text-xs text-blue-100 mb-1"><i className="fa-solid fa-lock"></i> Private</div>}{msg.fileUrl ? (msg.fileType?.startsWith('image/') ? <img src={msg.fileUrl} className="rounded-lg max-h-60" onClick={e=>{e.stopPropagation(); window.open(msg.fileUrl);}}/> : <div className="flex items-center gap-2"><i className="fa-regular fa-file"></i> {msg.fileName}</div>) : <p className="whitespace-pre-wrap">{msg.text}</p>}</div>
-                                                        )}
-                                                        <div className="text-[10px] text-blue-100 text-right mt-1">{msg.time} {msg.hasReminder && <i className="fa-regular fa-clock ml-1"></i>}<i className="fa-regular fa-check-double ml-1"></i></div>
+                                            )}
+
+                                            {msg.isTask && (
+                                                <div onClick={() => handleMessageClick(msg)} className={`max-w-[90%] md:max-w-[65%] w-full bg-white border-y border-r border-l-4 p-3 rounded-2xl shadow-sm cursor-pointer ${msg.isMine ? 'rounded-tr-none border-l-blue-500 border-y-transparent border-r-transparent' : 'rounded-tl-none border-l-gray-400 border-y-transparent border-r-transparent'}`}>
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="flex items-center gap-1 text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded"><i className="fa-regular fa-square-check"></i> TASK</span>
+                                                        <span className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full ${msg.taskData.status === 'Completed' ? 'bg-green-100 text-green-700' : msg.taskData.status === 'In Progress' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-700'}`}>{msg.taskData.status}</span>
                                                     </div>
-                                                    <div className="reaction-bar absolute -bottom-2 right-0 flex gap-1 bg-white rounded-full shadow-md px-1 py-0.5 z-10">
-                                                        {["👍", "❤️", "😆", "😮", "😢", "🙏"].map(emoji => (
-                                                            <button key={emoji} onClick={(e) => { e.stopPropagation(); addReaction(msg.id, emoji); }} className="reaction-button text-sm hover:scale-110 transition-transform px-1">{emoji} {reactions[msg.id]?.[emoji] || 0}</button>
-                                                        ))}
-                                                    </div>
-                                                    <div className="absolute -top-2 -right-2 flex gap-1 bg-white rounded-full shadow-md px-1 py-0.5">
-                                                        <button onClick={() => startEditMessage(msg)} className="text-gray-500 text-xs hover:text-blue-600"><i className="fa-regular fa-pen-to-square"></i></button>
-                                                        <button onClick={() => deleteMessage(msg.id)} className="text-gray-500 text-xs hover:text-red-600"><i className="fa-regular fa-trash-can"></i></button>
+                                                    <p className="text-[15px] font-medium text-gray-800 mb-2 leading-relaxed">{msg.text}</p>
+                                                    <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100 flex items-center justify-between">
+                                                        <span className="flex items-center gap-1 text-xs font-semibold text-gray-700"><div className="w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center"><i className="fa-regular fa-user text-[10px]"></i></div> {msg.taskData.currentAssignee.split('@')[0]}</span>
+                                                        <span className="text-[10px] text-red-600 font-bold"><i className="fa-regular fa-calendar mr-1"></i>{new Date(msg.taskData.deadline).toLocaleDateString()}</span>
                                                     </div>
                                                 </div>
-                                                <div className="text-[10px] text-gray-400 mt-0.5 mr-1">{msg.time}</div>
+                                            )}
+                                        </div>
+                                    ))}
+                                    <div ref={messagesEndRef} className="h-8"></div>
+                                </div>
+
+                                {/* @mention popup */}
+                                {inputText.split(' ').pop().startsWith('@') && inputText.split(' ').pop().length > 0 && (
+                                    <div className="absolute bottom-[80px] left-4 md:left-24 bg-white shadow-2xl border border-gray-200 rounded-xl w-72 max-h-48 overflow-y-auto z-20">
+                                        {dbUsers.filter(u => u.name.toLowerCase().includes(inputText.split(' ').pop().substring(1).toLowerCase())).map(u => (
+                                            <div key={u.uid} onClick={() => { const words = inputText.split(' '); words[words.length - 1] = `@${u.name} `; setInputText(words.join(' ')); }} className="p-3 border-b hover:bg-blue-50 cursor-pointer text-sm font-semibold flex items-center gap-3 text-gray-800">
+                                                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs shadow-inner"><i className="fa-solid fa-at"></i></div>
+                                                {u.name}
                                             </div>
-                                        )}
+                                        ))}
                                     </div>
-                                ))}
-                                <div ref={messagesEndRef} className="h-4"></div>
-                            </div>
-                        </div>
-                        
-                        {/* Input area */}
-                        <div className="bg-white border-t p-3 flex items-center gap-2">
-                            <button onClick={() => fileInputRef.current.click()} className="p-2 text-gray-500 hover:text-blue-600"><i className="fa-solid fa-paperclip text-xl"></i></button>
-                            <input type="file" ref={fileInputRef} hidden onChange={(e) => { const f=e.target.files[0]; if(f) handleFileUpload(f); }}/>
-                            <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-2 text-gray-500 hover:text-blue-600"><i className="fa-regular fa-face-smile text-xl"></i></button>
-                            <div className="flex-1 bg-gray-100 rounded-full px-4 py-2 flex items-center">
-                                <textarea ref={textareaRef} rows="1" placeholder="Message... (Shift+Enter for new line)" className="w-full bg-transparent outline-none resize-none text-gray-700" value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={handleKeyDown} style={{ maxHeight: '100px' }}></textarea>
-                            </div>
-                            <button onClick={handleSendMessage} className="bg-blue-600 hover:bg-blue-700 text-white w-10 h-10 rounded-full flex items-center justify-center transition"><i className="fa-solid fa-paper-plane"></i></button>
-                        </div>
-                        {showEmojiPicker && <EmojiMart.Picker onSelect={addEmoji} theme="light" set="apple" className="emoji-mart" />}
-                    </div>
-                    
-                    {/* Modals (all restored) */}
-                    {showProfilePanel && (
-                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowProfilePanel(false)}>
-                            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl" onClick={e => e.stopPropagation()}>
-                                <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">My Profile</h3><i className="fa-solid fa-xmark cursor-pointer text-gray-400" onClick={() => setShowProfilePanel(false)}></i></div>
-                                <div className="flex flex-col items-center gap-3">
-                                    <div onClick={() => photoInputRef.current.click()} className="relative cursor-pointer avatar-upload">
-                                        {profilePhotoURL ? <img src={profilePhotoURL} className="w-24 h-24 rounded-full object-cover border-4 border-gray-200" /> : <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-3xl font-bold">{displayName.charAt(0).toUpperCase()}</div>}
-                                        <div className="absolute bottom-0 right-0 bg-white rounded-full p-1 shadow"><i className="fa-solid fa-camera text-gray-600"></i></div>
+                                )}
+
+                                <div className="min-h-[64px] bg-white px-4 py-3 flex items-end gap-3 shrink-0 z-10 shadow-[0_-2px_10px_rgba(0,0,0,0.02)]">
+                                    <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"/>
+                                    <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors shrink-0 mb-1" onClick={() => fileInputRef.current.click()} disabled={isUploading}>
+                                        <i className="fa-solid fa-paperclip text-xl md:text-2xl"></i>
+                                    </button>
+                                    <div className="flex-1 bg-gray-100 rounded-2xl md:rounded-full px-4 py-2 flex items-center min-h-[44px]">
+                                        <input type="text" placeholder="Message..." className="bg-transparent w-full outline-none text-[15px] text-gray-800" value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}/>
                                     </div>
-                                    <input type="file" ref={photoInputRef} hidden accept="image/*" onChange={handlePhotoUpload} />
-                                    {uploadingPhoto && <div className="text-sm text-blue-500">Uploading...</div>}
-                                    <div className="w-full"><label className="block text-sm font-medium text-gray-700">Display Name</label><input type="text" value={displayName} onChange={e => setDisplayName(e.target.value)} className="w-full p-2 border rounded-lg mt-1" /></div>
-                                    <button onClick={() => setShowProfilePanel(false)} className="mt-4 bg-gray-200 w-full py-2 rounded-lg">Close</button>
+                                    <button onClick={handleSendMessage} className="shrink-0 mb-1 w-11 h-11 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors flex justify-center items-center shadow-sm">
+                                        <i className="fa-solid fa-paper-plane text-lg md:ml-[-2px] md:mt-[2px]"></i>
+                                    </button>
                                 </div>
                             </div>
                         </div>
                     )}
-                    {editingMessage && (
-                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                            <div className="bg-white rounded-2xl p-5 w-96"><h3 className="font-bold mb-2">Edit Message</h3><textarea className="w-full p-2 border rounded-lg" rows="3" value={editText} onChange={e => setEditText(e.target.value)}></textarea><div className="flex gap-2 mt-3"><button onClick={saveEditMessage} className="bg-blue-600 text-white px-4 py-2 rounded-lg">Save</button><button onClick={() => setEditingMessage(null)} className="bg-gray-200 px-4 py-2 rounded-lg">Cancel</button></div></div>
-                        </div>
-                    )}
-                    {activeModal === 'context' && selectedMessage && (
-                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white rounded-2xl w-80 p-5" onClick={e => e.stopPropagation()}><p className="italic text-gray-700 mb-4">"{selectedMessage.text || selectedMessage.fileName}"</p><button onClick={() => setActiveModal('reminder')} className="w-full mb-2 p-2 bg-yellow-100 rounded-lg text-yellow-800">⏰ Set Reminder</button><button onClick={() => setActiveModal('task_convert')} className="w-full p-2 bg-blue-100 rounded-lg text-blue-800">📌 Convert to Task</button><button onClick={() => setActiveModal(null)} className="mt-3 text-gray-400 text-sm w-full">Cancel</button></div>
-                        </div>
-                    )}
-                    {activeModal === 'reminder' && (
-                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white rounded-2xl p-5 w-80" onClick={e => e.stopPropagation()}><h3 className="font-bold mb-2">Set Reminder</h3><input type="datetime-local" value={reminderDateTime} onChange={e => setReminderDateTime(e.target.value)} className="w-full p-2 border rounded-lg mb-3"/><button onClick={setReminder} className="w-full bg-yellow-500 text-white py-2 rounded-lg">Save</button></div>
-                        </div>
-                    )}
-                    {activeModal === 'task_convert' && (
-                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white rounded-2xl p-5 w-96" onClick={e => e.stopPropagation()}><h3 className="font-bold text-lg mb-3">Create Task</h3><select value={taskAssignee} onChange={e => setTaskAssignee(e.target.value)} className="w-full p-2 border rounded-lg mb-2"><option value="">Assign to...</option>{groupMembersForMentions.map(u => <option key={u.email} value={u.email}>{u.name}</option>)}</select><input type="datetime-local" value={taskDeadline} onChange={e => setTaskDeadline(e.target.value)} className="w-full p-2 border rounded-lg mb-3"/><button onClick={convertToTask} className="w-full bg-blue-600 text-white py-2 rounded-lg">Create Task</button></div>
-                        </div>
-                    )}
-                    {activeModal === 'task_update' && selectedMessage && (
-                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white rounded-2xl p-5 w-96" onClick={e => e.stopPropagation()}><h3 className="font-bold text-lg mb-2">Update Task</h3><textarea rows="2" placeholder="Add comment..." className="w-full p-2 border rounded-lg mb-2" value={taskUpdateComment} onChange={e => setTaskUpdateComment(e.target.value)}></textarea><select className="w-full p-2 border rounded-lg mb-3" value={taskUpdateDelegate} onChange={e => setTaskUpdateDelegate(e.target.value)}><option value="">Delegate to...</option>{(activeGroup.members || []).map(email => <option key={email} value={email}>{dbUsers.find(u=>u.email===email)?.name || email}</option>)}</select><button onClick={submitTaskUpdate} className="w-full bg-blue-600 text-white py-2 rounded-lg">Submit Update</button></div>
-                        </div>
-                    )}
-                    {activeModal === 'task_trail' && selectedMessage?.taskData && (
-                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white rounded-2xl max-w-lg w-full max-h-[80vh] overflow-auto p-5" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-3"><h3 className="font-bold text-lg">Task Trail</h3><i className="fa-solid fa-xmark cursor-pointer text-gray-400" onClick={() => setActiveModal(null)}></i></div><div className="space-y-3">{selectedMessage.taskData.trail.map((item, idx) => (<div key={idx} className="border-l-2 border-blue-300 pl-3 py-1"><div className="text-xs font-bold text-blue-600">{item.action}</div><div className="text-sm">by {item.by?.split('@')[0]} {item.to && `→ ${item.to.split('@')[0]}`}</div>{item.comment && <div className="text-xs italic mt-1">"{item.comment}"</div>}<div className="text-[10px] text-gray-400 mt-0.5">{item.time}</div></div>))}</div><button onClick={() => setActiveModal(null)} className="mt-4 text-gray-500 text-sm">Close</button></div>
-                        </div>
-                    )}
-                    {activeModal === 'admin_add_user' && (
-                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white rounded-2xl p-6 w-96" onClick={e => e.stopPropagation()}><h3 className="font-bold text-lg mb-3">Add User</h3><form onSubmit={handleAddUserSubmit}><input type="text" placeholder="Full Name" value={adminForm.name} onChange={e => setAdminForm({...adminForm, name: e.target.value})} className="w-full p-2 border rounded-lg mb-2" required/><input type="email" placeholder="Email" value={adminForm.email} onChange={e => setAdminForm({...adminForm, email: e.target.value})} className="w-full p-2 border rounded-lg mb-2" required/><input type="password" placeholder="Password" value={adminForm.password} onChange={e => setAdminForm({...adminForm, password: e.target.value})} className="w-full p-2 border rounded-lg mb-2" required/><label className="flex items-center gap-2 mb-2"><input type="checkbox" checked={adminForm.isAdmin} onChange={e => setAdminForm({...adminForm, isAdmin: e.target.checked})}/> Admin</label><button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-lg">Create</button></form></div>
-                        </div>
-                    )}
-                    {activeModal === 'admin_edit_user' && (
-                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white rounded-2xl p-6 w-96" onClick={e => e.stopPropagation()}><h3 className="font-bold text-lg mb-3">Edit User</h3><form onSubmit={handleEditUserSubmit}><input type="email" disabled value={adminForm.email} className="w-full p-2 border rounded-lg mb-2 bg-gray-100"/><input type="text" value={adminForm.name} onChange={e => setAdminForm({...adminForm, name: e.target.value})} className="w-full p-2 border rounded-lg mb-2"/><label className="flex items-center gap-2 mb-2"><input type="checkbox" checked={adminForm.isAdmin} onChange={e => setAdminForm({...adminForm, isAdmin: e.target.checked})}/> Admin</label><label className="flex items-center gap-2 mb-2"><input type="checkbox" checked={adminForm.canCreateGroups} onChange={e => setAdminForm({...adminForm, canCreateGroups: e.target.checked})}/> Can Create Groups</label><button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-lg">Save</button></form></div>
-                        </div>
-                    )}
+
+                    {/* ---------- MODALS ---------- */}
+                    
                     {activeModal === 'create_group' && (
-                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white rounded-2xl p-6 w-96" onClick={e => e.stopPropagation()}><h3 className="font-bold text-lg mb-3">New Group</h3><form onSubmit={handleCreateGroup}><input placeholder="Group Name" value={groupForm.name} onChange={e => setGroupForm({...groupForm, name: e.target.value})} className="w-full p-2 border rounded-lg mb-3" required/><div className="font-medium mb-1">Members</div><div className="max-h-40 overflow-auto border rounded-lg p-2 space-y-1 mb-3">{dbUsers.map(u => <label key={u.uid} className="flex items-center gap-2"><input type="checkbox" checked={groupForm.members.includes(u.email)} onChange={e => { if(e.target.checked) setGroupForm({...groupForm, members:[...groupForm.members, u.email]}); else setGroupForm({...groupForm, members: groupForm.members.filter(m=>m!==u.email)}) }}/><span>{u.name}</span></label>)}</div><button type="submit" className="w-full bg-emerald-600 text-white py-2 rounded-lg">Create</button></form></div>
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center justify-between mb-4 border-b pb-3">
+                                    <h3 className="font-bold text-lg"><i className="fa-solid fa-layer-group text-blue-500 mr-2"></i> Create Department</h3>
+                                    <i className="fa-solid fa-xmark cursor-pointer text-gray-400" onClick={() => setActiveModal(null)}></i>
+                                </div>
+                                <form onSubmit={handleCreateGroup} className="space-y-4">
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 uppercase">Group Name</label>
+                                        <input required type="text" value={groupForm.name} onChange={(e) => setGroupForm({...groupForm, name: e.target.value})} className="w-full mt-1 p-3 border border-slate-300 rounded-xl text-sm bg-slate-50 outline-none" placeholder="e.g., Sales Team" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 uppercase">Select Members</label>
+                                        <div className="mt-1 h-32 overflow-y-auto border border-slate-300 rounded-xl bg-slate-50 p-2 space-y-1">
+                                            {dbUsers.map(u => (
+                                                <label key={u.uid} className="flex items-center gap-2 p-2 hover:bg-gray-200 rounded cursor-pointer">
+                                                    <input type="checkbox" checked={groupForm.members.includes(u.email)} onChange={(e) => {
+                                                        const newMembers = e.target.checked ? [...groupForm.members, u.email] : groupForm.members.filter(m => m !== u.email);
+                                                        setGroupForm({...groupForm, members: newMembers});
+                                                    }} className="w-4 h-4 rounded text-blue-600"/>
+                                                    <span className="text-sm font-semibold text-gray-700">{u.name}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <button type="submit" className="w-full bg-emerald-500 text-white py-3 rounded-xl font-bold hover:bg-emerald-600 shadow-md">Create Group</button>
+                                </form>
+                            </div>
                         </div>
                     )}
+
+                    {activeModal === 'group_settings' && (
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center justify-between mb-4 border-b pb-3">
+                                    <h3 className="font-bold text-lg"><i className="fa-solid fa-users-gear text-blue-500 mr-2"></i> {activeGroup.name}</h3>
+                                    <i className="fa-solid fa-xmark cursor-pointer text-gray-400" onClick={() => setActiveModal(null)}></i>
+                                </div>
+                                <div className="space-y-4">
+                                    <div className="h-48 overflow-y-auto border border-slate-200 rounded-xl bg-slate-50 p-2 space-y-1">
+                                        {dbUsers.map(u => {
+                                            const isGroupAdmin = activeGroup.admins?.includes(user.email) || currentUserData?.isAdmin;
+                                            const isMember = activeGroup.members?.includes(u.email);
+                                            return (
+                                                <label key={u.uid} className={`flex items-center gap-2 p-2 rounded ${isGroupAdmin ? 'hover:bg-gray-200 cursor-pointer' : ''}`}>
+                                                    <input type="checkbox" disabled={!isGroupAdmin || activeGroup.admins?.includes(u.email)} checked={groupForm.members.includes(u.email) || isMember} onChange={(e) => {
+                                                        if(!isGroupAdmin) return;
+                                                        const newMembers = e.target.checked ? [...groupForm.members, u.email] : groupForm.members.filter(m => m !== u.email);
+                                                        setGroupForm({...groupForm, members: newMembers});
+                                                    }} className="w-4 h-4 rounded text-blue-600 disabled:opacity-50"/>
+                                                    <span className="text-sm font-semibold text-gray-700">{u.name} {activeGroup.admins?.includes(u.email) && <span className="ml-1 text-[9px] bg-blue-100 text-blue-800 px-1 py-0.5 rounded">Group Admin</span>}</span>
+                                                </label>
+                                            )
+                                        })}
+                                    </div>
+                                    {(activeGroup.admins?.includes(user.email) || currentUserData?.isAdmin) && (
+                                        <button onClick={handleUpdateGroupMembers} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 shadow-md">Update Members</button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeModal === 'context' && (
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center gap-3 mb-5 border-b pb-4">
+                                    <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center"><i className="fa-solid fa-quote-left"></i></div>
+                                    <p className="text-sm font-semibold text-slate-700 line-clamp-2 flex-1 italic">"{selectedMessage?.text || selectedMessage?.fileName}"</p>
+                                </div>
+                                <div className="space-y-3">
+                                    <button onClick={() => setActiveModal('reminder')} className="w-full flex items-center gap-4 p-4 hover:bg-yellow-50 rounded-xl transition-all border border-transparent hover:border-yellow-200 text-left group shadow-sm">
+                                        <div className="bg-yellow-100 p-3 rounded-xl text-yellow-600 group-hover:scale-110 transition-transform"><i className="fa-regular fa-clock text-xl"></i></div>
+                                        <div><div className="font-bold text-sm text-yellow-800">Set Push Reminder</div><div className="text-xs font-semibold text-yellow-600/70 mt-0.5">Alert me about this later</div></div>
+                                    </button>
+                                    <button onClick={() => setActiveModal('task_convert')} className="w-full flex items-center gap-4 p-4 hover:bg-blue-50 rounded-xl transition-all border border-transparent hover:border-blue-200 text-left group shadow-sm">
+                                        <div className="bg-blue-100 p-3 rounded-xl text-blue-600 group-hover:scale-110 transition-transform"><i className="fa-regular fa-square-check text-xl"></i></div>
+                                        <div><div className="font-bold text-sm text-blue-800">Convert to Official Task</div><div className="text-xs font-semibold text-blue-600/70 mt-0.5">Assign with deadline and tracking</div></div>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeModal === 'task_trail' && selectedMessage?.taskData && (
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center md:p-4">
+                            <div className="bg-white w-full h-full md:h-auto md:max-h-[90vh] md:max-w-2xl md:rounded-3xl flex flex-col shadow-2xl overflow-hidden">
+                                <div className="bg-blue-900 text-white p-5 flex items-center justify-between shadow-md shrink-0">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-blue-800 border border-blue-700 flex items-center justify-center text-blue-300"><i className="fa-solid fa-route"></i></div>
+                                        <div><h2 className="font-bold text-lg leading-tight">Secure Task Trail</h2></div>
+                                    </div>
+                                    <button onClick={() => setActiveModal(null)} className="w-10 h-10 rounded-full bg-blue-800 hover:bg-blue-700 flex items-center justify-center"><i className="fa-solid fa-xmark"></i></button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-5 md:p-8 space-y-6 bg-slate-50">
+                                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                                        <p className="text-sm md:text-base font-semibold text-slate-800 bg-slate-50 p-4 rounded-xl border border-slate-100">"{selectedMessage.text}"</p>
+                                        <div className="mt-4 flex gap-4">
+                                            <div className="flex-1 bg-blue-50 p-3 rounded-xl border border-blue-100"><p className="text-[10px] font-bold text-blue-600 uppercase">Holder</p><p className="text-sm font-bold text-blue-900 truncate">{(selectedMessage.taskData.currentAssignee||'').split('@')[0]}</p></div>
+                                            <div className="flex-1 bg-red-50 p-3 rounded-xl border border-red-100"><p className="text-[10px] font-bold text-red-600 uppercase">Deadline</p><p className="text-sm font-bold text-red-900">{new Date(selectedMessage.taskData.deadline).toLocaleDateString()}</p></div>
+                                        </div>
+                                    </div>
+                                    {selectedMessage.taskData.status !== "Completed" && (
+                                        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                                <select value={delegateAssignee} onChange={(e) => setDelegateAssignee(e.target.value)} className="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-white font-semibold outline-none focus:border-blue-500 mb-2">
+                                                    <option value="" disabled>Select Delegate...</option>
+                                                    {activeGroup.members?.map(email => <option key={email} value={email}>{(dbUsers.find(u=>u.email===email)?.name || email)}</option>)}
+                                                </select>
+                                                <button onClick={handleDelegateTask} disabled={!delegateAssignee} className={`w-full py-2.5 rounded-lg text-sm font-bold text-white ${delegateAssignee ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-300'}`}>Execute Transfer</button>
+                                            </div>
+                                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-center">
+                                                <button onClick={handleCompleteTask} className={`w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 ${user.email === selectedMessage.taskData.currentAssignee || currentUserData?.isAdmin ? "bg-green-600 text-white hover:bg-green-700" : "bg-slate-300 text-slate-500"}`}>
+                                                    <i className="fa-solid fa-shield-check text-lg"></i> Mark Completed
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                                        <div className="space-y-4">
+                                            {selectedMessage.taskData.trail.map((item, idx) => (
+                                                <div key={idx} className="flex gap-4 items-start">
+                                                    <div className={`mt-1 w-8 h-8 rounded-full shadow shrink-0 flex items-center justify-center text-white text-xs ${item.action === 'Marked Completed' ? 'bg-green-500' : item.action === 'Update Added' ? 'bg-amber-500' : 'bg-blue-600'}`}>
+                                                        {idx === 0 ? <i className="fa-solid fa-flag"></i> : <i className="fa-solid fa-arrow-right"></i>}
+                                                    </div>
+                                                    <div className="flex-1 bg-white border border-slate-100 p-3 rounded-xl shadow-sm">
+                                                        <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-1">
+                                                            <span className="uppercase text-blue-600">{item.action}</span><span>{item.time.split(',')[0]}</span>
+                                                        </div>
+                                                        <div className="text-sm font-semibold text-slate-700">{(item.by||'').split('@')[0]} {item.to && item.to !== 'System' && `→ ${(item.to||'').split('@')[0]}`}</div>
+                                                        {item.comment && <div className="mt-2 text-xs text-slate-600 italic">"{item.comment}"</div>}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                {selectedMessage.taskData.status !== "Completed" && (
+                                    <div className="p-4 bg-white border-t shrink-0">
+                                        <div className="flex items-center bg-slate-50 border rounded-xl px-4 py-2">
+                                            <input type="text" value={trailComment} onChange={(e) => setTrailComment(e.target.value)} placeholder="Add comment..." className="bg-transparent w-full outline-none text-sm"/>
+                                            <button onClick={handleAddComment} className="text-blue-600 ml-2"><i className="fa-solid fa-paper-plane"></i></button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {activeModal === 'admin_add_user' && (
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl">
+                                <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl"><i className="fa-solid fa-user-plus text-blue-600 mr-2"></i> Register Staff</h3><i className="fa-solid fa-xmark cursor-pointer text-slate-400" onClick={() => setActiveModal(null)}></i></div>
+                                <form onSubmit={handleAddUserSubmit} className="space-y-4">
+                                    <input required type="text" placeholder="Full Name" value={adminForm.name} onChange={(e) => setAdminForm({...adminForm, name: e.target.value})} className="w-full p-3 border rounded-xl text-sm" />
+                                    <input required type="email" placeholder="Email" value={adminForm.email} onChange={(e) => setAdminForm({...adminForm, email: e.target.value})} className="w-full p-3 border rounded-xl text-sm" />
+                                    <input required minLength="6" type="password" placeholder="Password" value={adminForm.password} onChange={(e) => setAdminForm({...adminForm, password: e.target.value})} className="w-full p-3 border rounded-xl text-sm" />
+                                    <label className="flex items-center gap-2 text-xs font-bold text-indigo-700 cursor-pointer"><input type="checkbox" checked={adminForm.isAdmin} onChange={(e) => setAdminForm({...adminForm, isAdmin: e.target.checked})} className="w-4 h-4"/> Grant Admin Access</label>
+                                    <label className="flex items-center gap-2 text-xs font-bold text-teal-700 cursor-pointer"><input type="checkbox" checked={adminForm.canCreateGroups} onChange={(e) => setAdminForm({...adminForm, canCreateGroups: e.target.checked})} className="w-4 h-4"/> Grant Group Creation Access</label>
+                                    <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">Create Account</button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeModal === 'admin_edit_user' && (
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl">
+                                <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl"><i className="fa-solid fa-user-pen text-blue-600 mr-2"></i> Edit User</h3><i className="fa-solid fa-xmark cursor-pointer text-slate-400" onClick={() => setActiveModal(null)}></i></div>
+                                <form onSubmit={handleEditUserSubmit} className="space-y-4">
+                                    <input disabled type="email" value={adminForm.email} className="w-full p-3 border rounded-xl text-sm bg-gray-100 text-gray-500" />
+                                    <input required type="text" value={adminForm.name} onChange={(e) => setAdminForm({...adminForm, name: e.target.value})} className="w-full p-3 border rounded-xl text-sm" />
+                                    <label className="flex items-center gap-2 text-xs font-bold text-indigo-700 cursor-pointer"><input type="checkbox" checked={adminForm.isAdmin} onChange={(e) => setAdminForm({...adminForm, isAdmin: e.target.checked})} className="w-4 h-4"/> Grant Admin Access</label>
+                                    <label className="flex items-center gap-2 text-xs font-bold text-teal-700 cursor-pointer"><input type="checkbox" checked={adminForm.canCreateGroups} onChange={(e) => setAdminForm({...adminForm, canCreateGroups: e.target.checked})} className="w-4 h-4"/> Grant Group Creation Access</label>
+                                    <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">Save Changes</button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeModal === 'reminder' && (
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl">
+                                <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl"><i className="fa-regular fa-clock text-yellow-500 mr-2"></i> Schedule Alert</h3><i className="fa-solid fa-xmark cursor-pointer text-slate-400" onClick={() => setActiveModal(null)}></i></div>
+                                <div className="space-y-4">
+                                    <input type="datetime-local" value={reminderDateTime} onChange={(e) => setReminderDateTime(e.target.value)} className="w-full p-3 border rounded-xl text-sm" />
+                                    <button onClick={setReminder} className="w-full bg-yellow-500 text-white py-3 rounded-xl font-bold">Save Reminder</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeModal === 'task_convert' && (
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl">
+                                <div className="flex justify-between items-center mb-6 border-b pb-4"><h3 className="font-bold text-xl"><i className="fa-regular fa-square-check text-blue-600 mr-2"></i> Official Task</h3><i className="fa-solid fa-xmark cursor-pointer text-slate-400" onClick={() => setActiveModal(null)}></i></div>
+                                <div className="space-y-4">
+                                    <select value={taskAssignee} onChange={(e) => setTaskAssignee(e.target.value)} className="w-full p-3 border rounded-xl text-sm">
+                                        <option value="" disabled>Select Assignee...</option>
+                                        {activeGroup.id === 'main' ? 
+                                            dbUsers.map(u => <option key={u.uid} value={u.email}>{u.name} ({u.email})</option>) :
+                                            activeGroup.members?.map(email => <option key={email} value={email}>{(dbUsers.find(u=>u.email===email)?.name || email)}</option>)
+                                        }
+                                    </select>
+                                    <input type="datetime-local" value={taskDeadline} onChange={(e) => setTaskDeadline(e.target.value)} className="w-full p-3 border rounded-xl text-sm" />
+                                    <button onClick={convertToTask} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">Assign Task</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {isUploading && (
-                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-                            <div className="bg-white p-5 rounded-2xl text-center"><i className="fa-solid fa-circle-notch fa-spin text-3xl text-blue-500"></i><div className="mt-2">Uploading {Math.round(uploadProgress)}%</div></div>
+                        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-[80] flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center">
+                                <i className="fa-solid fa-cloud-arrow-up text-4xl text-blue-600 mb-4 animate-bounce"></i>
+                                <h3 className="font-bold text-xl mb-4">Uploading...</h3>
+                                <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden"><div className="bg-blue-600 h-full transition-all" style={{ width: `${uploadProgress}%` }}></div></div>
+                            </div>
                         </div>
                     )}
                 </div>
             );
-            
-            async function handleFileUpload(file) {
-                setIsUploading(true); setUploadProgress(0);
-                const storageRef = window.ref(window.storage, `chat_uploads/${Date.now()}_${file.name}`);
-                const uploadTask = window.uploadBytesResumable(storageRef, file);
-                uploadTask.on('state_changed', (snap) => setUploadProgress((snap.bytesTransferred/snap.totalBytes)*100), (err)=>{alert("Upload failed"); setIsUploading(false);}, async () => {
-                    const url = await window.getDownloadURL(uploadTask.snapshot.ref);
-                    await window.addDoc(window.collection(window.db, "messages"), { text: `📎 ${file.name}`, senderUid: user.uid, senderEmail: user.email, timestamp: window.serverTimestamp(), isTask: false, fileUrl: url, fileName: file.name, fileType: file.type, groupId: activeGroup.id });
-                    setIsUploading(false);
-                });
-            }
         }
-        
+
         function App() {
             const [user, setUser] = useState(null);
-            const [firebaseReady, setFirebaseReady] = useState(false);
+            const [isFirebaseLoaded, setIsFirebaseLoaded] = useState(false);
             const [email, setEmail] = useState("");
             const [password, setPassword] = useState("");
-            const [authErr, setAuthErr] = useState("");
+            const [authError, setAuthError] = useState("");
+
             useEffect(() => {
-                const cb = () => { window.onAuthStateChanged(window.auth, setUser); setFirebaseReady(true); };
-                if (window.auth) cb(); else window.addEventListener('firebaseReady', cb);
-                return () => window.removeEventListener('firebaseReady', cb);
+                const setupAuth = () => { window.onAuthStateChanged(window.auth, setUser); setIsFirebaseLoaded(true); };
+                if (window.auth) setupAuth();
+                else window.addEventListener('firebaseReady', setupAuth);
+                return () => window.removeEventListener('firebaseReady', setupAuth);
             }, []);
-            const handleLogin = (e) => { e.preventDefault(); window.signInWithEmailAndPassword(window.auth, email, password).catch(err => setAuthErr(err.message)); };
-            const handleRegister = async (e) => { e.preventDefault(); try { const cred = await window.createUserWithEmailAndPassword(window.auth, email, password); const isVP = email.toLowerCase() === 'viceprincipal@mpgs.edu.in'; await window.setDoc(window.doc(window.db, "users", cred.user.uid), { uid: cred.user.uid, email, name: email.split('@')[0], isApproved: isVP, isAdmin: isVP, canCreateGroups: isVP }); } catch(err){ setAuthErr(err.message); } };
-            if (!firebaseReady) return <div className="flex h-screen items-center justify-center">Loading secure environment...</div>;
-            if (!user) return (
-                <div className="flex h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4"><div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md"><div className="text-center mb-6"><i className="fa-regular fa-comments text-4xl text-blue-600"></i><h1 className="text-2xl font-bold mt-2">Corporate Suite</h1></div>{authErr && <div className="bg-red-100 p-2 rounded mb-4 text-red-700 text-sm">{authErr}</div>}<input type="email" placeholder="Work Email" className="w-full p-3 border rounded-xl mb-3" value={email} onChange={e=>setEmail(e.target.value)}/><input type="password" placeholder="Password" className="w-full p-3 border rounded-xl mb-4" value={password} onChange={e=>setPassword(e.target.value)}/><div className="flex gap-3"><button onClick={handleLogin} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold">Sign In</button><button onClick={handleRegister} className="flex-1 border border-gray-300 py-3 rounded-xl font-semibold">Register</button></div></div></div>
-            );
+
+            const handleLogin = (e) => {
+                e.preventDefault(); setAuthError("");
+                window.signInWithEmailAndPassword(window.auth, email, password).catch(err => setAuthError("Login Failed: " + err.message));
+            };
+
+            const handleRegister = async (e) => {
+                e.preventDefault(); setAuthError("");
+                try {
+                    const cred = await window.createUserWithEmailAndPassword(window.auth, email, password);
+                    const isVp = cred.user.email.toLowerCase() === 'viceprincipal@mpgs.edu.in';
+                    await window.setDoc(window.doc(window.db, "users", cred.user.uid), {
+                        uid: cred.user.uid, email: cred.user.email, name: cred.user.email.split('@')[0].toUpperCase(),
+                        isApproved: isVp, isAdmin: isVp, canCreateGroups: isVp
+                    });
+                } catch (err) { setAuthError("Registration Failed: " + err.message); }
+            };
+
+            if (!isFirebaseLoaded) return <div className="flex justify-center items-center h-screen bg-slate-100 font-bold text-blue-800 text-xl animate-pulse">Connecting...</div>;
+
+            if (!user) {
+                return (
+                    <div className="flex items-center justify-center min-h-screen bg-slate-100 p-4">
+                        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 border-t-[8px] border-blue-800">
+                            <h1 className="text-2xl font-black text-center text-slate-900 mb-8"><i className="fa-solid fa-building-shield text-blue-800"></i> Corporate Portal</h1>
+                            {authError && <div className="bg-red-50 text-red-700 p-3 rounded-xl mb-4 text-xs font-bold border border-red-200">{authError}</div>}
+                            <form className="space-y-4">
+                                <input type="email" placeholder="Corporate Email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-4 border rounded-xl bg-slate-50 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                                <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-4 border rounded-xl bg-slate-50 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                                <div className="flex gap-2 pt-4">
+                                    <button onClick={handleLogin} className="flex-1 bg-blue-800 text-white py-4 rounded-xl font-bold hover:bg-blue-900 shadow-lg transition-all">Sign In</button>
+                                    <button onClick={handleRegister} className="flex-1 bg-white border border-slate-300 text-slate-700 py-4 rounded-xl font-bold hover:bg-slate-50 transition-all">Register</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                );
+            }
             return <ChatApp user={user} onLogout={() => window.signOut(window.auth)} />;
         }
-        
-        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>

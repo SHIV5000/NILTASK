@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Corporate Chat App Prototype</title>
+    <title>Corporate Chat App - Enterprise Edition</title>
     
     <!-- Load Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -18,13 +18,11 @@
     <!-- Load Babel to compile JSX in the browser -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Initialize Firebase (Phase 1) -->
+    <!-- Initialize Firebase -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-        // Phase 2, 3, 5 & 6: Import Firestore modules including deleteDoc
         import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, updateDoc, setDoc, getDocs, where, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-        // Phase 4: Import Firebase Storage modules
         import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
 
         const firebaseConfig = {
@@ -43,11 +41,9 @@
         window.signOut = signOut;
         window.onAuthStateChanged = onAuthStateChanged;
         
-        // Phase 6.1: Secondary Auth for Admin to create users without logging out
         window.secondaryApp = initializeApp(firebaseConfig, "Secondary");
         window.secondaryAuth = getAuth(window.secondaryApp);
 
-        // Phase 2: Initialize Firestore and attach to window
         window.db = getFirestore(app);
         window.collection = collection;
         window.addDoc = addDoc;
@@ -55,80 +51,81 @@
         window.query = query;
         window.orderBy = orderBy;
         window.serverTimestamp = serverTimestamp;
-        // Phase 3: Bind update methods
         window.doc = doc;
         window.updateDoc = updateDoc;
         window.setDoc = setDoc;
-        // Phase 5 & 6: Bind new query methods
         window.getDocs = getDocs;
         window.where = where;
         window.deleteDoc = deleteDoc;
         
-        // Phase 4: Initialize Storage and bind methods
         window.storage = getStorage(app);
         window.ref = ref;
         window.uploadBytesResumable = uploadBytesResumable;
         window.getDownloadURL = getDownloadURL;
 
-        // Let React know Firebase is fully connected
         window.dispatchEvent(new Event('firebaseReady'));
     </script>
+
+    <style>
+        /* Telegram-like custom scrollbar and background */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
+        .telegram-bg { background-color: #E6EBE9; background-image: url('https://www.transparenttextures.com/patterns/cubes.png'); }
+    </style>
 </head>
-<body class="bg-gray-200">
+<body class="bg-gray-100 overflow-hidden">
     <div id="root"></div>
 
-    <!-- React Code -->
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
 
         function ChatApp({ user, onLogout }) {
-            // State for UI interactions
             const [activeModal, setActiveModal] = useState(null);
             const [selectedMessage, setSelectedMessage] = useState(null);
             const [inputText, setInputText] = useState("");
             const [messages, setMessages] = useState([]); 
-            const messagesEndRef = React.useRef(null); 
+            const messagesEndRef = useRef(null); 
 
-            // Phase 3 & 3.2: State for Task Assignments and Dynamic Users
+            // Task & Delegate States
             const [taskAssignee, setTaskAssignee] = useState("");
             const [taskDeadline, setTaskDeadline] = useState("");
             const [delegateAssignee, setDelegateAssignee] = useState("");
             const [trailComment, setTrailComment] = useState(""); 
             const [dbUsers, setDbUsers] = useState([]); 
             
-            // Phase 4.1: Search and Notification State
+            // Search, Notifications & Admin
             const [searchQuery, setSearchQuery] = useState("");
             const [showNotifications, setShowNotifications] = useState(false);
-
-            // Phase 6 & 6.2: Admin View State and User Data
             const [viewMode, setViewMode] = useState("chat"); 
             const [currentUserData, setCurrentUserData] = useState(null);
-            const [adminForm, setAdminForm] = useState({ uid: '', name: '', email: '', password: '', isAdmin: false });
+            const [adminForm, setAdminForm] = useState({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false });
             
+            // Group Management States
+            const [groups, setGroups] = useState([]);
+            const [activeGroup, setActiveGroup] = useState({ id: "main", name: "Academic Council Group" });
+            const [groupForm, setGroupForm] = useState({ name: "", members: [] });
+
             // Admin Filters
             const [adminFilterUser, setAdminFilterUser] = useState("");
             const [adminFilterDate, setAdminFilterDate] = useState("");
             const [allAdminReminders, setAllAdminReminders] = useState([]);
 
-            // Phase 4: State for File Uploading
             const [uploadProgress, setUploadProgress] = useState(0);
             const [isUploading, setIsUploading] = useState(false);
-            const fileInputRef = React.useRef(null);
+            const fileInputRef = useRef(null);
 
-            // Phase 5: Reminder State
             const [reminderDateTime, setReminderDateTime] = useState("");
             const [activeReminders, setActiveReminders] = useState([]);
 
-            // Phase 5: Request Browser Notification Permission on mount
             useEffect(() => {
                 if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
                     Notification.requestPermission();
                 }
             }, []);
 
-            // Phase 5 & 6.2: Fetch Reminders (Personal vs Admin Global)
             useEffect(() => {
-                // Fetch personal active reminders for notifications
                 const qPersonal = window.query(
                     window.collection(window.db, "reminders"),
                     window.where("userId", "==", user.uid),
@@ -138,7 +135,6 @@
                     setActiveReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
                 });
 
-                // Fetch ALL reminders if user is admin for the dashboard
                 let unsubAdmin = () => {};
                 if (currentUserData?.isAdmin) {
                     const qAdmin = window.query(window.collection(window.db, "reminders"), window.orderBy("remindAt", "desc"));
@@ -146,11 +142,9 @@
                         setAllAdminReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
                     });
                 }
-
                 return () => { unsubPersonal(); unsubAdmin(); };
             }, [user.uid, currentUserData?.isAdmin]);
 
-            // Phase 5: Local Polling Engine (Checks every 15 seconds)
             useEffect(() => {
                 const interval = setInterval(() => {
                     const now = new Date();
@@ -158,33 +152,25 @@
                         const remindTime = new Date(rem.remindAt);
                         if (remindTime <= now) {
                             if ("Notification" in window && Notification.permission === "granted") {
-                                new Notification("Corporate Chat Reminder", {
-                                    body: `⏰ "${rem.messageText}"`,
-                                    icon: "https://cdn-icons-png.flaticon.com/512/825/825590.png"
-                                });
+                                new Notification("Corporate Chat Reminder", { body: `⏰ "${rem.messageText}"`, icon: "https://cdn-icons-png.flaticon.com/512/825/825590.png" });
                             } else {
                                 alert(`⏰ Reminder: "${rem.messageText}"`);
                             }
-                            try {
-                                await window.updateDoc(window.doc(window.db, "reminders", rem.id), { isTriggered: true });
-                            } catch (error) { console.error("Error updating reminder status:", error); }
+                            try { await window.updateDoc(window.doc(window.db, "reminders", rem.id), { isTriggered: true }); } 
+                            catch (error) {}
                         }
                     });
                 }, 15000); 
                 return () => clearInterval(interval);
             }, [activeReminders]);
 
-            // Phase 3.2 & 6.1: Auto-sync current user and fetch DB users
             useEffect(() => {
                 const syncUserToDB = async () => {
                     try {
-                        const userRef = window.doc(window.db, "users", user.uid);
-                        await window.setDoc(userRef, {
-                            uid: user.uid,
-                            email: user.email,
-                            name: user.email.split('@')[0].toUpperCase(), 
+                        await window.setDoc(window.doc(window.db, "users", user.uid), {
+                            uid: user.uid, email: user.email, name: user.email.split('@')[0].toUpperCase(), 
                         }, { merge: true });
-                    } catch (error) { console.error("Error syncing user profile:", error); }
+                    } catch (error) {}
                 };
                 syncUserToDB();
 
@@ -192,15 +178,19 @@
                     if (doc.exists()) setCurrentUserData(doc.data());
                 });
 
-                const usersQuery = window.query(window.collection(window.db, "users"), window.orderBy("email", "asc"));
-                const unsubscribeUsers = window.onSnapshot(usersQuery, (snapshot) => {
+                const unsubUsers = window.onSnapshot(window.query(window.collection(window.db, "users"), window.orderBy("email", "asc")), (snapshot) => {
                     setDbUsers(snapshot.docs.map(doc => doc.data()));
                 });
 
-                return () => { unsubCurrent(); unsubscribeUsers(); };
+                // Fetch Groups
+                const unsubGroups = window.onSnapshot(window.collection(window.db, "groups"), (snapshot) => {
+                    let loadedGroups = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setGroups(loadedGroups);
+                });
+
+                return () => { unsubCurrent(); unsubUsers(); unsubGroups(); };
             }, [user]);
 
-            // Phase 2: Fetch messages from Firestore in real-time
             useEffect(() => {
                 const q = window.query(window.collection(window.db, "messages"), window.orderBy("timestamp", "asc"));
                 const unsubscribe = window.onSnapshot(q, (snapshot) => {
@@ -212,52 +202,43 @@
                             sender: data.senderEmail,
                             isMine: data.senderUid === user.uid, 
                             time: data.timestamp ? new Date(data.timestamp.toDate()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Sending...',
-                            dateString: data.timestamp ? new Date(data.timestamp.toDate()).toISOString().split('T')[0] : '', // Used for Admin filtering
+                            dateString: data.timestamp ? new Date(data.timestamp.toDate()).toISOString().split('T')[0] : '', 
                             isTask: data.isTask === true, 
                             hasReminder: data.hasReminder === true,
                             taskData: data.taskData || null,
                             isPrivateMention: data.isPrivateMention || false,
                             allowedUsers: data.allowedUsers || [],
-                            fileUrl: data.fileUrl || null,
-                            fileName: data.fileName || null,
-                            fileType: data.fileType || null
+                            fileUrl: data.fileUrl || null, fileName: data.fileName || null, fileType: data.fileType || null,
+                            groupId: data.groupId || "main"
                         };
                     });
                     setMessages(loadedMessages);
-                    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+                    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
                 });
                 return () => unsubscribe();
             }, [user.uid]);
 
-            // Phase 2: Send message to Firestore
             const handleSendMessage = async () => {
                 if (!inputText.trim()) return;
                 const messageText = inputText;
                 setInputText(""); 
                 
                 const mentions = [];
-                dbUsers.forEach(u => {
-                    if (messageText.includes(`@${u.name}`)) mentions.push(u.email);
-                });
+                dbUsers.forEach(u => { if (messageText.includes(`@${u.name}`)) mentions.push(u.email); });
                 const isPrivate = mentions.length > 0;
                 const allowedUsers = isPrivate ? [user.email, ...mentions] : [];
 
                 try {
                     await window.addDoc(window.collection(window.db, "messages"), {
-                        text: messageText,
-                        senderUid: user.uid,
-                        senderEmail: user.email,
+                        text: messageText, senderUid: user.uid, senderEmail: user.email,
                         timestamp: window.serverTimestamp(),
-                        isTask: false,
-                        hasReminder: false,
-                        isPrivateMention: isPrivate,
-                        allowedUsers: allowedUsers,
-                        fileUrl: null, fileName: null, fileType: null
+                        isTask: false, hasReminder: false, isPrivateMention: isPrivate, allowedUsers: allowedUsers,
+                        fileUrl: null, fileName: null, fileType: null,
+                        groupId: activeGroup.id
                     });
                 } catch (error) { alert("Failed to send message."); }
             };
 
-            // Phase 4: Handle File Selection and Upload
             const handleFileUpload = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -275,25 +256,57 @@
                         try {
                             const downloadURL = await window.getDownloadURL(uploadTask.snapshot.ref);
                             await window.addDoc(window.collection(window.db, "messages"), {
-                                text: `Shared a file: ${file.name}`,
-                                senderUid: user.uid,
-                                senderEmail: user.email,
+                                text: `Shared a file: ${file.name}`, senderUid: user.uid, senderEmail: user.email,
                                 timestamp: window.serverTimestamp(),
                                 isTask: false, hasReminder: false, isPrivateMention: false, allowedUsers: [],
-                                fileUrl: downloadURL, fileName: file.name, fileType: file.type
+                                fileUrl: downloadURL, fileName: file.name, fileType: file.type,
+                                groupId: activeGroup.id
                             });
-                        } catch (err) { console.error("Error saving file:", err); } 
+                        } catch (err) {} 
                         finally {
-                            setIsUploading(false);
-                            setUploadProgress(0);
+                            setIsUploading(false); setUploadProgress(0);
                             if(fileInputRef.current) fileInputRef.current.value = ""; 
                         }
                     }
                 );
             };
 
-            // Phase 3.3 & 3.4: Master Visibility Gatekeeper
+            // Group Management Functions
+            const handleCreateGroup = async (e) => {
+                e.preventDefault();
+                if(!groupForm.name.trim()) return;
+                try {
+                    // Include creator in members automatically
+                    const finalMembers = [...new Set([...groupForm.members, user.email])];
+                    await window.addDoc(window.collection(window.db, "groups"), {
+                        name: groupForm.name,
+                        members: finalMembers,
+                        admins: [user.email],
+                        createdBy: user.email,
+                        createdAt: window.serverTimestamp()
+                    });
+                    setActiveModal(null);
+                    setGroupForm({name: "", members: []});
+                } catch (error) { alert("Failed to create group."); }
+            };
+
+            const handleUpdateGroupMembers = async (e) => {
+                e.preventDefault();
+                try {
+                    // Ensure current admins stay in the group to prevent lockouts
+                    const finalMembers = [...new Set([...groupForm.members, ...activeGroup.admins])];
+                    await window.updateDoc(window.doc(window.db, "groups", activeGroup.id), {
+                        members: finalMembers
+                    });
+                    setActiveModal(null);
+                    // Update active group local state
+                    setActiveGroup({...activeGroup, members: finalMembers});
+                } catch (error) { alert("Failed to update members."); }
+            };
+
+
             const checkVisibility = (msg) => {
+                if (msg.groupId !== activeGroup.id) return false; // Filter by Active Group
                 if (msg.isTask) {
                     if (msg.sender === user.email) return true;
                     if (msg.taskData?.currentAssignee === user.email) return true;
@@ -310,6 +323,7 @@
                 return msg.text?.toLowerCase().includes(q) || msg.sender?.toLowerCase().includes(q) || (msg.isTask && msg.taskData?.currentAssignee?.toLowerCase().includes(q));
             };
 
+            // Only count tasks assigned to me that belong to the active groups I am in
             const activeActionableTasks = messages.filter(m => m.isTask && m.taskData?.currentAssignee === user.email && m.taskData?.status !== "Completed");
             const notificationCount = activeActionableTasks.length;
 
@@ -318,25 +332,19 @@
                 setActiveModal(msg.isTask ? 'task_trail' : 'context');
             };
 
-            // Phase 5: Save Reminder to Firestore
             const setReminder = async () => {
                 if (!selectedMessage || !reminderDateTime) return alert("Please select a valid date and time.");
                 try {
                     await window.addDoc(window.collection(window.db, "reminders"), {
-                        userId: user.uid,
-                        userEmail: user.email, // Added for Admin filtering
-                        messageId: selectedMessage.id,
+                        userId: user.uid, userEmail: user.email, messageId: selectedMessage.id,
                         messageText: selectedMessage.text || selectedMessage.fileName || "File Attachment",
-                        remindAt: reminderDateTime,
-                        isTriggered: false
+                        remindAt: reminderDateTime, isTriggered: false
                     });
                     await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { hasReminder: true });
-                    setActiveModal(null);
-                    setReminderDateTime("");
+                    setActiveModal(null); setReminderDateTime("");
                 } catch (error) { alert("Failed to save reminder."); }
             };
 
-            // Phase 3: Convert Message to Task
             const convertToTask = async () => {
                 if (!selectedMessage || !taskDeadline || !taskAssignee) return alert("Please select Assignee and Deadline.");
                 try {
@@ -386,646 +394,347 @@
                 } catch (error) { alert("Failed to post update."); }
             };
 
-            // Phase 6.1 & 6.2: Admin Functions
+            // Admin Functions
             const handleRemoveUser = async (targetUid) => {
-                if (window.confirm("Are you sure you want to completely delete this user?")) {
-                    await window.deleteDoc(window.doc(window.db, "users", targetUid));
-                }
+                if (window.confirm("Delete user entirely?")) await window.deleteDoc(window.doc(window.db, "users", targetUid));
             };
             const handleToggleApprove = async (u) => await window.updateDoc(window.doc(window.db, "users", u.uid), { isApproved: !u.isApproved });
-            const handleAddUserSubmit = async (e) => { /* Same logic as before */ e.preventDefault(); try{ const cred = await window.createUserWithEmailAndPassword(window.secondaryAuth, adminForm.email, adminForm.password); await window.setDoc(window.doc(window.db, "users", cred.user.uid), { uid: cred.user.uid, email: cred.user.email, name: adminForm.name || cred.user.email.split('@')[0].toUpperCase(), isApproved: true, isAdmin: adminForm.isAdmin }); window.signOut(window.secondaryAuth); setActiveModal(null); setAdminForm({ uid: '', name: '', email: '', password: '', isAdmin: false }); }catch(err){alert(err.message);} };
-            const handleEditUserSubmit = async (e) => { e.preventDefault(); await window.updateDoc(window.doc(window.db, "users", adminForm.uid), { name: adminForm.name, isAdmin: adminForm.isAdmin }); setActiveModal(null); };
-            
-            // Phase 6.2: Admin Delete Task/Message
+            const handleAddUserSubmit = async (e) => { 
+                e.preventDefault(); 
+                try { 
+                    const cred = await window.createUserWithEmailAndPassword(window.secondaryAuth, adminForm.email, adminForm.password); 
+                    await window.setDoc(window.doc(window.db, "users", cred.user.uid), { uid: cred.user.uid, email: cred.user.email, name: adminForm.name || cred.user.email.split('@')[0].toUpperCase(), isApproved: true, isAdmin: adminForm.isAdmin, canCreateGroups: adminForm.canCreateGroups }); 
+                    window.signOut(window.secondaryAuth); setActiveModal(null); setAdminForm({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false }); 
+                } catch(err){alert(err.message);} 
+            };
+            const handleEditUserSubmit = async (e) => { e.preventDefault(); await window.updateDoc(window.doc(window.db, "users", adminForm.uid), { name: adminForm.name, isAdmin: adminForm.isAdmin, canCreateGroups: adminForm.canCreateGroups }); setActiveModal(null); };
             const handleAdminDeleteMessage = async (msgId) => {
-                if(window.confirm("Delete this record globally? This cannot be undone.")) {
-                    await window.deleteDoc(window.doc(window.db, "messages", msgId));
-                }
+                if(window.confirm("Delete this record globally?")) await window.deleteDoc(window.doc(window.db, "messages", msgId));
             };
 
-            // Phase 6.1: Approval Gate Check
             if (currentUserData && currentUserData.isApproved !== true && currentUserData.isAdmin !== true) {
                 return (
-                    <div className="flex items-center justify-center min-h-screen bg-gray-200 p-4 font-sans text-gray-800">
-                        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 border-t-8 border-orange-500 text-center animate-in fade-in slide-in-from-bottom-4">
+                    <div className="flex items-center justify-center h-screen bg-gray-100 p-4 font-sans text-gray-800">
+                        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 border-t-8 border-orange-500 text-center">
                             <i className="fa-solid fa-user-clock text-5xl text-orange-500 mb-4 animate-pulse"></i>
                             <h1 className="text-2xl font-bold text-gray-800 mb-2">Pending Approval</h1>
-                            <p className="text-sm text-gray-600 mb-6">Your account requires Admin verification before accessing corporate data.</p>
-                            <button onClick={onLogout} className="bg-gray-100 border border-gray-200 text-gray-700 py-2 px-6 rounded-xl font-bold hover:bg-gray-200 shadow-sm">Sign Out for now</button>
+                            <p className="text-sm text-gray-600 mb-6">Account requires Admin verification.</p>
+                            <button onClick={onLogout} className="bg-gray-100 border border-gray-200 text-gray-700 py-2 px-6 rounded-xl font-bold hover:bg-gray-200 shadow-sm">Sign Out</button>
                         </div>
                     </div>
                 );
             }
 
-            // Phase 6.2: Admin Audit Filters
+            // Safe Filtering for Admin Board to prevent crashes
             const filteredAuditMessages = [...messages].reverse().filter(msg => {
-                const matchUser = adminFilterUser === "" || msg.sender === adminFilterUser || (msg.isTask && msg.taskData?.currentAssignee === adminFilterUser);
-                const matchDate = adminFilterDate === "" || msg.dateString === adminFilterDate;
+                const safeSender = msg.sender || "";
+                const safeAssignee = msg.taskData?.currentAssignee || "";
+                const safeDate = msg.dateString || "";
+                const matchUser = adminFilterUser === "" || safeSender === adminFilterUser || (msg.isTask && safeAssignee === adminFilterUser);
+                const matchDate = adminFilterDate === "" || safeDate === adminFilterDate;
                 return matchUser && matchDate;
             });
 
             const filteredAdminReminders = [...allAdminReminders].filter(rem => {
-                const matchUser = adminFilterUser === "" || rem.userEmail === adminFilterUser;
-                const matchDate = adminFilterDate === "" || rem.remindAt.startsWith(adminFilterDate);
+                const safeEmail = rem.userEmail || rem.userId || "";
+                const safeDate = rem.remindAt || "";
+                const matchUser = adminFilterUser === "" || safeEmail === adminFilterUser;
+                const matchDate = adminFilterDate === "" || safeDate.startsWith(adminFilterDate);
                 return matchUser && matchDate;
             });
 
-            // RESPONSIVE LAYOUT IMPLEMENTATION: md:max-w-full md:h-screen md:rounded-none md:border-none
+            // Calculate visible groups for sidebar
+            const myGroups = [{id: "main", name: "Academic Council Group"}, ...groups.filter(g => g.members?.includes(user.email) || currentUserData?.isAdmin)];
+
+            // --- MAIN TELEGRAM / WHATSAPP WEB LAYOUT ---
             return (
-                <div className="flex items-center justify-center min-h-screen bg-gray-200 md:p-0 font-sans text-gray-800">
-                    <div className={`w-full h-[850px] md:h-screen bg-gray-50 border-[8px] md:border-0 border-gray-900 rounded-[2.5rem] md:rounded-none overflow-hidden flex flex-col shadow-2xl relative transition-all duration-500 ease-in-out ${viewMode === 'admin' ? 'max-w-7xl' : 'max-w-md md:max-w-full'}`}>
-                        
-                        {viewMode === "admin" ? (
-                            <div className="flex flex-col h-full w-full animate-in fade-in zoom-in-95 duration-300">
-                                {/* Admin Header */}
-                                <div className="bg-slate-900 text-white p-4 md:px-8 flex items-center justify-between shadow-md z-10">
-                                    <div className="flex items-center gap-3">
-                                        <i className="fa-solid fa-shield-halved text-2xl text-blue-400"></i>
-                                        <div>
-                                            <h1 className="font-bold text-lg md:text-xl leading-tight">Admin Control Center</h1>
-                                            <p className="text-xs text-slate-400">System Oversight & Audit Logs</p>
+                <div className="flex h-screen w-full bg-white font-sans text-gray-800 overflow-hidden">
+                    
+                    {viewMode === "admin" ? (
+                        /* --- ADMIN DASHBOARD --- */
+                        <div className="flex flex-col h-full w-full bg-slate-100 overflow-hidden animate-in fade-in">
+                            <div className="bg-slate-900 text-white p-4 flex items-center justify-between shadow-md shrink-0">
+                                <div className="flex items-center gap-3">
+                                    <i className="fa-solid fa-shield-halved text-2xl text-blue-400"></i>
+                                    <div><h1 className="font-bold text-lg">Admin Control Center</h1></div>
+                                </div>
+                                <button onClick={() => setViewMode("chat")} className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                                    <i className="fa-solid fa-arrow-left"></i> Back to Chat
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+                                {/* Admin Filters */}
+                                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-end">
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Filter by User</label>
+                                        <select value={adminFilterUser} onChange={(e)=>setAdminFilterUser(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 min-w-[200px]">
+                                            <option value="">All Users</option>
+                                            {dbUsers.map(u => <option key={u.uid} value={u.email}>{u.name} ({u.email})</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Filter by Date</label>
+                                        <input type="date" value={adminFilterDate} onChange={(e)=>setAdminFilterDate(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50" />
+                                    </div>
+                                    <button onClick={()=>{setAdminFilterUser(""); setAdminFilterDate("");}} className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-300">Clear</button>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                    {/* Users Directory */}
+                                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden lg:col-span-1 flex flex-col max-h-[600px]">
+                                        <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center shrink-0">
+                                            <h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-users text-blue-600"></i> Users & Roles</h2>
+                                            <button onClick={() => { setAdminForm({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false }); setActiveModal('admin_add_user'); }} className="bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded hover:bg-blue-700"><i className="fa-solid fa-plus"></i></button>
+                                        </div>
+                                        <div className="p-0 overflow-y-auto flex-1">
+                                            <table className="w-full text-left text-sm">
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {dbUsers.map(u => (
+                                                        <tr key={u.uid} className="hover:bg-slate-50">
+                                                            <td className="px-4 py-3">
+                                                                <div className="font-semibold text-slate-800 flex items-center gap-1">
+                                                                    {u.name} 
+                                                                    {u.isAdmin && <i className="fa-solid fa-star text-yellow-400 text-[10px]" title="Admin"></i>}
+                                                                    {u.canCreateGroups && <i className="fa-solid fa-layer-group text-blue-400 text-[10px]" title="Can Create Groups"></i>}
+                                                                </div>
+                                                                <div className="text-[10px] text-slate-500">{u.email}</div>
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right">
+                                                                <button onClick={() => handleToggleApprove(u)} className={`mr-2 px-2 py-1 rounded-full text-[9px] font-bold ${u.isApproved ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>{u.isApproved ? 'Approved' : 'Pending'}</button>
+                                                                <button onClick={() => { setAdminForm({ ...u, canCreateGroups: u.canCreateGroups || false }); setActiveModal('admin_edit_user'); }} className="text-blue-500 hover:text-blue-700 mr-2"><i className="fa-solid fa-pen"></i></button>
+                                                                <button onClick={() => handleRemoveUser(u.uid)} disabled={u.email === user.email} className="text-red-500 hover:text-red-700"><i className="fa-solid fa-trash"></i></button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
                                         </div>
                                     </div>
-                                    <button onClick={() => setViewMode("chat")} className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2">
-                                        <i className="fa-solid fa-arrow-left"></i> Back to Chat
+
+                                    {/* Global Audit */}
+                                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden lg:col-span-2 flex flex-col max-h-[600px]">
+                                        <div className="bg-slate-50 p-4 border-b border-slate-200 shrink-0">
+                                            <h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-list-check text-purple-600"></i> Global Chat & Task Audit</h2>
+                                        </div>
+                                        <div className="p-0 overflow-y-auto flex-1">
+                                            <table className="w-full text-left text-sm">
+                                                <thead className="bg-slate-50 text-slate-500 text-xs uppercase sticky top-0 shadow-sm z-10">
+                                                    <tr><th className="px-4 py-2">Time</th><th className="px-4 py-2">Type</th><th className="px-4 py-2">Details</th><th className="px-4 py-2 text-right">Action</th></tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {filteredAuditMessages.length === 0 && <tr><td colSpan="4" className="text-center py-4 text-slate-500 italic">No records found.</td></tr>}
+                                                    {filteredAuditMessages.map(msg => (
+                                                        <tr key={msg.id} className={`hover:bg-slate-50 ${msg.isTask ? 'cursor-pointer hover:bg-blue-50' : ''}`} onClick={() => { if(msg.isTask) { setSelectedMessage(msg); setActiveModal('task_trail'); } }}>
+                                                            <td className="px-4 py-2 text-xs text-slate-500">{msg.dateString}<br/>{msg.time}</td>
+                                                            <td className="px-4 py-2">
+                                                                {msg.isTask ? <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded">TASK</span> : 
+                                                                msg.isPrivateMention ? <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded">PRIVATE</span> : 
+                                                                msg.fileUrl ? <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-1 rounded">MEDIA</span> : 
+                                                                <span className="text-[10px] font-bold bg-gray-100 text-gray-700 px-2 py-1 rounded">PUBLIC</span>}
+                                                            </td>
+                                                            <td className="px-4 py-2">
+                                                                <div className="font-semibold text-slate-700 text-xs">From: {(msg.sender||'').split('@')[0]} {msg.isTask && `→ To: ${(msg.taskData?.currentAssignee||'').split('@')[0]}`}</div>
+                                                                <div className="text-slate-600 italic truncate max-w-[200px] text-xs">{msg.text || msg.fileName}</div>
+                                                            </td>
+                                                            <td className="px-4 py-2 text-right">
+                                                                <button onClick={(e) => { e.stopPropagation(); handleAdminDeleteMessage(msg.id); }} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded"><i className="fa-solid fa-trash"></i></button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Reminders Log */}
+                                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden lg:col-span-3 flex flex-col max-h-[400px]">
+                                        <div className="bg-slate-50 p-4 border-b border-slate-200 shrink-0">
+                                            <h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-clock text-yellow-600"></i> Global Reminders Log</h2>
+                                        </div>
+                                        <div className="p-0 overflow-y-auto flex-1">
+                                            <table className="w-full text-left text-sm">
+                                                <thead className="bg-slate-50 text-slate-500 text-xs uppercase sticky top-0 shadow-sm z-10">
+                                                    <tr><th className="px-4 py-2">Status</th><th className="px-4 py-2">Set By</th><th className="px-4 py-2">Target Date</th><th className="px-4 py-2">Content</th></tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {filteredAdminReminders.map(rem => (
+                                                        <tr key={rem.id} className="hover:bg-slate-50">
+                                                            <td className="px-4 py-2">{rem.isTriggered ? <span className="text-[10px] font-bold text-green-600">Fired</span> : <span className="text-[10px] font-bold text-yellow-600">Pending</span>}</td>
+                                                            <td className="px-4 py-2 font-semibold text-slate-700 text-xs">{(rem.userEmail || rem.userId || 'Unknown').split('@')[0]}</td>
+                                                            <td className="px-4 py-2 text-xs text-slate-600">{new Date(rem.remindAt).toLocaleString()}</td>
+                                                            <td className="px-4 py-2 text-slate-600 italic truncate max-w-[300px] text-xs">"{rem.messageText}"</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        /* --- TELEGRAM / WHATSAPP UI --- */
+                        <div className="flex h-full w-full">
+                            
+                            {/* Left Sidebar (Groups & Settings) */}
+                            <div className="hidden md:flex w-80 bg-white border-r border-gray-200 flex-col shrink-0 z-20">
+                                <div className="p-4 bg-slate-50 border-b border-gray-200 flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-sm">{user.email.substring(0,1).toUpperCase()}</div>
+                                    <div className="overflow-hidden">
+                                        <h2 className="font-bold text-sm text-gray-800 truncate">{currentUserData?.name || user.email.split('@')[0]}</h2>
+                                        <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
+                                    </div>
+                                    <div className="ml-auto flex gap-2">
+                                        {(currentUserData?.isAdmin || currentUserData?.canCreateGroups) && (
+                                            <button onClick={()=>setActiveModal('create_group')} className="text-gray-500 hover:text-blue-600" title="New Group"><i className="fa-solid fa-pen-to-square"></i></button>
+                                        )}
+                                    </div>
+                                </div>
+                                
+                                {/* Group List */}
+                                <div className="flex-1 overflow-y-auto">
+                                    <div className="px-4 pt-4 pb-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Your Departments</div>
+                                    {myGroups.map(g => (
+                                        <div key={g.id} onClick={() => setActiveGroup(g)} className={`flex items-center gap-3 p-3 mx-2 rounded-xl cursor-pointer transition-colors ${activeGroup.id === g.id ? 'bg-blue-50 border border-blue-100' : 'hover:bg-gray-50 border border-transparent'}`}>
+                                            <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm ${g.id==='main' ? 'bg-gradient-to-br from-blue-500 to-indigo-600' : 'bg-gradient-to-br from-emerald-400 to-teal-600'}`}>
+                                                {g.name.substring(0,1).toUpperCase()}
+                                            </div>
+                                            <div className="flex-1 overflow-hidden">
+                                                <div className="font-bold text-sm text-gray-800 truncate">{g.name}</div>
+                                                <div className="text-[11px] text-gray-500 truncate">{g.id==='main' ? 'Organization Wide' : `${g.members?.length || 0} Members`}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Sidebar Bottom Controls */}
+                                <div className="p-3 bg-gray-50 border-t border-gray-200 space-y-1">
+                                    <button onClick={() => setShowNotifications(!showNotifications)} className="w-full flex items-center gap-3 p-2 hover:bg-gray-200 rounded-lg text-left text-sm font-semibold text-gray-700 transition-colors">
+                                        <i className="fa-solid fa-bell text-gray-500 w-5 text-center"></i> Notifications
+                                        {notificationCount > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full ml-auto">{notificationCount}</span>}
+                                    </button>
+                                    {currentUserData?.isAdmin && (
+                                        <button onClick={() => setViewMode("admin")} className="w-full flex items-center gap-3 p-2 hover:bg-gray-200 rounded-lg text-left text-sm font-semibold text-gray-700 transition-colors">
+                                            <i className="fa-solid fa-shield-halved text-gray-500 w-5 text-center"></i> Admin Dashboard
+                                        </button>
+                                    )}
+                                    <button onClick={onLogout} className="w-full flex items-center gap-3 p-2 hover:bg-red-50 rounded-lg text-left text-sm font-semibold text-red-600 transition-colors">
+                                        <i className="fa-solid fa-right-from-bracket w-5 text-center"></i> Logout
                                     </button>
                                 </div>
-
-                                <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 bg-slate-100">
-                                    
-                                    {/* Phase 6.2: Universal Admin Filters */}
-                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-end">
-                                        <div>
-                                            <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Filter by User</label>
-                                            <select value={adminFilterUser} onChange={(e)=>setAdminFilterUser(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 min-w-[200px]">
-                                                <option value="">All Users</option>
-                                                {dbUsers.map(u => <option key={u.uid} value={u.email}>{u.name} ({u.email})</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Filter by Date</label>
-                                            <input type="date" value={adminFilterDate} onChange={(e)=>setAdminFilterDate(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50" />
-                                        </div>
-                                        <button onClick={()=>{setAdminFilterUser(""); setAdminFilterDate("");}} className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-300">Clear Filters</button>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                                        {/* Section 1: User Directory */}
-                                        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden lg:col-span-1">
-                                            <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center">
-                                                <h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-users text-blue-600"></i> Active Directory</h2>
-                                                <button onClick={() => { setAdminForm({ uid: '', name: '', email: '', password: '', isAdmin: false }); setActiveModal('admin_add_user'); }} className="bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded hover:bg-blue-700"><i className="fa-solid fa-plus"></i></button>
-                                            </div>
-                                            <div className="p-0 max-h-96 overflow-y-auto">
-                                                <table className="w-full text-left text-sm">
-                                                    <tbody className="divide-y divide-slate-100">
-                                                        {dbUsers.map(u => (
-                                                            <tr key={u.uid} className="hover:bg-slate-50">
-                                                                <td className="px-4 py-3">
-                                                                    <div className="font-semibold text-slate-800 flex items-center gap-2">
-                                                                        {u.name} {u.isAdmin && <i className="fa-solid fa-star text-yellow-400 text-[10px]" title="Admin"></i>}
-                                                                    </div>
-                                                                    <div className="text-[10px] text-slate-500">{u.email}</div>
-                                                                </td>
-                                                                <td className="px-4 py-3 text-right">
-                                                                    <button onClick={() => handleToggleApprove(u)} className={`mr-2 px-2 py-1 rounded-full text-[9px] font-bold ${u.isApproved ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                                                                        {u.isApproved ? 'Approved' : 'Pending'}
-                                                                    </button>
-                                                                    <button onClick={() => { setAdminForm(u); setActiveModal('admin_edit_user'); }} className="text-blue-500 hover:text-blue-700 mr-2"><i className="fa-solid fa-pen"></i></button>
-                                                                    <button onClick={() => handleRemoveUser(u.uid)} disabled={u.email === user.email} className="text-red-500 hover:text-red-700"><i className="fa-solid fa-trash"></i></button>
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-
-                                        {/* Section 2: Global Audit Trail (Tasks & Messages) */}
-                                        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden lg:col-span-2">
-                                            <div className="bg-slate-50 p-4 border-b border-slate-200">
-                                                <h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-list-check text-purple-600"></i> Global Communication Audit (Tasks & Messages)</h2>
-                                            </div>
-                                            <div className="p-0 max-h-96 overflow-y-auto">
-                                                <table className="w-full text-left text-sm">
-                                                    <thead className="bg-slate-50 text-slate-500 text-xs uppercase sticky top-0 shadow-sm z-10">
-                                                        <tr>
-                                                            <th className="px-4 py-3">Time</th>
-                                                            <th className="px-4 py-3">Type</th>
-                                                            <th className="px-4 py-3">Details / Snippet</th>
-                                                            <th className="px-4 py-3 text-right">Action</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-slate-100">
-                                                        {filteredAuditMessages.length === 0 && <tr><td colSpan="4" className="text-center py-4 text-slate-500 italic">No records found for current filters.</td></tr>}
-                                                        {filteredAuditMessages.map(msg => (
-                                                            <tr key={msg.id} className="hover:bg-slate-50 transition-colors">
-                                                                <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{msg.dateString}<br/>{msg.time}</td>
-                                                                <td className="px-4 py-3">
-                                                                    {msg.isTask ? <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded cursor-pointer hover:bg-blue-200" onClick={() => { setSelectedMessage(msg); setActiveModal('task_trail'); }} title="Click to view trail">TASK <i className="fa-solid fa-external-link-alt ml-1"></i></span> : 
-                                                                    msg.isPrivateMention ? <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded">PRIVATE</span> : 
-                                                                    msg.fileUrl ? <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-1 rounded">MEDIA</span> : 
-                                                                    <span className="text-[10px] font-bold bg-gray-100 text-gray-700 px-2 py-1 rounded">PUBLIC</span>}
-                                                                </td>
-                                                                <td className="px-4 py-3">
-                                                                    <div className="font-semibold text-slate-700 text-xs">From: {msg.sender.split('@')[0]} {msg.isTask && `→ To: ${msg.taskData?.currentAssignee.split('@')[0]}`}</div>
-                                                                    <div className="text-slate-600 italic truncate max-w-[250px] text-xs" title={msg.text || msg.fileName}>{msg.text || msg.fileName}</div>
-                                                                </td>
-                                                                <td className="px-4 py-3 text-right">
-                                                                    <button onClick={() => handleAdminDeleteMessage(msg.id)} className="text-red-500 hover:text-red-700 text-xs font-bold border border-red-200 px-2 py-1 rounded bg-red-50"><i className="fa-solid fa-trash"></i> Delete</button>
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-
-                                        {/* Section 3: Global Reminders Database */}
-                                        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden lg:col-span-3">
-                                            <div className="bg-slate-50 p-4 border-b border-slate-200">
-                                                <h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-clock text-yellow-600"></i> Global Reminders Log</h2>
-                                            </div>
-                                            <div className="p-0 max-h-60 overflow-y-auto">
-                                                <table className="w-full text-left text-sm">
-                                                    <thead className="bg-slate-50 text-slate-500 text-xs uppercase sticky top-0 shadow-sm z-10">
-                                                        <tr>
-                                                            <th className="px-4 py-3">Status</th>
-                                                            <th className="px-4 py-3">Set By User</th>
-                                                            <th className="px-4 py-3">Target Date & Time</th>
-                                                            <th className="px-4 py-3">Message Content</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-slate-100">
-                                                        {filteredAdminReminders.length === 0 && <tr><td colSpan="4" className="text-center py-4 text-slate-500 italic">No reminders found for current filters.</td></tr>}
-                                                        {filteredAdminReminders.map(rem => (
-                                                            <tr key={rem.id} className="hover:bg-slate-50">
-                                                                <td className="px-4 py-3">
-                                                                    {rem.isTriggered ? <span className="text-[10px] font-bold text-gray-500"><i className="fa-solid fa-check-double text-green-500 mr-1"></i> Fired</span> : <span className="text-[10px] font-bold text-yellow-600 animate-pulse"><i className="fa-solid fa-hourglass-half mr-1"></i> Pending</span>}
-                                                                </td>
-                                                                <td className="px-4 py-3 font-semibold text-slate-700 text-xs">{rem.userEmail.split('@')[0]}</td>
-                                                                <td className="px-4 py-3 text-xs text-slate-600">{new Date(rem.remindAt).toLocaleString()}</td>
-                                                                <td className="px-4 py-3 text-slate-600 italic truncate max-w-[300px] text-xs">"{rem.messageText}"</td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-
-                                    </div>
-                                </div>
                             </div>
-                        ) : (
-                            <div className="flex flex-col h-full w-full animate-in fade-in zoom-in-95 duration-300 md:flex-row">
+
+                            {/* Right Side: Active Chat Area */}
+                            <div className="flex-1 flex flex-col relative h-full">
                                 
-                                {/* Phase 7: Web App Full Screen Sidebar (Only visible on MD screens and up) */}
-                                <div className="hidden md:flex md:w-80 bg-white border-r border-gray-200 flex-col z-20 shadow-lg">
-                                    <div className="bg-slate-900 text-white p-6 flex flex-col items-start shadow-md">
-                                        <div className="w-16 h-16 rounded-full bg-blue-500 border-2 border-white flex items-center justify-center font-bold text-2xl mb-3 shadow-lg">{user.email.substring(0,2).toUpperCase()}</div>
-                                        <h1 className="font-bold text-lg leading-tight">Corporate Portal</h1>
-                                        <p className="text-xs text-blue-200 truncate w-full">{user.email}</p>
+                                {/* Active Chat Header */}
+                                <div className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 md:px-6 shrink-0 z-10 shadow-sm">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-sm ${activeGroup.id==='main' ? 'bg-gradient-to-br from-blue-500 to-indigo-600' : 'bg-gradient-to-br from-emerald-400 to-teal-600'}`}>
+                                            {activeGroup.name.substring(0,1).toUpperCase()}
+                                        </div>
+                                        <div>
+                                            <h1 className="font-bold text-sm md:text-base text-gray-800">{activeGroup.name}</h1>
+                                            <p className="text-xs text-gray-500 cursor-pointer hover:text-blue-500" onClick={()=>{ if(activeGroup.id!=='main') setActiveModal('group_settings'); }}>
+                                                {activeGroup.id==='main' ? 'All Staff' : `${activeGroup.members?.length||0} Members (Click to view)`}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div className="p-4 flex-1 overflow-y-auto">
-                                        <div className="text-xs font-bold text-gray-400 uppercase mb-3 px-2">System Controls</div>
-                                        <button onClick={() => setShowNotifications(!showNotifications)} className="w-full flex items-center gap-3 p-3 hover:bg-blue-50 rounded-xl text-left text-sm font-semibold text-gray-700 transition-colors mb-2">
-                                            <i className="fa-solid fa-bell text-blue-500 w-5"></i> Action Items
-                                            {notificationCount > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full ml-auto">{notificationCount}</span>}
-                                        </button>
-                                        {currentUserData?.isAdmin && (
-                                            <button onClick={() => setViewMode("admin")} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-left text-sm font-semibold text-slate-700 transition-colors mb-2">
-                                                <i className="fa-solid fa-shield-halved text-slate-500 w-5"></i> Admin Dashboard
-                                            </button>
-                                        )}
-                                        <button onClick={onLogout} className="w-full flex items-center gap-3 p-3 hover:bg-red-50 rounded-xl text-left text-sm font-semibold text-red-600 transition-colors mt-auto">
-                                            <i className="fa-solid fa-right-from-bracket w-5"></i> Secure Logout
-                                        </button>
+                                    <div className="flex items-center gap-4">
+                                        {/* Search inside chat header */}
+                                        <div className="hidden md:flex items-center bg-gray-100 rounded-full px-3 py-1.5 transition-all focus-within:ring-2 focus-within:ring-blue-100">
+                                            <i className="fa-solid fa-magnifying-glass text-gray-400 text-xs"></i>
+                                            <input type="text" placeholder="Search..." className="bg-transparent outline-none text-xs ml-2 w-32 focus:w-48 transition-all text-gray-700" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                                        </div>
+                                        <i className="fa-solid fa-ellipsis-vertical text-gray-500 cursor-pointer hover:text-gray-800 p-2"></i>
                                     </div>
                                 </div>
 
-                                {/* Main Chat Column */}
-                                <div className="flex-1 flex flex-col relative h-full max-w-full">
-                                    {/* Mobile/Responsive Header */}
-                                    <div className="bg-blue-800 text-white p-4 flex items-center justify-between shadow-md z-10 md:px-6">
-                                        <div className="flex items-center gap-3">
-                                            <div className="flex -space-x-2 md:hidden">
-                                                <div className="w-10 h-10 rounded-full bg-blue-500 border-2 border-blue-800 flex items-center justify-center font-bold text-sm">CS</div>
-                                                <div className="w-10 h-10 rounded-full bg-indigo-500 border-2 border-blue-800 flex items-center justify-center font-bold text-sm">MR</div>
-                                            </div>
-                                            <div>
-                                                <h1 className="font-bold text-lg md:text-xl leading-tight">Academic Council Group</h1>
-                                                <p className="text-xs text-blue-200 md:text-sm">End-to-End Corporate Encryption</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-4 md:hidden">
-                                            {currentUserData?.isAdmin && <i className="fa-solid fa-shield-halved cursor-pointer text-xl" onClick={() => setViewMode("admin")}></i>}
-                                            <div className="relative cursor-pointer" onClick={() => setShowNotifications(!showNotifications)}>
-                                                <i className="fa-solid fa-bell text-xl hover:text-blue-200"></i>
-                                                {notificationCount > 0 && <div className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex justify-center items-center animate-pulse">{notificationCount}</div>}
-                                            </div>
-                                            <i className="fa-solid fa-right-from-bracket text-xl cursor-pointer" onClick={onLogout}></i>
-                                        </div>
-                                    </div>
-
-                                    {/* Notifications Dropdown Modal */}
-                                    {showNotifications && (
-                                        <div className="absolute top-16 right-4 w-64 md:w-80 md:left-4 md:top-4 bg-white rounded-xl shadow-2xl border border-gray-200 z-30 overflow-hidden animate-in fade-in">
-                                            <div className="bg-gray-50 p-3 border-b border-gray-200 flex justify-between items-center">
-                                                <span className="font-bold text-sm text-gray-800">Your Action Items</span>
-                                                <i className="fa-solid fa-xmark cursor-pointer text-gray-400" onClick={() => setShowNotifications(false)}></i>
-                                            </div>
-                                            <div className="max-h-60 md:max-h-96 overflow-y-auto">
-                                                {activeActionableTasks.length === 0 ? (
-                                                    <div className="p-4 text-center text-xs text-gray-500">You are all caught up!</div>
-                                                ) : (
-                                                    activeActionableTasks.map(task => (
-                                                        <div key={task.id} className="p-3 border-b hover:bg-blue-50 cursor-pointer" onClick={() => { setShowNotifications(false); handleMessageClick(task); }}>
-                                                            <div className="text-xs font-bold text-blue-600 mb-1 flex items-center gap-1"><i className="fa-regular fa-square-check"></i> Pending Task</div>
-                                                            <div className="text-xs text-gray-700 line-clamp-2 italic">"{task.text}"</div>
-                                                            <div className="text-[10px] text-red-500 mt-1 font-semibold">Due: {new Date(task.taskData.deadline).toLocaleDateString()}</div>
-                                                        </div>
-                                                    ))
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Phase 4.1: Universal Search Bar */}
-                                    <div className="bg-white border-b border-gray-200 p-2 shadow-sm z-10 md:px-6">
-                                        <div className="flex items-center bg-gray-100 rounded-lg px-3 py-1.5 md:py-2">
-                                            <i className="fa-solid fa-magnifying-glass text-gray-400 text-sm md:text-base"></i>
-                                            <input type="text" placeholder="Search messages, tasks, people..." className="bg-transparent w-full outline-none text-xs md:text-sm ml-2 text-gray-700" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-                                            {searchQuery && <i className="fa-solid fa-circle-xmark text-gray-400 cursor-pointer text-sm hover:text-gray-600" onClick={() => setSearchQuery("")}></i>}
-                                        </div>
-                                    </div>
-
-                                    {/* Chat Area */}
-                                    <div className="flex-1 overflow-y-auto p-4 md:p-8 md:px-24 lg:px-48 space-y-4 bg-[#e5ddd5] pb-24" style={{backgroundImage: 'radial-gradient(#d1c8bf 1px, transparent 1px)', backgroundSize: '20px 20px'}}>
-                                        <div className="text-center text-xs text-gray-500 bg-white/60 w-fit mx-auto px-3 py-1 rounded-full shadow-sm my-2 backdrop-blur-sm font-semibold">Today, May 1, 2026</div>
-
-                                        {messages.length === 0 && <div className="text-center text-sm text-gray-500 mt-10 bg-white/60 w-fit mx-auto p-4 rounded-xl shadow-sm">No messages yet. Start the conversation!</div>}
-
-                                        {messages.filter(checkVisibility).filter(handleSearchFilter).map((msg) => (
-                                            <div key={msg.id} className={`flex flex-col ${msg.isMine ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-2`}>
-                                                {!msg.isMine && <div className="text-[11px] font-bold text-gray-500 mb-1 ml-2 drop-shadow-sm">{msg.sender.split('@')[0]}</div>}
-                                                
-                                                {!msg.isTask && (
-                                                    <div onClick={() => handleMessageClick(msg)} className={`max-w-[85%] md:max-w-[70%] p-3 rounded-2xl shadow-sm cursor-pointer relative transition-transform hover:-translate-y-0.5 ${msg.isMine ? (msg.isPrivateMention ? 'bg-purple-600 text-white rounded-tr-none' : 'bg-blue-600 text-white rounded-tr-none') : (msg.isPrivateMention ? 'bg-purple-50 text-gray-800 border border-purple-200 rounded-tl-none' : 'bg-white rounded-tl-none')}`}>
-                                                        {msg.isPrivateMention && <div className={`text-[10px] font-bold flex items-center gap-1 mb-1 pb-1 border-b ${msg.isMine ? 'border-purple-400 text-purple-200' : 'border-purple-200 text-purple-600'}`}><i className="fa-solid fa-lock"></i> Private Message</div>}
-                                                        
-                                                        {msg.fileUrl ? (
-                                                            <div className="flex flex-col gap-2">
-                                                                {msg.fileType && msg.fileType.startsWith('image/') ? (
-                                                                    <img src={msg.fileUrl} alt="Shared Image" className="rounded-lg max-w-full max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity" onClick={(e) => { e.stopPropagation(); window.open(msg.fileUrl, '_blank'); }}/>
-                                                                ) : (
-                                                                    <div className={`flex items-center gap-3 p-3 rounded-lg border hover:shadow-md transition-shadow ${msg.isMine ? (msg.isPrivateMention ? 'bg-purple-700 border-purple-500' : 'bg-blue-700 border-blue-500') : 'bg-gray-50 border-gray-200'}`} onClick={(e) => { e.stopPropagation(); window.open(msg.fileUrl, '_blank'); }}>
-                                                                        <div className={`w-12 h-12 rounded flex items-center justify-center text-2xl ${msg.isMine ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-600'}`}><i className="fa-regular fa-file-lines"></i></div>
-                                                                        <div className="flex-1 overflow-hidden"><p className="text-sm font-bold truncate" title={msg.fileName}>{msg.fileName}</p><p className={`text-[10px] mt-0.5 uppercase tracking-wide font-bold ${msg.isMine ? 'text-blue-200' : 'text-gray-500'}`}>Click to Download</p></div>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        ) : ( <p className="text-sm md:text-base leading-relaxed whitespace-pre-wrap">{msg.text}</p> )}
-
-                                                        <div className={`flex items-center justify-end gap-1 mt-1.5 text-[10px] font-semibold ${msg.isMine ? (msg.isPrivateMention ? 'text-purple-200' : 'text-blue-200') : 'text-gray-400'}`}>
-                                                            {msg.hasReminder && <i className="fa-regular fa-clock text-yellow-400 text-[11px] mr-0.5"></i>}
-                                                            <span>{msg.time}</span>
-                                                        </div>
+                                {/* Notifications Dropdown (Absolute overlay) */}
+                                {showNotifications && (
+                                    <div className="absolute top-16 right-4 w-72 bg-white rounded-xl shadow-2xl border border-gray-200 z-30 overflow-hidden animate-in fade-in">
+                                        <div className="bg-gray-50 p-3 border-b border-gray-200 flex justify-between items-center"><span className="font-bold text-sm text-gray-800">Your Pending Tasks</span><i className="fa-solid fa-xmark cursor-pointer text-gray-400" onClick={() => setShowNotifications(false)}></i></div>
+                                        <div className="max-h-80 overflow-y-auto">
+                                            {activeActionableTasks.length === 0 ? <div className="p-4 text-center text-xs text-gray-500">All caught up!</div> : 
+                                                activeActionableTasks.map(task => (
+                                                    <div key={task.id} className="p-3 border-b hover:bg-blue-50 cursor-pointer" onClick={() => { setShowNotifications(false); setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'main',name:'Academic Council'}); handleMessageClick(task); }}>
+                                                        <div className="text-xs font-bold text-blue-600 mb-1 flex items-center gap-1"><i className="fa-regular fa-square-check"></i> Pending</div>
+                                                        <div className="text-xs text-gray-700 line-clamp-2 italic">"{task.text}"</div>
+                                                        <div className="text-[10px] text-red-500 mt-1 font-semibold">Due: {new Date(task.taskData.deadline).toLocaleDateString()}</div>
                                                     </div>
-                                                )}
-
-                                                {msg.isTask && (
-                                                    <div onClick={() => handleMessageClick(msg)} className={`max-w-[90%] md:max-w-[70%] w-full bg-white border-y border-r border-l-[6px] p-4 rounded-xl shadow-md cursor-pointer transition-transform hover:-translate-y-1 ${msg.isMine ? 'rounded-tr-none border-l-blue-600 border-y-gray-200 border-r-gray-200' : 'rounded-tl-none border-l-gray-500 border-y-gray-200 border-r-gray-200'}`}>
-                                                        <div className="flex items-center justify-between mb-3">
-                                                            <span className="flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded shadow-sm border border-blue-100"><i className="fa-regular fa-square-check"></i> OFFICIAL TASK</span>
-                                                            <span className={`text-[10px] uppercase font-bold px-3 py-1 rounded-full shadow-inner ${msg.taskData.status === 'Completed' ? 'bg-green-100 text-green-700' : msg.taskData.status === 'In Progress' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-700'}`}>{msg.taskData.status}</span>
-                                                        </div>
-                                                        <p className="text-sm md:text-base font-semibold text-gray-800 mb-3 whitespace-pre-wrap leading-relaxed">{msg.text}</p>
-                                                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 mb-1">
-                                                            <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-2 pb-2 border-b border-slate-200"><span className="flex items-center gap-1.5"><div className="w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center"><i className="fa-regular fa-user text-[10px]"></i></div> {msg.taskData.currentAssignee.split('@')[0]}</span></div>
-                                                            <div className="flex items-center text-xs text-red-600 font-bold"><i className="fa-regular fa-calendar mr-1.5"></i> DEADLINE: {new Date(msg.taskData.deadline).toLocaleDateString()}</div>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                        <div ref={messagesEndRef} />
-                                    </div>
-
-                                    {/* Phase 3.4: @Mention Pop-up */}
-                                    {inputText.split(' ').pop().startsWith('@') && inputText.split(' ').pop().length > 0 && (
-                                        <div className="absolute bottom-[80px] left-4 md:left-1/4 bg-white shadow-2xl border border-gray-200 rounded-xl w-72 max-h-48 overflow-y-auto z-20">
-                                            {dbUsers.filter(u => u.name.toLowerCase().includes(inputText.split(' ').pop().substring(1).toLowerCase())).map(u => (
-                                                    <div key={u.uid} onClick={() => { const words = inputText.split(' '); words[words.length - 1] = `@${u.name} `; setInputText(words.join(' ')); }} className="p-3 border-b hover:bg-blue-50 cursor-pointer text-sm font-semibold flex items-center gap-3 text-gray-800">
-                                                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs shadow-inner"><i className="fa-solid fa-at"></i></div>
-                                                        {u.name} <span className="text-[10px] font-normal text-gray-400 ml-auto">User</span>
-                                                    </div>
-                                            ))}
+                                                ))
+                                            }
                                         </div>
-                                    )}
+                                    </div>
+                                )}
 
-                                    {/* Input Area */}
-                                    <div className="absolute bottom-0 w-full bg-slate-50 p-3 md:p-4 flex items-center gap-2 md:gap-4 border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] md:px-24 lg:px-48">
-                                        <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"/>
-                                        <button className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors" onClick={() => fileInputRef.current.click()} disabled={isUploading}>
-                                            <i className="fa-solid fa-paperclip text-xl md:text-2xl"></i>
-                                        </button>
-                                        <div className="flex-1 bg-white border border-slate-300 rounded-full px-5 py-3 md:py-4 flex items-center shadow-inner focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
-                                            <input type="text" placeholder="Type a message or use @ to mention someone private..." className="bg-transparent w-full outline-none text-sm md:text-base text-slate-800" value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}/>
-                                        </div>
-                                        <button onClick={handleSendMessage} className="p-3 md:p-4 bg-blue-600 text-white rounded-full hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all flex justify-center items-center h-12 w-12 md:h-14 md:w-14">
-                                            <i className="fa-solid fa-paper-plane text-lg md:text-xl"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+                                {/* The Chat Area (Scrollable flex region) */}
+                                <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4 telegram-bg relative">
+                                    <div className="text-center"><span className="text-xs text-gray-500 bg-white/70 px-3 py-1 rounded-full shadow-sm backdrop-blur-sm font-semibold">End-to-End Encrypted</span></div>
 
-                        {/* --- MODALS --- */}
-                        {/* Context Menu Modal */}
-                        {activeModal === 'context' && (
-                            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center md:items-center justify-center p-4 animate-in fade-in" onClick={() => setActiveModal(null)}>
-                                <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-                                    <div className="flex items-center gap-3 mb-5 border-b pb-4">
-                                        <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center"><i className="fa-solid fa-quote-left"></i></div>
-                                        <p className="text-sm font-semibold text-slate-700 line-clamp-2 flex-1 italic">"{selectedMessage?.text || selectedMessage?.fileName}"</p>
-                                    </div>
-                                    <div className="space-y-3">
-                                        <button onClick={() => setActiveModal('reminder')} className="w-full flex items-center gap-4 p-4 hover:bg-yellow-50 rounded-xl transition-all border border-transparent hover:border-yellow-200 text-left group shadow-sm">
-                                            <div className="bg-yellow-100 p-3 rounded-xl text-yellow-600 group-hover:scale-110 transition-transform"><i className="fa-regular fa-clock text-xl"></i></div>
-                                            <div><div className="font-bold text-sm text-yellow-800">Set Push Reminder</div><div className="text-xs font-semibold text-yellow-600/70 mt-0.5">Alert me about this later</div></div>
-                                        </button>
-                                        <button onClick={() => setActiveModal('task_convert')} className="w-full flex items-center gap-4 p-4 hover:bg-blue-50 rounded-xl transition-all border border-transparent hover:border-blue-200 text-left group shadow-sm">
-                                            <div className="bg-blue-100 p-3 rounded-xl text-blue-600 group-hover:scale-110 transition-transform"><i className="fa-regular fa-square-check text-xl"></i></div>
-                                            <div><div className="font-bold text-sm text-blue-800">Convert to Official Task</div><div className="text-xs font-semibold text-blue-600/70 mt-0.5">Assign with deadline and tracking</div></div>
-                                        </button>
-                                    </div>
-                                    <button onClick={() => setActiveModal(null)} className="w-full mt-4 p-3 text-sm font-bold text-slate-400 hover:text-slate-600">Cancel</button>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Task Trail Modal */}
-                        {activeModal === 'task_trail' && selectedMessage?.taskData && (
-                            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center md:p-4 animate-in fade-in">
-                                <div className="bg-white w-full h-full md:h-auto md:max-h-[90vh] md:max-w-2xl md:rounded-3xl flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom-8 md:zoom-in-95">
-                                    <div className="bg-blue-900 text-white p-5 flex items-center justify-between shadow-md z-10">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl bg-blue-800 border border-blue-700 flex items-center justify-center text-blue-300"><i className="fa-solid fa-route"></i></div>
-                                            <div>
-                                                <h2 className="font-bold text-lg leading-tight">Secure Task Trail</h2>
-                                                <p className="text-[10px] uppercase tracking-wider text-blue-300 font-bold">Encrypted Audit Record</p>
-                                            </div>
-                                        </div>
-                                        <button onClick={() => setActiveModal(null)} className="w-10 h-10 rounded-full bg-blue-800 hover:bg-blue-700 flex items-center justify-center transition-colors"><i className="fa-solid fa-xmark"></i></button>
-                                    </div>
-                                    <div className="flex-1 overflow-y-auto p-5 md:p-8 space-y-8 bg-slate-50">
-                                        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-                                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Original Directive</h3>
-                                            <p className="text-sm md:text-base font-semibold text-slate-800 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100">"{selectedMessage.text}"</p>
-                                            <div className="mt-5 grid grid-cols-2 gap-4">
-                                                <div className="bg-blue-50 p-3 rounded-xl border border-blue-100"><p className="text-[10px] font-bold text-blue-600 uppercase mb-1">Current Holder</p><p className="text-sm font-bold flex items-center gap-2 text-blue-900 truncate"><i className="fa-solid fa-user-shield"></i> {selectedMessage.taskData.currentAssignee.split('@')[0]}</p></div>
-                                                <div className="bg-red-50 p-3 rounded-xl border border-red-100"><p className="text-[10px] font-bold text-red-600 uppercase mb-1">Strict Deadline</p><p className="text-sm font-bold flex items-center gap-2 text-red-900"><i className="fa-regular fa-calendar-xmark"></i> {new Date(selectedMessage.taskData.deadline).toLocaleDateString()}</p></div>
-                                            </div>
-                                        </div>
-                                        {selectedMessage.taskData.status !== "Completed" && (
-                                            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Action Controls</h3>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                                                        <label className="text-xs font-bold text-slate-700 mb-2 block">Delegate Responsibility:</label>
+                                    {messages.filter(checkVisibility).filter(handleSearchFilter).map((msg) => (
+                                        <div key={msg.id} className={`flex flex-col ${msg.isMine ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-2`}>
+                                            
+                                            {/* Sender Name above bubble if not mine */}
+                                            {!msg.isMine && <div className="text-[11px] font-bold text-slate-500 mb-0.5 ml-1 drop-shadow-sm">{msg.sender.split('@')[0]}</div>}
+                                            
+                                            {!msg.isTask && (
+                                                <div onClick={() => handleMessageClick(msg)} className={`max-w-[85%] md:max-w-[65%] p-2.5 md:p-3 rounded-2xl shadow-sm cursor-pointer relative ${msg.isMine ? (msg.isPrivateMention ? 'bg-purple-200 text-purple-900 rounded-tr-none' : 'bg-[#e4ebd3] text-gray-800 rounded-tr-none') : (msg.isPrivateMention ? 'bg-purple-50 text-purple-900 border border-purple-200 rounded-tl-none' : 'bg-white text-gray-800 rounded-tl-none')}`}>
+                                                    {msg.isPrivateMention && <div className="text-[10px] font-bold flex items-center gap-1 mb-1 pb-1 border-b border-black/10 text-purple-700"><i className="fa-solid fa-lock"></i> Private</div>}
+                                                    
+                                                    {msg.fileUrl ? (
                                                         <div className="flex flex-col gap-2">
-                                                            <select value={delegateAssignee} onChange={(e) => setDelegateAssignee(e.target.value)} className="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-white font-semibold outline-none focus:border-blue-500 transition-colors">
-                                                                <option value="" disabled>Select User...</option>
-                                                                {dbUsers.map(u => <option key={u.uid} value={u.email}>{u.name} ({u.email})</option>)}
-                                                            </select>
-                                                            <button onClick={handleDelegateTask} disabled={!delegateAssignee} className={`w-full py-2.5 rounded-lg text-sm font-bold text-white transition-all ${delegateAssignee ? 'bg-blue-600 hover:bg-blue-700 shadow-md' : 'bg-slate-300 cursor-not-allowed'}`}><i className="fa-solid fa-share mr-2"></i> Execute Transfer</button>
+                                                            {msg.fileType && msg.fileType.startsWith('image/') ? (
+                                                                <img src={msg.fileUrl} alt="Shared Image" className="rounded-lg max-w-full max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity" onClick={(e) => { e.stopPropagation(); window.open(msg.fileUrl, '_blank'); }}/>
+                                                            ) : (
+                                                                <div className={`flex items-center gap-3 p-3 rounded-lg border hover:shadow-md transition-shadow ${msg.isMine ? 'bg-[#d2e0b8] border-[#c0d1a1]' : 'bg-gray-50 border-gray-200'}`} onClick={(e) => { e.stopPropagation(); window.open(msg.fileUrl, '_blank'); }}>
+                                                                    <div className={`w-12 h-12 rounded flex items-center justify-center text-2xl ${msg.isMine ? 'bg-white/40 text-[#4a6327]' : 'bg-blue-100 text-blue-600'}`}><i className="fa-regular fa-file-lines"></i></div>
+                                                                    <div className="flex-1 overflow-hidden"><p className="text-sm font-bold truncate" title={msg.fileName}>{msg.fileName}</p></div>
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                    </div>
-                                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-center">
-                                                        <label className="text-xs font-bold text-slate-700 mb-2 block text-center">Finalization:</label>
-                                                        <button onClick={handleCompleteTask} className={`w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-md ${user.email === selectedMessage.taskData.currentAssignee || currentUserData?.isAdmin ? "bg-green-600 text-white hover:bg-green-700 hover:shadow-lg" : "bg-slate-300 text-slate-500 cursor-not-allowed shadow-none"}`}>
-                                                            <i className="fa-solid fa-shield-check text-lg"></i> Mark as Completed
-                                                        </button>
-                                                        {user.email !== selectedMessage.taskData.currentAssignee && !currentUserData?.isAdmin && <p className="text-[10px] font-bold text-center text-red-500 mt-2">Only Assignee or Admin can complete.</p>}
+                                                    ) : ( <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{msg.text}</p> )}
+
+                                                    <div className="flex items-center justify-end gap-1 mt-1 text-[10px] font-semibold text-black/40">
+                                                        {msg.hasReminder && <i className="fa-regular fa-clock text-amber-600 text-[11px] mr-0.5"></i>}
+                                                        <span>{msg.time}</span>
+                                                        {msg.isMine && <i className="fa-solid fa-check-double text-blue-500"></i>}
                                                     </div>
                                                 </div>
-                                            </div>
-                                        )}
-                                        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-6">Historical Delegation Log</h3>
-                                            <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-1 before:bg-gradient-to-b before:from-blue-200 before:to-transparent">
-                                                {selectedMessage.taskData.trail.map((item, idx) => (
-                                                    <div key={idx} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group">
-                                                        <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white shadow-md shrink-0 z-10 text-white ${item.action === 'Marked Completed' ? 'bg-green-500' : item.action === 'Update Added' ? 'bg-amber-500' : 'bg-blue-600'}`}>
-                                                            {idx === 0 ? <i className="fa-solid fa-flag text-xs"></i> : (item.action === 'Marked Completed' ? <i className="fa-solid fa-check-double text-xs"></i> : item.action === 'Update Added' ? <i className="fa-solid fa-comment-dots text-xs"></i> : <i className="fa-solid fa-arrow-right-arrow-left text-xs"></i>)}
-                                                        </div>
-                                                        <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-2xl shadow-sm bg-white border border-slate-100 hover:shadow-md transition-shadow">
-                                                            <div className="flex items-center justify-between mb-2">
-                                                                <span className={`font-bold text-xs px-2 py-1 rounded uppercase tracking-wide ${item.action === 'Marked Completed' ? 'bg-green-100 text-green-800' : item.action === 'Update Added' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}`}>{item.action}</span>
-                                                                <span className="text-[10px] font-bold text-slate-400"><i className="fa-regular fa-clock mr-1"></i> {item.time.split(',')[0]}</span>
-                                                            </div>
-                                                            <div className="text-sm font-semibold text-slate-700">
-                                                                Action By: <span className="text-blue-700">{item.by.split('@')[0]}</span>
-                                                                {item.to && item.to !== 'System' && <span> → Target: <span className="text-blue-700">{item.to.split('@')[0]}</span></span>}
-                                                            </div>
-                                                            {item.comment && <div className="mt-3 text-sm text-slate-800 bg-amber-50/50 p-3 rounded-xl border border-amber-100/50 italic shadow-inner">"{item.comment}"</div>}
-                                                        </div>
+                                            )}
+
+                                            {msg.isTask && (
+                                                <div onClick={() => handleMessageClick(msg)} className={`max-w-[90%] md:max-w-[65%] w-full bg-white border-y border-r border-l-4 p-3 rounded-2xl shadow-sm cursor-pointer ${msg.isMine ? 'rounded-tr-none border-l-blue-500 border-y-transparent border-r-transparent' : 'rounded-tl-none border-l-gray-400 border-y-transparent border-r-transparent'}`}>
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="flex items-center gap-1 text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded"><i className="fa-regular fa-square-check"></i> TASK</span>
+                                                        <span className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full ${msg.taskData.status === 'Completed' ? 'bg-green-100 text-green-700' : msg.taskData.status === 'In Progress' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-700'}`}>{msg.taskData.status}</span>
                                                     </div>
-                                                ))}
+                                                    <p className="text-[15px] font-medium text-gray-800 mb-2 leading-relaxed">{msg.text}</p>
+                                                    <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100 flex items-center justify-between">
+                                                        <span className="flex items-center gap-1 text-xs font-semibold text-gray-700"><div className="w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center"><i className="fa-regular fa-user text-[10px]"></i></div> {msg.taskData.currentAssignee.split('@')[0]}</span>
+                                                        <span className="text-[10px] text-red-600 font-bold"><i className="fa-regular fa-calendar mr-1"></i>{new Date(msg.taskData.deadline).toLocaleDateString()}</span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                    <div ref={messagesEndRef} className="h-8"></div>
+                                </div>
+
+                                {/* Phase 3.4: @Mention Pop-up */}
+                                {inputText.split(' ').pop().startsWith('@') && inputText.split(' ').pop().length > 0 && (
+                                    <div className="absolute bottom-[80px] left-4 md:left-24 bg-white shadow-2xl border border-gray-200 rounded-xl w-72 max-h-48 overflow-y-auto z-20">
+                                        {dbUsers.filter(u => u.name.toLowerCase().includes(inputText.split(' ').pop().substring(1).toLowerCase())).map(u => (
+                                            <div key={u.uid} onClick={() => { const words = inputText.split(' '); words[words.length - 1] = `@${u.name} `; setInputText(words.join(' ')); }} className="p-3 border-b hover:bg-blue-50 cursor-pointer text-sm font-semibold flex items-center gap-3 text-gray-800">
+                                                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs shadow-inner"><i className="fa-solid fa-at"></i></div>
+                                                {u.name}
                                             </div>
-                                        </div>
+                                        ))}
                                     </div>
-                                    {selectedMessage.taskData.status !== "Completed" && (
-                                        <div className="p-4 bg-white border-t border-slate-200 z-10 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)]">
-                                            <div className="flex items-center bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
-                                                <i className="fa-regular fa-comment-dots text-slate-400 mr-3"></i>
-                                                <input type="text" value={trailComment} onChange={(e) => setTrailComment(e.target.value)} placeholder="Append an official update or comment to the trail..." className="bg-transparent w-full outline-none text-sm font-medium text-slate-700"/>
-                                                <button onClick={handleAddComment} className="bg-blue-600 text-white w-8 h-8 rounded-lg flex justify-center items-center hover:bg-blue-700 transition-colors shadow-sm ml-2"><i className="fa-solid fa-paper-plane text-xs"></i></button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                        {/* Other Modals (Add/Edit User, Reminders, Uploading overlay remain identical to previous structurally but with improved z-indexes implicitly handled by tailwind classes) */}
-                        {/* Phase 6.1: Add User Modal */}
-                        {activeModal === 'admin_add_user' && (
-                            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-                                <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl animate-in zoom-in-95">
-                                    <div className="flex justify-between items-center mb-6">
-                                        <h3 className="font-bold text-xl text-slate-800"><i className="fa-solid fa-user-plus text-blue-600 mr-2"></i> Register Staff</h3>
-                                        <i className="fa-solid fa-xmark cursor-pointer text-slate-400 text-lg hover:text-slate-600 transition-colors" onClick={() => setActiveModal(null)}></i>
-                                    </div>
-                                    <form onSubmit={handleAddUserSubmit} className="space-y-5">
-                                        <div><label className="text-xs font-bold text-slate-500 uppercase">Full Name</label><input required type="text" value={adminForm.name} onChange={(e) => setAdminForm({...adminForm, name: e.target.value})} className="w-full mt-1.5 p-3 border border-slate-300 rounded-xl text-sm bg-slate-50 focus:border-blue-500 outline-none transition-colors" /></div>
-                                        <div><label className="text-xs font-bold text-slate-500 uppercase">Corporate Email</label><input required type="email" value={adminForm.email} onChange={(e) => setAdminForm({...adminForm, email: e.target.value})} className="w-full mt-1.5 p-3 border border-slate-300 rounded-xl text-sm bg-slate-50 focus:border-blue-500 outline-none transition-colors" /></div>
-                                        <div><label className="text-xs font-bold text-slate-500 uppercase">Temporary Password</label><input required minLength="6" type="password" value={adminForm.password} onChange={(e) => setAdminForm({...adminForm, password: e.target.value})} className="w-full mt-1.5 p-3 border border-slate-300 rounded-xl text-sm bg-slate-50 focus:border-blue-500 outline-none transition-colors" /></div>
-                                        <div className="flex items-center gap-3 bg-indigo-50 p-4 rounded-xl border border-indigo-100">
-                                            <input type="checkbox" id="isAdminCheck" checked={adminForm.isAdmin} onChange={(e) => setAdminForm({...adminForm, isAdmin: e.target.checked})} className="w-5 h-5 text-indigo-600 rounded border-indigo-300 focus:ring-indigo-500 cursor-pointer"/>
-                                            <label htmlFor="isAdminCheck" className="text-xs font-bold text-indigo-800 cursor-pointer">Grant Admin Dashboard Access</label>
-                                        </div>
-                                        <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-sm hover:bg-blue-700 shadow-md hover:shadow-lg transition-all mt-4">Create Verified Account</button>
-                                    </form>
-                                </div>
-                            </div>
-                        )}
-                        {/* Edit User Modal */}
-                        {activeModal === 'admin_edit_user' && (
-                            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-                                <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl animate-in zoom-in-95">
-                                    <div className="flex justify-between items-center mb-6">
-                                        <h3 className="font-bold text-xl text-slate-800"><i className="fa-solid fa-user-pen text-blue-600 mr-2"></i> Edit Profile</h3>
-                                        <i className="fa-solid fa-xmark cursor-pointer text-slate-400 text-lg hover:text-slate-600" onClick={() => setActiveModal(null)}></i>
-                                    </div>
-                                    <form onSubmit={handleEditUserSubmit} className="space-y-5">
-                                        <div><label className="text-xs font-bold text-slate-500 uppercase">Email (Read Only)</label><input disabled type="email" value={adminForm.email} className="w-full mt-1.5 p-3 border border-slate-200 rounded-xl text-sm bg-slate-100 text-slate-500 font-semibold cursor-not-allowed" /></div>
-                                        <div><label className="text-xs font-bold text-slate-500 uppercase">Full Name</label><input required type="text" value={adminForm.name} onChange={(e) => setAdminForm({...adminForm, name: e.target.value})} className="w-full mt-1.5 p-3 border border-slate-300 rounded-xl text-sm bg-slate-50 focus:border-blue-500 outline-none" /></div>
-                                        <div className="flex items-center gap-3 bg-indigo-50 p-4 rounded-xl border border-indigo-100">
-                                            <input type="checkbox" id="editAdminCheck" checked={adminForm.isAdmin} onChange={(e) => setAdminForm({...adminForm, isAdmin: e.target.checked})} className="w-5 h-5 text-indigo-600 rounded cursor-pointer"/>
-                                            <label htmlFor="editAdminCheck" className="text-xs font-bold text-indigo-800 cursor-pointer">Grant Admin Dashboard Access</label>
-                                        </div>
-                                        <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-sm hover:bg-blue-700 shadow-md">Commit Changes</button>
-                                    </form>
-                                </div>
-                            </div>
-                        )}
-                        {/* Reminder Modal */}
-                        {activeModal === 'reminder' && (
-                            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-                                <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl animate-in zoom-in-95">
-                                    <div className="flex justify-between items-center mb-6">
-                                        <h3 className="font-bold text-xl text-slate-800"><i className="fa-regular fa-clock text-yellow-500 mr-2"></i> Schedule Alert</h3>
-                                        <i className="fa-solid fa-xmark cursor-pointer text-slate-400 text-lg hover:text-slate-600" onClick={() => setActiveModal(null)}></i>
-                                    </div>
-                                    <div className="space-y-6">
-                                        <div>
-                                            <label className="text-xs font-bold text-slate-500 uppercase block mb-2">Target Date & Time</label>
-                                            <input type="datetime-local" value={reminderDateTime} onChange={(e) => setReminderDateTime(e.target.value)} className="w-full p-4 border border-slate-300 rounded-xl text-sm bg-slate-50 focus:border-blue-500 outline-none font-semibold text-slate-700" />
-                                        </div>
-                                        <button onClick={setReminder} className="w-full bg-yellow-500 text-white py-4 rounded-xl font-bold text-sm hover:bg-yellow-600 shadow-md transition-all">Engage Notification</button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                        {/* Task Convert Modal */}
-                        {activeModal === 'task_convert' && (
-                            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-                                <div className="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl animate-in zoom-in-95">
-                                    <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-                                        <h3 className="font-bold text-xl text-slate-800"><i className="fa-regular fa-square-check text-blue-600 mr-2"></i> Official Task Assignment</h3>
-                                        <i className="fa-solid fa-xmark cursor-pointer text-slate-400 text-lg hover:text-slate-600" onClick={() => setActiveModal(null)}></i>
-                                    </div>
-                                    <div className="space-y-5">
-                                        <div className="bg-slate-50 text-slate-700 text-sm p-4 rounded-xl border border-slate-200 italic font-semibold shadow-inner">"{selectedMessage?.text}"</div>
-                                        <div>
-                                            <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Appoint Assignee</label>
-                                            <select value={taskAssignee} onChange={(e) => setTaskAssignee(e.target.value)} className="w-full p-3 border border-slate-300 rounded-xl text-sm bg-white focus:border-blue-500 outline-none font-semibold text-slate-700 cursor-pointer">
-                                                <option value="" disabled>Select Core Member...</option>
-                                                {dbUsers.map(u => <option key={u.uid} value={u.email}>{u.name} ({u.email})</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Strict Deadline</label>
-                                            <input type="datetime-local" value={taskDeadline} onChange={(e) => setTaskDeadline(e.target.value)} className="w-full p-3 border border-slate-300 rounded-xl text-sm bg-white focus:border-blue-500 outline-none font-semibold text-slate-700 cursor-pointer" />
-                                        </div>
-                                        <button onClick={convertToTask} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-sm hover:bg-blue-700 shadow-lg mt-4 transition-all">Dispatch Assignment</button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                        {/* Uploading Overlay */}
-                        {isUploading && (
-                            <div className="absolute inset-0 bg-white/80 backdrop-blur-md z-[70] flex items-center justify-center p-4">
-                                <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl border border-slate-100 flex flex-col items-center text-center animate-in zoom-in-95">
-                                    <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6 shadow-inner"><i className="fa-solid fa-cloud-arrow-up text-4xl text-blue-600 animate-bounce"></i></div>
-                                    <h3 className="font-bold text-slate-800 text-xl mb-2">Transmitting File...</h3>
-                                    <p className="text-sm text-slate-500 font-semibold mb-8">Encrypting payload securely.</p>
-                                    <div className="w-full bg-slate-100 rounded-full h-4 mb-3 overflow-hidden shadow-inner"><div className="bg-blue-600 h-full rounded-full transition-all duration-300 relative" style={{ width: `${uploadProgress}%` }}><div className="absolute inset-0 bg-white/20 animate-pulse"></div></div></div>
-                                    <div className="flex justify-between w-full text-sm font-bold text-blue-800 uppercase tracking-wide"><span>Status</span><span>{Math.round(uploadProgress)}%</span></div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            );
-        }
+                                )}
 
-        // New Main App Component to handle Phase 1: Authentication
-        function App() {
-            const [user, setUser] = useState(null);
-            const [isFirebaseLoaded, setIsFirebaseLoaded] = useState(false);
-            const [email, setEmail] = useState("");
-            const [password, setPassword] = useState("");
-            const [authError, setAuthError] = useState("");
-
-            useEffect(() => {
-                const setupAuth = () => {
-                    window.onAuthStateChanged(window.auth, (currentUser) => {
-                        setUser(currentUser);
-                    });
-                    setIsFirebaseLoaded(true);
-                };
-
-                if (window.auth) setupAuth();
-                else window.addEventListener('firebaseReady', setupAuth);
-                return () => window.removeEventListener('firebaseReady', setupAuth);
-            }, []);
-
-            const handleLogin = (e) => {
-                e.preventDefault();
-                setAuthError("");
-                window.signInWithEmailAndPassword(window.auth, email, password)
-                    .catch(err => setAuthError("Login Failed: " + err.message));
-            };
-
-            const handleRegister = async (e) => {
-                e.preventDefault();
-                setAuthError("");
-                try {
-                    const userCredential = await window.createUserWithEmailAndPassword(window.auth, email, password);
-                    const isVp = userCredential.user.email.toLowerCase() === 'viceprincipal@mpgs.edu.in';
-                    await window.setDoc(window.doc(window.db, "users", userCredential.user.uid), {
-                        uid: userCredential.user.uid,
-                        email: userCredential.user.email,
-                        name: userCredential.user.email.split('@')[0].toUpperCase(),
-                        isApproved: isVp, 
-                        isAdmin: isVp
-                    });
-                } catch (err) { setAuthError("Registration Failed: " + err.message); }
-            };
-
-            const handleLogout = () => { window.signOut(window.auth); };
-
-            if (!isFirebaseLoaded) return <div className="flex justify-center items-center h-screen bg-slate-100 font-bold text-blue-800 text-xl animate-pulse">Establishing Secure Connection...</div>;
-
-            if (!user) {
-                return (
-                    <div className="flex items-center justify-center min-h-screen bg-slate-100 p-4 font-sans text-slate-800">
-                        <div className="w-full max-w-lg bg-white rounded-[2rem] shadow-2xl p-10 border-t-[10px] border-blue-800 flex flex-col items-center animate-in zoom-in-95">
-                            <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center text-blue-800 text-4xl mb-6 shadow-inner"><i className="fa-solid fa-building-shield"></i></div>
-                            <h1 className="text-3xl font-black text-center text-slate-900 mb-2 tracking-tight">Corporate Portal</h1>
-                            <p className="text-center text-sm font-semibold text-slate-500 mb-10">Secure Centralized Communication Node</p>
-                            
-                            {authError && <div className="w-full bg-red-50 text-red-700 p-4 rounded-xl mb-6 text-sm font-bold border border-red-200 flex items-center gap-3"><i className="fa-solid fa-triangle-exclamation text-lg"></i> {authError}</div>}
-                            
-                            <form className="w-full space-y-5">
-                                <div><label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Corporate Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full mt-2 p-4 border border-slate-200 rounded-xl bg-slate-50 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-semibold text-slate-800" placeholder="user@domain.com" /></div>
-                                <div><label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Secure Password</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full mt-2 p-4 border border-slate-200 rounded-xl bg-slate-50 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-semibold text-slate-800" placeholder="••••••••" /></div>
-                                <div className="flex flex-col sm:flex-row gap-3 pt-6">
-                                    <button onClick={handleLogin} className="flex-1 bg-blue-800 text-white py-4 rounded-xl font-bold hover:bg-blue-900 shadow-lg hover:shadow-xl transition-all"><i className="fa-solid fa-right-to-bracket mr-2"></i> Authenticate</button>
-                                    <button onClick={handleRegister} className="flex-1 bg-white border-2 border-slate-200 text-slate-700 py-4 rounded-xl font-bold hover:bg-slate-50 hover:border-slate-300 transition-all"><i className="fa-solid fa-user-plus mr-2"></i> Request Access</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                );
-            }
-
-            return <ChatApp user={user} onLogout={handleLogout} />;
-        }
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
+                                {/* Telegram Style Input Area (Flex child, no longer absolute) */}
+                                <div className="min-h-[64px] bg-white px-4 py-3 flex items-end gap-3 shrink-0 z-10 shadow-[0_-2px_10px_rgba(0,0,0,0.02)]">
+                                    <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"/>
+                                    <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors shrink-

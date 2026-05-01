@@ -108,7 +108,6 @@
             const [reminderDateTime, setReminderDateTime] = useState("");
             const [activeReminders, setActiveReminders] = useState([]);
 
-            // --- Helper to open group settings with preloaded members ---
             const openGroupSettings = () => {
                 if (activeGroup.id === 'main') return;
                 setGroupForm(prev => ({ ...prev, members: activeGroup.members || [] }));
@@ -235,7 +234,7 @@
             };
 
             const handleFileUpload = async (e) => {
-                if (isUploading) return; // prevent duplicate uploads
+                if (isUploading) return;
                 const file = e.target.files[0];
                 if (!file) return;
                 setIsUploading(true);
@@ -441,7 +440,6 @@
                 <div className="flex h-screen w-full bg-white font-sans text-gray-800 overflow-hidden">
                     
                     {viewMode === "admin" ? (
-                        /* --- ADMIN DASHBOARD --- */
                         <div className="flex flex-col h-full w-full bg-slate-100 overflow-hidden">
                             <div className="bg-slate-900 text-white p-4 flex items-center justify-between shadow-md shrink-0">
                                 <div className="flex items-center gap-3">
@@ -454,7 +452,6 @@
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
-                                {/* Admin Filters */}
                                 <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-end">
                                     <div>
                                         <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Filter by User</label>
@@ -471,7 +468,6 @@
                                 </div>
 
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                    {/* Users Directory */}
                                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden lg:col-span-1 flex flex-col max-h-[600px]">
                                         <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center shrink-0">
                                             <h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-users text-blue-600"></i> Users & Roles</h2>
@@ -502,7 +498,6 @@
                                         </div>
                                     </div>
 
-                                    {/* Global Audit */}
                                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden lg:col-span-2 flex flex-col max-h-[600px]">
                                         <div className="bg-slate-50 p-4 border-b border-slate-200 shrink-0">
                                             <h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-list-check text-purple-600"></i> Global Chat & Task Audit</h2>
@@ -537,7 +532,6 @@
                                         </div>
                                     </div>
                                     
-                                    {/* Reminders Log */}
                                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden lg:col-span-3 flex flex-col max-h-[400px]">
                                         <div className="bg-slate-50 p-4 border-b border-slate-200 shrink-0">
                                             <h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-clock text-yellow-600"></i> Global Reminders Log</h2>
@@ -564,10 +558,7 @@
                             </div>
                         </div>
                     ) : (
-                        /* --- MAIN CHAT UI --- */
                         <div className="flex h-full w-full">
-                            
-                            {/* Left Sidebar */}
                             <div className="hidden md:flex w-80 bg-white border-r border-gray-200 flex-col shrink-0 z-20">
                                 <div className="p-4 bg-slate-50 border-b border-gray-200 flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-sm">{user.email.substring(0,1).toUpperCase()}</div>
@@ -613,9 +604,7 @@
                                 </div>
                             </div>
 
-                            {/* Chat Area */}
                             <div className="flex-1 flex flex-col relative h-full">
-                                
                                 <div className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 md:px-6 shrink-0 z-10 shadow-sm">
                                     <div className="flex items-center gap-3">
                                         <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-sm ${activeGroup.id==='main' ? 'bg-gradient-to-br from-blue-500 to-indigo-600' : 'bg-gradient-to-br from-emerald-400 to-teal-600'}`}>
@@ -704,7 +693,6 @@
                                     <div ref={messagesEndRef} className="h-8"></div>
                                 </div>
 
-                                {/* @mention popup */}
                                 {inputText.split(' ').pop().startsWith('@') && inputText.split(' ').pop().length > 0 && (
                                     <div className="absolute bottom-[80px] left-4 md:left-24 bg-white shadow-2xl border border-gray-200 rounded-xl w-72 max-h-48 overflow-y-auto z-20">
                                         {dbUsers.filter(u => u.name.toLowerCase().includes(inputText.split(' ').pop().substring(1).toLowerCase())).map(u => (
@@ -732,8 +720,6 @@
                         </div>
                     )}
 
-                    {/* ---------- MODALS ---------- */}
-                    
                     {activeModal === 'create_group' && (
                         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
                             <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -799,8 +785,8 @@
                     )}
 
                     {activeModal === 'context' && (
-                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in" onClick={() => setActiveModal(null)}>
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center gap-3 mb-5 border-b pb-4">
                                     <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center"><i className="fa-solid fa-quote-left"></i></div>
                                     <p className="text-sm font-semibold text-slate-700 line-clamp-2 flex-1 italic">"{selectedMessage?.text || selectedMessage?.fileName}"</p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Corporate Chat App - Enterprise Edition</title>
+    <title>Talk & Task - Enterprise Edition</title>
     
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -74,7 +74,7 @@
         ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
         
-        /* WhatsApp Chat Background - Slightly altered background color */
+        /* WhatsApp Chat Background */
         .wa-bg { 
             background-color: #e5dbd3; 
             background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); 
@@ -150,7 +150,24 @@
             const [typingStatus, setTypingStatus] = useState([]);
             const lastTypingTime = useRef(0); 
 
-            useEffect(() => { if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") Notification.requestPermission(); }, []);
+            // FIX: Web Browser Audio Unlocker
+            useEffect(() => {
+                const unlockAudio = () => {
+                    notificationSound.play().then(() => {
+                        notificationSound.pause();
+                        notificationSound.currentTime = 0;
+                    }).catch(err => {});
+                    document.removeEventListener('click', unlockAudio);
+                    document.removeEventListener('touchstart', unlockAudio);
+                };
+                document.addEventListener('click', unlockAudio);
+                document.addEventListener('touchstart', unlockAudio);
+                if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") Notification.requestPermission();
+                return () => {
+                    document.removeEventListener('click', unlockAudio);
+                    document.removeEventListener('touchstart', unlockAudio);
+                };
+            }, []);
 
             useEffect(() => {
                 const qPersonal = window.query(window.collection(window.db, "reminders"), window.where("userId", "==", user.uid), window.where("isTriggered", "==", false));
@@ -508,11 +525,53 @@
 
                 const matchUser = adminFilterUser === "" || safeSender === adminFilterUser || (msg.isTask && safeAssignees.includes(adminFilterUser));
                 const matchDate = adminFilterDate === "" || safeDate === adminFilterDate;
-                const matchType = adminFilterType === "" || safeType === adminFilterType;
                 const matchGroup = adminFilterGroup === "" || safeGroup === adminFilterGroup;
+                
+                let matchType = true;
+                if (adminFilterType) {
+                    if (adminFilterType === 'task-all') matchType = msg.isTask;
+                    else if (adminFilterType === 'task-pending') matchType = msg.isTask && msg.taskData?.status !== 'Completed';
+                    else if (adminFilterType === 'task-completed') matchType = msg.isTask && msg.taskData?.status === 'Completed';
+                    else matchType = safeType === adminFilterType;
+                }
 
                 return matchUser && matchDate && matchType && matchGroup;
             });
+
+            // Feature 4: Download Audit Log functionality
+            const handleDownloadAudit = () => {
+                let content = "TALK & TASK - GLOBAL AUDIT LOG\n";
+                content += "=================================================\n\n";
+                filteredAuditMessages.forEach(msg => {
+                    content += `Time     : ${msg.dateString} ${msg.time}\n`;
+                    content += `Type     : ${msg.isTask ? 'TASK' : msg.isPrivateMention ? 'PRIVATE' : msg.fileUrl ? 'MEDIA' : msg.replyToId ? 'REPLY' : 'PUBLIC'}\n`;
+                    content += `From     : ${(msg.sender||'').split('@')[0]}\n`;
+                    if(msg.isTask) {
+                        content += `To       : ${(msg.taskData?.assignees||[]).map(a=>a.split('@')[0]).join(', ')}\n`;
+                        content += `Status   : ${msg.taskData?.status}\n`;
+                        content += `Deadline : ${new Date(msg.taskData?.deadline).toLocaleDateString()}\n`;
+                    }
+                    content += `Content  : ${msg.text || msg.fileName}\n`;
+                    if(msg.isTask && msg.taskData?.trail) {
+                        content += `Trail    :\n`;
+                        msg.taskData.trail.forEach(t => {
+                             content += `  - [${t.time}] ${t.action} by ${(t.by||'').split('@')[0]}`;
+                             if(t.to && t.to !== 'System') content += ` -> ${(t.to||'').split('@')[0]}`;
+                             if(t.comment) content += ` | Comment: "${t.comment}"`;
+                             if(t.fileName) content += ` | File: ${t.fileName}`;
+                             content += `\n`;
+                        });
+                    }
+                    content += `\n-------------------------------------------------\n\n`;
+                });
+                const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Audit_Log_${new Date().toISOString().split('T')[0]}.txt`;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
 
             let visibleMessages = messages.filter(checkVisibility).filter(handleSearchFilter);
             let messagesToRender = visibleMessages.filter(m => {
@@ -549,8 +608,8 @@
                     <div className="opacity-0 group-hover/msg:opacity-100 transition-opacity flex items-center gap-2 bg-white shadow-sm border border-gray-200 rounded-full px-3 py-1 shrink-0 z-20">
                         {canModify && (
                             <>
-                                <button onClick={()=>handleDeleteMessage(msg.id)} className="text-gray-400 hover:text-red-500 text-xs" title="Delete"><i className="fa-solid fa-trash"></i></button>
-                                <button onClick={()=>{setEditingMessageId(msg.id); setEditMessageText(msg.text);}} className="text-gray-400 hover:text-[#008069] text-xs" title="Edit"><i className="fa-solid fa-pen"></i></button>
+                                <button onClick={(e)=>{e.stopPropagation(); handleDeleteMessage(msg.id);}} className="text-gray-400 hover:text-red-500 text-xs" title="Delete"><i className="fa-solid fa-trash"></i></button>
+                                <button onClick={(e)=>{e.stopPropagation(); setEditingMessageId(msg.id); setEditMessageText(msg.text);}} className="text-gray-400 hover:text-[#008069] text-xs" title="Edit"><i className="fa-solid fa-pen"></i></button>
                             </>
                         )}
                         <button onClick={(e)=>{e.stopPropagation(); handleToggleBookmark(msg);}} className={`${isBookmarked ? 'text-[#008069]' : 'text-gray-400 hover:text-[#008069]'} text-xs`} title="Bookmark"><i className="fa-solid fa-bookmark"></i></button>
@@ -558,7 +617,7 @@
                             <button onClick={(e)=>{e.stopPropagation(); handleTogglePin(msg);}} className={`${msg.isPinned ? 'text-[#008069]' : 'text-gray-400 hover:text-[#008069]'} text-xs`} title="Pin"><i className="fa-solid fa-thumbtack"></i></button>
                         )}
                         <button onClick={(e)=>{e.stopPropagation(); setReplyingTo(msg); setTimeout(()=>chatInputRef.current?.focus(), 100);}} className="text-gray-400 hover:text-[#008069] text-xs" title="Reply"><i className="fa-solid fa-reply"></i></button>
-                        {['👍', '❤️', '😂', '😮'].map(e => <button key={e} onClick={()=>handleReaction(msg.id, e)} className="hover:scale-125 transition-transform text-sm">{e}</button>)}
+                        {['👍', '❤️', '😂', '😮'].map(e => <button key={e} onClick={(ev)=>{ev.stopPropagation(); handleReaction(msg.id, e);}} className="hover:scale-125 transition-transform text-sm">{e}</button>)}
                     </div>
                 );
 
@@ -580,7 +639,7 @@
                                 )}
 
                                 {isEditingThis ? (
-                                    <div className="flex flex-col gap-2 min-w-[200px] md:min-w-[300px] my-1">
+                                    <div className="flex flex-col gap-2 min-w-[200px] md:min-w-[300px] my-1" onClick={e=>e.stopPropagation()}>
                                         <textarea value={editMessageText} onChange={(e)=>setEditMessageText(e.target.value)} className="w-full text-sm p-2 rounded border border-[#008069] text-black outline-none resize-none" rows="2"></textarea>
                                         <div className="flex justify-end gap-2">
                                             <button onClick={()=>setEditingMessageId(null)} className="text-xs text-gray-500 font-bold px-2 py-1">Cancel</button>
@@ -660,12 +719,15 @@
                             </div>
                             <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
                                 
-                                {/* FEATURE 4 FIX: Global Audit is now the FIRST section, with advanced Group & Type filters */}
+                                {/* FEATURE 4 FIX: Global Audit is now the FIRST section, with advanced Group & Type filters & DOWNLOAD OPTION */}
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col max-h-[600px]">
-                                    <div className="bg-slate-50 p-4 border-b border-slate-200 shrink-0"><h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-list-check text-[#008069]"></i> Global Chat & Task Audit</h2></div>
+                                    <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center shrink-0">
+                                        <h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-list-check text-[#008069]"></i> Global Chat & Task Audit</h2>
+                                        <button onClick={handleDownloadAudit} className="bg-[#008069] hover:bg-[#006e5a] text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shadow-sm"><i className="fa-solid fa-file-arrow-down"></i> Download Selected</button>
+                                    </div>
                                     <div className="p-4 border-b border-slate-100 bg-white flex flex-wrap gap-4 items-end">
                                         <div><label className="text-xs font-bold text-slate-500 uppercase block mb-1">By User</label><select value={adminFilterUser} onChange={(e)=>setAdminFilterUser(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 min-w-[150px] outline-none"><option value="">All Users</option>{dbUsers.map(u => <option key={u.uid} value={u.email}>{u.name}</option>)}</select></div>
-                                        <div><label className="text-xs font-bold text-slate-500 uppercase block mb-1">By Type</label><select value={adminFilterType} onChange={(e)=>setAdminFilterType(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 min-w-[150px] outline-none"><option value="">All Types</option><option value="public">Public</option><option value="private">Private</option><option value="media">Media</option><option value="task">Task</option><option value="reply">Reply</option></select></div>
+                                        <div><label className="text-xs font-bold text-slate-500 uppercase block mb-1">By Type</label><select value={adminFilterType} onChange={(e)=>setAdminFilterType(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 min-w-[150px] outline-none"><option value="">All Types</option><option value="public">Public</option><option value="private">Private</option><option value="media">Media</option><option value="reply">Reply</option><option value="task-all">All Tasks</option><option value="task-pending">Tasks - Pending</option><option value="task-completed">Tasks - Completed</option></select></div>
                                         <div><label className="text-xs font-bold text-slate-500 uppercase block mb-1">By Group</label><select value={adminFilterGroup} onChange={(e)=>setAdminFilterGroup(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 min-w-[150px] outline-none"><option value="">All Groups</option><option value="main">Organization Wide</option>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
                                         <div><label className="text-xs font-bold text-slate-500 uppercase block mb-1">By Date</label><input type="date" value={adminFilterDate} onChange={(e)=>setAdminFilterDate(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 outline-none" /></div>
                                         <button onClick={()=>{setAdminFilterUser(""); setAdminFilterDate(""); setAdminFilterType(""); setAdminFilterGroup("");}} className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-300">Clear</button>
@@ -1000,6 +1062,15 @@
                         </div>
                     )}
 
+                    {/* FEATURE 5 FIX: User Rights Admin Control (Create Group & System Admin Toggles explicitly visible) */}
+                    {activeModal === 'admin_add_user' && (
+                        <div className="absolute inset-0 bg-black/40 z-[70] flex items-center justify-center p-4"><div className="bg-white w-full max-w-sm rounded-xl p-8 shadow-2xl animate-in zoom-in-95"><div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl"><i className="fa-solid fa-user-plus text-[#008069] mr-2"></i> Register Staff</h3><i className="fa-solid fa-xmark cursor-pointer text-slate-400" onClick={() => setActiveModal(null)}></i></div><form onSubmit={handleAddUserSubmit} className="space-y-4"><input required type="text" placeholder="Full Name" value={adminForm.name} onChange={(e) => setAdminForm({...adminForm, name: e.target.value})} className="w-full p-3 border rounded-xl text-sm outline-none focus:border-[#008069]" /><input required type="email" placeholder="Email" value={adminForm.email} onChange={(e) => setAdminForm({...adminForm, email: e.target.value})} className="w-full p-3 border rounded-xl text-sm outline-none focus:border-[#008069]" /><input required minLength="6" type="password" placeholder="Password" value={adminForm.password} onChange={(e) => setAdminForm({...adminForm, password: e.target.value})} className="w-full p-3 border rounded-xl text-sm outline-none focus:border-[#008069]" /><div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3"><label className="flex items-center gap-3 text-[13px] font-bold text-slate-800 cursor-pointer"><input type="checkbox" checked={adminForm.isAdmin} onChange={(e) => setAdminForm({...adminForm, isAdmin: e.target.checked})} className="w-4 h-4 accent-[#008069]"/> Grant Full Admin Rights</label><label className="flex items-center gap-3 text-[13px] font-bold text-slate-800 cursor-pointer"><input type="checkbox" checked={adminForm.canCreateGroups} onChange={(e) => setAdminForm({...adminForm, canCreateGroups: e.target.checked})} className="w-4 h-4 accent-[#008069]"/> Allow Department Creation</label></div><button type="submit" className="w-full bg-[#008069] text-white py-3 rounded-xl font-bold hover:bg-[#006e5a]">Create Account</button></form></div></div>
+                    )}
+
+                    {activeModal === 'admin_edit_user' && (
+                        <div className="absolute inset-0 bg-black/40 z-[70] flex items-center justify-center p-4"><div className="bg-white w-full max-w-sm rounded-xl p-8 shadow-2xl animate-in zoom-in-95"><div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl"><i className="fa-solid fa-user-pen text-[#008069] mr-2"></i> Edit Staff Role</h3><i className="fa-solid fa-xmark cursor-pointer text-slate-400" onClick={() => setActiveModal(null)}></i></div><form onSubmit={handleEditUserSubmit} className="space-y-4"><input disabled type="email" value={adminForm.email} className="w-full p-3 border rounded-xl text-sm bg-gray-100 text-gray-500" /><input required type="text" value={adminForm.name} onChange={(e) => setAdminForm({...adminForm, name: e.target.value})} className="w-full p-3 border rounded-xl text-sm outline-none focus:border-[#008069]" /><div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3"><label className="flex items-center gap-3 text-[13px] font-bold text-slate-800 cursor-pointer"><input type="checkbox" checked={adminForm.isAdmin} onChange={(e) => setAdminForm({...adminForm, isAdmin: e.target.checked})} className="w-4 h-4 accent-[#008069]"/> Grant Full Admin Rights</label><label className="flex items-center gap-3 text-[13px] font-bold text-slate-800 cursor-pointer"><input type="checkbox" checked={adminForm.canCreateGroups} onChange={(e) => setAdminForm({...adminForm, canCreateGroups: e.target.checked})} className="w-4 h-4 accent-[#008069]"/> Allow Department Creation</label></div><button type="submit" className="w-full bg-[#008069] text-white py-3 rounded-xl font-bold hover:bg-[#006e5a]">Save Changes</button></form></div></div>
+                    )}
+
                     {activeModal === 'group_form_modal' && (
                         <div className="absolute inset-0 bg-black/40 z-[60] flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
                             <div className="bg-white w-full max-w-sm rounded-xl p-6 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
@@ -1146,8 +1217,16 @@
                     <div className="flex flex-col items-center justify-center min-h-screen bg-[#f0f2f5] p-4 relative">
                         <div className="absolute top-0 left-0 w-full h-48 bg-[#00a884] z-0"></div>
                         <div className="w-full max-w-sm bg-white rounded-xl shadow-lg p-8 z-10">
-                            <div className="flex justify-center mb-6"><div className="w-16 h-16 bg-[#00a884] rounded-full flex items-center justify-center text-white text-3xl"><i className="fa-brands fa-whatsapp"></i></div></div>
-                            <h1 className="text-xl font-semibold text-center text-[#111b21] mb-6">Corporate Portal</h1>
+                            {/* FIX 1: New Brand Logo "Talk & Task" */}
+                            <div className="flex justify-center mb-6">
+                                <div className="w-20 h-20 bg-[#00a884] rounded-full flex items-center justify-center text-white text-3xl shadow-md">
+                                    <i className="fa-regular fa-comments"></i>
+                                    <i className="fa-solid fa-list-check ml-1 text-2xl"></i>
+                                </div>
+                            </div>
+                            <h1 className="text-xl font-bold text-center text-[#111b21] mb-2 tracking-wide">Talk & Task</h1>
+                            <p className="text-xs text-[#54656f] text-center mb-6 font-semibold uppercase tracking-wider">Enterprise Portal</p>
+                            
                             {authError && <div className="bg-red-50 text-red-600 p-3 rounded mb-4 text-[13px]">{authError}</div>}
                             <form className="space-y-4">
                                 <input type="email" placeholder="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3 border-b-2 border-gray-300 focus:border-[#00a884] outline-none transition-colors text-[15px]" />

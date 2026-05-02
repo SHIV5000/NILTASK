@@ -16,6 +16,10 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
+    <!-- Load jsPDF for Beautiful PDF Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
     <!-- Initialize Firebase -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
@@ -74,13 +78,14 @@
         ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
         
-        /* WhatsApp Chat Background */
+        /* WhatsApp Chat Background - Slightly altered background color */
         .wa-bg { 
             background-color: #e5dbd3; 
             background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); 
             background-repeat: repeat; 
             background-blend-mode: multiply;
             opacity: 0.95;
+            scroll-behavior: smooth;
         }
         
         /* Smooth Highlights */
@@ -94,13 +99,21 @@
         const { useState, useEffect, useRef } = React;
         const notificationSound = new Audio('https://cdn.freesound.org/previews/536/536420_4397472-lq.mp3');
 
+        // Helper: Convert to Sentence Case
+        const toSentenceCase = (str) => {
+            if (!str) return "";
+            return str.toLowerCase().replace(/(^\w{1})|(\s+\w{1})/g, letter => letter.toUpperCase());
+        };
+
         function ChatApp({ user, onLogout }) {
             const [activeModal, setActiveModal] = useState(null);
             const [selectedMessage, setSelectedMessage] = useState(null);
             const [inputText, setInputText] = useState("");
             const [messages, setMessages] = useState([]); 
             const messagesEndRef = useRef(null); 
+            const chatContainerRef = useRef(null);
             const chatInputRef = useRef(null);
+            const [isAtBottom, setIsAtBottom] = useState(true); // FEATURE 4: Scroll State
 
             const [replyingTo, setReplyingTo] = useState(null);
             const [editingMessageId, setEditingMessageId] = useState(null);
@@ -189,7 +202,7 @@
                         const remindTime = new Date(rem.remindAt);
                         if (remindTime <= now) {
                             notificationSound.play().catch(e => console.log("Sound play prevented"));
-                            if ("Notification" in window && Notification.permission === "granted") new Notification("Corporate Portal Reminder", { body: `⏰ "${rem.messageText}"`, icon: "https://cdn-icons-png.flaticon.com/512/825/825590.png" });
+                            if ("Notification" in window && Notification.permission === "granted") new Notification("Talk & Task Reminder", { body: `⏰ "${rem.messageText}"`, icon: "https://cdn-icons-png.flaticon.com/512/825/825590.png" });
                             else alert(`⏰ Reminder: "${rem.messageText}"`);
                             try { await window.updateDoc(window.doc(window.db, "reminders", rem.id), { isTriggered: true }); } catch (error) {}
                         }
@@ -199,13 +212,13 @@
             }, [activeReminders]);
 
             useEffect(() => {
-                const syncUserToDB = async () => { try { await window.setDoc(window.doc(window.db, "users", user.uid), { uid: user.uid, email: user.email, name: user.email.split('@')[0].toUpperCase(), lastActive: window.serverTimestamp() }, { merge: true }); } catch (error) {} };
+                const syncUserToDB = async () => { try { await window.setDoc(window.doc(window.db, "users", user.uid), { uid: user.uid, email: user.email, name: toSentenceCase(user.email.split('@')[0]), lastActive: window.serverTimestamp() }, { merge: true }); } catch (error) {} };
                 syncUserToDB();
                 const heartbeatInterval = setInterval(() => { window.updateDoc(window.doc(window.db, "users", user.uid), { lastActive: window.serverTimestamp() }).catch(()=>{}); }, 60000);
                 const unsubCurrent = window.onSnapshot(window.doc(window.db, "users", user.uid), (doc) => { 
                     if (doc.exists()) {
                         const data = doc.data(); setCurrentUserData(data);
-                        if(!profileForm.name && data.name) setProfileForm({ name: data.name, fontSize: data.fontSize || "text-[15px] md:text-[16px]", fontFamily: data.fontFamily || "font-sans" });
+                        if(!profileForm.name && data.name) setProfileForm({ name: toSentenceCase(data.name), fontSize: data.fontSize || "text-[15px] md:text-[16px]", fontFamily: data.fontFamily || "font-sans" });
                     }
                 });
                 const unsubUsers = window.onSnapshot(window.query(window.collection(window.db, "users"), window.orderBy("email", "asc")), (snapshot) => setDbUsers(snapshot.docs.map(doc => doc.data())));
@@ -301,7 +314,7 @@
                 if (replyingTo) {
                     replyData = { replyToId: replyingTo.id, originalText: replyingTo.text || replyingTo.fileName || 'Attachment', originalSender: replyingTo.sender.split('@')[0] };
                     if (replyingTo.senderUid !== user.uid) {
-                        try { await window.addDoc(window.collection(window.db, "notifications"), { userId: replyingTo.senderUid, type: "reply", text: `${user.email.split('@')[0]} replied to your message.`, messageId: replyingTo.id, timestamp: window.serverTimestamp(), isRead: false }); } catch (e) {}
+                        try { await window.addDoc(window.collection(window.db, "notifications"), { userId: replyingTo.senderUid, type: "reply", text: `${toSentenceCase(user.email.split('@')[0])} replied to your message.`, messageId: replyingTo.id, timestamp: window.serverTimestamp(), isRead: false }); } catch (e) {}
                     }
                 }
 
@@ -327,7 +340,7 @@
                 if (usersForEmoji.length === 0) delete updatedReactions[emoji]; else updatedReactions[emoji] = usersForEmoji;
                 try {
                     await window.updateDoc(window.doc(window.db, "messages", msgId), { reactions: updatedReactions });
-                    if (isAdding && msg.senderUid !== user.uid) await window.addDoc(window.collection(window.db, "notifications"), { userId: msg.senderUid, type: "reaction", text: `${user.email.split('@')[0]} reacted ${emoji}.`, messageId: msgId, timestamp: window.serverTimestamp(), isRead: false });
+                    if (isAdding && msg.senderUid !== user.uid) await window.addDoc(window.collection(window.db, "notifications"), { userId: msg.senderUid, type: "reaction", text: `${toSentenceCase(user.email.split('@')[0])} reacted ${emoji}.`, messageId: msgId, timestamp: window.serverTimestamp(), isRead: false });
                 } catch (err) {}
             };
 
@@ -360,7 +373,7 @@
                 e.preventDefault();
                 const file = profilePicInputRef.current?.files[0];
                 try {
-                    let updateData = { name: profileForm.name, fontSize: profileForm.fontSize, fontFamily: profileForm.fontFamily };
+                    let updateData = { name: toSentenceCase(profileForm.name), fontSize: profileForm.fontSize, fontFamily: profileForm.fontFamily };
                     if (file) {
                         setProfileUploadProgress(10);
                         const uniqueFileName = `${user.uid}_${Date.now()}_avatar`;
@@ -394,8 +407,8 @@
                 if(!groupForm.name.trim()) return;
                 try {
                     const finalMembers = [...new Set([...groupForm.members, user.email])];
-                    if (editingGroup) await window.updateDoc(window.doc(window.db, "groups", editingGroup.id), { name: groupForm.name, members: finalMembers });
-                    else await window.addDoc(window.collection(window.db, "groups"), { name: groupForm.name, members: finalMembers, admins: [user.email], createdBy: user.email, createdAt: window.serverTimestamp() });
+                    if (editingGroup) await window.updateDoc(window.doc(window.db, "groups", editingGroup.id), { name: toSentenceCase(groupForm.name), members: finalMembers });
+                    else await window.addDoc(window.collection(window.db, "groups"), { name: toSentenceCase(groupForm.name), members: finalMembers, admins: [user.email], createdBy: user.email, createdAt: window.serverTimestamp() });
                     setActiveModal(null); setEditingGroup(null); setGroupForm({name: "", members: []});
                 } catch (error) { alert("Failed to save group."); }
             };
@@ -494,17 +507,34 @@
                 } catch (error) {}
             };
 
+            // FEATURE 4: Scroll State & Floating Arrow logic
+            const handleChatScroll = (e) => {
+                const { scrollTop, scrollHeight, clientHeight } = e.target;
+                const isBottom = Math.abs(scrollHeight - clientHeight - scrollTop) < 50;
+                setIsAtBottom(isBottom);
+            };
+
+            const scrollToPosition = () => {
+                if (chatContainerRef.current) {
+                    if (isAtBottom) {
+                        chatContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+                    } else {
+                        chatContainerRef.current.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: 'smooth' });
+                    }
+                }
+            };
+
             const handleRemoveUser = async (uid) => { if (window.confirm("Delete user entirely?")) await window.deleteDoc(window.doc(window.db, "users", uid)); };
             const handleToggleApprove = async (u) => { await window.updateDoc(window.doc(window.db, "users", u.uid), { isApproved: !u.isApproved }); };
             const handleAddUserSubmit = async (e) => { 
                 e.preventDefault(); 
                 try { 
                     const cred = await window.createUserWithEmailAndPassword(window.secondaryAuth, adminForm.email, adminForm.password); 
-                    await window.setDoc(window.doc(window.db, "users", cred.user.uid), { uid: cred.user.uid, email: cred.user.email, name: adminForm.name || cred.user.email.split('@')[0].toUpperCase(), isApproved: true, isAdmin: adminForm.isAdmin, canCreateGroups: adminForm.canCreateGroups }); 
+                    await window.setDoc(window.doc(window.db, "users", cred.user.uid), { uid: cred.user.uid, email: cred.user.email, name: toSentenceCase(adminForm.name || cred.user.email.split('@')[0]), isApproved: true, isAdmin: adminForm.isAdmin, canCreateGroups: adminForm.canCreateGroups }); 
                     window.signOut(window.secondaryAuth); setActiveModal(null); setAdminForm({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false }); 
                 } catch(err){alert(err.message);} 
             };
-            const handleEditUserSubmit = async (e) => { e.preventDefault(); await window.updateDoc(window.doc(window.db, "users", adminForm.uid), { name: adminForm.name, isAdmin: adminForm.isAdmin, canCreateGroups: adminForm.canCreateGroups }); setActiveModal(null); };
+            const handleEditUserSubmit = async (e) => { e.preventDefault(); await window.updateDoc(window.doc(window.db, "users", adminForm.uid), { name: toSentenceCase(adminForm.name), isAdmin: adminForm.isAdmin, canCreateGroups: adminForm.canCreateGroups }); setActiveModal(null); };
             const handleAdminDeleteMessage = async (msgId) => { if(window.confirm("Delete this record globally?")) await window.deleteDoc(window.doc(window.db, "messages", msgId)); };
             const handleAdminDeleteGroup = async (groupId) => { if(window.confirm("Delete this department completely?")) await window.deleteDoc(window.doc(window.db, "groups", groupId)); };
 
@@ -538,39 +568,57 @@
                 return matchUser && matchDate && matchType && matchGroup;
             });
 
-            // Feature 4: Download Audit Log functionality
+            // FEATURE 1 FIX: Generate Beautiful PDF Audit
             const handleDownloadAudit = () => {
-                let content = "TALK & TASK - GLOBAL AUDIT LOG\n";
-                content += "=================================================\n\n";
+                if (!window.jspdf || !window.jspdf.jsPDF) {
+                    alert("PDF library is still loading, please try again in a moment.");
+                    return;
+                }
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                
+                doc.setFontSize(18);
+                doc.text("Talk & Task - Global Audit Log", 14, 22);
+                doc.setFontSize(10);
+                doc.setTextColor(100);
+                doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
+                
+                const tableColumn = ["Date & Time", "Type", "From -> To", "Details & Trail"];
+                const tableRows = [];
+
                 filteredAuditMessages.forEach(msg => {
-                    content += `Time     : ${msg.dateString} ${msg.time}\n`;
-                    content += `Type     : ${msg.isTask ? 'TASK' : msg.isPrivateMention ? 'PRIVATE' : msg.fileUrl ? 'MEDIA' : msg.replyToId ? 'REPLY' : 'PUBLIC'}\n`;
-                    content += `From     : ${(msg.sender||'').split('@')[0]}\n`;
-                    if(msg.isTask) {
-                        content += `To       : ${(msg.taskData?.assignees||[]).map(a=>a.split('@')[0]).join(', ')}\n`;
-                        content += `Status   : ${msg.taskData?.status}\n`;
-                        content += `Deadline : ${new Date(msg.taskData?.deadline).toLocaleDateString()}\n`;
+                    const time = `${msg.dateString}\n${msg.time}`;
+                    const type = msg.isTask ? 'TASK' : msg.isPrivateMention ? 'PRIVATE' : msg.fileUrl ? 'MEDIA' : msg.replyToId ? 'REPLY' : 'PUBLIC';
+                    let route = `${toSentenceCase((msg.sender||'').split('@')[0])}`;
+                    if (msg.isTask) {
+                        route += `\n-> ${(msg.taskData?.assignees||[]).map(a=>toSentenceCase(a.split('@')[0])).join(', ')}`;
                     }
-                    content += `Content  : ${msg.text || msg.fileName}\n`;
-                    if(msg.isTask && msg.taskData?.trail) {
-                        content += `Trail    :\n`;
-                        msg.taskData.trail.forEach(t => {
-                             content += `  - [${t.time}] ${t.action} by ${(t.by||'').split('@')[0]}`;
-                             if(t.to && t.to !== 'System') content += ` -> ${(t.to||'').split('@')[0]}`;
-                             if(t.comment) content += ` | Comment: "${t.comment}"`;
-                             if(t.fileName) content += ` | File: ${t.fileName}`;
-                             content += `\n`;
-                        });
+
+                    let details = `${msg.text || msg.fileName || ''}\n`;
+                    if (msg.isTask) {
+                        details += `\nStatus: ${msg.taskData?.status} | Due: ${new Date(msg.taskData?.deadline).toLocaleDateString()}\n`;
+                        if (msg.taskData?.trail && msg.taskData.trail.length > 0) {
+                            details += `Trail:\n`;
+                            msg.taskData.trail.forEach(t => {
+                                details += `- ${t.action} by ${toSentenceCase((t.by||'').split('@')[0])} (${t.time})\n`;
+                            });
+                        }
                     }
-                    content += `\n-------------------------------------------------\n\n`;
+
+                    tableRows.push([time, type, route, details]);
                 });
-                const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `Audit_Log_${new Date().toISOString().split('T')[0]}.txt`;
-                a.click();
-                URL.revokeObjectURL(url);
+
+                doc.autoTable({
+                    startY: 36,
+                    head: [tableColumn],
+                    body: tableRows,
+                    theme: 'grid',
+                    styles: { fontSize: 9, cellPadding: 3 },
+                    headStyles: { fillColor: [0, 128, 105] }, // WhatsApp green header
+                    columnStyles: { 0: { cellWidth: 30 }, 1: { cellWidth: 20 }, 2: { cellWidth: 40 }, 3: { cellWidth: 'auto' } }
+                });
+
+                doc.save(`Audit_Log_${new Date().toISOString().split('T')[0]}.pdf`);
             };
 
             let visibleMessages = messages.filter(checkVisibility).filter(handleSearchFilter);
@@ -599,7 +647,7 @@
             const renderMessageNode = (msg) => {
                 const hasReactions = Object.keys(msg.reactions || {}).length > 0;
                 const hasReplies = messages.some(m => m.replyToId === msg.id);
-                // FEATURE 5 FIX: Edit/Delete strictly forbidden if replies or reactions exist
+                // Edit/Delete strictly forbidden if replies or reactions exist
                 const canModify = msg.isMine && !msg.isTask && !hasReplies && !hasReactions;
                 const isEditingThis = editingMessageId === msg.id;
                 const isBookmarked = msg.bookmarkedBy?.includes(user.email);
@@ -628,12 +676,12 @@
 
                             <div className={`max-w-[85vw] md:max-w-[65vw] relative p-1.5 px-2.5 ${getBubbleStyles(msg)}`}>
                                 
-                                {!msg.isMine && !msg.isTask && <div className="text-[12px] font-bold text-[#02b289] mb-0.5">{msg.sender.split('@')[0]}</div>}
+                                {!msg.isMine && !msg.isTask && <div className="text-[12px] font-bold text-[#02b289] mb-0.5">{toSentenceCase(msg.sender.split('@')[0])}</div>}
 
                                 {/* WhatsApp Reply Style */}
                                 {msg.replyToId && (
                                     <div onClick={(e) => { e.stopPropagation(); scrollToMessage(msg.replyToId); }} className={`p-1.5 rounded bg-black/5 mb-1.5 border-l-4 cursor-pointer opacity-90 transition-opacity hover:opacity-100 ${msg.isMine ? 'border-[#02b289]' : 'border-[#02b289]'}`}>
-                                        <div className="font-bold text-[11px] text-[#02b289]">{msg.originalSender}</div>
+                                        <div className="font-bold text-[11px] text-[#02b289]">{toSentenceCase(msg.originalSender)}</div>
                                         <div className="line-clamp-3 text-xs text-gray-600 truncate">{msg.originalText}</div>
                                     </div>
                                 )}
@@ -647,7 +695,7 @@
                                         </div>
                                     </div>
                                 ) : (
-                                    // FEATURE 3 FIX: Click any message to open modal (Task Trail or General Context Menu)
+                                    // Click any message to open modal (Task Trail or General Context Menu)
                                     <div onClick={() => { setSelectedMessage(msg); setActiveModal(msg.isTask ? 'task_trail' : 'context'); }} className="cursor-pointer">
                                         
                                         {msg.isTask && (
@@ -669,7 +717,7 @@
                                             <div className="mt-2 bg-white/40 p-1.5 rounded-lg flex flex-col gap-1">
                                                 <span className="flex items-center gap-1 text-[11px] font-semibold text-blue-900">
                                                     <div className="w-4 h-4 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center"><i className="fa-solid fa-people-group text-[8px]"></i></div> 
-                                                    {msg.taskData.assignees?.map(a => a.split('@')[0]).join(', ')}
+                                                    {msg.taskData.assignees?.map(a => toSentenceCase(a.split('@')[0])).join(', ')}
                                                 </span>
                                                 <span className="text-[10px] text-red-600 font-bold self-end"><i className="fa-regular fa-calendar mr-1"></i>{new Date(msg.taskData.deadline).toLocaleDateString()}</span>
                                             </div>
@@ -681,7 +729,7 @@
                                             {isBookmarked && <i className="fa-solid fa-bookmark text-[#008069] text-[10px] mr-0.5"></i>}
                                             <span className="mt-0.5">{msg.time}</span>
                                             {msg.isMine && msg.seenBy && msg.seenBy.length > 1 && (
-                                                <span title={`Seen by: ${msg.seenBy.filter(e=>e!==user.email).map(e=>e.split('@')[0]).join(', ')}`} className="ml-1 text-[#53bdeb] flex items-center">
+                                                <span title={`Seen by: ${msg.seenBy.filter(e=>e!==user.email).map(e=>toSentenceCase(e.split('@')[0])).join(', ')}`} className="ml-1 text-[#53bdeb] flex items-center">
                                                     <i className="fa-solid fa-check-double text-[11px]"></i>
                                                 </span>
                                             )}
@@ -707,26 +755,28 @@
             };
 
             const myGroups = [{id: "main", name: "Academic Council Group"}, ...groups.filter(g => g.members?.includes(user.email) || currentUserData?.isAdmin)];
-            const myActiveTasksSidebar = messages.filter(m => m.isTask && m.taskData?.assignees?.includes(user.email) && m.taskData?.status !== "Completed").sort((a,b) => new Date(a.taskData.deadline) - new Date(b.taskData.deadline));
+            
+            // FEATURE 2 FIX: Dual-Axis Task Separation in Sidebar
+            const tasksAssignedToMe = messages.filter(m => m.isTask && m.taskData?.assignees?.includes(user.email) && m.taskData?.status !== "Completed").sort((a,b) => new Date(a.taskData.deadline) - new Date(b.taskData.deadline));
+            const tasksAssignedByMe = messages.filter(m => m.isTask && m.senderUid === user.uid && m.taskData?.status !== "Completed").sort((a,b) => new Date(a.taskData.deadline) - new Date(b.taskData.deadline));
 
             return (
-                <div className="flex h-screen w-full bg-white text-gray-800 overflow-hidden">
+                <div className="flex h-screen w-full bg-white text-gray-800 overflow-hidden relative">
                     {viewMode === "admin" ? (
-                        <div className="flex flex-col h-full w-full bg-slate-100 overflow-hidden animate-in fade-in">
+                        <div className="flex flex-col h-full w-full bg-slate-100 overflow-hidden animate-in fade-in z-40">
                             <div className="bg-[#008069] text-white p-4 flex items-center justify-between shadow-md shrink-0">
                                 <div className="flex items-center gap-3"><i className="fa-solid fa-shield-halved text-2xl"></i><div><h1 className="font-bold text-lg">Admin Control Center</h1></div></div>
                                 <button onClick={() => setViewMode("chat")} className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors"><i className="fa-solid fa-arrow-left"></i> Back to Chat</button>
                             </div>
                             <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
                                 
-                                {/* FEATURE 4 FIX: Global Audit is now the FIRST section, with advanced Group & Type filters & DOWNLOAD OPTION */}
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col max-h-[600px]">
                                     <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center shrink-0">
                                         <h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-list-check text-[#008069]"></i> Global Chat & Task Audit</h2>
-                                        <button onClick={handleDownloadAudit} className="bg-[#008069] hover:bg-[#006e5a] text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shadow-sm"><i className="fa-solid fa-file-arrow-down"></i> Download Selected</button>
+                                        <button onClick={handleDownloadAudit} className="bg-[#008069] hover:bg-[#006e5a] text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shadow-sm"><i className="fa-solid fa-file-pdf"></i> Download PDF Report</button>
                                     </div>
                                     <div className="p-4 border-b border-slate-100 bg-white flex flex-wrap gap-4 items-end">
-                                        <div><label className="text-xs font-bold text-slate-500 uppercase block mb-1">By User</label><select value={adminFilterUser} onChange={(e)=>setAdminFilterUser(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 min-w-[150px] outline-none"><option value="">All Users</option>{dbUsers.map(u => <option key={u.uid} value={u.email}>{u.name}</option>)}</select></div>
+                                        <div><label className="text-xs font-bold text-slate-500 uppercase block mb-1">By User</label><select value={adminFilterUser} onChange={(e)=>setAdminFilterUser(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 min-w-[150px] outline-none"><option value="">All Users</option>{dbUsers.map(u => <option key={u.uid} value={u.email}>{toSentenceCase(u.name)}</option>)}</select></div>
                                         <div><label className="text-xs font-bold text-slate-500 uppercase block mb-1">By Type</label><select value={adminFilterType} onChange={(e)=>setAdminFilterType(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 min-w-[150px] outline-none"><option value="">All Types</option><option value="public">Public</option><option value="private">Private</option><option value="media">Media</option><option value="reply">Reply</option><option value="task-all">All Tasks</option><option value="task-pending">Tasks - Pending</option><option value="task-completed">Tasks - Completed</option></select></div>
                                         <div><label className="text-xs font-bold text-slate-500 uppercase block mb-1">By Group</label><select value={adminFilterGroup} onChange={(e)=>setAdminFilterGroup(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 min-w-[150px] outline-none"><option value="">All Groups</option><option value="main">Organization Wide</option>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
                                         <div><label className="text-xs font-bold text-slate-500 uppercase block mb-1">By Date</label><input type="date" value={adminFilterDate} onChange={(e)=>setAdminFilterDate(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm bg-slate-50 outline-none" /></div>
@@ -741,7 +791,7 @@
                                                     <tr key={msg.id} className={`hover:bg-slate-50 ${msg.isTask ? 'cursor-pointer hover:bg-blue-50' : ''}`} onClick={() => { if(msg.isTask) { setSelectedMessage(msg); setActiveModal('task_trail'); } }}>
                                                         <td className="px-4 py-2 text-xs text-slate-500">{msg.dateString}<br/>{msg.time}</td>
                                                         <td className="px-4 py-2">{msg.isTask ? <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded">TASK</span> : msg.isPrivateMention ? <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded">PRIVATE</span> : msg.fileUrl ? <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-1 rounded">MEDIA</span> : msg.replyToId ? <span className="text-[10px] font-bold bg-teal-100 text-teal-700 px-2 py-1 rounded">REPLY</span> : <span className="text-[10px] font-bold bg-gray-100 text-gray-700 px-2 py-1 rounded">PUBLIC</span>}</td>
-                                                        <td className="px-4 py-2"><div className="font-semibold text-slate-700 text-xs">From: {(msg.sender||'').split('@')[0]} {msg.isTask && `→ To: ${(msg.taskData?.assignees||[]).map(a=>a.split('@')[0]).join(', ')}`}</div><div className="text-slate-600 italic truncate max-w-[200px] text-xs">{msg.text || msg.fileName}</div></td>
+                                                        <td className="px-4 py-2"><div className="font-semibold text-slate-700 text-xs">From: {toSentenceCase((msg.sender||'').split('@')[0])} {msg.isTask && `→ To: ${(msg.taskData?.assignees||[]).map(a=>toSentenceCase(a.split('@')[0])).join(', ')}`}</div><div className="text-slate-600 italic truncate max-w-[200px] text-xs">{msg.text || msg.fileName}</div></td>
                                                         <td className="px-4 py-2 text-right"><button onClick={(e) => { e.stopPropagation(); handleAdminDeleteMessage(msg.id); }} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded"><i className="fa-solid fa-trash"></i></button></td>
                                                     </tr>
                                                 ))}
@@ -758,7 +808,7 @@
                                                 <tbody className="divide-y divide-slate-100">
                                                     {dbUsers.map(u => (
                                                         <tr key={u.uid} className="hover:bg-slate-50">
-                                                            <td className="px-4 py-3"><div className="font-semibold text-slate-800 flex items-center gap-1">{u.name}{u.isAdmin && <i className="fa-solid fa-star text-yellow-400 text-[10px]"></i>}</div><div className="text-[10px] text-slate-500">{u.email}</div></td>
+                                                            <td className="px-4 py-3"><div className="font-semibold text-slate-800 flex items-center gap-1">{toSentenceCase(u.name)}{u.isAdmin && <i className="fa-solid fa-star text-yellow-400 text-[10px]"></i>}</div><div className="text-[10px] text-slate-500">{u.email}</div></td>
                                                             <td className="px-4 py-3 text-right">
                                                                 <button onClick={() => handleToggleApprove(u)} className={`mr-2 px-2 py-1 rounded-full text-[9px] font-bold ${u.isApproved ? 'bg-green-100 text-[#008069]' : 'bg-orange-100 text-orange-700'}`}>{u.isApproved ? 'Approved' : 'Pending'}</button>
                                                                 <button onClick={() => { setAdminForm({ ...u, canCreateGroups: u.canCreateGroups || false }); setActiveModal('admin_edit_user'); }} className="text-blue-500 hover:text-blue-700 mr-2"><i className="fa-solid fa-pen"></i></button>
@@ -778,7 +828,7 @@
                                                     {groups.length === 0 && <tr><td className="p-4 text-center text-gray-500 italic">No custom groups created yet.</td></tr>}
                                                     {groups.map(g => (
                                                         <tr key={g.id} className="hover:bg-slate-50">
-                                                            <td className="px-4 py-3"><div className="font-bold text-slate-800">{g.name}</div><div className="text-[10px] text-slate-500">{g.members?.length || 0} Members | Created by {g.createdBy?.split('@')[0]}</div></td>
+                                                            <td className="px-4 py-3"><div className="font-bold text-slate-800">{g.name}</div><div className="text-[10px] text-slate-500">{g.members?.length || 0} Members | Created by {toSentenceCase(g.createdBy?.split('@')[0])}</div></td>
                                                             <td className="px-4 py-3 text-right">
                                                                 <button onClick={() => { setGroupForm({name: g.name, members: g.members}); setEditingGroup(g); setActiveModal('group_form_modal'); }} className="text-[#008069] text-xs font-bold bg-[#d9fdd3] px-2 py-1 rounded mr-2"><i className="fa-solid fa-pen"></i> Edit</button>
                                                                 <button onClick={() => handleAdminDeleteGroup(g.id)} className="text-red-500 text-xs font-bold bg-red-50 px-2 py-1 rounded"><i className="fa-solid fa-trash"></i> Delete</button>
@@ -793,7 +843,7 @@
                             </div>
                         </div>
                     ) : (
-                        /* --- WHATSAPP THEME CHAT UI --- */
+                        /* --- CHAT UI --- */
                         <div className="flex h-full w-full">
                             
                             {/* SIDEBAR */}
@@ -805,7 +855,7 @@
                                         <div className="w-10 h-10 rounded-full bg-[#008069] text-white flex items-center justify-center font-bold text-lg">{user.email.substring(0,1).toUpperCase()}</div>
                                     )}
                                     <div className="overflow-hidden flex-1">
-                                        <h2 className="font-bold text-sm text-[#111b21] truncate">{currentUserData?.name || user.email.split('@')[0]}</h2>
+                                        <h2 className="font-bold text-sm text-[#111b21] truncate">{toSentenceCase(currentUserData?.name || user.email.split('@')[0])}</h2>
                                         <p className="text-[10px] text-[#54656f] truncate">{user.email}</p>
                                     </div>
                                     <button onClick={()=>{setActiveModal('edit_profile');}} className="text-[#54656f] hover:text-[#008069] absolute right-4 transition-colors" title="Settings"><i className="fa-solid fa-ellipsis-vertical"></i></button>
@@ -827,17 +877,35 @@
                                         ))}
                                     </div>
 
-                                    <div className="px-4 pt-4 pb-2 text-[11px] font-semibold text-[#54656f] uppercase tracking-wider border-b border-gray-100 bg-white">Assigned To Me</div>
-                                    <div className="flex-1 overflow-y-auto">
-                                        {myActiveTasksSidebar.length === 0 ? (
-                                            <div className="text-[13px] text-[#54656f] text-center p-6">No pending tasks</div>
+                                    {/* FEATURE 2 FIX: Separated Task Sidebar */}
+                                    <div className="px-4 pt-4 pb-2 text-[11px] font-semibold text-[#54656f] uppercase tracking-wider border-b border-gray-100 bg-white">Tasks Assigned To Me</div>
+                                    <div className="shrink-0 max-h-48 overflow-y-auto">
+                                        {tasksAssignedToMe.length === 0 ? (
+                                            <div className="text-[13px] text-[#54656f] text-center p-3">No pending tasks</div>
                                         ) : (
-                                            myActiveTasksSidebar.map(task => (
+                                            tasksAssignedToMe.map(task => (
                                                 <div key={task.id} onClick={() => { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'main',name:'Academic Council'}); setSelectedMessage(task); setActiveModal('task_trail'); }} className="flex items-center gap-3 p-3 cursor-pointer hover:bg-[#f5f6f6]">
-                                                    <div className="w-12 h-12 rounded-full bg-[#d1e8ff] flex items-center justify-center text-blue-600"><i className="fa-solid fa-clipboard-check"></i></div>
-                                                    <div className="flex-1 overflow-hidden border-b border-gray-100 pb-2">
-                                                        <div className="text-[15px] text-[#111b21] truncate">{task.text || 'File Task'}</div>
-                                                        <div className="flex justify-between items-center text-[12px]"><span className="text-[#54656f] truncate">{groups.find(g=>g.id===task.groupId)?.name || 'Main Group'}</span><span className="text-red-500 font-semibold">{new Date(task.taskData.deadline).toLocaleDateString()}</span></div>
+                                                    <div className="w-10 h-10 rounded-full bg-[#d1e8ff] flex items-center justify-center text-blue-600"><i className="fa-solid fa-clipboard-check"></i></div>
+                                                    <div className="flex-1 overflow-hidden border-b border-gray-100 pb-1">
+                                                        <div className="text-[14px] text-[#111b21] truncate">{task.text || 'File Task'}</div>
+                                                        <div className="flex justify-between items-center text-[11px]"><span className="text-[#54656f] truncate">{groups.find(g=>g.id===task.groupId)?.name || 'Main Group'}</span><span className="text-red-500 font-semibold">{new Date(task.taskData.deadline).toLocaleDateString()}</span></div>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+
+                                    <div className="px-4 pt-4 pb-2 text-[11px] font-semibold text-[#54656f] uppercase tracking-wider border-b border-t border-gray-100 bg-white">Tasks Assigned By Me</div>
+                                    <div className="flex-1 overflow-y-auto">
+                                        {tasksAssignedByMe.length === 0 ? (
+                                            <div className="text-[13px] text-[#54656f] text-center p-3">No pending tasks</div>
+                                        ) : (
+                                            tasksAssignedByMe.map(task => (
+                                                <div key={task.id} onClick={() => { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'main',name:'Academic Council'}); setSelectedMessage(task); setActiveModal('task_trail'); }} className="flex items-center gap-3 p-3 cursor-pointer hover:bg-[#f5f6f6]">
+                                                    <div className="w-10 h-10 rounded-full bg-[#e5d5fb] flex items-center justify-center text-purple-600"><i className="fa-solid fa-arrow-up-right-from-square"></i></div>
+                                                    <div className="flex-1 overflow-hidden border-b border-gray-100 pb-1">
+                                                        <div className="text-[14px] text-[#111b21] truncate">{task.text || 'File Task'}</div>
+                                                        <div className="flex justify-between items-center text-[11px]"><span className="text-[#54656f] truncate">To: {(task.taskData.assignees||[]).map(a=>toSentenceCase(a.split('@')[0])).join(', ')}</span><span className="text-red-500 font-semibold">{new Date(task.taskData.deadline).toLocaleDateString()}</span></div>
                                                     </div>
                                                 </div>
                                             ))
@@ -855,22 +923,21 @@
 
                             {/* CHAT AREA */}
                             <div className="flex-1 flex flex-col relative h-full">
-                                {/* WHATSAPP HEADER */}
+                                {/* HEADER */}
                                 <div className="h-[60px] bg-[#f0f2f5] flex items-center justify-between px-4 shrink-0 z-10 border-b border-gray-200">
                                     <div className="flex items-center gap-3 cursor-pointer" onClick={()=>{ if(activeGroup.id!=='main') setActiveModal('group_settings'); }}>
                                         <div className="w-10 h-10 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[#54656f]"><i className="fa-solid fa-people-group"></i></div>
                                         <div><h1 className="text-[16px] text-[#111b21]">{activeGroup.name}</h1><p className="text-[13px] text-[#54656f]">{activeGroup.id==='main' ? 'Organization Wide' : `${activeGroup.members?.length||0} Members`}</p></div>
                                     </div>
 
-                                    {/* FEATURE 6 FIX: Top Bar Online Users */}
                                     <div className="hidden lg:flex items-center gap-2 overflow-hidden mx-4 flex-1 justify-center px-2 border-x border-gray-200/50">
                                         <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mr-2">Online</span>
                                         {dbUsers.filter(u => {
                                             if (activeGroup.id !== 'main' && !activeGroup.members?.includes(u.email)) return false;
                                             return u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000) && u.uid !== user.uid;
                                         }).slice(0, 7).map(onlineUser => (
-                                            <div key={onlineUser.uid} className="relative group cursor-default" title={`${onlineUser.name} is Online`}>
-                                                {onlineUser.profilePicUrl ? <img src={onlineUser.profilePicUrl} className="w-7 h-7 rounded-full object-cover" /> : <div className="w-7 h-7 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[9px] font-bold text-[#54656f]">{onlineUser.name.substring(0,2)}</div>}
+                                            <div key={onlineUser.uid} className="relative group cursor-default" title={`${toSentenceCase(onlineUser.name)} is Online`}>
+                                                {onlineUser.profilePicUrl ? <img src={onlineUser.profilePicUrl} className="w-7 h-7 rounded-full object-cover" /> : <div className="w-7 h-7 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[9px] font-bold text-[#54656f]">{toSentenceCase(onlineUser.name).substring(0,2)}</div>}
                                                 <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#00a884] border-2 border-[#f0f2f5] rounded-full"></div>
                                             </div>
                                         ))}
@@ -878,7 +945,6 @@
                                     </div>
 
                                     <div className="flex items-center gap-4 text-[#54656f]">
-                                        {/* FEATURE 1 FIX: Notifications on Top Right */}
                                         <div className="relative">
                                             <button onClick={() => setShowNotifications(!showNotifications)} className="hover:bg-gray-200 rounded-full p-2 transition-colors relative" title="Notifications">
                                                 <i className="fa-solid fa-bell text-lg"></i>
@@ -897,7 +963,6 @@
                                                         {totalNotifications === 0 ? <div className="p-6 text-center text-[14px] text-[#54656f]">No new updates</div> : 
                                                             <>
                                                                 {activeActionableTasks.map(task => (
-                                                                    // FEATURE 2 FIX: Click Notification -> Change Group -> Scroll & Highlight
                                                                     <div key={task.id} className="p-3 border-b hover:bg-[#f5f6f6] cursor-pointer" onClick={() => { 
                                                                         setShowNotifications(false); 
                                                                         if (activeGroup.id !== task.groupId) { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'main',name:'Academic Council'}); }
@@ -946,7 +1011,8 @@
                                     </div>
                                 </div>
 
-                                <div className="flex-1 overflow-y-auto p-4 md:px-[6%] space-y-2 wa-bg relative pb-10" onClick={() => setShowFilterMenu(false)}>
+                                {/* CHAT FEED */}
+                                <div ref={chatContainerRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto p-4 md:px-[6%] space-y-2 wa-bg relative pb-10" onClick={() => setShowFilterMenu(false)}>
                                     <div className="text-center mb-4 mt-2"><span className="text-[12.5px] text-[#54656f] bg-[#ffeecd] px-3 py-1.5 rounded-lg shadow-sm font-semibold"><i className="fa-solid fa-lock text-[10px] mr-1"></i> Messages are end-to-end encrypted.</span></div>
                                     
                                     {pinnedMessages.length > 0 && (
@@ -961,7 +1027,7 @@
                                     {typingStatus.length > 0 && (
                                         <div className="flex items-start animate-in fade-in slide-in-from-bottom-2 mb-2">
                                             <div className="bg-white px-3 py-2 rounded-xl rounded-tl-sm shadow-sm text-[13px] text-[#008069] font-semibold italic">
-                                                {typingStatus.map(t => t.name).join(', ')} {typingStatus.length > 1 ? 'are' : 'is'} typing...
+                                                {typingStatus.map(t => toSentenceCase(t.name)).join(', ')} {typingStatus.length > 1 ? 'are' : 'is'} typing...
                                             </div>
                                         </div>
                                     )}
@@ -969,11 +1035,16 @@
                                     <div ref={messagesEndRef} className="h-4"></div>
                                 </div>
 
-                                {/* WHATSAPP REPLY BANNER */}
+                                {/* FEATURE 4 FIX: Smart Floating Arrow */}
+                                <button onClick={scrollToPosition} className="absolute bottom-[80px] right-4 md:right-8 bg-white/90 backdrop-blur text-[#008069] shadow-lg rounded-full w-10 h-10 flex items-center justify-center z-30 hover:bg-white transition-all border border-gray-200">
+                                    <i className={`fa-solid ${isAtBottom ? 'fa-arrow-up' : 'fa-arrow-down'}`}></i>
+                                </button>
+
+                                {/* REPLY BANNER */}
                                 {replyingTo && (
-                                    <div className="bg-[#f0f2f5] px-4 py-2 flex items-center justify-between shrink-0 animate-in slide-in-from-bottom-2 border-l-4 border-[#008069]">
+                                    <div className="bg-[#f0f2f5] px-4 py-2 flex items-center justify-between shrink-0 animate-in slide-in-from-bottom-2 border-l-4 border-[#008069] z-10">
                                         <div className="flex flex-col overflow-hidden">
-                                            <div className="text-[13px] font-bold text-[#008069]">{replyingTo.sender.split('@')[0]}</div>
+                                            <div className="text-[13px] font-bold text-[#008069]">{toSentenceCase(replyingTo.sender.split('@')[0])}</div>
                                             <div className="text-[13px] text-[#54656f] truncate">"{replyingTo.text || replyingTo.fileName}"</div>
                                         </div>
                                         <button onClick={()=>setReplyingTo(null)} className="text-[#54656f] hover:text-red-500 p-2"><i className="fa-solid fa-xmark"></i></button>
@@ -986,20 +1057,20 @@
                                         {dbUsers.filter(u => u.name.toLowerCase().includes(inputText.split(/\s+/).pop().substring(1).toLowerCase())).map(u => (
                                             <div key={u.uid} onMouseDown={(e) => e.preventDefault()} onClick={() => { const words = inputText.split(/\s+/); words[words.length - 1] = `@${u.name} `; setInputText(words.join(' ')); chatInputRef.current?.focus(); }} className="p-3 border-b border-gray-50 hover:bg-[#f5f6f6] cursor-pointer text-[14px] flex items-center gap-3 text-[#111b21]">
                                                 {u.profilePicUrl ? <img src={u.profilePicUrl} className="w-6 h-6 rounded-full object-cover"/> : <div className="w-6 h-6 rounded-full bg-[#008069] text-white flex items-center justify-center text-[10px]"><i className="fa-solid fa-at"></i></div>}
-                                                {u.name}
+                                                {toSentenceCase(u.name)}
                                             </div>
                                         ))}
                                         {groups.filter(g => g.name.toLowerCase().includes(inputText.split(/\s+/).pop().substring(1).toLowerCase())).map(g => (
                                             <div key={g.id} onMouseDown={(e) => e.preventDefault()} onClick={() => { const words = inputText.split(/\s+/); words[words.length - 1] = `@${g.name.replace(/\s+/g, '')} `; setInputText(words.join(' ')); chatInputRef.current?.focus(); }} className="p-3 border-b border-gray-50 hover:bg-blue-50 cursor-pointer text-[14px] flex items-center gap-3 text-blue-800 font-bold">
                                                 <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px]"><i className="fa-solid fa-people-group"></i></div>
-                                                Team: {g.name}
+                                                Team: {toSentenceCase(g.name)}
                                             </div>
                                         ))}
                                     </div>
                                 )}
 
-                                {/* WHATSAPP INPUT AREA */}
-                                <div className="min-h-[62px] bg-[#f0f2f5] px-3 py-2 flex items-end gap-2 shrink-0 z-10">
+                                {/* INPUT AREA */}
+                                <div className="min-h-[62px] bg-[#f0f2f5] px-3 py-2 flex items-end gap-2 shrink-0 z-10 relative">
                                     <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"/>
                                     <button className="p-2.5 text-[#54656f] hover:bg-gray-200 rounded-full transition-colors shrink-0 mb-0.5" onClick={() => fileInputRef.current.click()} disabled={isUploading}><i className="fa-solid fa-plus text-[20px]"></i></button>
                                     <div className="flex-1 bg-white rounded-xl px-4 py-2 flex items-center min-h-[42px] shadow-sm">
@@ -1017,7 +1088,6 @@
                     )}
 
                     {/* MODALS */}
-                    {/* FEATURE 3 FIX: Re-integrated Context Modal for general message clicks */}
                     {activeModal === 'context' && selectedMessage && (
                         <div className="absolute inset-0 bg-black/40 z-[60] flex items-end justify-center p-4 animate-in fade-in" onClick={() => setActiveModal(null)}>
                             <div className="bg-white w-full max-w-sm rounded-t-3xl p-6 shadow-2xl animate-in slide-in-from-bottom-8" onClick={e => e.stopPropagation()}>
@@ -1062,7 +1132,6 @@
                         </div>
                     )}
 
-                    {/* FEATURE 5 FIX: User Rights Admin Control (Create Group & System Admin Toggles explicitly visible) */}
                     {activeModal === 'admin_add_user' && (
                         <div className="absolute inset-0 bg-black/40 z-[70] flex items-center justify-center p-4"><div className="bg-white w-full max-w-sm rounded-xl p-8 shadow-2xl animate-in zoom-in-95"><div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl"><i className="fa-solid fa-user-plus text-[#008069] mr-2"></i> Register Staff</h3><i className="fa-solid fa-xmark cursor-pointer text-slate-400" onClick={() => setActiveModal(null)}></i></div><form onSubmit={handleAddUserSubmit} className="space-y-4"><input required type="text" placeholder="Full Name" value={adminForm.name} onChange={(e) => setAdminForm({...adminForm, name: e.target.value})} className="w-full p-3 border rounded-xl text-sm outline-none focus:border-[#008069]" /><input required type="email" placeholder="Email" value={adminForm.email} onChange={(e) => setAdminForm({...adminForm, email: e.target.value})} className="w-full p-3 border rounded-xl text-sm outline-none focus:border-[#008069]" /><input required minLength="6" type="password" placeholder="Password" value={adminForm.password} onChange={(e) => setAdminForm({...adminForm, password: e.target.value})} className="w-full p-3 border rounded-xl text-sm outline-none focus:border-[#008069]" /><div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3"><label className="flex items-center gap-3 text-[13px] font-bold text-slate-800 cursor-pointer"><input type="checkbox" checked={adminForm.isAdmin} onChange={(e) => setAdminForm({...adminForm, isAdmin: e.target.checked})} className="w-4 h-4 accent-[#008069]"/> Grant Full Admin Rights</label><label className="flex items-center gap-3 text-[13px] font-bold text-slate-800 cursor-pointer"><input type="checkbox" checked={adminForm.canCreateGroups} onChange={(e) => setAdminForm({...adminForm, canCreateGroups: e.target.checked})} className="w-4 h-4 accent-[#008069]"/> Allow Department Creation</label></div><button type="submit" className="w-full bg-[#008069] text-white py-3 rounded-xl font-bold hover:bg-[#006e5a]">Create Account</button></form></div></div>
                     )}
@@ -1078,7 +1147,7 @@
                                 <form onSubmit={handleGroupSubmit} className="space-y-4">
                                     <input required type="text" value={groupForm.name} onChange={(e) => setGroupForm({...groupForm, name: e.target.value})} className="w-full p-2 border-b-2 border-[#008069] text-[15px] outline-none" placeholder="Group Name" />
                                     <div className="text-[13px] text-[#54656f] mt-4 mb-2">Members</div>
-                                    <div className="h-40 overflow-y-auto space-y-2">{dbUsers.map(u => (<label key={u.uid} className="flex items-center gap-3 cursor-pointer"><input type="checkbox" checked={groupForm.members.includes(u.email)} onChange={(e) => { const newMembers = e.target.checked ? [...groupForm.members, u.email] : groupForm.members.filter(m => m !== u.email); setGroupForm({...groupForm, members: newMembers}); }} className="w-4 h-4 accent-[#008069]"/><span className="text-[15px] text-[#111b21]">{u.name}</span></label>))}</div>
+                                    <div className="h-40 overflow-y-auto space-y-2">{dbUsers.map(u => (<label key={u.uid} className="flex items-center gap-3 cursor-pointer"><input type="checkbox" checked={groupForm.members.includes(u.email)} onChange={(e) => { const newMembers = e.target.checked ? [...groupForm.members, u.email] : groupForm.members.filter(m => m !== u.email); setGroupForm({...groupForm, members: newMembers}); }} className="w-4 h-4 accent-[#008069]"/><span className="text-[15px] text-[#111b21]">{toSentenceCase(u.name)}</span></label>))}</div>
                                     <div className="flex justify-end gap-3 mt-4"><button type="button" onClick={()=>setActiveModal(null)} className="text-[#008069] font-semibold">Cancel</button><button type="submit" className="text-white bg-[#008069] px-4 py-2 rounded shadow">{editingGroup ? 'Save' : 'Create'}</button></div>
                                 </form>
                             </div>
@@ -1088,10 +1157,10 @@
                     {activeModal === 'group_settings' && (
                         <div className="absolute inset-0 bg-black/40 z-[60] flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
                             <div className="bg-white w-full max-w-sm rounded-xl p-6 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-                                <div className="text-[18px] font-semibold text-[#111b21] mb-1">{activeGroup.name}</div>
+                                <div className="text-[18px] font-semibold text-[#111b21] mb-1">{toSentenceCase(activeGroup.name)}</div>
                                 <div className="text-[13px] text-[#54656f] mb-4">Group Info</div>
                                 <div className="space-y-4">
-                                    <div className="h-48 overflow-y-auto space-y-3">{dbUsers.map(u => { const isAdmin = activeGroup.admins?.includes(user.email) || currentUserData?.isAdmin; const isMember = activeGroup.members?.includes(u.email); return (<label key={u.uid} className="flex items-center gap-3"><input type="checkbox" disabled={!isAdmin || activeGroup.admins?.includes(u.email)} checked={groupForm.members.includes(u.email) || isMember} onChange={(e) => { if(!isAdmin) return; const newMembers = e.target.checked ? [...groupForm.members, u.email] : groupForm.members.filter(m => m !== u.email); setGroupForm({...groupForm, members: newMembers}); }} className="w-4 h-4 accent-[#008069] disabled:opacity-50"/><span className="text-[15px] text-[#111b21] flex-1">{u.name}</span>{activeGroup.admins?.includes(u.email) && <span className="text-[11px] text-[#008069] border border-[#008069] px-1 rounded">Admin</span>}</label>) })}</div>
+                                    <div className="h-48 overflow-y-auto space-y-3">{dbUsers.map(u => { const isAdmin = activeGroup.admins?.includes(user.email) || currentUserData?.isAdmin; const isMember = activeGroup.members?.includes(u.email); return (<label key={u.uid} className="flex items-center gap-3"><input type="checkbox" disabled={!isAdmin || activeGroup.admins?.includes(u.email)} checked={groupForm.members.includes(u.email) || isMember} onChange={(e) => { if(!isAdmin) return; const newMembers = e.target.checked ? [...groupForm.members, u.email] : groupForm.members.filter(m => m !== u.email); setGroupForm({...groupForm, members: newMembers}); }} className="w-4 h-4 accent-[#008069] disabled:opacity-50"/><span className="text-[15px] text-[#111b21] flex-1">{toSentenceCase(u.name)}</span>{activeGroup.admins?.includes(u.email) && <span className="text-[11px] text-[#008069] border border-[#008069] px-1 rounded">Admin</span>}</label>) })}</div>
                                     {(activeGroup.admins?.includes(user.email) || currentUserData?.isAdmin) && (<button onClick={handleUpdateGroupMembers} className="w-full bg-[#008069] text-white py-2.5 rounded shadow hover:bg-[#006e5a]">Save Members</button>)}
                                 </div>
                             </div>
@@ -1105,14 +1174,14 @@
                                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                                     <div className="bg-[#d1e8ff] p-3 rounded-xl rounded-tl-sm shadow-sm">
                                         <p className="text-[15px] text-[#111b21] mb-2">{selectedMessage.text}</p>
-                                        <div className="text-[12px] text-[#54656f] flex justify-between"><span>Assigned: {(selectedMessage.taskData.assignees||[]).map(a=>a.split('@')[0]).join(', ')}</span><span className="text-red-500 font-semibold">Due: {new Date(selectedMessage.taskData.deadline).toLocaleDateString()}</span></div>
+                                        <div className="text-[12px] text-[#54656f] flex justify-between"><span>Assigned: {(selectedMessage.taskData.assignees||[]).map(a=>toSentenceCase(a.split('@')[0])).join(', ')}</span><span className="text-red-500 font-semibold">Due: {new Date(selectedMessage.taskData.deadline).toLocaleDateString()}</span></div>
                                     </div>
                                     {selectedMessage.taskData.trail.map((item, idx) => (
                                         <div key={idx} className="flex gap-3">
                                             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white shrink-0 ${item.action === 'Marked Completed' ? 'bg-[#00a884]' : 'bg-[#53bdeb]'}`}><i className={item.action === 'Marked Completed' ? "fa-solid fa-check" : "fa-solid fa-info"}></i></div>
                                             <div className="bg-white p-2.5 rounded-xl rounded-tl-sm shadow-sm flex-1">
                                                 <div className="text-[11px] text-[#54656f] flex justify-between mb-1"><span className="font-bold text-[#008069] uppercase">{item.action}</span><span>{item.time.split(',')[0]}</span></div>
-                                                <div className="text-[14px] text-[#111b21]">{(item.by||'').split('@')[0]} {item.to && item.to !== 'System' && `→ ${(item.to||'').split('@')[0]}`}</div>
+                                                <div className="text-[14px] text-[#111b21]">{toSentenceCase((item.by||'').split('@')[0])} {item.to && item.to !== 'System' && `→ ${toSentenceCase((item.to||'').split('@')[0])}`}</div>
                                                 {item.comment && <div className="mt-1 text-[13px] text-[#54656f] italic">"{item.comment}"</div>}
                                                 {item.fileUrl && (<a href={item.fileUrl} target="_blank" className="mt-2 text-[13px] text-[#02b289] hover:underline flex items-center gap-1"><i className="fa-solid fa-download"></i> Attachment</a>)}
                                             </div>
@@ -1129,7 +1198,7 @@
                                                         if (e.target.checked) setDelegateAssignees([...delegateAssignees, u.email]);
                                                         else setDelegateAssignees(delegateAssignees.filter(m => m !== u.email));
                                                     }} className="w-4 h-4 accent-[#008069]" />
-                                                    <span className="text-[13px] text-[#111b21]">{u.name}</span>
+                                                    <span className="text-[13px] text-[#111b21]">{toSentenceCase(u.name)}</span>
                                                 </label>
                                             ))}
                                         </div>
@@ -1167,7 +1236,7 @@
                                                     if (e.target.checked) setTaskAssignees([...taskAssignees, u.email]);
                                                     else setTaskAssignees(taskAssignees.filter(email => email !== u.email));
                                                 }} className="w-4 h-4 accent-[#008069]" />
-                                                <span className="text-[14px] text-[#111b21]">{u.name}</span>
+                                                <span className="text-[14px] text-[#111b21]">{toSentenceCase(u.name)}</span>
                                             </label>
                                         ))}
                                     </div>
@@ -1192,6 +1261,7 @@
             const [isFirebaseLoaded, setIsFirebaseLoaded] = useState(false);
             const [email, setEmail] = useState("");
             const [password, setPassword] = useState("");
+            const [showPassword, setShowPassword] = useState(false); // FEATURE 5 FIX: Eye Icon State
             const [authError, setAuthError] = useState("");
 
             useEffect(() => {
@@ -1206,7 +1276,7 @@
                 try {
                     const cred = await window.createUserWithEmailAndPassword(window.auth, email, password);
                     const isVp = cred.user.email.toLowerCase() === 'viceprincipal@mpgs.edu.in';
-                    await window.setDoc(window.doc(window.db, "users", cred.user.uid), { uid: cred.user.uid, email: cred.user.email, name: cred.user.email.split('@')[0].toUpperCase(), isApproved: isVp, isAdmin: isVp, canCreateGroups: isVp });
+                    await window.setDoc(window.doc(window.db, "users", cred.user.uid), { uid: cred.user.uid, email: cred.user.email, name: toSentenceCase(cred.user.email.split('@')[0]), isApproved: isVp, isAdmin: isVp, canCreateGroups: isVp });
                 } catch (err) { setAuthError("Registration Failed"); }
             };
 
@@ -1217,7 +1287,6 @@
                     <div className="flex flex-col items-center justify-center min-h-screen bg-[#f0f2f5] p-4 relative">
                         <div className="absolute top-0 left-0 w-full h-48 bg-[#00a884] z-0"></div>
                         <div className="w-full max-w-sm bg-white rounded-xl shadow-lg p-8 z-10">
-                            {/* FIX 1: New Brand Logo "Talk & Task" */}
                             <div className="flex justify-center mb-6">
                                 <div className="w-20 h-20 bg-[#00a884] rounded-full flex items-center justify-center text-white text-3xl shadow-md">
                                     <i className="fa-regular fa-comments"></i>
@@ -1230,7 +1299,11 @@
                             {authError && <div className="bg-red-50 text-red-600 p-3 rounded mb-4 text-[13px]">{authError}</div>}
                             <form className="space-y-4">
                                 <input type="email" placeholder="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3 border-b-2 border-gray-300 focus:border-[#00a884] outline-none transition-colors text-[15px]" />
-                                <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-3 border-b-2 border-gray-300 focus:border-[#00a884] outline-none transition-colors text-[15px]" />
+                                {/* FEATURE 5 FIX: Password Hide/Unhide Eye */}
+                                <div className="relative">
+                                    <input type={showPassword ? "text" : "password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-3 border-b-2 border-gray-300 focus:border-[#00a884] outline-none transition-colors text-[15px] pr-10" />
+                                    <i className={`fa-solid ${showPassword ? 'fa-eye-slash' : 'fa-eye'} absolute right-3 top-4 text-gray-400 hover:text-[#00a884] cursor-pointer`} onClick={() => setShowPassword(!showPassword)}></i>
+                                </div>
                                 <div className="pt-4"><button onClick={handleLogin} className="w-full bg-[#00a884] text-white py-3 rounded shadow hover:bg-[#008f6f] font-semibold transition-colors mb-3">Log In</button><button onClick={handleRegister} className="w-full bg-white border border-[#00a884] text-[#00a884] py-3 rounded hover:bg-[#f0f2f5] font-semibold transition-colors">Create Account</button></div>
                             </form>
                         </div>

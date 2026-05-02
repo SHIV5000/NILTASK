@@ -74,9 +74,9 @@
         ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
         
-        /* WhatsApp Chat Background */
+        /* WhatsApp Chat Background - Slightly altered background color */
         .wa-bg { 
-            background-color: #efeae2; 
+            background-color: #e5dbd3; 
             background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); 
             background-repeat: repeat; 
             background-blend-mode: multiply;
@@ -106,9 +106,10 @@
             const [editingMessageId, setEditingMessageId] = useState(null);
             const [editMessageText, setEditMessageText] = useState("");
 
-            const [taskAssignee, setTaskAssignee] = useState("");
+            // Task Multi-Assignee States
+            const [taskAssignees, setTaskAssignees] = useState([]);
             const [taskDeadline, setTaskDeadline] = useState("");
-            const [delegateAssignee, setDelegateAssignee] = useState("");
+            const [delegateAssignees, setDelegateAssignees] = useState([]);
             const [trailComment, setTrailComment] = useState(""); 
             const [dbUsers, setDbUsers] = useState([]); 
             
@@ -214,7 +215,7 @@
                 }
             }, [messages, activeGroup.id, user.email]);
 
-            const activeActionableTasks = messages.filter(m => m.isTask && m.taskData?.currentAssignee === user.email && m.taskData?.status !== "Completed" && !(m.taskData?.dismissedBy || []).includes(user.uid));
+            const activeActionableTasks = messages.filter(m => m.isTask && m.taskData?.assignees?.includes(user.email) && m.taskData?.status !== "Completed" && !(m.taskData?.dismissedBy || []).includes(user.uid));
             const totalNotifications = activeActionableTasks.length + genericNotifications.length;
 
             useEffect(() => {
@@ -263,10 +264,19 @@
                 setInputText(""); 
                 try { window.deleteDoc(window.doc(window.db, "typing", `${activeGroup.id}_${user.uid}`)); } catch(e) {}
                 
+                // MULTI-MENTION & MENTION TEAMS ENGINE
                 const mentions = [];
                 dbUsers.forEach(u => { if (messageText.includes(`@${u.name}`)) mentions.push(u.email); });
-                const isPrivate = mentions.length > 0;
-                const allowedUsers = isPrivate ? [user.email, ...mentions] : [];
+                groups.forEach(g => {
+                    const teamTag = `@${g.name.replace(/\s+/g, '')}`;
+                    if (messageText.includes(teamTag)) {
+                        (g.members || []).forEach(m => mentions.push(m));
+                    }
+                });
+
+                const uniqueMentions = [...new Set(mentions)];
+                const isPrivate = uniqueMentions.length > 0;
+                const allowedUsers = isPrivate ? [...new Set([user.email, ...uniqueMentions])] : [];
 
                 let replyData = null;
                 if (replyingTo) {
@@ -383,7 +393,7 @@
             const checkVisibility = (msg) => {
                 if (msg.groupId !== activeGroup.id) return false;
                 if (msg.isTask) {
-                    if (msg.sender === user.email || msg.taskData?.currentAssignee === user.email) return true;
+                    if (msg.sender === user.email || msg.taskData?.assignees?.includes(user.email)) return true;
                     if (msg.taskData?.trail?.some(t => t.by === user.email || t.to === user.email)) return true;
                     return false; 
                 }
@@ -394,7 +404,7 @@
             const handleSearchFilter = (msg) => {
                 if (!searchQuery.trim()) return true;
                 const q = searchQuery.toLowerCase();
-                return msg.text?.toLowerCase().includes(q) || msg.sender?.toLowerCase().includes(q) || (msg.isTask && msg.taskData?.currentAssignee?.toLowerCase().includes(q));
+                return msg.text?.toLowerCase().includes(q) || msg.sender?.toLowerCase().includes(q) || (msg.isTask && msg.taskData?.assignees?.some(a=>a.toLowerCase().includes(q)));
             };
 
             const handleClearNotifications = async () => {
@@ -422,29 +432,31 @@
             };
 
             const convertToTask = async () => {
-                if (!selectedMessage || !taskDeadline || !taskAssignee) return alert("Please select Assignee and Deadline.");
+                if (!selectedMessage || !taskDeadline || taskAssignees.length === 0) return alert("Please select Assignees and Deadline.");
                 try {
                     const now = new Date();
                     await window.setDoc(window.doc(window.db, "messages", selectedMessage.id), {
-                        isTask: true, taskData: { deadline: taskDeadline, currentAssignee: taskAssignee, status: "Pending", dismissedBy: [], trail: [{ action: "Task Created", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: taskAssignee }] }
+                        isTask: true, taskData: { deadline: taskDeadline, assignees: taskAssignees, status: "Pending", dismissedBy: [], trail: [{ action: "Task Created", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: taskAssignees.map(a=>a.split('@')[0]).join(', ') }] }
                     }, { merge: true });
                     setActiveModal(null);
+                    setTaskAssignees([]);
                 } catch (error) {}
             };
 
             const handleDelegateTask = async () => {
-                if (!selectedMessage || !delegateAssignee) return;
+                if (!selectedMessage || delegateAssignees.length === 0) return;
                 try {
                     const now = new Date();
-                    const updatedTrail = [...selectedMessage.taskData.trail, { action: "Delegated", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: delegateAssignee }];
-                    await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.currentAssignee": delegateAssignee, "taskData.status": "In Progress", "taskData.trail": updatedTrail, "taskData.dismissedBy": [] });
+                    const updatedTrail = [...selectedMessage.taskData.trail, { action: "Delegated", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: delegateAssignees.map(a=>a.split('@')[0]).join(', ') }];
+                    await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.assignees": delegateAssignees, "taskData.status": "In Progress", "taskData.trail": updatedTrail, "taskData.dismissedBy": [] });
                     setActiveModal(null);
+                    setDelegateAssignees([]);
                 } catch (error) {}
             };
 
             const handleCompleteTask = async () => {
                 if (!selectedMessage) return;
-                if (user.email !== selectedMessage.taskData.currentAssignee && !currentUserData?.isAdmin) return alert("Only the Assignee or Admin can complete this.");
+                if (!selectedMessage.taskData.assignees?.includes(user.email) && !currentUserData?.isAdmin) return alert("Only the Assignees or an Admin can complete this task.");
                 try {
                     const now = new Date();
                     const updatedTrail = [...selectedMessage.taskData.trail, { action: "Marked Completed", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: "System" }];
@@ -486,8 +498,10 @@
             }
 
             const filteredAuditMessages = [...messages].reverse().filter(msg => {
-                const safeSender = msg.sender || ""; const safeAssignee = msg.taskData?.currentAssignee || ""; const safeDate = msg.dateString || "";
-                return (adminFilterUser === "" || safeSender === adminFilterUser || (msg.isTask && safeAssignee === adminFilterUser)) && (adminFilterDate === "" || safeDate === adminFilterDate);
+                const safeSender = msg.sender || ""; 
+                const safeAssignees = msg.taskData?.assignees?.join(',') || ""; 
+                const safeDate = msg.dateString || "";
+                return (adminFilterUser === "" || safeSender === adminFilterUser || (msg.isTask && safeAssignees.includes(adminFilterUser))) && (adminFilterDate === "" || safeDate === adminFilterDate);
             });
 
             let visibleMessages = messages.filter(checkVisibility).filter(handleSearchFilter);
@@ -581,9 +595,12 @@
                                         ) : <p className={`leading-relaxed whitespace-pre-wrap ${userFontClass}`}>{msg.text}</p>}
 
                                         {msg.isTask && (
-                                            <div className="mt-2 bg-white/40 p-1.5 rounded-lg flex items-center justify-between">
-                                                <span className="flex items-center gap-1 text-[11px] font-semibold text-blue-900"><div className="w-4 h-4 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center"><i className="fa-solid fa-user text-[8px]"></i></div> {msg.taskData.currentAssignee.split('@')[0]}</span>
-                                                <span className="text-[10px] text-red-600 font-bold"><i className="fa-regular fa-calendar mr-1"></i>{new Date(msg.taskData.deadline).toLocaleDateString()}</span>
+                                            <div className="mt-2 bg-white/40 p-1.5 rounded-lg flex flex-col gap-1">
+                                                <span className="flex items-center gap-1 text-[11px] font-semibold text-blue-900">
+                                                    <div className="w-4 h-4 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center"><i className="fa-solid fa-user text-[8px]"></i></div> 
+                                                    {msg.taskData.assignees?.map(a => a.split('@')[0]).join(', ')}
+                                                </span>
+                                                <span className="text-[10px] text-red-600 font-bold self-end"><i className="fa-regular fa-calendar mr-1"></i>{new Date(msg.taskData.deadline).toLocaleDateString()}</span>
                                             </div>
                                         )}
                                         
@@ -619,7 +636,7 @@
             };
 
             const myGroups = [{id: "main", name: "Academic Council Group"}, ...groups.filter(g => g.members?.includes(user.email) || currentUserData?.isAdmin)];
-            const myActiveTasksSidebar = messages.filter(m => m.isTask && m.taskData?.currentAssignee === user.email && m.taskData?.status !== "Completed").sort((a,b) => new Date(a.taskData.deadline) - new Date(b.taskData.deadline));
+            const myActiveTasksSidebar = messages.filter(m => m.isTask && m.taskData?.assignees?.includes(user.email) && m.taskData?.status !== "Completed").sort((a,b) => new Date(a.taskData.deadline) - new Date(b.taskData.deadline));
 
             return (
                 <div className="flex h-screen w-full bg-white text-gray-800 overflow-hidden">
@@ -656,7 +673,7 @@
                                         </div>
                                     </div>
                                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden lg:col-span-2 flex flex-col max-h-[400px]">
-                                        <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center shrink-0"><h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-layer-group text-[#008069]"></i> Departments & Groups</h2></div>
+                                        <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center shrink-0"><h2 className="font-bold text-slate-800 flex items-center gap-2"><i className="fa-solid fa-people-group text-[#008069]"></i> Departments & Groups</h2></div>
                                         <div className="p-0 overflow-y-auto flex-1">
                                             <table className="w-full text-left text-sm">
                                                 <tbody className="divide-y divide-slate-100">
@@ -685,7 +702,7 @@
                                                         <tr key={msg.id} className={`hover:bg-slate-50 ${msg.isTask ? 'cursor-pointer hover:bg-blue-50' : ''}`} onClick={() => { if(msg.isTask) { setSelectedMessage(msg); setActiveModal('task_trail'); } }}>
                                                             <td className="px-4 py-2 text-xs text-slate-500">{msg.dateString}<br/>{msg.time}</td>
                                                             <td className="px-4 py-2">{msg.isTask ? <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded">TASK</span> : msg.isPrivateMention ? <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded">PRIVATE</span> : msg.fileUrl ? <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-1 rounded">MEDIA</span> : msg.replyToId ? <span className="text-[10px] font-bold bg-teal-100 text-teal-700 px-2 py-1 rounded">REPLY</span> : <span className="text-[10px] font-bold bg-gray-100 text-gray-700 px-2 py-1 rounded">PUBLIC</span>}</td>
-                                                            <td className="px-4 py-2"><div className="font-semibold text-slate-700 text-xs">From: {(msg.sender||'').split('@')[0]} {msg.isTask && `→ To: ${(msg.taskData?.currentAssignee||'').split('@')[0]}`}</div><div className="text-slate-600 italic truncate max-w-[200px] text-xs">{msg.text || msg.fileName}</div></td>
+                                                            <td className="px-4 py-2"><div className="font-semibold text-slate-700 text-xs">From: {(msg.sender||'').split('@')[0]} {msg.isTask && `→ To: ${(msg.taskData?.assignees||[]).map(a=>a.split('@')[0]).join(', ')}`}</div><div className="text-slate-600 italic truncate max-w-[200px] text-xs">{msg.text || msg.fileName}</div></td>
                                                             <td className="px-4 py-2 text-right"><button onClick={(e) => { e.stopPropagation(); handleAdminDeleteMessage(msg.id); }} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded"><i className="fa-solid fa-trash"></i></button></td>
                                                         </tr>
                                                     ))}
@@ -725,7 +742,7 @@
                                     <div className="mb-4 shrink-0 pt-2">
                                         {myGroups.map(g => (
                                             <div key={g.id} onClick={() => setActiveGroup(g)} className={`flex items-center gap-3 p-3 cursor-pointer transition-colors ${activeGroup.id === g.id ? 'bg-[#f0f2f5]' : 'hover:bg-[#f5f6f6]'}`}>
-                                                <div className="w-12 h-12 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[#54656f] text-lg shadow-sm"><i className="fa-solid fa-users"></i></div>
+                                                <div className="w-12 h-12 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[#54656f] text-lg shadow-sm"><i className="fa-solid fa-people-group"></i></div>
                                                 <div className="flex-1 overflow-hidden border-b border-gray-100 pb-2"><div className="font-semibold text-[15px] text-[#111b21] truncate">{g.name}</div><div className="text-[13px] text-[#54656f] truncate">{g.id==='main' ? 'Organization Wide' : `${g.members?.length || 0} Members`}</div></div>
                                             </div>
                                         ))}
@@ -766,7 +783,7 @@
                                 {/* WHATSAPP HEADER */}
                                 <div className="h-[60px] bg-[#f0f2f5] flex items-center justify-between px-4 shrink-0 z-10 border-b border-gray-200">
                                     <div className="flex items-center gap-3 cursor-pointer" onClick={()=>{ if(activeGroup.id!=='main') setActiveModal('group_settings'); }}>
-                                        <div className="w-10 h-10 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[#54656f]"><i className="fa-solid fa-users"></i></div>
+                                        <div className="w-10 h-10 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[#54656f]"><i className="fa-solid fa-people-group"></i></div>
                                         <div><h1 className="text-[16px] text-[#111b21]">{activeGroup.name}</h1><p className="text-[13px] text-[#54656f]">{activeGroup.id==='main' ? 'Organization Wide' : `${activeGroup.members?.length||0} Members`}</p></div>
                                     </div>
 
@@ -873,13 +890,21 @@
                                     </div>
                                 )}
 
-                                {/* MENTIONS POPUP */}
-                                {inputText.split(' ').pop().startsWith('@') && inputText.split(' ').pop().length > 0 && (
+                                {/* MENTIONS POPUP - FEATURE 4 & 5 (Multiple Select & Mention Teams) */}
+                                {inputText.split(/\s+/).pop().startsWith('@') && inputText.split(/\s+/).pop().length > 0 && (
                                     <div className="absolute bottom-[70px] left-4 md:left-[5%] bg-white shadow-lg rounded-lg w-64 max-h-48 overflow-y-auto z-20 border border-gray-100">
-                                        {dbUsers.filter(u => u.name.toLowerCase().includes(inputText.split(' ').pop().substring(1).toLowerCase())).map(u => (
-                                            <div key={u.uid} onClick={() => { const words = inputText.split(' '); words[words.length - 1] = `@${u.name} `; setInputText(words.join(' ')); chatInputRef.current?.focus(); }} className="p-3 border-b border-gray-50 hover:bg-[#f5f6f6] cursor-pointer text-[14px] flex items-center gap-3 text-[#111b21]">
+                                        {/* Individual Users */}
+                                        {dbUsers.filter(u => u.name.toLowerCase().includes(inputText.split(/\s+/).pop().substring(1).toLowerCase())).map(u => (
+                                            <div key={u.uid} onClick={() => { const words = inputText.split(/\s+/); words[words.length - 1] = `@${u.name} `; setInputText(words.join(' ')); chatInputRef.current?.focus(); }} className="p-3 border-b border-gray-50 hover:bg-[#f5f6f6] cursor-pointer text-[14px] flex items-center gap-3 text-[#111b21]">
                                                 {u.profilePicUrl ? <img src={u.profilePicUrl} className="w-6 h-6 rounded-full object-cover"/> : <div className="w-6 h-6 rounded-full bg-[#008069] text-white flex items-center justify-center text-[10px]"><i className="fa-solid fa-at"></i></div>}
                                                 {u.name}
+                                            </div>
+                                        ))}
+                                        {/* Mention Teams (Groups) */}
+                                        {groups.filter(g => g.name.toLowerCase().includes(inputText.split(/\s+/).pop().substring(1).toLowerCase())).map(g => (
+                                            <div key={g.id} onClick={() => { const words = inputText.split(/\s+/); words[words.length - 1] = `@${g.name.replace(/\s+/g, '')} `; setInputText(words.join(' ')); chatInputRef.current?.focus(); }} className="p-3 border-b border-gray-50 hover:bg-blue-50 cursor-pointer text-[14px] flex items-center gap-3 text-blue-800 font-bold">
+                                                <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px]"><i className="fa-solid fa-people-group"></i></div>
+                                                Team: {g.name}
                                             </div>
                                         ))}
                                     </div>
@@ -950,6 +975,7 @@
                         </div>
                     )}
 
+                    {/* FEATURE 3: MULTI-ASSIGNEE TASK TRAIL */}
                     {activeModal === 'task_trail' && selectedMessage?.taskData && (
                         <div className="absolute inset-0 bg-black/40 z-[60] flex items-center justify-center md:p-4 animate-in fade-in">
                             <div className="bg-[#efeae2] w-full h-full md:h-auto md:max-h-[90vh] md:max-w-2xl md:rounded-xl flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95">
@@ -957,7 +983,7 @@
                                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                                     <div className="bg-[#d1e8ff] p-3 rounded-xl rounded-tl-sm shadow-sm">
                                         <p className="text-[15px] text-[#111b21] mb-2">{selectedMessage.text}</p>
-                                        <div className="text-[12px] text-[#54656f] flex justify-between"><span>Assigned: {(selectedMessage.taskData.currentAssignee||'').split('@')[0]}</span><span className="text-red-500 font-semibold">Due: {new Date(selectedMessage.taskData.deadline).toLocaleDateString()}</span></div>
+                                        <div className="text-[12px] text-[#54656f] flex justify-between"><span>Assigned: {(selectedMessage.taskData.assignees||[]).map(a=>a.split('@')[0]).join(', ')}</span><span className="text-red-500 font-semibold">Due: {new Date(selectedMessage.taskData.deadline).toLocaleDateString()}</span></div>
                                     </div>
                                     {selectedMessage.taskData.trail.map((item, idx) => (
                                         <div key={idx} className="flex gap-3">
@@ -971,14 +997,26 @@
                                         </div>
                                     ))}
                                 </div>
-                                {selectedMessage.taskData.status !== "Completed" && (selectedMessage.taskData.currentAssignee === user.email || currentUserData?.isAdmin) && (
-                                    <div className="bg-[#f0f2f5] p-3 flex flex-col gap-2 shrink-0">
-                                        <div className="flex items-center gap-2">
-                                            <select value={delegateAssignee} onChange={(e) => setDelegateAssignee(e.target.value)} className="flex-1 p-2 rounded-lg text-[14px] outline-none"><option value="">Transfer to...</option>{activeGroup.members?.map(email => <option key={email} value={email}>{(dbUsers.find(u=>u.email===email)?.name || email)}</option>)}</select>
-                                            <button onClick={handleDelegateTask} disabled={!delegateAssignee} className="bg-[#008069] text-white px-4 py-2 rounded-lg text-[14px] disabled:opacity-50">Transfer</button>
-                                            <button onClick={handleCompleteTask} className="bg-[#00a884] text-white px-4 py-2 rounded-lg text-[14px]"><i className="fa-solid fa-check"></i></button>
+                                {selectedMessage.taskData.status !== "Completed" && (selectedMessage.taskData.assignees?.includes(user.email) || currentUserData?.isAdmin) && (
+                                    <div className="bg-[#f0f2f5] p-3 flex flex-col gap-2 shrink-0 border-t border-gray-200">
+                                        <div className="text-[11px] text-gray-500 font-bold uppercase mb-1">Reassign Task (Optional)</div>
+                                        <div className="h-24 overflow-y-auto space-y-1 bg-white border p-2 rounded mb-1">
+                                            {(activeGroup.id === 'main' ? dbUsers : dbUsers.filter(u=>activeGroup.members?.includes(u.email))).map(u => (
+                                                <label key={u.uid} className="flex items-center gap-3 cursor-pointer">
+                                                    <input type="checkbox" checked={delegateAssignees.includes(u.email)} onChange={(e) => {
+                                                        if (e.target.checked) setDelegateAssignees([...delegateAssignees, u.email]);
+                                                        else setDelegateAssignees(delegateAssignees.filter(m => m !== u.email));
+                                                    }} className="w-4 h-4 accent-[#008069]" />
+                                                    <span className="text-[13px] text-[#111b21]">{u.name}</span>
+                                                </label>
+                                            ))}
                                         </div>
-                                        <div className="flex items-center bg-white rounded-full px-3 py-1 mt-1">
+                                        <div className="flex gap-2 mb-2">
+                                            <button onClick={handleDelegateTask} disabled={delegateAssignees.length === 0} className="flex-1 bg-[#008069] text-white px-4 py-2 rounded-lg text-[14px] disabled:opacity-50 font-bold">Transfer Task</button>
+                                            <button onClick={handleCompleteTask} className="flex-1 bg-[#00a884] text-white px-4 py-2 rounded-lg text-[14px] font-bold"><i className="fa-solid fa-check"></i> Mark Complete</button>
+                                        </div>
+                                        <div className="text-[11px] text-gray-500 font-bold uppercase mt-1 mb-1">Add Comment / File</div>
+                                        <div className="flex items-center bg-white rounded-full px-3 py-1 mb-2">
                                             <input type="text" value={trailComment} onChange={(e) => setTrailComment(e.target.value)} placeholder="Add update..." className="flex-1 outline-none text-[15px] py-1.5" />
                                             <input type="file" ref={trailFileInputRef} className="hidden" onChange={handleTrailFileUpload} />
                                             <button onClick={() => trailFileInputRef.current.click()} className="text-[#54656f] p-2 hover:bg-gray-100 rounded-full"><i className="fa-solid fa-paperclip"></i></button>
@@ -994,8 +1032,30 @@
                         <div className="absolute inset-0 bg-black/40 z-[70] flex items-center justify-center p-4" onClick={() => setActiveModal(null)}><div className="bg-white w-full max-w-sm rounded-xl p-6 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}><div className="text-[18px] font-semibold text-[#111b21] mb-4">Set Reminder</div><div className="space-y-4"><input type="datetime-local" value={reminderDateTime} onChange={(e) => setReminderDateTime(e.target.value)} className="w-full p-2 border-b-2 border-[#008069] outline-none text-[15px]" /><div className="flex justify-end gap-3 mt-4"><button onClick={()=>setActiveModal(null)} className="text-[#008069] font-semibold">Cancel</button><button onClick={setReminder} className="bg-[#008069] text-white px-4 py-2 rounded shadow">Save</button></div></div></div></div>
                     )}
 
+                    {/* FEATURE 3: MULTI-ASSIGNEE CONVERT MODAL */}
                     {activeModal === 'task_convert' && (
-                        <div className="absolute inset-0 bg-black/40 z-[70] flex items-center justify-center p-4" onClick={() => setActiveModal(null)}><div className="bg-white w-full max-w-sm rounded-xl p-6 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}><div className="text-[18px] font-semibold text-[#111b21] mb-4">Convert to Task</div><div className="space-y-4"><select value={taskAssignee} onChange={(e) => setTaskAssignee(e.target.value)} className="w-full p-2 border-b-2 border-[#008069] outline-none text-[15px]"><option value="" disabled>Select Assignee...</option>{(activeGroup.id === 'main' ? dbUsers : dbUsers.filter(u=>activeGroup.members?.includes(u.email))).map(u => <option key={u.uid} value={u.email}>{u.name}</option>)}</select><input type="datetime-local" value={taskDeadline} onChange={(e) => setTaskDeadline(e.target.value)} className="w-full p-2 border-b-2 border-[#008069] outline-none text-[15px]" /><div className="flex justify-end gap-3 mt-4"><button onClick={()=>setActiveModal(null)} className="text-[#008069] font-semibold">Cancel</button><button onClick={convertToTask} className="bg-[#008069] text-white px-4 py-2 rounded shadow">Assign</button></div></div></div></div>
+                        <div className="absolute inset-0 bg-black/40 z-[70] flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
+                            <div className="bg-white w-full max-w-sm rounded-xl p-6 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                                <div className="text-[18px] font-semibold text-[#111b21] mb-4">Convert to Task</div>
+                                <div className="space-y-4">
+                                    <div className="text-[13px] text-[#54656f] mt-4 mb-2 font-semibold">Select Multiple Assignees</div>
+                                    <div className="h-32 overflow-y-auto space-y-2 border border-gray-200 p-2 rounded bg-slate-50">
+                                        {(activeGroup.id === 'main' ? dbUsers : dbUsers.filter(u=>activeGroup.members?.includes(u.email))).map(u => (
+                                            <label key={u.uid} className="flex items-center gap-3 cursor-pointer hover:bg-gray-200 p-1 rounded">
+                                                <input type="checkbox" checked={taskAssignees.includes(u.email)} onChange={(e) => {
+                                                    if (e.target.checked) setTaskAssignees([...taskAssignees, u.email]);
+                                                    else setTaskAssignees(taskAssignees.filter(email => email !== u.email));
+                                                }} className="w-4 h-4 accent-[#008069]" />
+                                                <span className="text-[14px] text-[#111b21]">{u.name}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                    <div className="text-[13px] text-[#54656f] mt-4 mb-2 font-semibold">Set Deadline</div>
+                                    <input type="datetime-local" value={taskDeadline} onChange={(e) => setTaskDeadline(e.target.value)} className="w-full p-2 border-b-2 border-[#008069] outline-none text-[15px]" />
+                                    <div className="flex justify-end gap-3 mt-4"><button onClick={()=>setActiveModal(null)} className="text-[#008069] font-semibold">Cancel</button><button onClick={convertToTask} className="bg-[#008069] text-white px-4 py-2 rounded shadow">Assign</button></div>
+                                </div>
+                            </div>
+                        </div>
                     )}
 
                     {isUploading && (

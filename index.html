@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Talk & Task - Enterprise Edition</title>
     
-    <!-- PWA Manifest & Icons (Fixed 404 Favicon Error) -->
+    <!-- PWA Manifest & Icons -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#008069">
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/825/825590.png">
@@ -17,7 +17,7 @@
     <!-- Load FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Load React and ReactDOM (Upgraded to Production Minified Versions) -->
+    <!-- Load React and ReactDOM (Production) -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -74,6 +74,7 @@
         window.dispatchEvent(new Event('firebaseReady'));
     </script>
 
+    <!-- Register Service Worker for PWA -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
@@ -344,7 +345,7 @@
                         const latestAlert = genericNotifications[genericNotifications.length - 1];
                         if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
                             navigator.serviceWorker.controller.postMessage({ type: 'SHOW_NOTIFICATION', title: 'Talk & Task Alert', body: latestAlert.text });
-                        } else if (Notification.permission === "granted") {
+                        } else if ("Notification" in window && Notification.permission === "granted") {
                             new Notification("Talk & Task Alert", { body: latestAlert.text, icon: "https://cdn-icons-png.flaticon.com/512/825/825590.png" });
                         }
                     }

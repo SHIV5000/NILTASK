@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -69,7 +70,6 @@
     </script>
 
     <style>
-        /* Modern Premium SaaS Typography & Theme */
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important; background-color: #f3f4f6; color: #1e293b; }
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -101,6 +101,9 @@
         };
 
         function ChatApp({ user, onLogout }) {
+            // --- NEW SECURITY STATE ---
+            const [isVipAdmin, setIsVipAdmin] = useState(false);
+
             // UI States
             const [activeModal, setActiveModal] = useState(null);
             const [showRightSidebar, setShowRightSidebar] = useState(false);
@@ -166,6 +169,23 @@
             const prevNotifCountRef = useRef(0);
             const lastTypingTime = useRef(0); 
 
+            // --- NEW SECURITY HELPER ---
+            const verifyAdminStatus = useCallback(async () => {
+                if (!window.auth.currentUser) return false;
+                try {
+                    const idTokenResult = await window.auth.currentUser.getIdTokenResult();
+                    return !!idTokenResult.claims.admin;
+                } catch (e) {
+                    console.error("Token verify error:", e);
+                    return false;
+                }
+            }, []);
+
+            // Sync Admin Token on Load
+            useEffect(() => {
+                verifyAdminStatus().then(res => setIsVipAdmin(res));
+            }, [verifyAdminStatus]);
+
             // --- IMMUTABLE LOG ENGINE ---
             const logImmutableAction = useCallback(async (actionType, content, target = "") => {
                 try {
@@ -201,7 +221,7 @@
                 const unsubAlerts = window.onSnapshot(qAlerts, (snapshot) => setGenericNotifications(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
                 
                 let unsubAdmin = () => {}; let unsubAudit = () => {};
-                if (currentUserData?.isAdmin) {
+                if (currentUserData?.isAdmin || isVipAdmin) {
                     const qAdmin = window.query(window.collection(window.db, "reminders"), window.orderBy("remindAt", "desc"));
                     unsubAdmin = window.onSnapshot(qAdmin, (snapshot) => setAllAdminReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
 
@@ -214,7 +234,7 @@
                     });
                 }
                 return () => { unsubPersonal(); unsubAlerts(); unsubAdmin(); unsubAudit(); };
-            }, [user.uid, currentUserData?.isAdmin]);
+            }, [user.uid, currentUserData?.isAdmin, isVipAdmin]);
 
             useEffect(() => {
                 const interval = setInterval(() => {
@@ -246,13 +266,13 @@
                 
                 const unsubGroups = window.onSnapshot(window.collection(window.db, "groups"), (snapshot) => {
                     const fetchedGroups = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    if (fetchedGroups.length === 0 && currentUserData?.isAdmin) {
+                    if (fetchedGroups.length === 0 && (currentUserData?.isAdmin || isVipAdmin)) {
                         window.addDoc(window.collection(window.db, "groups"), { name: "Demo", members: [user.email], admins: [user.email], createdBy: user.email, createdAt: window.serverTimestamp(), isArchived: false });
                     } else { setGroups(fetchedGroups); }
                 });
                 
                 return () => { clearInterval(heartbeatInterval); unsubCurrent(); unsubUsers(); unsubGroups(); };
-            }, [user, currentUserData?.isAdmin]);
+            }, [user, currentUserData?.isAdmin, isVipAdmin]);
 
             useEffect(() => {
                 const q = window.query(window.collection(window.db, "messages"), window.orderBy("timestamp", "asc"));
@@ -298,8 +318,8 @@
             }, [totalNotifications]);
 
             const myGroups = useMemo(() => {
-                return groups.filter(g => !g.isArchived && (g.members?.includes(user.email) || currentUserData?.isAdmin));
-            }, [groups, user.email, currentUserData?.isAdmin]);
+                return groups.filter(g => !g.isArchived && (g.members?.includes(user.email) || currentUserData?.isAdmin || isVipAdmin));
+            }, [groups, user.email, currentUserData?.isAdmin, isVipAdmin]);
 
             useEffect(() => {
                 if (activeGroup.id === 'demo' && !activeGroup.isDM && myGroups.length > 0 && !myGroups.some(g => g.id === 'demo')) {
@@ -452,7 +472,7 @@
             };
 
             const handleTogglePin = async (msg) => {
-                if (!currentUserData?.isAdmin && activeGroup.admins && !activeGroup.admins.includes(user.email)) return alert("Only Department Admins can pin announcements.");
+                if (!currentUserData?.isAdmin && !isVipAdmin && activeGroup.admins && !activeGroup.admins.includes(user.email)) return alert("Only Department Admins can pin announcements.");
                 try { await window.updateDoc(window.doc(window.db, "messages", msg.id), { isPinned: !msg.isPinned }); } catch (e) {}
             };
 
@@ -600,7 +620,7 @@
 
             const handleCompleteTask = async () => {
                 if (!selectedMessage) return;
-                if (!selectedMessage.taskData.assignees?.includes(user.email) && !currentUserData?.isAdmin) return alert("Only the Assignees or an Admin can complete this task.");
+                if (!selectedMessage.taskData.assignees?.includes(user.email) && !currentUserData?.isAdmin && !isVipAdmin) return alert("Only the Assignees or an Admin can complete this task.");
                 try {
                     const now = new Date();
                     const updatedTrail = [...selectedMessage.taskData.trail, { action: "Marked Completed", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: "System" }];
@@ -696,7 +716,7 @@
                             </>
                         )}
                         <button onClick={(e)=>{e.stopPropagation(); handleToggleBookmark(msg);}} className={`${isBookmarked ? 'text-[#008069]' : 'text-slate-400 hover:text-[#008069]'} text-[11px] p-1 transition-colors`} title="Bookmark"><i className="fa-solid fa-bookmark"></i></button>
-                        {(currentUserData?.isAdmin || activeGroup.admins?.includes(user.email)) && (
+                        {(currentUserData?.isAdmin || isVipAdmin || activeGroup.admins?.includes(user.email)) && (
                             <button onClick={(e)=>{e.stopPropagation(); handleTogglePin(msg);}} className={`${msg.isPinned ? 'text-[#008069]' : 'text-slate-400 hover:text-[#008069]'} text-[11px] p-1 transition-colors`} title="Pin"><i className="fa-solid fa-thumbtack"></i></button>
                         )}
                         <button onClick={(e)=>{e.stopPropagation(); setReplyingTo(msg); setTimeout(()=>chatInputRef.current?.focus(), 100);}} className="text-slate-400 hover:text-[#008069] text-[11px] p-1 transition-colors" title="Reply"><i className="fa-solid fa-reply"></i></button>
@@ -783,8 +803,8 @@
             }, [messages, editingMessageId, editMessageText, user.email]);
 
 
-            // Pending Approval Screen
-            if (currentUserData && currentUserData.isApproved !== true && currentUserData.isAdmin !== true) {
+            // SECURE PENDING APPROVAL CHECK
+            if (currentUserData && currentUserData.isApproved !== true && !currentUserData.isAdmin && !isVipAdmin) {
                 return (
                     <div className="flex items-center justify-center h-screen bg-gray-100 p-4 text-gray-800">
                         <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 border-t-8 border-[#008069] text-center transform-gpu hover:scale-105 transition-transform"><i className="fa-solid fa-user-clock text-5xl text-[#008069] mb-4 animate-pulse"></i><h1 className="text-2xl font-bold mb-2">Pending Approval</h1><p className="text-sm text-gray-500 mb-6">Account requires Admin verification.</p><button onClick={onLogout} className="bg-gray-100 text-gray-700 py-2 px-6 rounded-full font-bold shadow-sm hover:bg-gray-200 transition-colors">Sign Out</button></div>
@@ -840,7 +860,7 @@
                                                 <tbody className="divide-y divide-slate-100">
                                                     {dbUsers.map(u => (
                                                         <tr key={u.uid} className="hover:bg-slate-50/50 transition-colors">
-                                                            <td className="px-5 py-3"><div className="font-semibold text-slate-800 flex items-center gap-2">{toSentenceCase(u.name)}{u.isAdmin && <div className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider">ADMIN</div>}</div><div className="text-[11px] text-slate-500 mt-0.5">{u.email}</div></td>
+                                                            <td className="px-5 py-3"><div className="font-semibold text-slate-800 flex items-center gap-2">{toSentenceCase(u.name)}{u.isAdmin && <div className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider">ADMIN</div></div><div className="text-[11px] text-slate-500 mt-0.5">{u.email}</div></td>
                                                             <td className="px-5 py-3 text-right">
                                                                 <button onClick={() => handleToggleApprove(u)} className={`mr-2 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider transition-colors ${u.isApproved ? 'bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100' : 'bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100'}`}>{u.isApproved ? 'APPROVED' : 'PENDING'}</button>
                                                                 <button onClick={() => { setAdminForm({ ...u, canCreateGroups: u.canCreateGroups || false }); setActiveModal('admin_edit_user'); }} className="text-slate-400 hover:text-blue-600 p-2 transition-colors"><i className="fa-solid fa-pen"></i></button>
@@ -860,7 +880,7 @@
                                                     {groups.length === 0 && <tr><td className="p-5 text-center text-slate-400 italic">No custom groups created yet.</td></tr>}
                                                     {groups.map(g => (
                                                         <tr key={g.id} className="hover:bg-slate-50/50 transition-colors">
-                                                            <td className="px-5 py-3"><div className="font-semibold text-slate-800 flex items-center gap-2">{toSentenceCase(g.name)} {g.isArchived && <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold tracking-wider border border-slate-200">ARCHIVED</span>}</div><div className="text-[11px] text-slate-500 mt-0.5">{g.members?.length || 0} Members | Created by {toSentenceCase(g.createdBy?.split('@')[0])}</div></td>
+                                                            <td className="px-5 py-3"><div className="font-semibold text-slate-800 flex items-center gap-2">{toSentenceCase(g.name)} {g.isArchived && <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold tracking-wider border border-slate-200">ARCHIVED</span></div><div className="text-[11px] text-slate-500 mt-0.5">{g.members?.length || 0} Members | Created by {toSentenceCase(g.createdBy?.split('@')[0])}</div></td>
                                                             <td className="px-5 py-3 text-right">
                                                                 <button onClick={() => { setGroupForm({name: g.name, members: g.members, profilePicUrl: g.profilePicUrl}); setEditingGroup(g); setActiveModal('group_form_modal'); }} className="text-slate-400 hover:text-[#008069] p-2 transition-colors"><i className="fa-solid fa-pen"></i></button>
                                                                 {g.isArchived ? (
@@ -901,7 +921,7 @@
                                 <div className="flex-1 overflow-y-auto flex flex-col pt-2 px-3">
                                     <div className="pt-4 pb-2 px-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest flex justify-between items-center">
                                         Departments
-                                        {(currentUserData?.isAdmin || currentUserData?.canCreateGroups) && (
+                                        {(currentUserData?.isAdmin || isVipAdmin || currentUserData?.canCreateGroups) && (
                                             <button onClick={()=>{setEditingGroup(null); setGroupForm({name:"", members:[], profilePicUrl: null}); setActiveModal('group_form_modal');}} className="text-[#008069] hover:bg-teal-50 w-6 h-6 rounded flex items-center justify-center transition-colors" title="New Team"><i className="fa-solid fa-plus"></i></button>
                                         )}
                                     </div>
@@ -940,7 +960,7 @@
                                 </div>
 
                                 <div className="p-3 bg-white border-t border-slate-200">
-                                    {currentUserData?.isAdmin && (
+                                    {(currentUserData?.isAdmin || isVipAdmin) && (
                                         <button onClick={() => setViewMode("admin")} className="w-full flex items-center justify-center gap-2 py-3 px-4 mb-2 hover:bg-slate-50 rounded-xl text-sm font-bold text-slate-600 transition-colors border border-transparent hover:border-slate-200"><i className="fa-solid fa-shield-halved text-blue-500"></i> Admin Panel</button>
                                     )}
                                     <button onClick={onLogout} className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-red-50 hover:bg-red-100 rounded-xl text-sm font-bold text-red-600 transition-colors"><i className="fa-solid fa-power-off"></i> Secure Logout</button>
@@ -1199,7 +1219,7 @@
                                         <label className="text-[11px] text-[#008069] font-bold uppercase tracking-widest absolute -top-2.5 left-3 bg-white px-1">Display Name</label>
                                         <input required type="text" value={profileForm.name} onChange={(e) => setProfileForm({...profileForm, name: e.target.value})} className="w-full p-4 pt-5 border border-slate-300 rounded-2xl text-[15px] outline-none bg-white focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/20 transition-all font-semibold text-slate-800" />
                                     </div>
-                                    <button onClick={handleProfileSubmit} disabled={profileUploadProgress > 0} className="w-full bg-[#008069] text-white py-4 rounded-2xl shadow-[0_4px_15px_rgba(0,128,105,0.3)] hover:bg-[#006e5a] font-bold text-[15px] transition-all hover:scale-[1.02] active:scale-[0.98]">{profileUploadProgress > 0 ? `Uploading ${Math.round(profileUploadProgress)}%` : 'Save Changes'}</button>
+                                    <button onClick={handleProfileSubmit} disabled={profileUploadProgress > 0} className="w-full bg-[#008069] text-white py-4 rounded-2xl shadow-[0_4px_15px_rgba(0,128,105,0.3)] hover:bg-[#006e5a] font-bold text[15px] transition-all hover:scale-[1.02] active:scale-[0.98]">{profileUploadProgress > 0 ? `Uploading ${Math.round(profileUploadProgress)}%` : 'Save Changes'}</button>
                                 </div>
                             </div>
                         </div>
@@ -1250,11 +1270,11 @@
                                 <div className="space-y-4">
                                     <div className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Directory</div>
                                     <div className="h-56 overflow-y-auto space-y-1.5 p-2 bg-slate-50 border border-slate-200 rounded-xl shadow-inner">
-                                        {dbUsers.map(u => { const isAdmin = activeGroup.admins?.includes(user.email) || currentUserData?.isAdmin; const isMember = activeGroup.members?.includes(u.email); return (<label key={u.uid} className={`flex items-center gap-3 p-2 rounded-lg transition-colors border border-transparent ${isAdmin ? 'hover:bg-white hover:border-slate-200 hover:shadow-sm cursor-pointer' : ''}`}><input type="checkbox" disabled={!isAdmin || activeGroup.admins?.includes(u.email)} checked={groupForm.members.includes(u.email) || isMember} onChange={(e) => { if(!isAdmin) return; const newMembers = e.target.checked ? [...groupForm.members, u.email] : groupForm.members.filter(m => m !== u.email); setGroupForm({...groupForm, members: newMembers}); }} className="w-4 h-4 accent-[#008069] disabled:opacity-40"/><span className="text-[14px] font-semibold text-slate-700 flex-1 truncate">{toSentenceCase(u.name)}</span>{activeGroup.admins?.includes(u.email) && <span className="text-[9px] font-bold text-[#008069] bg-teal-50 border border-teal-100 px-1.5 py-0.5 rounded uppercase tracking-wider">Admin</span>}</label>) })}
+                                        {dbUsers.map(u => { const isAdmin = activeGroup.admins?.includes(user.email) || currentUserData?.isAdmin || isVipAdmin; const isMember = activeGroup.members?.includes(u.email); return (<label key={u.uid} className={`flex items-center gap-3 p-2 rounded-lg transition-colors border border-transparent ${isAdmin ? 'hover:bg-white hover:border-slate-200 hover:shadow-sm cursor-pointer' : ''}`}><input type="checkbox" disabled={!isAdmin || activeGroup.admins?.includes(u.email)} checked={groupForm.members.includes(u.email) || isMember} onChange={(e) => { if(!isAdmin) return; const newMembers = e.target.checked ? [...groupForm.members, u.email] : groupForm.members.filter(m => m !== u.email); setGroupForm({...groupForm, members: newMembers}); }} className="w-4 h-4 accent-[#008069] disabled:opacity-40"/><span className="text-[14px] font-semibold text-slate-700 flex-1 truncate">{toSentenceCase(u.name)}</span>{activeGroup.admins?.includes(u.email) && <span className="text-[9px] font-bold text-[#008069] bg-teal-50 border border-teal-100 px-1.5 py-0.5 rounded uppercase tracking-wider">Admin</span>}</label>) })}
                                     </div>
                                     <div className="flex gap-3 mt-4 pt-2">
                                         <button onClick={()=>setActiveModal(null)} className="flex-1 text-slate-500 font-bold hover:bg-slate-100 py-3 rounded-xl transition-colors">Close</button>
-                                        {(activeGroup.admins?.includes(user.email) || currentUserData?.isAdmin) && (<button onClick={handleUpdateGroupMembers} className="flex-1 bg-[#008069] text-white py-3 rounded-xl font-bold shadow-[0_4px_15px_rgba(0,128,105,0.3)] hover:bg-[#006e5a] transition-all">Save Matrix</button>)}
+                                        {(activeGroup.admins?.includes(user.email) || currentUserData?.isAdmin || isVipAdmin) && (<button onClick={handleUpdateGroupMembers} className="flex-1 bg-[#008069] text-white py-3 rounded-xl font-bold shadow-[0_4px_15px_rgba(0,128,105,0.3)] hover:bg-[#006e5a] transition-all">Save Matrix</button>)}
                                     </div>
                                 </div>
                             </div>
@@ -1293,7 +1313,7 @@
                                         ))}
                                     </div>
                                 </div>
-                                {selectedMessage.taskData.status !== "Completed" && (selectedMessage.taskData.assignees?.includes(user.email) || currentUserData?.isAdmin) && (
+                                {selectedMessage.taskData.status !== "Completed" && (selectedMessage.taskData.assignees?.includes(user.email) || currentUserData?.isAdmin || isVipAdmin) && (
                                     <div className="bg-[#f0f2f5] p-3 flex flex-col gap-2 shrink-0 border-t border-gray-200">
                                         <div className="text-[11px] text-gray-500 font-bold uppercase mb-1">Reassign Task (Optional)</div>
                                         <div className="h-24 overflow-y-auto space-y-1 bg-white border border-gray-200 p-2 rounded mb-1">
@@ -1424,4 +1444,6 @@
         root.render(<App />);
     </script>
 </body>
-</html><!-- Full-featured index.html content here -->
+</html>
+
+									

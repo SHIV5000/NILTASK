@@ -5,9 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Talk & Task - Enterprise Edition</title>
     
-    <!-- PWA Manifest Link -->
+    <!-- PWA Manifest & Icons (Fixed 404 Favicon Error) -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#008069">
+    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/825/825590.png">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/825/825590.png">
     
     <!-- Load Tailwind CSS -->
@@ -16,9 +17,9 @@
     <!-- Load FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Load React and ReactDOM -->
-    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <!-- Load React and ReactDOM (Upgraded to Production Minified Versions) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <!-- Load jsPDF for Beautiful PDF Generation -->
@@ -343,7 +344,7 @@
                         const latestAlert = genericNotifications[genericNotifications.length - 1];
                         if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
                             navigator.serviceWorker.controller.postMessage({ type: 'SHOW_NOTIFICATION', title: 'Talk & Task Alert', body: latestAlert.text });
-                        } else if ("Notification" in window && Notification.permission === "granted") {
+                        } else if (Notification.permission === "granted") {
                             new Notification("Talk & Task Alert", { body: latestAlert.text, icon: "https://cdn-icons-png.flaticon.com/512/825/825590.png" });
                         }
                     }
@@ -414,7 +415,6 @@
                     return matchUser && matchDate && matchType && matchGroup;
                 });
             }, [immutableAuditLogs, adminFilterUser, adminFilterDate, adminFilterGroup, adminFilterType]);
-
 
             const scrollToMessage = useCallback((msgId) => {
                 const el = document.getElementById(`msg-${msgId}`);
@@ -1027,6 +1027,22 @@
                                     <div className="flex items-center gap-3.5 cursor-pointer group" onClick={()=>{ if(!activeGroup.isDM) setActiveModal('group_settings'); }}>
                                         {activeGroup.isDM ? <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center text-purple-600 shadow-sm border border-purple-50 group-hover:scale-105 transition-transform"><i className="fa-solid fa-user"></i></div> : activeGroup.profilePicUrl ? <img src={getCachedImage(activeGroup.id, activeGroup.profilePicUrl)} className="w-11 h-11 rounded-2xl object-cover shadow-sm group-hover:scale-105 transition-transform"/> : <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-teal-100 to-teal-200 flex items-center justify-center text-teal-600 shadow-sm border border-teal-50 group-hover:scale-105 transition-transform"><i className="fa-solid fa-people-group"></i></div>}
                                         <div><h1 className="text-[17px] font-bold text-slate-800 tracking-tight">{toSentenceCase(activeGroup.name)}</h1><p className="text-[12px] font-medium text-slate-500">{activeGroup.isDM ? 'End-to-End Encrypted' : `${activeGroup.members?.length||0} Members`}</p></div>
+                                    </div>
+
+                                    <div className="hidden lg:flex items-center gap-2 overflow-hidden mx-4 flex-1 justify-center px-2 border-x border-gray-200/50">
+                                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mr-2">Online</span>
+                                        {dbUsers.filter(u => {
+                                            if (activeGroup.isDM) {
+                                                return activeGroup.members?.includes(u.email) && u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000) && u.uid !== user.uid;
+                                            }
+                                            if (!activeGroup.members?.includes(u.email)) return false;
+                                            return u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000) && u.uid !== user.uid;
+                                        }).slice(0, 7).map(onlineUser => (
+                                            <div key={onlineUser.uid} className="relative group cursor-default" title={`${toSentenceCase(onlineUser.name)} is Online`}>
+                                                {onlineUser.profilePicUrl ? <img src={getCachedImage(onlineUser.uid, onlineUser.profilePicUrl)} className="w-7 h-7 rounded-full object-cover shadow-sm" /> : <div className="w-7 h-7 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[9px] font-bold text-[#54656f] shadow-sm">{toSentenceCase(onlineUser.name).substring(0,2)}</div>}
+                                                <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#00a884] border-2 border-[#f0f2f5] rounded-full"></div>
+                                            </div>
+                                        ))}
                                     </div>
 
                                     <div className="flex items-center gap-3">

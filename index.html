@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Talk & Task - Enterprise Edition</title>
     
+    <!-- PWA Manifest Link -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#008069">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/825/825590.png">
+    
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -68,6 +73,17 @@
         window.dispatchEvent(new Event('firebaseReady'));
     </script>
 
+    <!-- Register Service Worker for PWA -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js')
+                    .then(registration => console.log('SW registered'))
+                    .catch(err => console.log('SW registration failed: ', err));
+            });
+        }
+    </script>
+
     <style>
         /* Modern Premium SaaS Typography & Theme */
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important; background-color: #f3f4f6; color: #1e293b; }
@@ -86,6 +102,10 @@
         .highlight-msg { transition: background-color 1s ease-out; transform: translateZ(0); }
         .glass-header { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid rgba(0,0,0,0.05); }
         .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+        
+        /* Smooth Entrance Animations */
+        @keyframes subtleSlideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .app-entrance { animation: subtleSlideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
     </style>
 </head>
 <body class="overflow-hidden">
@@ -101,7 +121,16 @@
             return str.toLowerCase().replace(/(^\w{1})|(\s+\w{1})/g, letter => letter.toUpperCase());
         };
 
-        // Error Boundary to catch any React rendering issues cleanly
+        // Helper: LocalStorage Image Cache (Superfast Loading)
+        const getCachedImage = (uid, url) => {
+            if (!url) return null;
+            const cachedUrl = localStorage.getItem(`avatar_${uid}`);
+            if (cachedUrl === url) return url; 
+            localStorage.setItem(`avatar_${uid}`, url);
+            return url;
+        };
+
+        // Error Boundary
         class ErrorBoundary extends React.Component {
             constructor(props) {
                 super(props);
@@ -134,6 +163,7 @@
             const [showFilterMenu, setShowFilterMenu] = useState(false);
             const [showNotifications, setShowNotifications] = useState(false);
             const [isAtBottom, setIsAtBottom] = useState(true); 
+            const [isLoaded, setIsLoaded] = useState(false); // For transition
 
             // --- CHAT STATES ---
             const [inputText, setInputText] = useState("");
@@ -191,6 +221,9 @@
             const groupPicInputRef = useRef(null);
             const prevNotifCountRef = useRef(0);
             const lastTypingTime = useRef(0); 
+
+            // Trigger Entrance Animation
+            useEffect(() => { setIsLoaded(true); }, []);
 
             // --- SECURITY HELPER ---
             const verifyAdminStatus = useCallback(async () => {
@@ -266,8 +299,12 @@
                         const remindTime = new Date(rem.remindAt);
                         if (remindTime <= now) {
                             notificationSound.play().catch(e => console.log("Sound play prevented"));
-                            if ("Notification" in window && Notification.permission === "granted") new Notification("Talk & Task Reminder", { body: `⏰ "${rem.messageText}"`, icon: "https://cdn-icons-png.flaticon.com/512/825/825590.png" });
-                            else alert(`⏰ Reminder: "${rem.messageText}"`);
+                            // PWA Background Notification
+                            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                                navigator.serviceWorker.controller.postMessage({ type: 'SHOW_NOTIFICATION', title: 'Talk & Task Reminder', body: `⏰ "${rem.messageText}"` });
+                            } else if ("Notification" in window && Notification.permission === "granted") {
+                                new Notification("Talk & Task Reminder", { body: `⏰ "${rem.messageText}"`, icon: "https://cdn-icons-png.flaticon.com/512/825/825590.png" });
+                            } else alert(`⏰ Reminder: "${rem.messageText}"`);
                             try { await window.updateDoc(window.doc(window.db, "reminders", rem.id), { isTriggered: true }); } catch (error) {}
                         }
                     });
@@ -338,9 +375,19 @@
             const totalNotifications = activeActionableTasks.length + genericNotifications.length;
 
             useEffect(() => {
-                if (totalNotifications > prevNotifCountRef.current) { if(window.audioPrimed) notificationSound.play().catch(e => console.log("Sound play prevented")); }
+                if (totalNotifications > prevNotifCountRef.current) { 
+                    if(window.audioPrimed) notificationSound.play().catch(e => console.log("Sound play prevented")); 
+                    
+                    // PWA Background Notification for new alerts
+                    if (genericNotifications.length > 0) {
+                        const latestAlert = genericNotifications[genericNotifications.length - 1];
+                        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                            navigator.serviceWorker.controller.postMessage({ type: 'SHOW_NOTIFICATION', title: 'Talk & Task Alert', body: latestAlert.text });
+                        }
+                    }
+                }
                 prevNotifCountRef.current = totalNotifications;
-            }, [totalNotifications]);
+            }, [totalNotifications, genericNotifications]);
 
             const myGroups = useMemo(() => {
                 return groups.filter(g => !g.isArchived && (g.members?.includes(user.email) || currentUserData?.isAdmin || isVipAdmin));
@@ -636,11 +683,9 @@
                 try {
                     const now = new Date();
                     await window.setDoc(window.doc(window.db, "messages", selectedMessage.id), {
-                        isTask: true, taskData: { deadline: taskDeadline, assignees: taskAssignees, status: "Pending", dismissedBy: [], trail: [{ action: "Task Created", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: taskAssignees.map(a=>a.split('@')[0]).join(', ') }] }
+                        isTask: true, taskData: { deadline: taskDeadline, assignees: taskAssignees, status: "Pending", dismissedBy: [], trail: [{ action: "Task Created", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: taskAssignees.map(a=>toSentenceCase(a.split('@')[0])).join(', ') }] }
                     }, { merge: true });
-                    
                     logImmutableAction("TASK_CREATE", `Converted to Task: "${selectedMessage.text}"`, `Assignees: ${taskAssignees.join(', ')}`);
-                    
                     setActiveModal(null); setTaskAssignees([]);
                 } catch (error) {}
             };
@@ -649,12 +694,10 @@
                 if (!selectedMessage || delegateAssignees.length === 0) return;
                 try {
                     const now = new Date();
-                    const updatedTrail = [...selectedMessage.taskData.trail, { action: "Delegated", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: delegateAssignees.map(a=>a.split('@')[0]).join(', ') }];
+                    const updatedTrail = [...selectedMessage.taskData.trail, { action: "Delegated", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: delegateAssignees.map(a=>toSentenceCase(a.split('@')[0])).join(', ') }];
                     await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.assignees": delegateAssignees, "taskData.status": "In Progress", "taskData.trail": updatedTrail, "taskData.dismissedBy": [] });
-                    
                     logImmutableAction("TASK_DELEGATE", `Delegated Task ID: ${selectedMessage.id}`, `To: ${delegateAssignees.join(', ')}`);
                     await notifyInvolvedInTask(selectedMessage, `${toSentenceCase(user.email.split('@')[0])} transferred a task.`);
-                    
                     setActiveModal(null); setDelegateAssignees([]);
                 } catch (error) {}
             };
@@ -666,10 +709,8 @@
                     const now = new Date();
                     const updatedTrail = [...selectedMessage.taskData.trail, { action: "Marked Completed", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: "System" }];
                     await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.status": "Completed", "taskData.trail": updatedTrail });
-                    
                     logImmutableAction("TASK_COMPLETE", `Completed Task ID: ${selectedMessage.id}`, "");
                     await notifyInvolvedInTask(selectedMessage, `${toSentenceCase(user.email.split('@')[0])} marked a task as Completed.`);
-                    
                     setActiveModal(null);
                 } catch (error) {}
             };
@@ -680,10 +721,8 @@
                     const now = new Date();
                     const updatedTrail = [...selectedMessage.taskData.trail, { action: "Update Added", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), comment: trailComment }];
                     await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.trail": updatedTrail });
-                    
                     logImmutableAction("TASK_COMMENT", `Comment: "${trailComment}"`, `Task ID: ${selectedMessage.id}`);
                     await notifyInvolvedInTask(selectedMessage, `${toSentenceCase(user.email.split('@')[0])} updated a task.`);
-                    
                     setTrailComment(""); setSelectedMessage(prev => ({...prev, taskData: {...prev.taskData, trail: updatedTrail}}));
                 } catch (error) {}
             };
@@ -699,7 +738,9 @@
                 }
             };
 
+            // --- ADMIN HANDLERS ---
             const handleToggleApprove = async (u) => { await window.updateDoc(window.doc(window.db, "users", u.uid), { isApproved: !u.isApproved }); };
+            
             const handleAddUserSubmit = async (e) => { 
                 e.preventDefault(); 
                 try { 
@@ -708,6 +749,7 @@
                     window.signOut(window.secondaryAuth); setActiveModal(null); setAdminForm({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false }); 
                 } catch(err){alert(err.message);} 
             };
+            
             const handleEditUserSubmit = async (e) => { e.preventDefault(); await window.updateDoc(window.doc(window.db, "users", adminForm.uid), { name: toSentenceCase(adminForm.name), isAdmin: adminForm.isAdmin, canCreateGroups: adminForm.canCreateGroups }); setActiveModal(null); };
 
             const handleAdminArchiveGroup = async (groupId, groupName) => { 
@@ -716,6 +758,7 @@
                     logImmutableAction("GROUP_ARCHIVE", `Archived Group: "${groupName}"`, `Group ID: ${groupId}`);
                 }
             };
+            
             const handleAdminRecoverGroup = async (groupId, groupName) => { 
                 if(window.confirm("Recover this department?")) {
                     await window.updateDoc(window.doc(window.db, "groups", groupId), { isArchived: false }); 
@@ -727,7 +770,6 @@
                 if (!window.jspdf || !window.jspdf.jsPDF) { alert("PDF library is loading, please try again in 5 seconds."); return; }
                 const { jsPDF } = window.jspdf;
                 const doc = new jsPDF('landscape');
-                
                 doc.setFontSize(22); doc.setTextColor(0, 128, 105); doc.text("Talk & Task - Immutable Audit Ledger", 14, 22);
                 doc.setFontSize(10); doc.setTextColor(100); doc.text(`Secure Report Generated on: ${new Date().toLocaleString()}`, 14, 30);
                 
@@ -736,6 +778,7 @@
                 doc.save(`Secure_Audit_Ledger_${new Date().toISOString().split('T')[0]}.pdf`);
             };
 
+            // --- BUBBLE & RENDER UTILS ---
             const getBubbleStyles = (msg) => {
                 let baseStyles = "";
                 if (msg.isTask) baseStyles = "bg-[#d1e8ff] text-slate-800 border border-[#b8daff]";
@@ -809,7 +852,7 @@
                                             <div className="mt-3 bg-white/60 p-2 rounded-xl flex flex-col gap-1.5 shadow-sm border border-black/5">
                                                 <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
                                                     <div className="w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center shadow-inner"><i className="fa-solid fa-users text-[9px]"></i></div> 
-                                                    {msg.taskData.assignees?.map(a => toSentenceCase(a.split('@')[0])).join(', ')}
+                                                    {msg.taskData.assignees?.map(a => toSentenceCase((a||"").split('@')[0])).join(', ')}
                                                 </span>
                                                 <span className="text-[10px] text-red-500 font-bold self-end bg-red-50 px-2 py-0.5 rounded-full"><i className="fa-regular fa-calendar mr-1"></i>Due: {new Date(msg.taskData.deadline).toLocaleDateString()}</span>
                                             </div>
@@ -857,7 +900,7 @@
 
             // --- MAIN RENDER ---
             return (
-                <div className="flex h-screen w-full bg-[#f3f4f6] text-slate-800 overflow-hidden relative font-sans">
+                <div className={`flex h-screen w-full bg-[#f3f4f6] text-slate-800 overflow-hidden relative font-sans transition-opacity duration-700 ease-out ${isLoaded ? 'opacity-100' : 'opacity-0'}`}>
                     {viewMode === "admin" ? (
                         <div className="flex flex-col h-full w-full bg-[#f8fafc] overflow-hidden animate-in fade-in z-40">
                             <div className="glass-header bg-[#008069]/90 text-white p-4 flex items-center justify-between shadow-sm shrink-0">
@@ -943,12 +986,12 @@
                         </div>
                     ) : (
                         <div className="flex h-full w-full relative">
-                            {/* LEFT SIDEBAR */}
-                            <div className="hidden md:flex w-80 bg-[#f8fafc] border-r border-slate-200 flex-col shrink-0 z-20 shadow-[2px_0_15px_rgba(0,0,0,0.03)]">
+                            {/* LEFT SIDEBAR (Glass & Card Design) */}
+                            <div className="hidden md:flex w-80 bg-[#f8fafc] border-r border-slate-200 flex-col shrink-0 z-20 shadow-[2px_0_15px_rgba(0,0,0,0.03)] app-entrance">
                                 <div className="p-5 glass-header flex items-center gap-3 relative group">
                                     <div className="relative">
                                         {currentUserData?.profilePicUrl ? (
-                                            <img src={currentUserData.profilePicUrl} className="w-12 h-12 rounded-2xl object-cover shadow-sm border border-white" />
+                                            <img src={getCachedImage(user.uid, currentUserData.profilePicUrl)} className="w-12 h-12 rounded-2xl object-cover shadow-sm border border-white" />
                                         ) : (
                                             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#008069] to-teal-500 text-white flex items-center justify-center font-bold text-xl shadow-sm border border-white">{user.email.substring(0,1).toUpperCase()}</div>
                                         )}
@@ -971,7 +1014,7 @@
                                     <div className="mb-4 shrink-0 space-y-1">
                                         {myGroups.map(g => (
                                             <div key={g.id} onClick={() => { setActiveGroup(g); setShowRightSidebar(false); }} className={`flex items-center gap-3 p-2.5 rounded-2xl cursor-pointer transition-all ${activeGroup.id === g.id ? 'bg-white shadow-sm border border-slate-200/60' : 'hover:bg-slate-100 border border-transparent'}`}>
-                                                {g.profilePicUrl ? <img src={g.profilePicUrl} className="w-10 h-10 rounded-xl object-cover shadow-sm" /> : <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm shadow-inner ${activeGroup.id === g.id ? 'bg-teal-50 text-teal-600' : 'bg-slate-200 text-slate-500'}`}><i className="fa-solid fa-people-group"></i></div>}
+                                                {g.profilePicUrl ? <img src={getCachedImage(g.id, g.profilePicUrl)} className="w-10 h-10 rounded-xl object-cover shadow-sm" /> : <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm shadow-inner ${activeGroup.id === g.id ? 'bg-teal-50 text-teal-600' : 'bg-slate-200 text-slate-500'}`}><i className="fa-solid fa-people-group"></i></div>}
                                                 <div className="flex-1 overflow-hidden"><div className={`font-semibold text-[14px] truncate ${activeGroup.id === g.id ? 'text-[#008069]' : 'text-slate-700'}`}>{toSentenceCase(g.name)}</div><div className="text-[11px] font-medium text-slate-400 truncate">{g.id==='demo' ? 'Default Group' : `${g.members?.length || 0} Members`}</div></div>
                                             </div>
                                         ))}
@@ -986,7 +1029,7 @@
                                             return (
                                                 <div key={u.uid} onClick={() => { setActiveGroup({id: dmIdStr, name: u.name, isDM: true, members: [user.email, u.email]}); setShowRightSidebar(false); }} className={`flex items-center gap-3 p-2.5 rounded-2xl cursor-pointer transition-all ${activeGroup.id === dmIdStr ? 'bg-white shadow-sm border border-slate-200/60' : 'hover:bg-slate-100 border border-transparent'}`}>
                                                     <div className="relative">
-                                                        {u.profilePicUrl ? <img src={u.profilePicUrl} className="w-10 h-10 rounded-xl object-cover shadow-sm" /> : <div className="w-10 h-10 rounded-xl bg-slate-200 flex items-center justify-center text-[12px] font-bold text-slate-500 shadow-inner">{toSentenceCase(u.name).substring(0,2)}</div>}
+                                                        {u.profilePicUrl ? <img src={getCachedImage(u.uid, u.profilePicUrl)} className="w-10 h-10 rounded-xl object-cover shadow-sm" /> : <div className="w-10 h-10 rounded-xl bg-slate-200 flex items-center justify-center text-[12px] font-bold text-slate-500 shadow-inner">{toSentenceCase(u.name).substring(0,2)}</div>}
                                                         {u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000) && <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></div>}
                                                     </div>
                                                     <div className="flex-1 overflow-hidden flex justify-between items-center">
@@ -994,7 +1037,7 @@
                                                             <div className={`font-semibold text-[14px] truncate ${hasUnread ? 'text-slate-900 font-bold' : activeGroup.id === dmIdStr ? 'text-[#008069]' : 'text-slate-700'}`}>{toSentenceCase(u.name)}</div>
                                                             <div className={`text-[11px] truncate ${hasUnread ? 'text-[#008069] font-bold' : 'text-slate-400 font-medium'}`}>Private Chat</div>
                                                         </div>
-                                                        {hasUnread && <div className="w-2.5 h-2.5 bg-[#008069] rounded-full shadow-sm shrink-0"></div>}
+                                                        {hasUnread && <div className="w-2.5 h-2.5 bg-[#008069] rounded-full shadow-sm shrink-0 animate-pulse"></div>}
                                                     </div>
                                                 </div>
                                             );
@@ -1011,26 +1054,12 @@
                             </div>
 
                             {/* MIDDLE CHAT AREA */}
-                            <div className="flex-1 flex flex-col relative h-full bg-white">
+                            <div className="flex-1 flex flex-col relative h-full bg-white app-entrance">
                                 {/* HEADER */}
                                 <div className="h-[68px] glass-header flex items-center justify-between px-5 shrink-0 z-30 sticky top-0">
                                     <div className="flex items-center gap-3.5 cursor-pointer group" onClick={()=>{ if(!activeGroup.isDM) setActiveModal('group_settings'); }}>
-                                        {activeGroup.isDM ? <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center text-purple-600 shadow-sm border border-purple-50 group-hover:scale-105 transition-transform"><i className="fa-solid fa-user"></i></div> : activeGroup.profilePicUrl ? <img src={activeGroup.profilePicUrl} className="w-11 h-11 rounded-2xl object-cover shadow-sm group-hover:scale-105 transition-transform"/> : <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-teal-100 to-teal-200 flex items-center justify-center text-teal-600 shadow-sm border border-teal-50 group-hover:scale-105 transition-transform"><i className="fa-solid fa-people-group"></i></div>}
+                                        {activeGroup.isDM ? <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center text-purple-600 shadow-sm border border-purple-50 group-hover:scale-105 transition-transform"><i className="fa-solid fa-user"></i></div> : activeGroup.profilePicUrl ? <img src={getCachedImage(activeGroup.id, activeGroup.profilePicUrl)} className="w-11 h-11 rounded-2xl object-cover shadow-sm group-hover:scale-105 transition-transform"/> : <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-teal-100 to-teal-200 flex items-center justify-center text-teal-600 shadow-sm border border-teal-50 group-hover:scale-105 transition-transform"><i className="fa-solid fa-people-group"></i></div>}
                                         <div><h1 className="text-[17px] font-bold text-slate-800 tracking-tight">{toSentenceCase(activeGroup.name)}</h1><p className="text-[12px] font-medium text-slate-500">{activeGroup.isDM ? 'End-to-End Encrypted' : `${activeGroup.members?.length||0} Members`}</p></div>
-                                    </div>
-
-                                    <div className="hidden lg:flex items-center gap-2 overflow-hidden mx-4 flex-1 justify-center px-2 border-x border-gray-200/50">
-                                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mr-2">Online</span>
-                                        {dbUsers.filter(u => {
-                                            if (activeGroup.isDM) return activeGroup.members?.includes(u.email) && u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000) && u.uid !== user.uid;
-                                            if (!activeGroup.members?.includes(u.email)) return false;
-                                            return u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000) && u.uid !== user.uid;
-                                        }).slice(0, 7).map(onlineUser => (
-                                            <div key={onlineUser.uid} className="relative group cursor-default" title={`${toSentenceCase(onlineUser.name)} is Online`}>
-                                                {onlineUser.profilePicUrl ? <img src={onlineUser.profilePicUrl} className="w-7 h-7 rounded-full object-cover shadow-sm" /> : <div className="w-7 h-7 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[9px] font-bold text-[#54656f] shadow-sm">{toSentenceCase(onlineUser.name).substring(0,2)}</div>}
-                                                <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#00a884] border-2 border-[#f0f2f5] rounded-full"></div>
-                                            </div>
-                                        ))}
                                     </div>
 
                                     <div className="flex items-center gap-3">
@@ -1150,14 +1179,14 @@
                                         <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1">Users</div>
                                         {dbUsers.filter(u => (u.name||"").toLowerCase().includes(inputText.split(/\s+/).pop().substring(1).toLowerCase())).map(u => (
                                             <div key={u.uid} onMouseDown={(e) => e.preventDefault()} onClick={() => { const words = inputText.split(/\s+/); words[words.length - 1] = `@${u.name} `; setInputText(words.join(' ')); chatInputRef.current?.focus(); }} className="p-2 rounded-xl hover:bg-slate-100 cursor-pointer text-[14px] flex items-center gap-3 text-slate-800 font-semibold transition-colors">
-                                                {u.profilePicUrl ? <img src={u.profilePicUrl} className="w-7 h-7 rounded-lg object-cover shadow-sm"/> : <div className="w-7 h-7 rounded-lg bg-emerald-100 text-[#008069] flex items-center justify-center text-[11px] shadow-sm"><i className="fa-solid fa-at"></i></div>}
+                                                {u.profilePicUrl ? <img src={getCachedImage(u.uid, u.profilePicUrl)} className="w-7 h-7 rounded-lg object-cover shadow-sm"/> : <div className="w-7 h-7 rounded-lg bg-emerald-100 text-[#008069] flex items-center justify-center text-[11px] shadow-sm"><i className="fa-solid fa-at"></i></div>}
                                                 {toSentenceCase(u.name)}
                                             </div>
                                         ))}
                                         <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-t border-b border-slate-100 my-1">Teams</div>
                                         {groups.filter(g => (g.name||"").toLowerCase().includes(inputText.split(/\s+/).pop().substring(1).toLowerCase()) && !g.isArchived).map(g => (
                                             <div key={g.id} onMouseDown={(e) => e.preventDefault()} onClick={() => { const words = inputText.split(/\s+/); words[words.length - 1] = `@${g.name.replace(/\s+/g, '')} `; setInputText(words.join(' ')); chatInputRef.current?.focus(); }} className="p-2 rounded-xl hover:bg-blue-50 cursor-pointer text-[14px] flex items-center gap-3 text-blue-800 font-bold transition-colors">
-                                                {g.profilePicUrl ? <img src={g.profilePicUrl} className="w-7 h-7 rounded-lg object-cover shadow-sm"/> : <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center text-[10px] shadow-sm"><i className="fa-solid fa-users"></i></div>}
+                                                {g.profilePicUrl ? <img src={getCachedImage(g.id, g.profilePicUrl)} className="w-7 h-7 rounded-lg object-cover shadow-sm"/> : <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center text-[10px] shadow-sm"><i className="fa-solid fa-users"></i></div>}
                                                 {toSentenceCase(g.name)}
                                             </div>
                                         ))}
@@ -1171,7 +1200,7 @@
                                         
                                         <div className="flex-1 bg-white rounded-3xl flex items-end shadow-sm border border-slate-200 p-1.5 focus-within:ring-2 focus-within:ring-[#008069]/20 focus-within:border-transparent transition-all">
                                             <button className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors shrink-0" onClick={() => fileInputRef.current.click()} disabled={isUploading}><i className="fa-solid fa-plus text-[18px]"></i></button>
-                                            <textarea ref={chatInputRef} rows={1} placeholder="Type a message... (Shift+Enter for new line)" className="bg-transparent flex-1 outline-none text-[15px] font-medium text-slate-800 resize-none py-2.5 px-2" style={{ minHeight: '40px', maxHeight: '120px' }} value={inputText} onChange={(e) => { setInputText(e.target.value); handleTypingEvent(); e.target.style.height = 'auto'; e.target.style.height = (e.target.scrollHeight < 120 ? e.target.scrollHeight : 120) + 'px'; }} onKeyDown={handleKeyDown} />
+                                            <textarea ref={chatInputRef} rows={1} placeholder="Type a message..." className="bg-transparent flex-1 outline-none text-[15px] font-medium text-slate-800 resize-none py-2.5 px-2" style={{ minHeight: '40px', maxHeight: '120px' }} value={inputText} onChange={(e) => { setInputText(e.target.value); handleTypingEvent(); e.target.style.height = 'auto'; e.target.style.height = (e.target.scrollHeight < 120 ? e.target.scrollHeight : 120) + 'px'; }} onKeyDown={handleKeyDown} />
                                         </div>
                                         
                                         <button onClick={handleSendMessage} className={`shrink-0 w-12 h-12 rounded-full transition-all flex justify-center items-center shadow-md transform-gpu hover:scale-105 ${inputText.trim() ? 'bg-[#008069] text-white hover:bg-[#006e5a]' : 'bg-slate-200 text-white cursor-not-allowed shadow-none'}`} disabled={!inputText.trim()}><i className="fa-solid fa-paper-plane text-[18px] ml-[-2px] mt-[2px]"></i></button>
@@ -1181,7 +1210,7 @@
                             
                             {/* RIGHT SIDEBAR (Tasks) */}
                             {showRightSidebar && (
-                                <div className="absolute right-0 md:relative w-80 h-full bg-[#f8fafc] border-l border-slate-200 flex flex-col shrink-0 z-40 animate-in slide-in-from-right shadow-2xl md:shadow-[rgba(0,0,0,0.03)_-2px_0_15px]">
+                                <div className="absolute right-0 md:relative w-80 h-full bg-[#f8fafc] border-l border-slate-200 flex flex-col shrink-0 z-40 animate-in slide-in-from-right shadow-2xl md:shadow-[rgba(0,0,0,0.03)_-2px_0_15px] app-entrance">
                                     <div className="h-[68px] glass-header flex items-center justify-between px-5 shrink-0 z-10">
                                         <div className="font-bold text-[15px] text-slate-800 flex items-center gap-2"><div className="w-8 h-8 rounded-lg bg-teal-50 text-[#008069] flex items-center justify-center"><i className="fa-solid fa-list-check"></i></div> Task Hub</div>
                                         <button onClick={() => setShowRightSidebar(false)} className="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 hover:text-red-500 transition-colors flex items-center justify-center"><i className="fa-solid fa-xmark"></i></button>
@@ -1372,29 +1401,34 @@
                                     </div>
                                 </div>
                                 {selectedMessage.taskData.status !== "Completed" && (selectedMessage.taskData.assignees?.includes(user.email) || currentUserData?.isAdmin || isVipAdmin) && (
-                                    <div className="bg-[#f0f2f5] p-3 flex flex-col gap-2 shrink-0 border-t border-gray-200">
-                                        <div className="text-[11px] text-gray-500 font-bold uppercase mb-1">Reassign Task (Optional)</div>
-                                        <div className="h-24 overflow-y-auto space-y-1 bg-white border border-gray-200 p-2 rounded mb-1">
-                                            {(activeGroup.id === 'demo' ? dbUsers : dbUsers.filter(u=>activeGroup.members?.includes(u.email))).map(u => (
-                                                <label key={u.uid} className="flex items-center gap-3 cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg transition-colors">
-                                                    <input type="checkbox" checked={delegateAssignees.includes(u.email)} onChange={(e) => {
-                                                        if (e.target.checked) setDelegateAssignees([...delegateAssignees, u.email]);
-                                                        else setDelegateAssignees(delegateAssignees.filter(m => m !== u.email));
-                                                    }} className="w-4 h-4 accent-[#008069]" />
-                                                    <span className="text-[13px] font-semibold text-slate-700">{toSentenceCase(u.name)}</span>
-                                                </label>
-                                            ))}
-                                        </div>
-                                        <div className="flex gap-2 mb-2">
-                                            <button onClick={handleDelegateTask} disabled={delegateAssignees.length === 0} className="flex-1 bg-[#008069] text-white px-4 py-2 rounded-lg text-[14px] disabled:opacity-50 font-bold shadow-sm hover:bg-[#006e5a] transition-all hover:shadow-md">Execute Transfer</button>
-                                            <button onClick={handleCompleteTask} className="flex-1 bg-[#00a884] text-white px-4 py-2 rounded-lg text-[14px] font-bold shadow-sm hover:bg-[#008f6f] transition-colors"><i className="fa-solid fa-check"></i> Mark Complete</button>
-                                        </div>
-                                        <div className="text-[11px] text-gray-500 font-bold uppercase mt-1 mb-1">Add Comment / File</div>
-                                        <div className="flex items-center bg-white rounded-full px-3 py-1 mb-2 border border-gray-200 shadow-sm">
-                                            <input type="text" value={trailComment} onChange={(e) => setTrailComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddComment()} placeholder="Add update... (Press Enter to send)" className="flex-1 outline-none text-[15px] py-1.5" />
-                                            <input type="file" ref={trailFileInputRef} className="hidden" onChange={handleTrailFileUpload} />
-                                            <button onClick={() => trailFileInputRef.current.click()} className="text-[#54656f] p-2 hover:bg-gray-100 rounded-full"><i className="fa-solid fa-paperclip"></i></button>
-                                            <button onClick={handleAddComment} className={`p-2 rounded-full transition-colors ${trailComment.trim() ? 'text-[#008069] hover:bg-gray-100' : 'text-gray-300'}`} disabled={!trailComment.trim()}><i className="fa-solid fa-paper-plane"></i></button>
+                                    <div className="bg-white p-4 flex flex-col gap-3 shrink-0 border-t border-slate-200 shadow-[0_-10px_30px_rgba(0,0,0,0.03)] relative z-20">
+                                        <div className="flex flex-col md:flex-row gap-3">
+                                            <div className="flex-1 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1"><i className="fa-solid fa-shuffle mr-1 text-blue-400"></i> Reassign / Transfer</div>
+                                                <div className="h-[72px] overflow-y-auto space-y-1 bg-white border border-slate-100 p-1.5 rounded-xl mb-2 shadow-inner">
+                                                    {(activeGroup.id === 'demo' ? dbUsers : dbUsers.filter(u=>activeGroup.members?.includes(u.email))).map(u => (
+                                                        <label key={u.uid} className="flex items-center gap-3 cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg transition-colors">
+                                                            <input type="checkbox" checked={delegateAssignees.includes(u.email)} onChange={(e) => {
+                                                                if (e.target.checked) setDelegateAssignees([...delegateAssignees, u.email]);
+                                                                else setDelegateAssignees(delegateAssignees.filter(m => m !== u.email));
+                                                            }} className="w-4 h-4 accent-[#008069]" />
+                                                            <span className="text-[13px] font-semibold text-slate-700">{toSentenceCase(u.name)}</span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                                <button onClick={handleDelegateTask} disabled={delegateAssignees.length === 0} className="w-full bg-[#008069] text-white py-2 rounded-xl text-[13px] disabled:opacity-50 font-bold shadow-sm hover:bg-[#006e5a] transition-all hover:shadow-md">Execute Transfer</button>
+                                            </div>
+                                            <div className="flex-1 bg-slate-50 p-3 rounded-2xl border border-slate-200 flex flex-col">
+                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1"><i className="fa-solid fa-comment-dots mr-1 text-amber-400"></i> Add Update</div>
+                                                <div className="flex-1 flex flex-col justify-between">
+                                                    <div className="flex items-center bg-white rounded-xl px-3 py-1 border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-[#008069]/20 transition-all">
+                                                        <input type="text" value={trailComment} onChange={(e) => setTrailComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddComment()} placeholder="Type update & press Enter..." className="flex-1 outline-none text-[13px] font-medium text-slate-700 py-2.5" />
+                                                        <input type="file" ref={trailFileInputRef} className="hidden" onChange={handleTrailFileUpload} />
+                                                        <button onClick={() => trailFileInputRef.current.click()} className="text-slate-400 hover:text-[#008069] p-2 hover:bg-teal-50 rounded-lg transition-colors"><i className="fa-solid fa-paperclip text-lg"></i></button>
+                                                    </div>
+                                                    <button onClick={handleCompleteTask} className="w-full bg-[#00a884] text-white py-3 rounded-xl text-[13px] font-bold shadow-[0_4px_15px_rgba(0,168,132,0.3)] hover:bg-[#009676] transition-all flex items-center justify-center gap-2 mt-2"><i className="fa-solid fa-shield-check text-lg"></i> Mark Completed</button>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 )}

@@ -122,6 +122,7 @@
             const [editingMessageId, setEditingMessageId] = useState(null);
             const [editMessageText, setEditMessageText] = useState("");
 
+            // Task Multi-Assignee States
             const [taskAssignees, setTaskAssignees] = useState([]);
             const [taskDeadline, setTaskDeadline] = useState("");
             const [delegateAssignees, setDelegateAssignees] = useState([]);
@@ -279,7 +280,7 @@
                 }
             }, [messages, activeGroup.id, user.email]);
 
-            // Memoized Filters
+            // Memoized Cached Arrays
             const activeActionableTasks = useMemo(() => {
                 return messages.filter(m => m.isTask && m.taskData?.assignees?.includes(user.email) && m.taskData?.status !== "Completed" && !(m.taskData?.dismissedBy || []).includes(user.uid));
             }, [messages, user.email, user.uid]);
@@ -456,8 +457,10 @@
                         const now = new Date();
                         const updatedTrail = [...selectedMessage.taskData.trail, { action: "File Uploaded", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), comment: "Attached file via system", fileUrl: downloadURL, fileName: file.name }];
                         await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.trail": updatedTrail });
+                        
                         logImmutableAction("TASK_FILE", `Attached file ${file.name}`, `Task ID: ${selectedMessage.id}`);
                         await notifyInvolvedInTask(selectedMessage, `${toSentenceCase(user.email.split('@')[0])} attached a file to a task.`);
+                        
                         setSelectedMessage(prev => ({...prev, taskData: {...prev.taskData, trail: updatedTrail}}));
                     } catch(e) {} finally { setTrailFileUploading(false); if(trailFileInputRef.current) trailFileInputRef.current.value = ""; }
                 });
@@ -793,6 +796,7 @@
                 );
             }, [messages, editingMessageId, editMessageText, user.email]);
 
+            // Tasks Cached
             const tasksAssignedToMe = useMemo(() => messages.filter(m => m.isTask && m.taskData?.assignees?.includes(user.email) && m.taskData?.status !== "Completed").sort((a,b) => new Date(a.taskData.deadline) - new Date(b.taskData.deadline)), [messages, user.email]);
             const tasksAssignedByMe = useMemo(() => messages.filter(m => m.isTask && m.senderUid === user.uid && m.taskData?.status !== "Completed").sort((a,b) => new Date(a.taskData.deadline) - new Date(b.taskData.deadline)), [messages, user.uid]);
 
@@ -885,7 +889,7 @@
                         /* --- PREMIUM CHAT UI --- */
                         <div className="flex h-full w-full relative">
                             
-                            {/* LEFT SIDEBAR */}
+                            {/* LEFT SIDEBAR (Glass & Card Design) */}
                             <div className="hidden md:flex w-80 bg-[#f8fafc] border-r border-slate-200 flex-col shrink-0 z-20 shadow-[2px_0_15px_rgba(0,0,0,0.03)]">
                                 <div className="p-5 glass-header flex items-center gap-3 relative group">
                                     <div className="relative">
@@ -979,7 +983,7 @@
                                                         {totalNotifications === 0 ? <div className="p-8 text-center text-[13px] text-slate-400 font-medium">No new alerts</div> : 
                                                             <div className="space-y-1.5">
                                                                 {activeActionableTasks.map(task => (
-                                                                    <div key={task.id} className="p-3 bg-white hover:bg-slate-50 border border-slate-100 rounded-xl cursor-pointer shadow-sm transition-all" onClick={() => { setShowNotifications(false); if (activeGroup.id !== task.groupId) { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'demo',name:'Demo', isDM: false}); } setTimeout(()=>scrollToMessage(task.id), 300); }}>
+                                                                    <div key={task.id} className="p-3 bg-white hover:bg-slate-50 border border-slate-100 rounded-xl cursor-pointer shadow-sm transition-all" onClick={() => { setShowNotifications(false); if (activeGroup.id !== task.groupId) { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'demo',name:'Default Group'}); } setTimeout(()=>scrollToMessage(task.id), 300); }}>
                                                                         <div className="text-[12px] font-bold text-[#008069] mb-1 flex items-center gap-1.5"><div className="w-5 h-5 rounded bg-teal-50 flex items-center justify-center"><i className="fa-regular fa-square-check"></i></div> Pending Task</div>
                                                                         <div className="text-[13px] text-slate-700 font-medium line-clamp-2 px-1">"{task.text}"</div>
                                                                         <div className="text-[10px] font-bold text-red-500 mt-2 px-1">Due: {new Date(task.taskData.deadline).toLocaleDateString()}</div>
@@ -1195,7 +1199,7 @@
                                     <div className="flex flex-col items-center gap-4">
                                         <div className="w-32 h-32 rounded-3xl bg-slate-100 flex items-center justify-center overflow-hidden relative cursor-pointer group shadow-inner border-4 border-white ring-1 ring-slate-200" onClick={() => profilePicInputRef.current?.click()}>
                                             {currentUserData?.profilePicUrl ? <img src={currentUserData.profilePicUrl} className="w-full h-full object-cover" /> : <i className="fa-solid fa-user text-5xl text-slate-300"></i>}
-                                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"><i className="fa-solid fa-camera text-white text-3xl"></i></div>
+                                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"><i className="fa-solid fa-camera text-white text-2xl"></i></div>
                                         </div>
                                         <input type="file" ref={profilePicInputRef} className="hidden" accept="image/*" />
                                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tap to change avatar</div>
@@ -1215,7 +1219,7 @@
                     )}
 
                     {activeModal === 'admin_edit_user' && (
-                        <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] z-[70] flex items-center justify-center p-4"><div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl animate-in zoom-in-95 transform-gpu"><div className="flex justify-between items-center mb-8 border-b border-slate-100 pb-4"><h3 className="font-bold text-xl text-slate-800 flex items-center gap-3"><div className="w-10 h-10 bg-teal-50 text-[#008069] rounded-xl flex items-center justify-center shadow-inner"><i className="fa-solid fa-user-pen"></i></div> Edit Staff Role</h3><button onClick={() => setActiveModal(null)} className="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 flex items-center justify-center"><i className="fa-solid fa-xmark"></i></button></div><form onSubmit={handleEditUserSubmit} className="space-y-4"><input disabled type="email" value={adminForm.email} className="w-full p-3.5 border border-slate-200 rounded-xl text-sm bg-slate-50 text-slate-400 font-medium" /><input required type="text" value={adminForm.name} onChange={(e) => setAdminForm({...adminForm, name: e.target.value})} className="w-full p-3.5 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#008069]/20 focus:border-[#008069] transition-all font-medium" /><div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4"><label className="flex items-center gap-3 text-[13px] font-bold text-slate-700 cursor-pointer"><input type="checkbox" checked={adminForm.isAdmin} onChange={(e) => setAdminForm({...adminForm, isAdmin: e.target.checked})} className="w-5 h-5 accent-[#008069] rounded"/> Grant Full Admin Rights</label><label className="flex items-center gap-3 text-[13px] font-bold text-slate-700 cursor-pointer"><input type="checkbox" checked={adminForm.canCreateGroups} onChange={(e) => setAdminForm({...adminForm, canCreateGroups: e.target.checked})} className="w-5 h-5 accent-[#008069] rounded"/> Allow Department Creation</label></div><button type="submit" className="w-full bg-[#008069] text-white py-3.5 mt-2 rounded-xl font-bold shadow-[0_4px_15px_rgba(0,128,105,0.3)] hover:bg-[#006e5a] transition-all">Save Changes</button></form></div></div>
+                        <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] z-[70] flex items-center justify-center p-4"><div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl animate-in zoom-in-95 transform-gpu"><div className="flex justify-between items-center mb-8 border-b border-slate-100 pb-4"><h3 className="font-bold text-xl text-slate-800 flex items-center gap-3"><div className="w-10 h-10 bg-teal-50 text-[#008069] rounded-xl flex items-center justify-center shadow-inner"><i className="fa-solid fa-user-pen"></i></div> Edit Staff Role</h3><button onClick={() => setActiveModal(null)} className="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 flex items-center justify-center"><i className="fa-solid fa-xmark"></i></button></div><form onSubmit={handleEditUserSubmit} className="space-y-4"><input disabled type="email" value={adminForm.email} className="w-full p-3.5 border border-slate-200 rounded-xl text-sm bg-slate-50 text-slate-400 font-medium" /><input required type="text" value={adminForm.name} onChange={(e) => setAdminForm({...adminForm, name: e.target.value})} className="w-full p-3.5 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#008069]/20 focus:border-[#008069] transition-all font-medium" /><div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4"><label className="flex items-center gap-3 text-[13px] font-bold text-slate-800 cursor-pointer"><input type="checkbox" checked={adminForm.isAdmin} onChange={(e) => setAdminForm({...adminForm, isAdmin: e.target.checked})} className="w-5 h-5 accent-[#008069] rounded"/> Grant Full Admin Rights</label><label className="flex items-center gap-3 text-[13px] font-bold text-slate-800 cursor-pointer"><input type="checkbox" checked={adminForm.canCreateGroups} onChange={(e) => setAdminForm({...adminForm, canCreateGroups: e.target.checked})} className="w-5 h-5 accent-[#008069] rounded"/> Allow Department Creation</label></div><button type="submit" className="w-full bg-[#008069] text-white py-3.5 mt-2 rounded-xl font-bold shadow-[0_4px_15px_rgba(0,128,105,0.3)] hover:bg-[#006e5a] transition-all">Save Changes</button></form></div></div>
                     )}
 
                     {activeModal === 'group_form_modal' && (

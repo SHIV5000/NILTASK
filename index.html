@@ -233,25 +233,6 @@
                 }
             }, []);
 
-            useEffect(() => {
-                const unlockAudio = () => {
-                    const audioEl = document.getElementById('app-sound');
-                    if (audioEl && !window.audioPrimed) {
-                        audioEl.volume = 0; // Mute for silent unlock
-                        audioEl.play().then(() => {
-                            audioEl.pause();
-                            audioEl.currentTime = 0;
-                            audioEl.volume = 1.0;
-                            window.audioPrimed = true;
-                        }).catch(err => console.warn("Unlock failed", err));
-                    }
-                };
-                document.addEventListener('click', unlockAudio, { once: true });
-                document.addEventListener('keydown', unlockAudio, { once: true });
-                document.addEventListener('touchstart', unlockAudio, { once: true });
-                return () => { document.removeEventListener('click', unlockAudio); document.removeEventListener('keydown', unlockAudio); document.removeEventListener('touchstart', unlockAudio); };
-            }, []);
-
             // --- DATA FETCHING ---
             useEffect(() => {
                 const qPersonal = window.query(window.collection(window.db, "reminders"), window.where("userId", "==", user.uid), window.where("isTriggered", "==", false));
@@ -363,7 +344,7 @@
                         const latestAlert = genericNotifications[genericNotifications.length - 1];
                         if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
                             navigator.serviceWorker.controller.postMessage({ type: 'SHOW_NOTIFICATION', title: 'Talk & Task Alert', body: latestAlert.text });
-                        } else if (Notification.permission === "granted") {
+                        } else if ("Notification" in window && Notification.permission === "granted") {
                             new Notification("Talk & Task Alert", { body: latestAlert.text, icon: "https://cdn-icons-png.flaticon.com/512/825/825590.png" });
                         }
                     }
@@ -434,6 +415,7 @@
                     return matchUser && matchDate && matchType && matchGroup;
                 });
             }, [immutableAuditLogs, adminFilterUser, adminFilterDate, adminFilterGroup, adminFilterType]);
+
 
             // --- UI HANDLERS ---
             const scrollToMessage = useCallback((msgId) => {
@@ -578,8 +560,10 @@
                         const now = new Date();
                         const updatedTrail = [...selectedMessage.taskData.trail, { action: "File Uploaded", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), comment: "Attached file via system", fileUrl: downloadURL, fileName: file.name }];
                         await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.trail": updatedTrail });
+                        
                         logImmutableAction("TASK_FILE", `Attached file ${file.name}`, `Task ID: ${selectedMessage.id}`);
                         await notifyInvolvedInTask(selectedMessage, `${toSentenceCase(user.email.split('@')[0])} attached a file to a task.`);
+                        
                         setSelectedMessage(prev => ({...prev, taskData: {...prev.taskData, trail: updatedTrail}}));
                     } catch(e) {} finally { setTrailFileUploading(false); if(trailFileInputRef.current) trailFileInputRef.current.value = ""; }
                 });
@@ -608,8 +592,12 @@
                 try {
                     const finalMembers = [...new Set([...groupForm.members, user.email])];
                     const groupData = { name: toSentenceCase(groupForm.name), members: finalMembers, profilePicUrl: groupForm.profilePicUrl };
-                    if (editingGroup) { await window.updateDoc(window.doc(window.db, "groups", editingGroup.id), groupData); } 
-                    else { await window.addDoc(window.collection(window.db, "groups"), { ...groupData, admins: [user.email], createdBy: user.email, createdAt: window.serverTimestamp(), isArchived: false }); }
+                    
+                    if (editingGroup) {
+                        await window.updateDoc(window.doc(window.db, "groups", editingGroup.id), groupData);
+                    } else {
+                        await window.addDoc(window.collection(window.db, "groups"), { ...groupData, admins: [user.email], createdBy: user.email, createdAt: window.serverTimestamp(), isArchived: false });
+                    }
                     setActiveModal(null); setEditingGroup(null); setGroupForm({name: "", members: [], profilePicUrl: null});
                 } catch (error) { alert("Failed to save group."); }
             };
@@ -660,7 +648,9 @@
                     await window.setDoc(window.doc(window.db, "messages", selectedMessage.id), {
                         isTask: true, taskData: { deadline: taskDeadline, assignees: taskAssignees, status: "Pending", dismissedBy: [], trail: [{ action: "Task Created", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: taskAssignees.map(a=>toSentenceCase(a.split('@')[0])).join(', ') }] }
                     }, { merge: true });
+                    
                     logImmutableAction("TASK_CREATE", `Converted to Task: "${selectedMessage.text}"`, `Assignees: ${taskAssignees.join(', ')}`);
+                    
                     setActiveModal(null); setTaskAssignees([]);
                 } catch (error) {}
             };
@@ -671,8 +661,10 @@
                     const now = new Date();
                     const updatedTrail = [...selectedMessage.taskData.trail, { action: "Delegated", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: delegateAssignees.map(a=>toSentenceCase(a.split('@')[0])).join(', ') }];
                     await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.assignees": delegateAssignees, "taskData.status": "In Progress", "taskData.trail": updatedTrail, "taskData.dismissedBy": [] });
+                    
                     logImmutableAction("TASK_DELEGATE", `Delegated Task ID: ${selectedMessage.id}`, `To: ${delegateAssignees.join(', ')}`);
                     await notifyInvolvedInTask(selectedMessage, `${toSentenceCase(user.email.split('@')[0])} transferred a task.`);
+                    
                     setActiveModal(null); setDelegateAssignees([]);
                 } catch (error) {}
             };
@@ -684,8 +676,10 @@
                     const now = new Date();
                     const updatedTrail = [...selectedMessage.taskData.trail, { action: "Marked Completed", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: "System" }];
                     await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.status": "Completed", "taskData.trail": updatedTrail });
+                    
                     logImmutableAction("TASK_COMPLETE", `Completed Task ID: ${selectedMessage.id}`, "");
                     await notifyInvolvedInTask(selectedMessage, `${toSentenceCase(user.email.split('@')[0])} marked a task as Completed.`);
+                    
                     setActiveModal(null);
                 } catch (error) {}
             };
@@ -696,8 +690,10 @@
                     const now = new Date();
                     const updatedTrail = [...selectedMessage.taskData.trail, { action: "Update Added", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), comment: trailComment }];
                     await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.trail": updatedTrail });
+                    
                     logImmutableAction("TASK_COMMENT", `Comment: "${trailComment}"`, `Task ID: ${selectedMessage.id}`);
                     await notifyInvolvedInTask(selectedMessage, `${toSentenceCase(user.email.split('@')[0])} updated a task.`);
+                    
                     setTrailComment(""); setSelectedMessage(prev => ({...prev, taskData: {...prev.taskData, trail: updatedTrail}}));
                 } catch (error) {}
             };
@@ -713,7 +709,6 @@
                 }
             };
 
-            // --- ADMIN HANDLERS ---
             const handleToggleApprove = async (u) => { await window.updateDoc(window.doc(window.db, "users", u.uid), { isApproved: !u.isApproved }); };
             
             const handleAddUserSubmit = async (e) => { 
@@ -745,6 +740,7 @@
                 if (!window.jspdf || !window.jspdf.jsPDF) { alert("PDF library is loading, please try again in 5 seconds."); return; }
                 const { jsPDF } = window.jspdf;
                 const doc = new jsPDF('landscape');
+                
                 doc.setFontSize(22); doc.setTextColor(0, 128, 105); doc.text("Talk & Task - Immutable Audit Ledger", 14, 22);
                 doc.setFontSize(10); doc.setTextColor(100); doc.text(`Secure Report Generated on: ${new Date().toLocaleString()}`, 14, 30);
                 
@@ -753,7 +749,6 @@
                 doc.save(`Secure_Audit_Ledger_${new Date().toISOString().split('T')[0]}.pdf`);
             };
 
-            // --- BUBBLE & RENDER UTILS ---
             const getBubbleStyles = (msg) => {
                 let baseStyles = "";
                 if (msg.isTask) baseStyles = "bg-[#d1e8ff] text-slate-800 border border-[#b8daff]";
@@ -1038,6 +1033,22 @@
                                         <div><h1 className="text-[17px] font-bold text-slate-800 tracking-tight">{toSentenceCase(activeGroup.name)}</h1><p className="text-[12px] font-medium text-slate-500">{activeGroup.isDM ? 'End-to-End Encrypted' : `${activeGroup.members?.length||0} Members`}</p></div>
                                     </div>
 
+                                    <div className="hidden lg:flex items-center gap-2 overflow-hidden mx-4 flex-1 justify-center px-2 border-x border-gray-200/50">
+                                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mr-2">Online</span>
+                                        {dbUsers.filter(u => {
+                                            if (activeGroup.isDM) {
+                                                return activeGroup.members?.includes(u.email) && u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000) && u.uid !== user.uid;
+                                            }
+                                            if (!activeGroup.members?.includes(u.email)) return false;
+                                            return u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000) && u.uid !== user.uid;
+                                        }).slice(0, 7).map(onlineUser => (
+                                            <div key={onlineUser.uid} className="relative group cursor-default" title={`${toSentenceCase(onlineUser.name)} is Online`}>
+                                                {onlineUser.profilePicUrl ? <img src={getCachedImage(onlineUser.uid, onlineUser.profilePicUrl)} className="w-7 h-7 rounded-full object-cover shadow-sm" /> : <div className="w-7 h-7 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[9px] font-bold text-[#54656f] shadow-sm">{toSentenceCase(onlineUser.name).substring(0,2)}</div>}
+                                                <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#00a884] border-2 border-[#f0f2f5] rounded-full"></div>
+                                            </div>
+                                        ))}
+                                    </div>
+
                                     <div className="flex items-center gap-3">
                                         <div className="hidden lg:flex items-center bg-slate-100/80 rounded-full px-4 py-2 border border-slate-200/60 transition-all focus-within:bg-white focus-within:ring-2 focus-within:ring-[#008069]/20 focus-within:border-transparent mr-2"><i className="fa-solid fa-magnifying-glass text-xs text-slate-400"></i><input type="text" placeholder="Search in chat..." className="bg-transparent outline-none text-[13px] font-medium ml-2 w-32 focus:w-48 transition-all text-slate-700" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>
                                         
@@ -1056,7 +1067,7 @@
                                                         {totalNotifications === 0 ? <div className="p-8 text-center text-[13px] text-slate-400 font-medium">No new alerts</div> : 
                                                             <div className="space-y-1.5">
                                                                 {activeActionableTasks.map(task => (
-                                                                    <div key={task.id} className="p-3 bg-white hover:bg-slate-50 border border-slate-100 rounded-xl cursor-pointer shadow-sm transition-all" onClick={() => { setShowNotifications(false); if (activeGroup.id !== task.groupId) { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'demo',name:'Default Group'}); } setTimeout(()=>scrollToMessage(task.id), 300); }}>
+                                                                    <div key={task.id} className="p-3 bg-white hover:bg-slate-50 border border-slate-100 rounded-xl cursor-pointer shadow-sm transition-all" onClick={() => { setShowNotifications(false); if (activeGroup.id !== task.groupId) { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'demo',name:'Demo', isDM: false}); } setTimeout(()=>scrollToMessage(task.id), 300); }}>
                                                                         <div className="text-[12px] font-bold text-[#008069] mb-1 flex items-center gap-1.5"><div className="w-5 h-5 rounded bg-teal-50 flex items-center justify-center"><i className="fa-regular fa-square-check"></i></div> Pending Task</div>
                                                                         <div className="text-[13px] text-slate-700 font-medium line-clamp-2 px-1">"{task.text}"</div>
                                                                         <div className="text-[10px] font-bold text-red-500 mt-2 px-1">Due: {new Date(task.taskData.deadline).toLocaleDateString()}</div>
@@ -1471,6 +1482,19 @@
                 e.preventDefault(); 
                 setAuthError(""); 
                 if ("Notification" in window && Notification.permission !== "granted") Notification.requestPermission();
+                
+                // --- BROWSER AUDIO UNLOCK TRIGGER ---
+                const audioEl = document.getElementById('app-sound');
+                if (audioEl) {
+                    audioEl.volume = 0; // Silent prime
+                    audioEl.play().then(() => {
+                        audioEl.pause();
+                        audioEl.currentTime = 0;
+                        audioEl.volume = 1.0;
+                        window.audioPrimed = true;
+                    }).catch(err => console.log("Audio prime failed", err));
+                }
+
                 window.signInWithEmailAndPassword(window.auth, email, password).catch(err => setAuthError("Login Failed")); 
             };
             const handleRegister = async (e) => {

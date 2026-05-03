@@ -1,12 +1,8 @@
-const CACHE_NAME = 'talk-task-cache-v2';
+const CACHE_NAME = 'talk-task-cache-v3';
+// Removed CDN links to fix CORS Error
 const urlsToCache = [
   './index.html',
-  './manifest.json',
-  'https://cdn.tailwindcss.com',
-  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
-  'https://unpkg.com/react@18/umd/react.development.js',
-  'https://unpkg.com/react-dom@18/umd/react-dom.development.js',
-  'https://unpkg.com/@babel/standalone/babel.min.js'
+  './manifest.json'
 ];
 
 self.addEventListener('install', event => {
@@ -20,11 +16,13 @@ self.addEventListener('fetch', event => {
         caches.match(event.request).then(response => {
             if (response) return response;
             return fetch(event.request);
+        }).catch(() => {
+            // Fallback for failed fetches
+            return null; 
         })
     );
 });
 
-// CRITICAL FIX: Wrap showNotification in event.waitUntil to prevent premature OS termination
 self.addEventListener('message', event => {
     if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
         const title = event.data.title || 'Talk & Task Alert';
@@ -33,7 +31,7 @@ self.addEventListener('message', event => {
             icon: 'https://cdn-icons-png.flaticon.com/512/825/825590.png',
             badge: 'https://cdn-icons-png.flaticon.com/512/825/825590.png',
             vibrate: [200, 100, 200, 100, 200],
-            requireInteraction: true // Forces the notification to stay on screen until dismissed
+            requireInteraction: true 
         };
         
         event.waitUntil(
@@ -42,7 +40,6 @@ self.addEventListener('message', event => {
     }
 });
 
-// Handle clicking on the notification to bring the app to the front
 self.addEventListener('notificationclick', event => {
     event.notification.close();
     event.waitUntil(

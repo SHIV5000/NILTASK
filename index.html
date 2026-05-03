@@ -128,10 +128,11 @@
             render() {
                 if (this.state.hasError) {
                     return (
-                        <div className="p-8 bg-red-50 text-red-800 h-screen overflow-auto">
+                        <div className="p-8 bg-red-50 text-red-800 h-screen overflow-auto z-50 absolute inset-0">
                             <h1 className="text-2xl font-bold mb-4">React Compilation Error Detected</h1>
-                            <pre className="text-sm bg-white p-4 rounded border border-red-200">{this.state.error && this.state.error.toString()}</pre>
-                            <pre className="text-xs mt-4 text-red-600">{this.state.errorInfo && this.state.errorInfo.componentStack}</pre>
+                            <pre className="text-sm bg-white p-4 rounded border border-red-200 shadow-sm">{this.state.error && this.state.error.toString()}</pre>
+                            <pre className="text-xs mt-4 text-red-600 bg-white p-4 rounded border border-red-100">{this.state.errorInfo && this.state.errorInfo.componentStack}</pre>
+                            <button className="mt-6 bg-red-600 text-white px-6 py-2 rounded-full font-bold shadow-sm" onClick={() => window.location.reload()}>Reload Application</button>
                         </div>
                     );
                 }
@@ -161,6 +162,7 @@
             const [taskDeadline, setTaskDeadline] = useState("");
             const [delegateAssignees, setDelegateAssignees] = useState([]);
             const [trailComment, setTrailComment] = useState(""); 
+            const [reminderDateTime, setReminderDateTime] = useState(""); 
 
             const [messages, setMessages] = useState([]); 
             const [dbUsers, setDbUsers] = useState([]); 
@@ -223,7 +225,6 @@
                 } catch(e) {}
             }, [user.email, activeGroup.id, activeGroup.name]);
 
-            // --- AUDIO FIX: Secure DOM Anchoring ---
             const playAlertSound = useCallback(() => {
                 const audioEl = document.getElementById('app-sound');
                 if (audioEl && window.audioPrimed) {
@@ -233,18 +234,17 @@
                 }
             }, []);
 
-            // --- DATA FETCHING ---
             useEffect(() => {
                 const qPersonal = window.query(window.collection(window.db, "reminders"), window.where("userId", "==", user.uid), window.where("isTriggered", "==", false));
-                const unsubPersonal = window.onSnapshot(qPersonal, (snapshot) => setActiveReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
+                const unsubPersonal = window.onSnapshot(qPersonal, (snapshot) => setActiveReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.log("Personal Reminders DB Rule blocked or empty"));
                 
                 const qAlerts = window.query(window.collection(window.db, "notifications"), window.where("userId", "==", user.uid), window.where("isRead", "==", false));
-                const unsubAlerts = window.onSnapshot(qAlerts, (snapshot) => setGenericNotifications(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
+                const unsubAlerts = window.onSnapshot(qAlerts, (snapshot) => setGenericNotifications(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.log("Alerts DB Rule blocked or empty"));
                 
                 let unsubAdmin = () => {}; let unsubAudit = () => {};
                 if (currentUserData?.isAdmin || isVipAdmin) {
                     const qAdmin = window.query(window.collection(window.db, "reminders"), window.orderBy("remindAt", "desc"));
-                    unsubAdmin = window.onSnapshot(qAdmin, (snapshot) => setAllAdminReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
+                    unsubAdmin = window.onSnapshot(qAdmin, (snapshot) => setAllAdminReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.log("Admin Reminders Blocked"));
 
                     const qAudit = window.query(window.collection(window.db, "audit_logs"), window.orderBy("timestamp", "desc"));
                     unsubAudit = window.onSnapshot(qAudit, (snapshot) => {
@@ -252,7 +252,7 @@
                             const data = d.data();
                             return { id: d.id, ...data, time: data.timestamp ? new Date(data.timestamp.toDate()).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '', dateString: data.timestamp ? new Date(data.timestamp.toDate()).toISOString().split('T')[0] : ''};
                         }));
-                    });
+                    }, (err) => console.log("Audit Logs Blocked"));
                 }
                 return () => { unsubPersonal(); unsubAlerts(); unsubAdmin(); unsubAudit(); };
             }, [user.uid, currentUserData?.isAdmin, isVipAdmin]);
@@ -285,15 +285,16 @@
                         const data = doc.data(); setCurrentUserData(data);
                         if(!profileForm.name && data.name) setProfileForm({ name: toSentenceCase(data.name), fontSize: data.fontSize || "text-[15px] md:text-[16px]", fontFamily: data.fontFamily || "font-sans" });
                     }
-                });
-                const unsubUsers = window.onSnapshot(window.query(window.collection(window.db, "users"), window.orderBy("email", "asc")), (snapshot) => setDbUsers(snapshot.docs.map(doc => doc.data())));
+                }, (err) => console.log("User Data Blocked"));
+                
+                const unsubUsers = window.onSnapshot(window.query(window.collection(window.db, "users"), window.orderBy("email", "asc")), (snapshot) => setDbUsers(snapshot.docs.map(doc => doc.data())), (err) => console.log("Users Fetch Blocked"));
                 
                 const unsubGroups = window.onSnapshot(window.collection(window.db, "groups"), (snapshot) => {
                     const fetchedGroups = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     if (fetchedGroups.length === 0 && (currentUserData?.isAdmin || isVipAdmin)) {
                         window.addDoc(window.collection(window.db, "groups"), { name: "Demo", members: [user.email], admins: [user.email], createdBy: user.email, createdAt: window.serverTimestamp(), isArchived: false }).catch(()=>{});
                     } else { setGroups(fetchedGroups); }
-                });
+                }, (err) => console.log("Groups Fetch Blocked"));
                 
                 return () => { clearInterval(heartbeatInterval); unsubCurrent(); unsubUsers(); unsubGroups(); };
             }, [user, currentUserData?.isAdmin, isVipAdmin]);
@@ -307,7 +308,7 @@
                     });
                     setMessages(loadedMessages);
                     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
-                });
+                }, (err) => console.log("Messages Fetch Blocked"));
                 return () => unsubscribe();
             }, [user.uid]);
 
@@ -325,11 +326,10 @@
                     const now = Date.now();
                     const typingUsers = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => d.id !== `${activeGroup.id}_${user.uid}`).filter(d => d.timestamp && (now - d.timestamp < 3500)); 
                     setTypingStatus(typingUsers);
-                });
+                }, (err) => console.log("Typing Fetch Blocked"));
                 return () => unsubTyping();
             }, [activeGroup.id, user.uid]);
 
-            // --- MEMOIZED CACHED ARRAYS ---
             const activeActionableTasks = useMemo(() => {
                 return messages.filter(m => m.isTask && m.taskData?.assignees?.includes(user.email) && m.taskData?.status !== "Completed" && !(m.taskData?.dismissedBy || []).includes(user.uid));
             }, [messages, user.email, user.uid]);
@@ -339,7 +339,6 @@
             useEffect(() => {
                 if (totalNotifications > prevNotifCountRef.current) { 
                     playAlertSound();
-                    
                     if (genericNotifications.length > 0) {
                         const latestAlert = genericNotifications[genericNotifications.length - 1];
                         if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
@@ -417,7 +416,6 @@
             }, [immutableAuditLogs, adminFilterUser, adminFilterDate, adminFilterGroup, adminFilterType]);
 
 
-            // --- UI HANDLERS ---
             const scrollToMessage = useCallback((msgId) => {
                 const el = document.getElementById(`msg-${msgId}`);
                 if (el) {
@@ -859,7 +857,6 @@
                 );
             }, [messages, editingMessageId, editMessageText, user.email]);
 
-            // --- SECURE PENDING APPROVAL CHECK ---
             if (currentUserData && currentUserData.isApproved !== true && !currentUserData.isAdmin && !isVipAdmin) {
                 return (
                     <div className="flex items-center justify-center h-screen bg-gray-100 p-4 text-gray-800">
@@ -868,7 +865,6 @@
                 );
             }
 
-            // --- MAIN RENDER ---
             return (
                 <div className={`flex h-screen w-full bg-[#f3f4f6] text-slate-800 overflow-hidden relative font-sans transition-opacity duration-700 ease-out ${isLoaded ? 'opacity-100' : 'opacity-0'}`}>
                     <audio id="app-sound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto" className="hidden"></audio>
@@ -1033,22 +1029,6 @@
                                         <div><h1 className="text-[17px] font-bold text-slate-800 tracking-tight">{toSentenceCase(activeGroup.name)}</h1><p className="text-[12px] font-medium text-slate-500">{activeGroup.isDM ? 'End-to-End Encrypted' : `${activeGroup.members?.length||0} Members`}</p></div>
                                     </div>
 
-                                    <div className="hidden lg:flex items-center gap-2 overflow-hidden mx-4 flex-1 justify-center px-2 border-x border-gray-200/50">
-                                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mr-2">Online</span>
-                                        {dbUsers.filter(u => {
-                                            if (activeGroup.isDM) {
-                                                return activeGroup.members?.includes(u.email) && u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000) && u.uid !== user.uid;
-                                            }
-                                            if (!activeGroup.members?.includes(u.email)) return false;
-                                            return u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000) && u.uid !== user.uid;
-                                        }).slice(0, 7).map(onlineUser => (
-                                            <div key={onlineUser.uid} className="relative group cursor-default" title={`${toSentenceCase(onlineUser.name)} is Online`}>
-                                                {onlineUser.profilePicUrl ? <img src={getCachedImage(onlineUser.uid, onlineUser.profilePicUrl)} className="w-7 h-7 rounded-full object-cover shadow-sm" /> : <div className="w-7 h-7 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[9px] font-bold text-[#54656f] shadow-sm">{toSentenceCase(onlineUser.name).substring(0,2)}</div>}
-                                                <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#00a884] border-2 border-[#f0f2f5] rounded-full"></div>
-                                            </div>
-                                        ))}
-                                    </div>
-
                                     <div className="flex items-center gap-3">
                                         <div className="hidden lg:flex items-center bg-slate-100/80 rounded-full px-4 py-2 border border-slate-200/60 transition-all focus-within:bg-white focus-within:ring-2 focus-within:ring-[#008069]/20 focus-within:border-transparent mr-2"><i className="fa-solid fa-magnifying-glass text-xs text-slate-400"></i><input type="text" placeholder="Search in chat..." className="bg-transparent outline-none text-[13px] font-medium ml-2 w-32 focus:w-48 transition-all text-slate-700" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>
                                         
@@ -1067,7 +1047,7 @@
                                                         {totalNotifications === 0 ? <div className="p-8 text-center text-[13px] text-slate-400 font-medium">No new alerts</div> : 
                                                             <div className="space-y-1.5">
                                                                 {activeActionableTasks.map(task => (
-                                                                    <div key={task.id} className="p-3 bg-white hover:bg-slate-50 border border-slate-100 rounded-xl cursor-pointer shadow-sm transition-all" onClick={() => { setShowNotifications(false); if (activeGroup.id !== task.groupId) { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'demo',name:'Demo', isDM: false}); } setTimeout(()=>scrollToMessage(task.id), 300); }}>
+                                                                    <div key={task.id} className="p-3 bg-white hover:bg-slate-50 border border-slate-100 rounded-xl cursor-pointer shadow-sm transition-all" onClick={() => { setShowNotifications(false); if (activeGroup.id !== task.groupId) { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'demo',name:'Default Group'}); } setTimeout(()=>scrollToMessage(task.id), 300); }}>
                                                                         <div className="text-[12px] font-bold text-[#008069] mb-1 flex items-center gap-1.5"><div className="w-5 h-5 rounded bg-teal-50 flex items-center justify-center"><i className="fa-regular fa-square-check"></i></div> Pending Task</div>
                                                                         <div className="text-[13px] text-slate-700 font-medium line-clamp-2 px-1">"{task.text}"</div>
                                                                         <div className="text-[10px] font-bold text-red-500 mt-2 px-1">Due: {new Date(task.taskData.deadline).toLocaleDateString()}</div>

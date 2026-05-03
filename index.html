@@ -73,19 +73,15 @@
         window.dispatchEvent(new Event('firebaseReady'));
     </script>
 
-    <!-- Register Service Worker for PWA -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('service-worker.js')
-                    .then(registration => console.log('SW registered'))
-                    .catch(err => console.log('SW registration failed: ', err));
+                navigator.serviceWorker.register('service-worker.js').catch(err => console.log('SW registration failed'));
             });
         }
     </script>
 
     <style>
-        /* Modern Premium SaaS Typography & Theme */
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important; background-color: #f3f4f6; color: #1e293b; }
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -93,17 +89,12 @@
         ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
         .wa-bg { 
             background-color: #e5dbd3; 
-            background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); 
-            background-repeat: repeat; 
-            background-blend-mode: multiply;
-            opacity: 0.95;
+            background-image: url('data:image/svg+xml,%3Csvg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="%23cbd5e1" fill-opacity="0.2" fill-rule="evenodd"%3E%3Ccircle cx="3" cy="3" r="3"/%3E%3Ccircle cx="13" cy="13" r="3"/%3E%3C/g%3E%3C/svg%3E');
             scroll-behavior: smooth;
         }
         .highlight-msg { transition: background-color 1s ease-out; transform: translateZ(0); }
         .glass-header { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid rgba(0,0,0,0.05); }
         .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
-        
-        /* Smooth Entrance Animations */
         @keyframes subtleSlideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .app-entrance { animation: subtleSlideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
     </style>
@@ -113,15 +104,12 @@
 
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo, useCallback } = React;
-        const notificationSound = new Audio('https://cdn.freesound.org/previews/536/536420_4397472-lq.mp3');
 
-        // Helper: Convert to Sentence Case
         const toSentenceCase = (str) => {
             if (!str) return "";
             return str.toLowerCase().replace(/(^\w{1})|(\s+\w{1})/g, letter => letter.toUpperCase());
         };
 
-        // Helper: LocalStorage Image Cache (Superfast Loading)
         const getCachedImage = (uid, url) => {
             if (!url) return null;
             const cachedUrl = localStorage.getItem(`avatar_${uid}`);
@@ -130,7 +118,6 @@
             return url;
         };
 
-        // Error Boundary
         class ErrorBoundary extends React.Component {
             constructor(props) {
                 super(props);
@@ -153,19 +140,15 @@
         }
 
         function ChatApp({ user, onLogout }) {
-            // --- SECURITY STATE ---
             const [isVipAdmin, setIsVipAdmin] = useState(false);
-
-            // --- UI STATES ---
             const [activeModal, setActiveModal] = useState(null);
             const [showRightSidebar, setShowRightSidebar] = useState(false);
             const [viewMode, setViewMode] = useState("chat"); 
             const [showFilterMenu, setShowFilterMenu] = useState(false);
             const [showNotifications, setShowNotifications] = useState(false);
             const [isAtBottom, setIsAtBottom] = useState(true); 
-            const [isLoaded, setIsLoaded] = useState(false); // For transition
+            const [isLoaded, setIsLoaded] = useState(false); 
 
-            // --- CHAT STATES ---
             const [inputText, setInputText] = useState("");
             const [searchQuery, setSearchQuery] = useState("");
             const [chatFilter, setChatFilter] = useState("all"); 
@@ -174,13 +157,11 @@
             const [editingMessageId, setEditingMessageId] = useState(null);
             const [editMessageText, setEditMessageText] = useState("");
 
-            // --- TASK STATES ---
             const [taskAssignees, setTaskAssignees] = useState([]);
             const [taskDeadline, setTaskDeadline] = useState("");
             const [delegateAssignees, setDelegateAssignees] = useState([]);
             const [trailComment, setTrailComment] = useState(""); 
 
-            // --- DATA STATES ---
             const [messages, setMessages] = useState([]); 
             const [dbUsers, setDbUsers] = useState([]); 
             const [groups, setGroups] = useState([]);
@@ -192,26 +173,22 @@
             const [allAdminReminders, setAllAdminReminders] = useState([]);
             const [immutableAuditLogs, setImmutableAuditLogs] = useState([]);
 
-            // --- FORM STATES ---
             const [adminForm, setAdminForm] = useState({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false });
             const [profileForm, setProfileForm] = useState({ name: "", fontSize: "text-[15px] md:text-[16px]", fontFamily: "font-sans" });
             const [groupForm, setGroupForm] = useState({ name: "", members: [], profilePicUrl: null });
             const [editingGroup, setEditingGroup] = useState(null);
 
-            // --- ADMIN FILTERS ---
             const [adminFilterUser, setAdminFilterUser] = useState("");
             const [adminFilterDate, setAdminFilterDate] = useState("");
             const [adminFilterType, setAdminFilterType] = useState("");
             const [adminFilterGroup, setAdminFilterGroup] = useState("");
 
-            // --- UPLOAD STATES ---
             const [uploadProgress, setUploadProgress] = useState(0);
             const [isUploading, setIsUploading] = useState(false);
             const [trailFileUploading, setTrailFileUploading] = useState(false);
             const [profileUploadProgress, setProfileUploadProgress] = useState(0);
             const [groupPicUploadProgress, setGroupPicUploadProgress] = useState(0);
 
-            // --- REFS ---
             const messagesEndRef = useRef(null); 
             const chatContainerRef = useRef(null);
             const chatInputRef = useRef(null);
@@ -222,10 +199,8 @@
             const prevNotifCountRef = useRef(0);
             const lastTypingTime = useRef(0); 
 
-            // Trigger Entrance Animation
             useEffect(() => { setIsLoaded(true); }, []);
 
-            // --- SECURITY HELPER ---
             const verifyAdminStatus = useCallback(async () => {
                 if (!window.auth.currentUser) return false;
                 try {
@@ -237,49 +212,58 @@
                 }
             }, []);
 
-            useEffect(() => {
-                verifyAdminStatus().then(res => setIsVipAdmin(res));
-            }, [verifyAdminStatus]);
+            useEffect(() => { verifyAdminStatus().then(res => setIsVipAdmin(res)); }, [verifyAdminStatus]);
 
-            // --- IMMUTABLE LOG ENGINE ---
             const logImmutableAction = useCallback(async (actionType, content, target = "") => {
                 try {
                     await window.addDoc(window.collection(window.db, "audit_logs"), {
                         type: actionType, user: user.email, content: content, target: target,
                         groupId: activeGroup.id, groupName: activeGroup.name, timestamp: window.serverTimestamp()
                     });
-                } catch(e) { console.error("Audit Log Error:", e); }
+                } catch(e) {}
             }, [user.email, activeGroup.id, activeGroup.name]);
 
-            // --- BROWSER AUDIO UNLOCKER ---
+            // --- AUDIO FIX: Secure DOM Anchoring ---
+            const playAlertSound = useCallback(() => {
+                const audioEl = document.getElementById('app-sound');
+                if (audioEl && window.audioPrimed) {
+                    audioEl.currentTime = 0;
+                    audioEl.volume = 1.0;
+                    audioEl.play().catch(e => console.warn("Browser blocked audio:", e));
+                }
+            }, []);
+
             useEffect(() => {
                 const unlockAudio = () => {
-                    if (!window.audioPrimed) {
-                        notificationSound.volume = 1.0;
-                        notificationSound.play().then(() => {
-                            notificationSound.pause(); notificationSound.currentTime = 0; window.audioPrimed = true;
-                        }).catch(err => {});
+                    const audioEl = document.getElementById('app-sound');
+                    if (audioEl && !window.audioPrimed) {
+                        audioEl.volume = 0; // Mute for silent unlock
+                        audioEl.play().then(() => {
+                            audioEl.pause();
+                            audioEl.currentTime = 0;
+                            audioEl.volume = 1.0;
+                            window.audioPrimed = true;
+                        }).catch(err => console.warn("Unlock failed", err));
                     }
                 };
                 document.addEventListener('click', unlockAudio, { once: true });
                 document.addEventListener('keydown', unlockAudio, { once: true });
                 document.addEventListener('touchstart', unlockAudio, { once: true });
-                if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") Notification.requestPermission();
                 return () => { document.removeEventListener('click', unlockAudio); document.removeEventListener('keydown', unlockAudio); document.removeEventListener('touchstart', unlockAudio); };
             }, []);
 
-            // --- ROBUST DATA FETCHING (Firebase Error Catchers Injected) ---
+            // --- DATA FETCHING ---
             useEffect(() => {
                 const qPersonal = window.query(window.collection(window.db, "reminders"), window.where("userId", "==", user.uid), window.where("isTriggered", "==", false));
-                const unsubPersonal = window.onSnapshot(qPersonal, (snapshot) => setActiveReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.log("Personal Reminders DB Rule blocked or empty"));
+                const unsubPersonal = window.onSnapshot(qPersonal, (snapshot) => setActiveReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
                 
                 const qAlerts = window.query(window.collection(window.db, "notifications"), window.where("userId", "==", user.uid), window.where("isRead", "==", false));
-                const unsubAlerts = window.onSnapshot(qAlerts, (snapshot) => setGenericNotifications(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.log("Alerts DB Rule blocked or empty"));
+                const unsubAlerts = window.onSnapshot(qAlerts, (snapshot) => setGenericNotifications(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
                 
                 let unsubAdmin = () => {}; let unsubAudit = () => {};
                 if (currentUserData?.isAdmin || isVipAdmin) {
                     const qAdmin = window.query(window.collection(window.db, "reminders"), window.orderBy("remindAt", "desc"));
-                    unsubAdmin = window.onSnapshot(qAdmin, (snapshot) => setAllAdminReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.log("Admin Reminders Blocked"));
+                    unsubAdmin = window.onSnapshot(qAdmin, (snapshot) => setAllAdminReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
 
                     const qAudit = window.query(window.collection(window.db, "audit_logs"), window.orderBy("timestamp", "desc"));
                     unsubAudit = window.onSnapshot(qAudit, (snapshot) => {
@@ -287,7 +271,7 @@
                             const data = d.data();
                             return { id: d.id, ...data, time: data.timestamp ? new Date(data.timestamp.toDate()).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '', dateString: data.timestamp ? new Date(data.timestamp.toDate()).toISOString().split('T')[0] : ''};
                         }));
-                    }, (err) => console.log("Audit Logs Blocked"));
+                    });
                 }
                 return () => { unsubPersonal(); unsubAlerts(); unsubAdmin(); unsubAudit(); };
             }, [user.uid, currentUserData?.isAdmin, isVipAdmin]);
@@ -298,8 +282,7 @@
                     activeReminders.forEach(async (rem) => {
                         const remindTime = new Date(rem.remindAt);
                         if (remindTime <= now) {
-                            notificationSound.play().catch(e => console.log("Sound play prevented"));
-                            // PWA Background Notification
+                            playAlertSound();
                             if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
                                 navigator.serviceWorker.controller.postMessage({ type: 'SHOW_NOTIFICATION', title: 'Talk & Task Reminder', body: `⏰ "${rem.messageText}"` });
                             } else if ("Notification" in window && Notification.permission === "granted") {
@@ -310,7 +293,7 @@
                     });
                 }, 15000); 
                 return () => clearInterval(interval);
-            }, [activeReminders]);
+            }, [activeReminders, playAlertSound]);
 
             useEffect(() => {
                 const syncUserToDB = async () => { try { await window.setDoc(window.doc(window.db, "users", user.uid), { uid: user.uid, email: user.email, name: toSentenceCase(user.email.split('@')[0]), lastActive: window.serverTimestamp() }, { merge: true }); } catch (error) {} };
@@ -321,17 +304,15 @@
                         const data = doc.data(); setCurrentUserData(data);
                         if(!profileForm.name && data.name) setProfileForm({ name: toSentenceCase(data.name), fontSize: data.fontSize || "text-[15px] md:text-[16px]", fontFamily: data.fontFamily || "font-sans" });
                     }
-                }, (err) => console.log("User Data Blocked"));
+                });
+                const unsubUsers = window.onSnapshot(window.query(window.collection(window.db, "users"), window.orderBy("email", "asc")), (snapshot) => setDbUsers(snapshot.docs.map(doc => doc.data())));
                 
-                const unsubUsers = window.onSnapshot(window.query(window.collection(window.db, "users"), window.orderBy("email", "asc")), (snapshot) => setDbUsers(snapshot.docs.map(doc => doc.data())), (err) => console.log("Users Fetch Blocked"));
-                
-                // Auto-create Dynamic "Demo" group if DB is completely empty and user is admin.
                 const unsubGroups = window.onSnapshot(window.collection(window.db, "groups"), (snapshot) => {
                     const fetchedGroups = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     if (fetchedGroups.length === 0 && (currentUserData?.isAdmin || isVipAdmin)) {
                         window.addDoc(window.collection(window.db, "groups"), { name: "Demo", members: [user.email], admins: [user.email], createdBy: user.email, createdAt: window.serverTimestamp(), isArchived: false }).catch(()=>{});
                     } else { setGroups(fetchedGroups); }
-                }, (err) => console.log("Groups Fetch Blocked"));
+                });
                 
                 return () => { clearInterval(heartbeatInterval); unsubCurrent(); unsubUsers(); unsubGroups(); };
             }, [user, currentUserData?.isAdmin, isVipAdmin]);
@@ -345,7 +326,7 @@
                     });
                     setMessages(loadedMessages);
                     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
-                }, (err) => console.log("Messages Fetch Blocked"));
+                });
                 return () => unsubscribe();
             }, [user.uid]);
 
@@ -363,7 +344,7 @@
                     const now = Date.now();
                     const typingUsers = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => d.id !== `${activeGroup.id}_${user.uid}`).filter(d => d.timestamp && (now - d.timestamp < 3500)); 
                     setTypingStatus(typingUsers);
-                }, (err) => console.log("Typing Fetch Blocked"));
+                });
                 return () => unsubTyping();
             }, [activeGroup.id, user.uid]);
 
@@ -376,18 +357,19 @@
 
             useEffect(() => {
                 if (totalNotifications > prevNotifCountRef.current) { 
-                    if(window.audioPrimed) notificationSound.play().catch(e => console.log("Sound play prevented")); 
+                    playAlertSound();
                     
-                    // PWA Background Notification for new alerts
                     if (genericNotifications.length > 0) {
                         const latestAlert = genericNotifications[genericNotifications.length - 1];
                         if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
                             navigator.serviceWorker.controller.postMessage({ type: 'SHOW_NOTIFICATION', title: 'Talk & Task Alert', body: latestAlert.text });
+                        } else if (Notification.permission === "granted") {
+                            new Notification("Talk & Task Alert", { body: latestAlert.text, icon: "https://cdn-icons-png.flaticon.com/512/825/825590.png" });
                         }
                     }
                 }
                 prevNotifCountRef.current = totalNotifications;
-            }, [totalNotifications, genericNotifications]);
+            }, [totalNotifications, genericNotifications, playAlertSound]);
 
             const myGroups = useMemo(() => {
                 return groups.filter(g => !g.isArchived && (g.members?.includes(user.email) || currentUserData?.isAdmin || isVipAdmin));
@@ -452,7 +434,6 @@
                     return matchUser && matchDate && matchType && matchGroup;
                 });
             }, [immutableAuditLogs, adminFilterUser, adminFilterDate, adminFilterGroup, adminFilterType]);
-
 
             // --- UI HANDLERS ---
             const scrollToMessage = useCallback((msgId) => {
@@ -597,10 +578,8 @@
                         const now = new Date();
                         const updatedTrail = [...selectedMessage.taskData.trail, { action: "File Uploaded", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), comment: "Attached file via system", fileUrl: downloadURL, fileName: file.name }];
                         await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.trail": updatedTrail });
-                        
                         logImmutableAction("TASK_FILE", `Attached file ${file.name}`, `Task ID: ${selectedMessage.id}`);
                         await notifyInvolvedInTask(selectedMessage, `${toSentenceCase(user.email.split('@')[0])} attached a file to a task.`);
-                        
                         setSelectedMessage(prev => ({...prev, taskData: {...prev.taskData, trail: updatedTrail}}));
                     } catch(e) {} finally { setTrailFileUploading(false); if(trailFileInputRef.current) trailFileInputRef.current.value = ""; }
                 });
@@ -629,12 +608,8 @@
                 try {
                     const finalMembers = [...new Set([...groupForm.members, user.email])];
                     const groupData = { name: toSentenceCase(groupForm.name), members: finalMembers, profilePicUrl: groupForm.profilePicUrl };
-                    
-                    if (editingGroup) {
-                        await window.updateDoc(window.doc(window.db, "groups", editingGroup.id), groupData);
-                    } else {
-                        await window.addDoc(window.collection(window.db, "groups"), { ...groupData, admins: [user.email], createdBy: user.email, createdAt: window.serverTimestamp(), isArchived: false });
-                    }
+                    if (editingGroup) { await window.updateDoc(window.doc(window.db, "groups", editingGroup.id), groupData); } 
+                    else { await window.addDoc(window.collection(window.db, "groups"), { ...groupData, admins: [user.email], createdBy: user.email, createdAt: window.serverTimestamp(), isArchived: false }); }
                     setActiveModal(null); setEditingGroup(null); setGroupForm({name: "", members: [], profilePicUrl: null});
                 } catch (error) { alert("Failed to save group."); }
             };
@@ -901,6 +876,7 @@
             // --- MAIN RENDER ---
             return (
                 <div className={`flex h-screen w-full bg-[#f3f4f6] text-slate-800 overflow-hidden relative font-sans transition-opacity duration-700 ease-out ${isLoaded ? 'opacity-100' : 'opacity-0'}`}>
+                    <audio id="app-sound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto" className="hidden"></audio>
                     {viewMode === "admin" ? (
                         <div className="flex flex-col h-full w-full bg-[#f8fafc] overflow-hidden animate-in fade-in z-40">
                             <div className="glass-header bg-[#008069]/90 text-white p-4 flex items-center justify-between shadow-sm shrink-0">
@@ -1080,7 +1056,7 @@
                                                         {totalNotifications === 0 ? <div className="p-8 text-center text-[13px] text-slate-400 font-medium">No new alerts</div> : 
                                                             <div className="space-y-1.5">
                                                                 {activeActionableTasks.map(task => (
-                                                                    <div key={task.id} className="p-3 bg-white hover:bg-slate-50 border border-slate-100 rounded-xl cursor-pointer shadow-sm transition-all" onClick={() => { setShowNotifications(false); if (activeGroup.id !== task.groupId) { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'demo',name:'Demo', isDM: false}); } setTimeout(()=>scrollToMessage(task.id), 300); }}>
+                                                                    <div key={task.id} className="p-3 bg-white hover:bg-slate-50 border border-slate-100 rounded-xl cursor-pointer shadow-sm transition-all" onClick={() => { setShowNotifications(false); if (activeGroup.id !== task.groupId) { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'demo',name:'Default Group'}); } setTimeout(()=>scrollToMessage(task.id), 300); }}>
                                                                         <div className="text-[12px] font-bold text-[#008069] mb-1 flex items-center gap-1.5"><div className="w-5 h-5 rounded bg-teal-50 flex items-center justify-center"><i className="fa-regular fa-square-check"></i></div> Pending Task</div>
                                                                         <div className="text-[13px] text-slate-700 font-medium line-clamp-2 px-1">"{task.text}"</div>
                                                                         <div className="text-[10px] font-bold text-red-500 mt-2 px-1">Due: {new Date(task.taskData.deadline).toLocaleDateString()}</div>
@@ -1200,7 +1176,7 @@
                                         
                                         <div className="flex-1 bg-white rounded-3xl flex items-end shadow-sm border border-slate-200 p-1.5 focus-within:ring-2 focus-within:ring-[#008069]/20 focus-within:border-transparent transition-all">
                                             <button className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors shrink-0" onClick={() => fileInputRef.current.click()} disabled={isUploading}><i className="fa-solid fa-plus text-[18px]"></i></button>
-                                            <textarea ref={chatInputRef} rows={1} placeholder="Type a message..." className="bg-transparent flex-1 outline-none text-[15px] font-medium text-slate-800 resize-none py-2.5 px-2" style={{ minHeight: '40px', maxHeight: '120px' }} value={inputText} onChange={(e) => { setInputText(e.target.value); handleTypingEvent(); e.target.style.height = 'auto'; e.target.style.height = (e.target.scrollHeight < 120 ? e.target.scrollHeight : 120) + 'px'; }} onKeyDown={handleKeyDown} />
+                                            <textarea ref={chatInputRef} rows={1} placeholder="Type a message... (Shift+Enter for new line)" className="bg-transparent flex-1 outline-none text-[15px] font-medium text-slate-800 resize-none py-2.5 px-2" style={{ minHeight: '40px', maxHeight: '120px' }} value={inputText} onChange={(e) => { setInputText(e.target.value); handleTypingEvent(); e.target.style.height = 'auto'; e.target.style.height = (e.target.scrollHeight < 120 ? e.target.scrollHeight : 120) + 'px'; }} onKeyDown={handleKeyDown} />
                                         </div>
                                         
                                         <button onClick={handleSendMessage} className={`shrink-0 w-12 h-12 rounded-full transition-all flex justify-center items-center shadow-md transform-gpu hover:scale-105 ${inputText.trim() ? 'bg-[#008069] text-white hover:bg-[#006e5a]' : 'bg-slate-200 text-white cursor-not-allowed shadow-none'}`} disabled={!inputText.trim()}><i className="fa-solid fa-paper-plane text-[18px] ml-[-2px] mt-[2px]"></i></button>
@@ -1491,9 +1467,15 @@
                 return () => window.removeEventListener('firebaseReady', setupAuth);
             }, []);
 
-            const handleLogin = (e) => { e.preventDefault(); setAuthError(""); window.signInWithEmailAndPassword(window.auth, email, password).catch(err => setAuthError("Login Failed")); };
+            const handleLogin = (e) => { 
+                e.preventDefault(); 
+                setAuthError(""); 
+                if ("Notification" in window && Notification.permission !== "granted") Notification.requestPermission();
+                window.signInWithEmailAndPassword(window.auth, email, password).catch(err => setAuthError("Login Failed")); 
+            };
             const handleRegister = async (e) => {
                 e.preventDefault(); setAuthError("");
+                if ("Notification" in window && Notification.permission !== "granted") Notification.requestPermission();
                 try {
                     const cred = await window.createUserWithEmailAndPassword(window.auth, email, password);
                     const isVp = cred.user.email.toLowerCase() === 'viceprincipal@mpgs.edu.in';

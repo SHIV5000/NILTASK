@@ -69,7 +69,7 @@
     </script>
 
     <style>
-        /* WhatsApp Typography & Theme */
+        /* Modern Premium SaaS Typography & Theme */
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important; background-color: #f3f4f6; color: #1e293b; }
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -235,17 +235,18 @@
                 return () => { document.removeEventListener('click', unlockAudio); document.removeEventListener('keydown', unlockAudio); document.removeEventListener('touchstart', unlockAudio); };
             }, []);
 
-            // --- DATA FETCHING (Firebase) ---
+            // --- ROBUST DATA FETCHING (Firebase Error Catchers Injected) ---
             useEffect(() => {
                 const qPersonal = window.query(window.collection(window.db, "reminders"), window.where("userId", "==", user.uid), window.where("isTriggered", "==", false));
-                const unsubPersonal = window.onSnapshot(qPersonal, (snapshot) => setActiveReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
+                const unsubPersonal = window.onSnapshot(qPersonal, (snapshot) => setActiveReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.log("Personal Reminders DB Rule blocked or empty"));
+                
                 const qAlerts = window.query(window.collection(window.db, "notifications"), window.where("userId", "==", user.uid), window.where("isRead", "==", false));
-                const unsubAlerts = window.onSnapshot(qAlerts, (snapshot) => setGenericNotifications(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
+                const unsubAlerts = window.onSnapshot(qAlerts, (snapshot) => setGenericNotifications(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.log("Alerts DB Rule blocked or empty"));
                 
                 let unsubAdmin = () => {}; let unsubAudit = () => {};
                 if (currentUserData?.isAdmin || isVipAdmin) {
                     const qAdmin = window.query(window.collection(window.db, "reminders"), window.orderBy("remindAt", "desc"));
-                    unsubAdmin = window.onSnapshot(qAdmin, (snapshot) => setAllAdminReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
+                    unsubAdmin = window.onSnapshot(qAdmin, (snapshot) => setAllAdminReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.log("Admin Reminders Blocked"));
 
                     const qAudit = window.query(window.collection(window.db, "audit_logs"), window.orderBy("timestamp", "desc"));
                     unsubAudit = window.onSnapshot(qAudit, (snapshot) => {
@@ -253,7 +254,7 @@
                             const data = d.data();
                             return { id: d.id, ...data, time: data.timestamp ? new Date(data.timestamp.toDate()).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '', dateString: data.timestamp ? new Date(data.timestamp.toDate()).toISOString().split('T')[0] : ''};
                         }));
-                    });
+                    }, (err) => console.log("Audit Logs Blocked"));
                 }
                 return () => { unsubPersonal(); unsubAlerts(); unsubAdmin(); unsubAudit(); };
             }, [user.uid, currentUserData?.isAdmin, isVipAdmin]);
@@ -283,15 +284,17 @@
                         const data = doc.data(); setCurrentUserData(data);
                         if(!profileForm.name && data.name) setProfileForm({ name: toSentenceCase(data.name), fontSize: data.fontSize || "text-[15px] md:text-[16px]", fontFamily: data.fontFamily || "font-sans" });
                     }
-                });
-                const unsubUsers = window.onSnapshot(window.query(window.collection(window.db, "users"), window.orderBy("email", "asc")), (snapshot) => setDbUsers(snapshot.docs.map(doc => doc.data())));
+                }, (err) => console.log("User Data Blocked"));
                 
+                const unsubUsers = window.onSnapshot(window.query(window.collection(window.db, "users"), window.orderBy("email", "asc")), (snapshot) => setDbUsers(snapshot.docs.map(doc => doc.data())), (err) => console.log("Users Fetch Blocked"));
+                
+                // Auto-create Dynamic "Demo" group if DB is completely empty and user is admin.
                 const unsubGroups = window.onSnapshot(window.collection(window.db, "groups"), (snapshot) => {
                     const fetchedGroups = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     if (fetchedGroups.length === 0 && (currentUserData?.isAdmin || isVipAdmin)) {
-                        window.addDoc(window.collection(window.db, "groups"), { name: "Demo", members: [user.email], admins: [user.email], createdBy: user.email, createdAt: window.serverTimestamp(), isArchived: false });
+                        window.addDoc(window.collection(window.db, "groups"), { name: "Demo", members: [user.email], admins: [user.email], createdBy: user.email, createdAt: window.serverTimestamp(), isArchived: false }).catch(()=>{});
                     } else { setGroups(fetchedGroups); }
-                });
+                }, (err) => console.log("Groups Fetch Blocked"));
                 
                 return () => { clearInterval(heartbeatInterval); unsubCurrent(); unsubUsers(); unsubGroups(); };
             }, [user, currentUserData?.isAdmin, isVipAdmin]);
@@ -305,7 +308,7 @@
                     });
                     setMessages(loadedMessages);
                     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
-                });
+                }, (err) => console.log("Messages Fetch Blocked"));
                 return () => unsubscribe();
             }, [user.uid]);
 
@@ -323,7 +326,7 @@
                     const now = Date.now();
                     const typingUsers = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => d.id !== `${activeGroup.id}_${user.uid}`).filter(d => d.timestamp && (now - d.timestamp < 3500)); 
                     setTypingStatus(typingUsers);
-                });
+                }, (err) => console.log("Typing Fetch Blocked"));
                 return () => unsubTyping();
             }, [activeGroup.id, user.uid]);
 
@@ -633,7 +636,7 @@
                 try {
                     const now = new Date();
                     await window.setDoc(window.doc(window.db, "messages", selectedMessage.id), {
-                        isTask: true, taskData: { deadline: taskDeadline, assignees: taskAssignees, status: "Pending", dismissedBy: [], trail: [{ action: "Task Created", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: taskAssignees.map(a=>toSentenceCase(a.split('@')[0])).join(', ') }] }
+                        isTask: true, taskData: { deadline: taskDeadline, assignees: taskAssignees, status: "Pending", dismissedBy: [], trail: [{ action: "Task Created", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: taskAssignees.map(a=>a.split('@')[0]).join(', ') }] }
                     }, { merge: true });
                     
                     logImmutableAction("TASK_CREATE", `Converted to Task: "${selectedMessage.text}"`, `Assignees: ${taskAssignees.join(', ')}`);
@@ -646,7 +649,7 @@
                 if (!selectedMessage || delegateAssignees.length === 0) return;
                 try {
                     const now = new Date();
-                    const updatedTrail = [...selectedMessage.taskData.trail, { action: "Delegated", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: delegateAssignees.map(a=>toSentenceCase(a.split('@')[0])).join(', ') }];
+                    const updatedTrail = [...selectedMessage.taskData.trail, { action: "Delegated", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: delegateAssignees.map(a=>a.split('@')[0]).join(', ') }];
                     await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.assignees": delegateAssignees, "taskData.status": "In Progress", "taskData.trail": updatedTrail, "taskData.dismissedBy": [] });
                     
                     logImmutableAction("TASK_DELEGATE", `Delegated Task ID: ${selectedMessage.id}`, `To: ${delegateAssignees.join(', ')}`);
@@ -806,7 +809,7 @@
                                             <div className="mt-3 bg-white/60 p-2 rounded-xl flex flex-col gap-1.5 shadow-sm border border-black/5">
                                                 <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
                                                     <div className="w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center shadow-inner"><i className="fa-solid fa-users text-[9px]"></i></div> 
-                                                    {msg.taskData.assignees?.map(a => toSentenceCase((a||"").split('@')[0])).join(', ')}
+                                                    {msg.taskData.assignees?.map(a => toSentenceCase(a.split('@')[0])).join(', ')}
                                                 </span>
                                                 <span className="text-[10px] text-red-500 font-bold self-end bg-red-50 px-2 py-0.5 rounded-full"><i className="fa-regular fa-calendar mr-1"></i>Due: {new Date(msg.taskData.deadline).toLocaleDateString()}</span>
                                             </div>
@@ -940,7 +943,7 @@
                         </div>
                     ) : (
                         <div className="flex h-full w-full relative">
-                            {/* LEFT SIDEBAR (Glass & Card Design) */}
+                            {/* LEFT SIDEBAR */}
                             <div className="hidden md:flex w-80 bg-[#f8fafc] border-r border-slate-200 flex-col shrink-0 z-20 shadow-[2px_0_15px_rgba(0,0,0,0.03)]">
                                 <div className="p-5 glass-header flex items-center gap-3 relative group">
                                     <div className="relative">
@@ -1016,6 +1019,20 @@
                                         <div><h1 className="text-[17px] font-bold text-slate-800 tracking-tight">{toSentenceCase(activeGroup.name)}</h1><p className="text-[12px] font-medium text-slate-500">{activeGroup.isDM ? 'End-to-End Encrypted' : `${activeGroup.members?.length||0} Members`}</p></div>
                                     </div>
 
+                                    <div className="hidden lg:flex items-center gap-2 overflow-hidden mx-4 flex-1 justify-center px-2 border-x border-gray-200/50">
+                                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mr-2">Online</span>
+                                        {dbUsers.filter(u => {
+                                            if (activeGroup.isDM) return activeGroup.members?.includes(u.email) && u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000) && u.uid !== user.uid;
+                                            if (!activeGroup.members?.includes(u.email)) return false;
+                                            return u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000) && u.uid !== user.uid;
+                                        }).slice(0, 7).map(onlineUser => (
+                                            <div key={onlineUser.uid} className="relative group cursor-default" title={`${toSentenceCase(onlineUser.name)} is Online`}>
+                                                {onlineUser.profilePicUrl ? <img src={onlineUser.profilePicUrl} className="w-7 h-7 rounded-full object-cover shadow-sm" /> : <div className="w-7 h-7 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[9px] font-bold text-[#54656f] shadow-sm">{toSentenceCase(onlineUser.name).substring(0,2)}</div>}
+                                                <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#00a884] border-2 border-[#f0f2f5] rounded-full"></div>
+                                            </div>
+                                        ))}
+                                    </div>
+
                                     <div className="flex items-center gap-3">
                                         <div className="hidden lg:flex items-center bg-slate-100/80 rounded-full px-4 py-2 border border-slate-200/60 transition-all focus-within:bg-white focus-within:ring-2 focus-within:ring-[#008069]/20 focus-within:border-transparent mr-2"><i className="fa-solid fa-magnifying-glass text-xs text-slate-400"></i><input type="text" placeholder="Search in chat..." className="bg-transparent outline-none text-[13px] font-medium ml-2 w-32 focus:w-48 transition-all text-slate-700" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>
                                         
@@ -1034,7 +1051,7 @@
                                                         {totalNotifications === 0 ? <div className="p-8 text-center text-[13px] text-slate-400 font-medium">No new alerts</div> : 
                                                             <div className="space-y-1.5">
                                                                 {activeActionableTasks.map(task => (
-                                                                    <div key={task.id} className="p-3 bg-white hover:bg-slate-50 border border-slate-100 rounded-xl cursor-pointer shadow-sm transition-all" onClick={() => { setShowNotifications(false); if (activeGroup.id !== task.groupId) { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'demo',name:'Default Group'}); } setTimeout(()=>scrollToMessage(task.id), 300); }}>
+                                                                    <div key={task.id} className="p-3 bg-white hover:bg-slate-50 border border-slate-100 rounded-xl cursor-pointer shadow-sm transition-all" onClick={() => { setShowNotifications(false); if (activeGroup.id !== task.groupId) { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'demo',name:'Demo', isDM: false}); } setTimeout(()=>scrollToMessage(task.id), 300); }}>
                                                                         <div className="text-[12px] font-bold text-[#008069] mb-1 flex items-center gap-1.5"><div className="w-5 h-5 rounded bg-teal-50 flex items-center justify-center"><i className="fa-regular fa-square-check"></i></div> Pending Task</div>
                                                                         <div className="text-[13px] text-slate-700 font-medium line-clamp-2 px-1">"{task.text}"</div>
                                                                         <div className="text-[10px] font-bold text-red-500 mt-2 px-1">Due: {new Date(task.taskData.deadline).toLocaleDateString()}</div>
@@ -1154,7 +1171,7 @@
                                         
                                         <div className="flex-1 bg-white rounded-3xl flex items-end shadow-sm border border-slate-200 p-1.5 focus-within:ring-2 focus-within:ring-[#008069]/20 focus-within:border-transparent transition-all">
                                             <button className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors shrink-0" onClick={() => fileInputRef.current.click()} disabled={isUploading}><i className="fa-solid fa-plus text-[18px]"></i></button>
-                                            <textarea ref={chatInputRef} rows={1} placeholder="Type a message..." className="bg-transparent flex-1 outline-none text-[15px] font-medium text-slate-800 resize-none py-2.5 px-2" style={{ minHeight: '40px', maxHeight: '120px' }} value={inputText} onChange={(e) => { setInputText(e.target.value); handleTypingEvent(); e.target.style.height = 'auto'; e.target.style.height = (e.target.scrollHeight < 120 ? e.target.scrollHeight : 120) + 'px'; }} onKeyDown={handleKeyDown} />
+                                            <textarea ref={chatInputRef} rows={1} placeholder="Type a message... (Shift+Enter for new line)" className="bg-transparent flex-1 outline-none text-[15px] font-medium text-slate-800 resize-none py-2.5 px-2" style={{ minHeight: '40px', maxHeight: '120px' }} value={inputText} onChange={(e) => { setInputText(e.target.value); handleTypingEvent(); e.target.style.height = 'auto'; e.target.style.height = (e.target.scrollHeight < 120 ? e.target.scrollHeight : 120) + 'px'; }} onKeyDown={handleKeyDown} />
                                         </div>
                                         
                                         <button onClick={handleSendMessage} className={`shrink-0 w-12 h-12 rounded-full transition-all flex justify-center items-center shadow-md transform-gpu hover:scale-105 ${inputText.trim() ? 'bg-[#008069] text-white hover:bg-[#006e5a]' : 'bg-slate-200 text-white cursor-not-allowed shadow-none'}`} disabled={!inputText.trim()}><i className="fa-solid fa-paper-plane text-[18px] ml-[-2px] mt-[2px]"></i></button>
@@ -1359,17 +1376,17 @@
                                         <div className="text-[11px] text-gray-500 font-bold uppercase mb-1">Reassign Task (Optional)</div>
                                         <div className="h-24 overflow-y-auto space-y-1 bg-white border border-gray-200 p-2 rounded mb-1">
                                             {(activeGroup.id === 'demo' ? dbUsers : dbUsers.filter(u=>activeGroup.members?.includes(u.email))).map(u => (
-                                                <label key={u.uid} className="flex items-center gap-3 cursor-pointer">
+                                                <label key={u.uid} className="flex items-center gap-3 cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg transition-colors">
                                                     <input type="checkbox" checked={delegateAssignees.includes(u.email)} onChange={(e) => {
                                                         if (e.target.checked) setDelegateAssignees([...delegateAssignees, u.email]);
                                                         else setDelegateAssignees(delegateAssignees.filter(m => m !== u.email));
                                                     }} className="w-4 h-4 accent-[#008069]" />
-                                                    <span className="text-[13px] text-[#111b21]">{toSentenceCase(u.name)}</span>
+                                                    <span className="text-[13px] font-semibold text-slate-700">{toSentenceCase(u.name)}</span>
                                                 </label>
                                             ))}
                                         </div>
                                         <div className="flex gap-2 mb-2">
-                                            <button onClick={handleDelegateTask} disabled={delegateAssignees.length === 0} className="flex-1 bg-[#008069] text-white px-4 py-2 rounded-lg text-[14px] disabled:opacity-50 font-bold shadow-sm hover:bg-[#006e5a] transition-colors">Transfer Task</button>
+                                            <button onClick={handleDelegateTask} disabled={delegateAssignees.length === 0} className="flex-1 bg-[#008069] text-white px-4 py-2 rounded-lg text-[14px] disabled:opacity-50 font-bold shadow-sm hover:bg-[#006e5a] transition-all hover:shadow-md">Execute Transfer</button>
                                             <button onClick={handleCompleteTask} className="flex-1 bg-[#00a884] text-white px-4 py-2 rounded-lg text-[14px] font-bold shadow-sm hover:bg-[#008f6f] transition-colors"><i className="fa-solid fa-check"></i> Mark Complete</button>
                                         </div>
                                         <div className="text-[11px] text-gray-500 font-bold uppercase mt-1 mb-1">Add Comment / File</div>

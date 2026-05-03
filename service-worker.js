@@ -1,14 +1,18 @@
-const CACHE_NAME = 'talk-task-cache-v3';
-// Removed CDN links to fix CORS Error
+const CACHE_NAME = 'talk-task-cache-v4';
 const urlsToCache = [
   './index.html',
   './manifest.json'
 ];
 
 self.addEventListener('install', event => {
+    self.skipWaiting(); // Forces the new worker to install immediately
     event.waitUntil(
         caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
     );
+});
+
+self.addEventListener('activate', event => {
+    event.waitUntil(clients.claim()); // Takes control of the browser immediately
 });
 
 self.addEventListener('fetch', event => {
@@ -17,7 +21,6 @@ self.addEventListener('fetch', event => {
             if (response) return response;
             return fetch(event.request);
         }).catch(() => {
-            // Fallback for failed fetches
             return null; 
         })
     );

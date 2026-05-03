@@ -101,9 +101,33 @@
             return str.toLowerCase().replace(/(^\w{1})|(\s+\w{1})/g, letter => letter.toUpperCase());
         };
 
+        // Error Boundary to catch any React rendering issues cleanly
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null, errorInfo: null };
+            }
+            static getDerivedStateFromError(error) { return { hasError: true }; }
+            componentDidCatch(error, errorInfo) { this.setState({ error, errorInfo }); }
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="p-8 bg-red-50 text-red-800 h-screen overflow-auto">
+                            <h1 className="text-2xl font-bold mb-4">React Compilation Error Detected</h1>
+                            <pre className="text-sm bg-white p-4 rounded border border-red-200">{this.state.error && this.state.error.toString()}</pre>
+                            <pre className="text-xs mt-4 text-red-600">{this.state.errorInfo && this.state.errorInfo.componentStack}</pre>
+                        </div>
+                    );
+                }
+                return this.props.children; 
+            }
+        }
+
         function ChatApp({ user, onLogout }) {
-            // --- SECURITY & UI STATES ---
+            // --- SECURITY STATE ---
             const [isVipAdmin, setIsVipAdmin] = useState(false);
+
+            // --- UI STATES ---
             const [activeModal, setActiveModal] = useState(null);
             const [showRightSidebar, setShowRightSidebar] = useState(false);
             const [viewMode, setViewMode] = useState("chat"); 
@@ -138,22 +162,26 @@
             const [allAdminReminders, setAllAdminReminders] = useState([]);
             const [immutableAuditLogs, setImmutableAuditLogs] = useState([]);
 
-            // --- FORM & FILTER STATES ---
+            // --- FORM STATES ---
             const [adminForm, setAdminForm] = useState({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false });
             const [profileForm, setProfileForm] = useState({ name: "", fontSize: "text-[15px] md:text-[16px]", fontFamily: "font-sans" });
             const [groupForm, setGroupForm] = useState({ name: "", members: [], profilePicUrl: null });
             const [editingGroup, setEditingGroup] = useState(null);
+
+            // --- ADMIN FILTERS ---
             const [adminFilterUser, setAdminFilterUser] = useState("");
             const [adminFilterDate, setAdminFilterDate] = useState("");
             const [adminFilterType, setAdminFilterType] = useState("");
             const [adminFilterGroup, setAdminFilterGroup] = useState("");
 
-            // --- UPLOAD STATES & REFS ---
+            // --- UPLOAD STATES ---
             const [uploadProgress, setUploadProgress] = useState(0);
             const [isUploading, setIsUploading] = useState(false);
             const [trailFileUploading, setTrailFileUploading] = useState(false);
             const [profileUploadProgress, setProfileUploadProgress] = useState(0);
             const [groupPicUploadProgress, setGroupPicUploadProgress] = useState(0);
+
+            // --- REFS ---
             const messagesEndRef = useRef(null); 
             const chatContainerRef = useRef(null);
             const chatInputRef = useRef(null);
@@ -164,7 +192,7 @@
             const prevNotifCountRef = useRef(0);
             const lastTypingTime = useRef(0); 
 
-            // --- CORE ENGINES & HOOKS ---
+            // --- SECURITY HELPER ---
             const verifyAdminStatus = useCallback(async () => {
                 if (!window.auth.currentUser) return false;
                 try {
@@ -180,6 +208,7 @@
                 verifyAdminStatus().then(res => setIsVipAdmin(res));
             }, [verifyAdminStatus]);
 
+            // --- IMMUTABLE LOG ENGINE ---
             const logImmutableAction = useCallback(async (actionType, content, target = "") => {
                 try {
                     await window.addDoc(window.collection(window.db, "audit_logs"), {
@@ -189,6 +218,7 @@
                 } catch(e) { console.error("Audit Log Error:", e); }
             }, [user.email, activeGroup.id, activeGroup.name]);
 
+            // --- BROWSER AUDIO UNLOCKER ---
             useEffect(() => {
                 const unlockAudio = () => {
                     if (!window.audioPrimed) {
@@ -205,6 +235,7 @@
                 return () => { document.removeEventListener('click', unlockAudio); document.removeEventListener('keydown', unlockAudio); document.removeEventListener('touchstart', unlockAudio); };
             }, []);
 
+            // --- DATA FETCHING (Firebase) ---
             useEffect(() => {
                 const qPersonal = window.query(window.collection(window.db, "reminders"), window.where("userId", "==", user.uid), window.where("isTriggered", "==", false));
                 const unsubPersonal = window.onSnapshot(qPersonal, (snapshot) => setActiveReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
@@ -318,8 +349,13 @@
                 }
             }, [myGroups, activeGroup]);
 
-            const tasksAssignedToMe = useMemo(() => messages.filter(m => m.isTask && m.taskData?.assignees?.includes(user.email) && m.taskData?.status !== "Completed").sort((a,b) => new Date(a.taskData.deadline) - new Date(b.taskData.deadline)), [messages, user.email]);
-            const tasksAssignedByMe = useMemo(() => messages.filter(m => m.isTask && m.senderUid === user.uid && m.taskData?.status !== "Completed").sort((a,b) => new Date(a.taskData.deadline) - new Date(b.taskData.deadline)), [messages, user.uid]);
+            const tasksAssignedToMe = useMemo(() => {
+                return messages.filter(m => m.isTask && m.taskData?.assignees?.includes(user.email) && m.taskData?.status !== "Completed").sort((a,b) => new Date(a.taskData.deadline) - new Date(b.taskData.deadline));
+            }, [messages, user.email]);
+
+            const tasksAssignedByMe = useMemo(() => {
+                return messages.filter(m => m.isTask && m.senderUid === user.uid && m.taskData?.status !== "Completed").sort((a,b) => new Date(a.taskData.deadline) - new Date(b.taskData.deadline));
+            }, [messages, user.uid]);
 
             const visibleMessages = useMemo(() => {
                 return messages.filter(msg => {
@@ -334,7 +370,7 @@
                 }).filter(msg => {
                     if (!searchQuery.trim()) return true;
                     const q = searchQuery.toLowerCase();
-                    return msg.text?.toLowerCase().includes(q) || msg.sender?.toLowerCase().includes(q) || (msg.isTask && msg.taskData?.assignees?.some(a=>a.toLowerCase().includes(q)));
+                    return (msg.text || "").toLowerCase().includes(q) || (msg.sender || "").toLowerCase().includes(q) || (msg.isTask && msg.taskData?.assignees?.some(a=>(a || "").toLowerCase().includes(q)));
                 });
             }, [messages, activeGroup.id, user.email, searchQuery]);
 
@@ -358,7 +394,7 @@
                     const matchGroup = adminFilterGroup === "" || log.groupId === adminFilterGroup;
                     let matchType = true;
                     if (adminFilterType) {
-                        if (adminFilterType === 'task-all') matchType = log.type.includes('TASK');
+                        if (adminFilterType === 'task-all') matchType = (log.type || "").includes('TASK');
                         else if (adminFilterType === 'task-pending') matchType = log.type === 'TASK_CREATE' || log.type === 'TASK_DELEGATE';
                         else if (adminFilterType === 'task-completed') matchType = log.type === 'TASK_COMPLETE';
                         else matchType = log.type === adminFilterType;
@@ -367,7 +403,8 @@
                 });
             }, [immutableAuditLogs, adminFilterUser, adminFilterDate, adminFilterGroup, adminFilterType]);
 
-            // --- UI & LOGIC HANDLERS ---
+
+            // --- UI HANDLERS ---
             const scrollToMessage = useCallback((msgId) => {
                 const el = document.getElementById(`msg-${msgId}`);
                 if (el) {
@@ -401,9 +438,9 @@
                 try { window.deleteDoc(window.doc(window.db, "typing", `${activeGroup.id}_${user.uid}`)); } catch(e) {}
                 
                 const mentions = [];
-                dbUsers.forEach(u => { if (messageText.toLowerCase().includes(`@${u.name.toLowerCase()}`)) mentions.push(u.email); });
+                dbUsers.forEach(u => { if (messageText.toLowerCase().includes(`@${(u.name || "").toLowerCase()}`)) mentions.push(u.email); });
                 groups.forEach(g => {
-                    const teamTag = `@${g.name.replace(/\s+/g, '').toLowerCase()}`;
+                    const teamTag = `@${(g.name || "").replace(/\s+/g, '').toLowerCase()}`;
                     if (messageText.toLowerCase().includes(teamTag) && !g.isArchived) { (g.members || []).forEach(m => mentions.push(m)); }
                 });
 
@@ -463,7 +500,7 @@
             };
 
             const handleTogglePin = async (msg) => {
-                if (!currentUserData?.isAdmin && activeGroup.admins && !activeGroup.admins.includes(user.email)) return alert("Only Department Admins can pin announcements.");
+                if (!currentUserData?.isAdmin && !isVipAdmin && activeGroup.admins && !activeGroup.admins.includes(user.email)) return alert("Only Department Admins can pin announcements.");
                 try { await window.updateDoc(window.doc(window.db, "messages", msg.id), { isPinned: !msg.isPinned }); } catch (e) {}
             };
 
@@ -510,8 +547,10 @@
                         const now = new Date();
                         const updatedTrail = [...selectedMessage.taskData.trail, { action: "File Uploaded", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), comment: "Attached file via system", fileUrl: downloadURL, fileName: file.name }];
                         await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.trail": updatedTrail });
+                        
                         logImmutableAction("TASK_FILE", `Attached file ${file.name}`, `Task ID: ${selectedMessage.id}`);
                         await notifyInvolvedInTask(selectedMessage, `${toSentenceCase(user.email.split('@')[0])} attached a file to a task.`);
+                        
                         setSelectedMessage(prev => ({...prev, taskData: {...prev.taskData, trail: updatedTrail}}));
                     } catch(e) {} finally { setTrailFileUploading(false); if(trailFileInputRef.current) trailFileInputRef.current.value = ""; }
                 });
@@ -540,8 +579,12 @@
                 try {
                     const finalMembers = [...new Set([...groupForm.members, user.email])];
                     const groupData = { name: toSentenceCase(groupForm.name), members: finalMembers, profilePicUrl: groupForm.profilePicUrl };
-                    if (editingGroup) { await window.updateDoc(window.doc(window.db, "groups", editingGroup.id), groupData); } 
-                    else { await window.addDoc(window.collection(window.db, "groups"), { ...groupData, admins: [user.email], createdBy: user.email, createdAt: window.serverTimestamp(), isArchived: false }); }
+                    
+                    if (editingGroup) {
+                        await window.updateDoc(window.doc(window.db, "groups", editingGroup.id), groupData);
+                    } else {
+                        await window.addDoc(window.collection(window.db, "groups"), { ...groupData, admins: [user.email], createdBy: user.email, createdAt: window.serverTimestamp(), isArchived: false });
+                    }
                     setActiveModal(null); setEditingGroup(null); setGroupForm({name: "", members: [], profilePicUrl: null});
                 } catch (error) { alert("Failed to save group."); }
             };
@@ -590,9 +633,11 @@
                 try {
                     const now = new Date();
                     await window.setDoc(window.doc(window.db, "messages", selectedMessage.id), {
-                        isTask: true, taskData: { deadline: taskDeadline, assignees: taskAssignees, status: "Pending", dismissedBy: [], trail: [{ action: "Task Created", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: taskAssignees.map(a=>a.split('@')[0]).join(', ') }] }
+                        isTask: true, taskData: { deadline: taskDeadline, assignees: taskAssignees, status: "Pending", dismissedBy: [], trail: [{ action: "Task Created", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: taskAssignees.map(a=>toSentenceCase(a.split('@')[0])).join(', ') }] }
                     }, { merge: true });
+                    
                     logImmutableAction("TASK_CREATE", `Converted to Task: "${selectedMessage.text}"`, `Assignees: ${taskAssignees.join(', ')}`);
+                    
                     setActiveModal(null); setTaskAssignees([]);
                 } catch (error) {}
             };
@@ -601,23 +646,27 @@
                 if (!selectedMessage || delegateAssignees.length === 0) return;
                 try {
                     const now = new Date();
-                    const updatedTrail = [...selectedMessage.taskData.trail, { action: "Delegated", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: delegateAssignees.map(a=>a.split('@')[0]).join(', ') }];
+                    const updatedTrail = [...selectedMessage.taskData.trail, { action: "Delegated", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: delegateAssignees.map(a=>toSentenceCase(a.split('@')[0])).join(', ') }];
                     await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.assignees": delegateAssignees, "taskData.status": "In Progress", "taskData.trail": updatedTrail, "taskData.dismissedBy": [] });
+                    
                     logImmutableAction("TASK_DELEGATE", `Delegated Task ID: ${selectedMessage.id}`, `To: ${delegateAssignees.join(', ')}`);
                     await notifyInvolvedInTask(selectedMessage, `${toSentenceCase(user.email.split('@')[0])} transferred a task.`);
+                    
                     setActiveModal(null); setDelegateAssignees([]);
                 } catch (error) {}
             };
 
             const handleCompleteTask = async () => {
                 if (!selectedMessage) return;
-                if (!selectedMessage.taskData.assignees?.includes(user.email) && !currentUserData?.isAdmin) return alert("Only the Assignees or an Admin can complete this task.");
+                if (!selectedMessage.taskData.assignees?.includes(user.email) && !currentUserData?.isAdmin && !isVipAdmin) return alert("Only the Assignees or an Admin can complete this task.");
                 try {
                     const now = new Date();
                     const updatedTrail = [...selectedMessage.taskData.trail, { action: "Marked Completed", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: "System" }];
                     await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.status": "Completed", "taskData.trail": updatedTrail });
+                    
                     logImmutableAction("TASK_COMPLETE", `Completed Task ID: ${selectedMessage.id}`, "");
                     await notifyInvolvedInTask(selectedMessage, `${toSentenceCase(user.email.split('@')[0])} marked a task as Completed.`);
+                    
                     setActiveModal(null);
                 } catch (error) {}
             };
@@ -628,8 +677,10 @@
                     const now = new Date();
                     const updatedTrail = [...selectedMessage.taskData.trail, { action: "Update Added", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), comment: trailComment }];
                     await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.trail": updatedTrail });
+                    
                     logImmutableAction("TASK_COMMENT", `Comment: "${trailComment}"`, `Task ID: ${selectedMessage.id}`);
                     await notifyInvolvedInTask(selectedMessage, `${toSentenceCase(user.email.split('@')[0])} updated a task.`);
+                    
                     setTrailComment(""); setSelectedMessage(prev => ({...prev, taskData: {...prev.taskData, trail: updatedTrail}}));
                 } catch (error) {}
             };
@@ -645,9 +696,7 @@
                 }
             };
 
-            // --- ADMIN HANDLERS ---
             const handleToggleApprove = async (u) => { await window.updateDoc(window.doc(window.db, "users", u.uid), { isApproved: !u.isApproved }); };
-            
             const handleAddUserSubmit = async (e) => { 
                 e.preventDefault(); 
                 try { 
@@ -656,7 +705,6 @@
                     window.signOut(window.secondaryAuth); setActiveModal(null); setAdminForm({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false }); 
                 } catch(err){alert(err.message);} 
             };
-            
             const handleEditUserSubmit = async (e) => { e.preventDefault(); await window.updateDoc(window.doc(window.db, "users", adminForm.uid), { name: toSentenceCase(adminForm.name), isAdmin: adminForm.isAdmin, canCreateGroups: adminForm.canCreateGroups }); setActiveModal(null); };
 
             const handleAdminArchiveGroup = async (groupId, groupName) => { 
@@ -665,7 +713,6 @@
                     logImmutableAction("GROUP_ARCHIVE", `Archived Group: "${groupName}"`, `Group ID: ${groupId}`);
                 }
             };
-            
             const handleAdminRecoverGroup = async (groupId, groupName) => { 
                 if(window.confirm("Recover this department?")) {
                     await window.updateDoc(window.doc(window.db, "groups", groupId), { isArchived: false }); 
@@ -677,6 +724,7 @@
                 if (!window.jspdf || !window.jspdf.jsPDF) { alert("PDF library is loading, please try again in 5 seconds."); return; }
                 const { jsPDF } = window.jspdf;
                 const doc = new jsPDF('landscape');
+                
                 doc.setFontSize(22); doc.setTextColor(0, 128, 105); doc.text("Talk & Task - Immutable Audit Ledger", 14, 22);
                 doc.setFontSize(10); doc.setTextColor(100); doc.text(`Secure Report Generated on: ${new Date().toLocaleString()}`, 14, 30);
                 
@@ -685,7 +733,6 @@
                 doc.save(`Secure_Audit_Ledger_${new Date().toISOString().split('T')[0]}.pdf`);
             };
 
-            // --- BUBBLE & RENDER UTILS ---
             const getBubbleStyles = (msg) => {
                 let baseStyles = "";
                 if (msg.isTask) baseStyles = "bg-[#d1e8ff] text-slate-800 border border-[#b8daff]";
@@ -710,7 +757,7 @@
                             </>
                         )}
                         <button onClick={(e)=>{e.stopPropagation(); handleToggleBookmark(msg);}} className={`${isBookmarked ? 'text-[#008069]' : 'text-slate-400 hover:text-[#008069]'} text-[11px] p-1 transition-colors`} title="Bookmark"><i className="fa-solid fa-bookmark"></i></button>
-                        {(currentUserData?.isAdmin || activeGroup.admins?.includes(user.email)) && (
+                        {(currentUserData?.isAdmin || isVipAdmin || activeGroup.admins?.includes(user.email)) && (
                             <button onClick={(e)=>{e.stopPropagation(); handleTogglePin(msg);}} className={`${msg.isPinned ? 'text-[#008069]' : 'text-slate-400 hover:text-[#008069]'} text-[11px] p-1 transition-colors`} title="Pin"><i className="fa-solid fa-thumbtack"></i></button>
                         )}
                         <button onClick={(e)=>{e.stopPropagation(); setReplyingTo(msg); setTimeout(()=>chatInputRef.current?.focus(), 100);}} className="text-slate-400 hover:text-[#008069] text-[11px] p-1 transition-colors" title="Reply"><i className="fa-solid fa-reply"></i></button>
@@ -759,7 +806,7 @@
                                             <div className="mt-3 bg-white/60 p-2 rounded-xl flex flex-col gap-1.5 shadow-sm border border-black/5">
                                                 <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
                                                     <div className="w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center shadow-inner"><i className="fa-solid fa-users text-[9px]"></i></div> 
-                                                    {msg.taskData.assignees?.map(a => toSentenceCase(a.split('@')[0])).join(', ')}
+                                                    {msg.taskData.assignees?.map(a => toSentenceCase((a||"").split('@')[0])).join(', ')}
                                                 </span>
                                                 <span className="text-[10px] text-red-500 font-bold self-end bg-red-50 px-2 py-0.5 rounded-full"><i className="fa-regular fa-calendar mr-1"></i>Due: {new Date(msg.taskData.deadline).toLocaleDateString()}</span>
                                             </div>
@@ -796,7 +843,7 @@
                 );
             }, [messages, editingMessageId, editMessageText, user.email]);
 
-            // --- SECURITY LOCKDOWN ---
+            // --- SECURE PENDING APPROVAL CHECK ---
             if (currentUserData && currentUserData.isApproved !== true && !currentUserData.isAdmin && !isVipAdmin) {
                 return (
                     <div className="flex items-center justify-center h-screen bg-gray-100 p-4 text-gray-800">
@@ -873,7 +920,7 @@
                                                     {groups.length === 0 && <tr><td className="p-5 text-center text-slate-400 italic">No custom groups created yet.</td></tr>}
                                                     {groups.map(g => (
                                                         <tr key={g.id} className="hover:bg-slate-50/50 transition-colors">
-                                                            <td className="px-5 py-3"><div className="font-semibold text-slate-800 flex items-center gap-2">{toSentenceCase(g.name)} {g.isArchived && <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold tracking-wider border border-slate-200">ARCHIVED</span>}</div><div className="text-[11px] text-slate-500 mt-0.5">{g.members?.length || 0} Members | Created by {toSentenceCase(g.createdBy?.split('@')[0])}</div></td>
+                                                            <td className="px-5 py-3"><div className="font-semibold text-slate-800 flex items-center gap-2">{toSentenceCase(g.name)} {g.isArchived && <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold tracking-wider border border-slate-200">ARCHIVED</span>}</div><div className="text-[11px] text-slate-500 mt-0.5">{g.members?.length || 0} Members | Created by {toSentenceCase((g.createdBy||"").split('@')[0])}</div></td>
                                                             <td className="px-5 py-3 text-right">
                                                                 <button onClick={() => { setGroupForm({name: g.name, members: g.members, profilePicUrl: g.profilePicUrl}); setEditingGroup(g); setActiveModal('group_form_modal'); }} className="text-slate-400 hover:text-[#008069] p-2 transition-colors"><i className="fa-solid fa-pen"></i></button>
                                                                 {g.isArchived ? (
@@ -967,23 +1014,6 @@
                                     <div className="flex items-center gap-3.5 cursor-pointer group" onClick={()=>{ if(!activeGroup.isDM) setActiveModal('group_settings'); }}>
                                         {activeGroup.isDM ? <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center text-purple-600 shadow-sm border border-purple-50 group-hover:scale-105 transition-transform"><i className="fa-solid fa-user"></i></div> : activeGroup.profilePicUrl ? <img src={activeGroup.profilePicUrl} className="w-11 h-11 rounded-2xl object-cover shadow-sm group-hover:scale-105 transition-transform"/> : <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-teal-100 to-teal-200 flex items-center justify-center text-teal-600 shadow-sm border border-teal-50 group-hover:scale-105 transition-transform"><i className="fa-solid fa-people-group"></i></div>}
                                         <div><h1 className="text-[17px] font-bold text-slate-800 tracking-tight">{toSentenceCase(activeGroup.name)}</h1><p className="text-[12px] font-medium text-slate-500">{activeGroup.isDM ? 'End-to-End Encrypted' : `${activeGroup.members?.length||0} Members`}</p></div>
-                                    </div>
-
-                                    <div className="hidden lg:flex items-center gap-2 overflow-hidden mx-4 flex-1 justify-center px-2 border-x border-gray-200/50">
-                                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mr-2">Online</span>
-                                        {dbUsers.filter(u => {
-                                            if (activeGroup.isDM) {
-                                                return activeGroup.members?.includes(u.email) && u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000) && u.uid !== user.uid;
-                                            }
-                                            if (!activeGroup.members?.includes(u.email)) return false;
-                                            return u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000) && u.uid !== user.uid;
-                                        }).slice(0, 7).map(onlineUser => (
-                                            <div key={onlineUser.uid} className="relative group cursor-default" title={`${toSentenceCase(onlineUser.name)} is Online`}>
-                                                {onlineUser.profilePicUrl ? <img src={onlineUser.profilePicUrl} className="w-7 h-7 rounded-full object-cover shadow-sm" /> : <div className="w-7 h-7 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[9px] font-bold text-[#54656f] shadow-sm">{toSentenceCase(onlineUser.name).substring(0,2)}</div>}
-                                                <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#00a884] border-2 border-[#f0f2f5] rounded-full"></div>
-                                            </div>
-                                        ))}
-                                        {dbUsers.filter(u => u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000)).length === 0 && <span className="text-xs text-gray-400 italic">Just you</span>}
                                     </div>
 
                                     <div className="flex items-center gap-3">
@@ -1101,17 +1131,17 @@
                                 {inputText.split(/\s+/).pop().startsWith('@') && inputText.split(/\s+/).pop().length > 0 && (
                                     <div className="absolute bottom-[90px] left-6 glass-panel shadow-[0_10px_40px_rgba(0,0,0,0.1)] rounded-2xl w-72 max-h-56 overflow-y-auto z-20 border border-slate-200/60 p-1.5 animate-in slide-in-from-bottom-2">
                                         <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1">Users</div>
-                                        {dbUsers.filter(u => u.name.toLowerCase().includes(inputText.split(/\s+/).pop().substring(1).toLowerCase())).map(u => (
+                                        {dbUsers.filter(u => (u.name||"").toLowerCase().includes(inputText.split(/\s+/).pop().substring(1).toLowerCase())).map(u => (
                                             <div key={u.uid} onMouseDown={(e) => e.preventDefault()} onClick={() => { const words = inputText.split(/\s+/); words[words.length - 1] = `@${u.name} `; setInputText(words.join(' ')); chatInputRef.current?.focus(); }} className="p-2 rounded-xl hover:bg-slate-100 cursor-pointer text-[14px] flex items-center gap-3 text-slate-800 font-semibold transition-colors">
                                                 {u.profilePicUrl ? <img src={u.profilePicUrl} className="w-7 h-7 rounded-lg object-cover shadow-sm"/> : <div className="w-7 h-7 rounded-lg bg-emerald-100 text-[#008069] flex items-center justify-center text-[11px] shadow-sm"><i className="fa-solid fa-at"></i></div>}
                                                 {toSentenceCase(u.name)}
                                             </div>
                                         ))}
                                         <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-t border-b border-slate-100 my-1">Teams</div>
-                                        {groups.filter(g => g.name.toLowerCase().includes(inputText.split(/\s+/).pop().substring(1).toLowerCase()) && !g.isArchived).map(g => (
+                                        {groups.filter(g => (g.name||"").toLowerCase().includes(inputText.split(/\s+/).pop().substring(1).toLowerCase()) && !g.isArchived).map(g => (
                                             <div key={g.id} onMouseDown={(e) => e.preventDefault()} onClick={() => { const words = inputText.split(/\s+/); words[words.length - 1] = `@${g.name.replace(/\s+/g, '')} `; setInputText(words.join(' ')); chatInputRef.current?.focus(); }} className="p-2 rounded-xl hover:bg-blue-50 cursor-pointer text-[14px] flex items-center gap-3 text-blue-800 font-bold transition-colors">
                                                 {g.profilePicUrl ? <img src={g.profilePicUrl} className="w-7 h-7 rounded-lg object-cover shadow-sm"/> : <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center text-[10px] shadow-sm"><i className="fa-solid fa-users"></i></div>}
-                                                Team: {toSentenceCase(g.name)}
+                                                {toSentenceCase(g.name)}
                                             </div>
                                         ))}
                                     </div>
@@ -1325,34 +1355,29 @@
                                     </div>
                                 </div>
                                 {selectedMessage.taskData.status !== "Completed" && (selectedMessage.taskData.assignees?.includes(user.email) || currentUserData?.isAdmin || isVipAdmin) && (
-                                    <div className="bg-white p-4 flex flex-col gap-3 shrink-0 border-t border-slate-200 shadow-[0_-10px_30px_rgba(0,0,0,0.03)] relative z-20">
-                                        <div className="flex flex-col md:flex-row gap-3">
-                                            <div className="flex-1 bg-slate-50 p-3 rounded-2xl border border-slate-200">
-                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1"><i className="fa-solid fa-shuffle mr-1 text-blue-400"></i> Reassign / Transfer</div>
-                                                <div className="h-[72px] overflow-y-auto space-y-1 bg-white border border-slate-100 p-1.5 rounded-xl mb-2 shadow-inner">
-                                                    {(activeGroup.id === 'demo' ? dbUsers : dbUsers.filter(u=>activeGroup.members?.includes(u.email))).map(u => (
-                                                        <label key={u.uid} className="flex items-center gap-3 cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg transition-colors">
-                                                            <input type="checkbox" checked={delegateAssignees.includes(u.email)} onChange={(e) => {
-                                                                if (e.target.checked) setDelegateAssignees([...delegateAssignees, u.email]);
-                                                                else setDelegateAssignees(delegateAssignees.filter(m => m !== u.email));
-                                                            }} className="w-4 h-4 accent-[#008069]" />
-                                                            <span className="text-[13px] font-semibold text-slate-700">{toSentenceCase(u.name)}</span>
-                                                        </label>
-                                                    ))}
-                                                </div>
-                                                <button onClick={handleDelegateTask} disabled={delegateAssignees.length === 0} className="w-full bg-[#008069] text-white py-2 rounded-xl text-[13px] disabled:opacity-50 font-bold shadow-sm hover:bg-[#006e5a] transition-all hover:shadow-md">Execute Transfer</button>
-                                            </div>
-                                            <div className="flex-1 bg-slate-50 p-3 rounded-2xl border border-slate-200 flex flex-col">
-                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1"><i className="fa-solid fa-comment-dots mr-1 text-amber-400"></i> Add Update</div>
-                                                <div className="flex-1 flex flex-col justify-between">
-                                                    <div className="flex items-center bg-white rounded-xl px-3 py-1 border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-[#008069]/20 transition-all">
-                                                        <input type="text" value={trailComment} onChange={(e) => setTrailComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddComment()} placeholder="Type update & press Enter..." className="flex-1 outline-none text-[13px] font-medium text-slate-700 py-2.5" />
-                                                        <input type="file" ref={trailFileInputRef} className="hidden" onChange={handleTrailFileUpload} />
-                                                        <button onClick={() => trailFileInputRef.current.click()} className="text-slate-400 hover:text-[#008069] p-2 hover:bg-teal-50 rounded-lg transition-colors"><i className="fa-solid fa-paperclip text-lg"></i></button>
-                                                    </div>
-                                                    <button onClick={handleCompleteTask} className="w-full bg-[#00a884] text-white py-3 rounded-xl text-[13px] font-bold shadow-[0_4px_15px_rgba(0,168,132,0.3)] hover:bg-[#009676] transition-all flex items-center justify-center gap-2 mt-2"><i className="fa-solid fa-shield-check text-lg"></i> Mark Completed</button>
-                                                </div>
-                                            </div>
+                                    <div className="bg-[#f0f2f5] p-3 flex flex-col gap-2 shrink-0 border-t border-gray-200">
+                                        <div className="text-[11px] text-gray-500 font-bold uppercase mb-1">Reassign Task (Optional)</div>
+                                        <div className="h-24 overflow-y-auto space-y-1 bg-white border border-gray-200 p-2 rounded mb-1">
+                                            {(activeGroup.id === 'demo' ? dbUsers : dbUsers.filter(u=>activeGroup.members?.includes(u.email))).map(u => (
+                                                <label key={u.uid} className="flex items-center gap-3 cursor-pointer">
+                                                    <input type="checkbox" checked={delegateAssignees.includes(u.email)} onChange={(e) => {
+                                                        if (e.target.checked) setDelegateAssignees([...delegateAssignees, u.email]);
+                                                        else setDelegateAssignees(delegateAssignees.filter(m => m !== u.email));
+                                                    }} className="w-4 h-4 accent-[#008069]" />
+                                                    <span className="text-[13px] text-[#111b21]">{toSentenceCase(u.name)}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                        <div className="flex gap-2 mb-2">
+                                            <button onClick={handleDelegateTask} disabled={delegateAssignees.length === 0} className="flex-1 bg-[#008069] text-white px-4 py-2 rounded-lg text-[14px] disabled:opacity-50 font-bold shadow-sm hover:bg-[#006e5a] transition-colors">Transfer Task</button>
+                                            <button onClick={handleCompleteTask} className="flex-1 bg-[#00a884] text-white px-4 py-2 rounded-lg text-[14px] font-bold shadow-sm hover:bg-[#008f6f] transition-colors"><i className="fa-solid fa-check"></i> Mark Complete</button>
+                                        </div>
+                                        <div className="text-[11px] text-gray-500 font-bold uppercase mt-1 mb-1">Add Comment / File</div>
+                                        <div className="flex items-center bg-white rounded-full px-3 py-1 mb-2 border border-gray-200 shadow-sm">
+                                            <input type="text" value={trailComment} onChange={(e) => setTrailComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddComment()} placeholder="Add update... (Press Enter to send)" className="flex-1 outline-none text-[15px] py-1.5" />
+                                            <input type="file" ref={trailFileInputRef} className="hidden" onChange={handleTrailFileUpload} />
+                                            <button onClick={() => trailFileInputRef.current.click()} className="text-[#54656f] p-2 hover:bg-gray-100 rounded-full"><i className="fa-solid fa-paperclip"></i></button>
+                                            <button onClick={handleAddComment} className={`p-2 rounded-full transition-colors ${trailComment.trim() ? 'text-[#008069] hover:bg-gray-100' : 'text-gray-300'}`} disabled={!trailComment.trim()}><i className="fa-solid fa-paper-plane"></i></button>
                                         </div>
                                     </div>
                                 )}
@@ -1454,7 +1479,7 @@
                     </div>
                 );
             }
-            return <ChatApp user={user} onLogout={() => window.signOut(window.auth)} />;
+            return <ErrorBoundary><ChatApp user={user} onLogout={() => window.signOut(window.auth)} /></ErrorBoundary>;
         }
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);

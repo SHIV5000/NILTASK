@@ -201,53 +201,6 @@
 
             useEffect(() => { setIsLoaded(true); }, []);
 
-
-// --- strat UNLOCK AUDIO on first user gesture ---
-useEffect(() => {
-    const unlockAudio = (e) => {
-        const audioEl = document.getElementById('app-sound');
-        if (!audioEl || window.audioPrimed) return;
-        
-        // Mute, play silently, then reset
-        audioEl.volume = 0;
-        const playPromise = audioEl.play();
-        if (playPromise !== undefined) {
-            playPromise.then(() => {
-                audioEl.pause();
-                audioEl.currentTime = 0;
-                audioEl.volume = 1.0;
-                window.audioPrimed = true;
-                // Remove all unlock listeners once primed
-                document.removeEventListener('click', unlockAudio);
-                document.removeEventListener('keydown', unlockAudio);
-                document.removeEventListener('touchstart', unlockAudio);
-                document.removeEventListener('touchend', unlockAudio);
-            }).catch(() => {
-                // Ignore – will retry on next gesture
-            });
-        }
-    };
-
-    // Listen on a wide range of user gestures
-    ['click', 'keydown', 'touchstart', 'touchend'].forEach(evt =>
-        document.addEventListener(evt, unlockAudio, { once: false, passive: true })
-    );
-
-    return () => {
-        ['click', 'keydown', 'touchstart', 'touchend'].forEach(evt =>
-            document.removeEventListener(evt, unlockAudio)
-        );
-    };
-}, []);
-
-
-
-// --- ENDS HERE  UNLOCK AUDIO on first user gesture ---
-
-
-
-            
-
             const verifyAdminStatus = useCallback(async () => {
                 if (!window.auth.currentUser) return false;
                 try {

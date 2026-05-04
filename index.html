@@ -907,7 +907,7 @@
                             <button onClick={(e)=>{e.stopPropagation(); handleTogglePin(msg);}} className={`${msg.isPinned ? 'text-[#008069]' : 'text-slate-400 hover:text-[#008069]'} text-[11px] p-1 transition-colors`} title="Pin"><i className="fa-solid fa-thumbtack"></i></button>
                         )}
                         <button onClick={(e)=>{e.stopPropagation(); setReplyingTo(msg); setTimeout(()=>chatInputRef.current?.focus(), 100);}} className="text-slate-400 hover:text-[#008069] text-[11px] p-1 transition-colors" title="Reply"><i className="fa-solid fa-reply"></i></button>
-                        {['👍', '❤️', '😂', '😮'].map(e => <button key={e} onClick={(ev)=>{ev.stopPropagation(); handleReaction(msg.id, e);}} className="hover:scale-125 transition-transform text-[13px] ml-0.5">{e}</button>)}
+                        {['👍', '❤️', '😂', '😮','🙏'].map(e => <button key={e} onClick={(ev)=>{ev.stopPropagation(); handleReaction(msg.id, e);}} className="hover:scale-145 transition-transform text-[13px] ml-0.5">{e}</button>)}
                     </div>
                 );
 

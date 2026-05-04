@@ -29,7 +29,8 @@
     <!-- Initialize Firebase -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+        // CRITICAL FIX: Added setPersistence and browserSessionPersistence
+        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, updateDoc, setDoc, getDocs, where, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
         import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
 
@@ -44,6 +45,8 @@
 
         const app = initializeApp(firebaseConfig);
         window.auth = getAuth(app);
+        window.setPersistence = setPersistence;
+        window.browserSessionPersistence = browserSessionPersistence;
         window.signInWithEmailAndPassword = signInWithEmailAndPassword;
         window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
         window.signOut = signOut;
@@ -99,6 +102,10 @@
         .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
         @keyframes subtleSlideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .app-entrance { animation: subtleSlideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        
+        /* Custom Checkbox Design for Dropdown */
+        .custom-checkbox input:checked + div { background-color: #008069; border-color: #008069; }
+        .custom-checkbox input:checked + div i { opacity: 1; }
     </style>
 </head>
 <body class="overflow-hidden">
@@ -112,13 +119,23 @@
             return str.toLowerCase().replace(/(^\w{1})|(\s+\w{1})/g, letter => letter.toUpperCase());
         };
 
-        const getCachedImage = (uid, url) => {
-            if (!url) return null;
-            const cachedUrl = localStorage.getItem(`avatar_${uid}`);
-            if (cachedUrl === url) return url; 
-            localStorage.setItem(`avatar_${uid}`, url);
-            return url;
-        };
+        // SPEED FIX: Memoized Avatar Component to prevent image re-rendering loops
+        const MemoizedAvatar = React.memo(({ uid, url, name, sizeClass = "w-10 h-10", isGroup = false, extraClasses = "" }) => {
+            const cachedUrl = useMemo(() => {
+                if (!url) return null;
+                const existing = localStorage.getItem(`avatar_${uid}`);
+                if (existing === url) return url;
+                localStorage.setItem(`avatar_${uid}`, url);
+                return url;
+            }, [uid, url]);
+
+            if (cachedUrl) return <img src={cachedUrl} loading="lazy" className={`${sizeClass} rounded-2xl object-cover shadow-sm ${!isGroup ? 'border border-white' : ''} ${extraClasses}`} alt={name} />;
+            return (
+                <div className={`${sizeClass} rounded-2xl ${isGroup ? 'bg-gradient-to-br from-teal-100 to-teal-200 text-teal-600 border border-teal-50' : 'bg-slate-200 text-slate-500 shadow-inner'} flex items-center justify-center font-bold text-sm shadow-sm ${extraClasses}`}>
+                    {isGroup ? <i className="fa-solid fa-people-group"></i> : toSentenceCase(name || '').substring(0,2)}
+                </div>
+            );
+        });
 
         class ErrorBoundary extends React.Component {
             constructor(props) {
@@ -130,11 +147,10 @@
             render() {
                 if (this.state.hasError) {
                     return (
-                        <div className="p-8 bg-red-50 text-red-800 h-screen overflow-auto z-50 absolute inset-0">
+                        <div className="p-8 bg-red-50 text-red-800 h-screen w-full flex flex-col items-center justify-center overflow-auto z-50 absolute inset-0">
                             <h1 className="text-2xl font-bold mb-4">React Compilation Error Detected</h1>
-                            <pre className="text-sm bg-white p-4 rounded border border-red-200 shadow-sm">{this.state.error && this.state.error.toString()}</pre>
-                            <pre className="text-xs mt-4 text-red-600 bg-white p-4 rounded border border-red-100">{this.state.errorInfo && this.state.errorInfo.componentStack}</pre>
-                            <button className="mt-6 bg-red-600 text-white px-6 py-2 rounded-full font-bold shadow-sm" onClick={() => window.location.reload()}>Reload Application</button>
+                            <pre className="text-sm bg-white p-4 rounded-xl border border-red-200 shadow-sm max-w-2xl w-full">{this.state.error && this.state.error.toString()}</pre>
+                            <button className="mt-6 bg-red-600 text-white px-8 py-3 rounded-xl font-bold shadow-[0_4px_15px_rgba(220,38,38,0.3)] hover:scale-105 transition-transform" onClick={() => window.location.reload()}>Reload Application</button>
                         </div>
                     );
                 }
@@ -160,11 +176,17 @@
             const [editingMessageId, setEditingMessageId] = useState(null);
             const [editMessageText, setEditMessageText] = useState("");
 
+            // Task States
             const [taskAssignees, setTaskAssignees] = useState([]);
             const [taskDeadline, setTaskDeadline] = useState("");
             const [delegateAssignees, setDelegateAssignees] = useState([]);
+            const [showDelegateDropdown, setShowDelegateDropdown] = useState(false);
             const [trailComment, setTrailComment] = useState(""); 
             const [reminderDateTime, setReminderDateTime] = useState(""); 
+            
+            // Task Editing States
+            const [isEditingTaskTitle, setIsEditingTaskTitle] = useState(false);
+            const [newTaskTitle, setNewTaskTitle] = useState("");
 
             const [messages, setMessages] = useState([]); 
             const [dbUsers, setDbUsers] = useState([]); 
@@ -201,10 +223,41 @@
             const profilePicInputRef = useRef(null);
             const groupPicInputRef = useRef(null);
             
-            // Notification Reference Trackers
             const prevNotifCountRef = useRef(0);
             const prevMessagesCountRef = useRef(0);
             const lastTypingTime = useRef(0); 
+
+            // --- SECURITY: 5-Minute Inactivity Auto-Logout ---
+            useEffect(() => {
+                let timeoutId;
+                const INACTIVITY_LIMIT = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+                const resetTimer = () => {
+                    clearTimeout(timeoutId);
+                    timeoutId = setTimeout(() => {
+                        console.log("Inactivity limit reached. Auto-logging out.");
+                        onLogout();
+                    }, INACTIVITY_LIMIT);
+                };
+
+                // Track physical activity
+                window.addEventListener('mousemove', resetTimer);
+                window.addEventListener('keydown', resetTimer);
+                window.addEventListener('click', resetTimer);
+                window.addEventListener('touchstart', resetTimer);
+                window.addEventListener('scroll', resetTimer, true);
+                
+                resetTimer(); // Init timer
+
+                return () => {
+                    clearTimeout(timeoutId);
+                    window.removeEventListener('mousemove', resetTimer);
+                    window.removeEventListener('keydown', resetTimer);
+                    window.removeEventListener('click', resetTimer);
+                    window.removeEventListener('touchstart', resetTimer);
+                    window.removeEventListener('scroll', resetTimer, true);
+                };
+            }, [onLogout]);
 
             useEffect(() => { setIsLoaded(true); }, []);
 
@@ -239,18 +292,17 @@
                 }
             }, []);
 
-            // --- DATA FETCHING ---
             useEffect(() => {
                 const qPersonal = window.query(window.collection(window.db, "reminders"), window.where("userId", "==", user.uid), window.where("isTriggered", "==", false));
-                const unsubPersonal = window.onSnapshot(qPersonal, (snapshot) => setActiveReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.log("Personal Reminders DB Rule blocked or empty"));
+                const unsubPersonal = window.onSnapshot(qPersonal, (snapshot) => setActiveReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
                 
                 const qAlerts = window.query(window.collection(window.db, "notifications"), window.where("userId", "==", user.uid), window.where("isRead", "==", false));
-                const unsubAlerts = window.onSnapshot(qAlerts, (snapshot) => setGenericNotifications(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.log("Alerts DB Rule blocked or empty"));
+                const unsubAlerts = window.onSnapshot(qAlerts, (snapshot) => setGenericNotifications(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
                 
                 let unsubAdmin = () => {}; let unsubAudit = () => {};
                 if (currentUserData?.isAdmin || isVipAdmin) {
                     const qAdmin = window.query(window.collection(window.db, "reminders"), window.orderBy("remindAt", "desc"));
-                    unsubAdmin = window.onSnapshot(qAdmin, (snapshot) => setAllAdminReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.log("Admin Reminders Blocked"));
+                    unsubAdmin = window.onSnapshot(qAdmin, (snapshot) => setAllAdminReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
 
                     const qAudit = window.query(window.collection(window.db, "audit_logs"), window.orderBy("timestamp", "desc"));
                     unsubAudit = window.onSnapshot(qAudit, (snapshot) => {
@@ -258,7 +310,7 @@
                             const data = d.data();
                             return { id: d.id, ...data, time: data.timestamp ? new Date(data.timestamp.toDate()).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '', dateString: data.timestamp ? new Date(data.timestamp.toDate()).toISOString().split('T')[0] : ''};
                         }));
-                    }, (err) => console.log("Audit Logs Blocked"));
+                    });
                 }
                 return () => { unsubPersonal(); unsubAlerts(); unsubAdmin(); unsubAudit(); };
             }, [user.uid, currentUserData?.isAdmin, isVipAdmin]);
@@ -291,21 +343,20 @@
                         const data = doc.data(); setCurrentUserData(data);
                         if(!profileForm.name && data.name) setProfileForm({ name: toSentenceCase(data.name), fontSize: data.fontSize || "text-[15px] md:text-[16px]", fontFamily: data.fontFamily || "font-sans" });
                     }
-                }, (err) => console.log("User Data Blocked"));
+                });
                 
-                const unsubUsers = window.onSnapshot(window.query(window.collection(window.db, "users"), window.orderBy("email", "asc")), (snapshot) => setDbUsers(snapshot.docs.map(doc => doc.data())), (err) => console.log("Users Fetch Blocked"));
+                const unsubUsers = window.onSnapshot(window.query(window.collection(window.db, "users"), window.orderBy("email", "asc")), (snapshot) => setDbUsers(snapshot.docs.map(doc => doc.data())));
                 
                 const unsubGroups = window.onSnapshot(window.collection(window.db, "groups"), (snapshot) => {
                     const fetchedGroups = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     if (fetchedGroups.length === 0 && (currentUserData?.isAdmin || isVipAdmin)) {
                         window.addDoc(window.collection(window.db, "groups"), { name: "Demo", members: [user.email], admins: [user.email], createdBy: user.email, createdAt: window.serverTimestamp(), isArchived: false }).catch(()=>{});
                     } else { setGroups(fetchedGroups); }
-                }, (err) => console.log("Groups Fetch Blocked"));
+                });
                 
                 return () => { clearInterval(heartbeatInterval); unsubCurrent(); unsubUsers(); unsubGroups(); };
             }, [user, currentUserData?.isAdmin, isVipAdmin]);
 
-            // --- INCOMING MESSAGE AUDIO TRIGGER FIX ---
             useEffect(() => {
                 const q = window.query(window.collection(window.db, "messages"), window.orderBy("timestamp", "asc"));
                 const unsubscribe = window.onSnapshot(q, (snapshot) => {
@@ -316,11 +367,8 @@
                     
                     setMessages(loadedMessages);
                     
-                    // REAL-TIME ALERT FIX: Check for brand new messages
                     if (prevMessagesCountRef.current > 0 && loadedMessages.length > prevMessagesCountRef.current) {
                         const newMsg = loadedMessages[loadedMessages.length - 1];
-                        
-                        // If someone else sent it, trigger sound and toast!
                         if (!newMsg.isMine) {
                             playAlertSound();
                             if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
@@ -335,7 +383,7 @@
                     prevMessagesCountRef.current = loadedMessages.length;
 
                     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
-                }, (err) => console.log("Messages Fetch Blocked"));
+                });
                 return () => unsubscribe();
             }, [user.uid, playAlertSound]);
 
@@ -353,7 +401,7 @@
                     const now = Date.now();
                     const typingUsers = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => d.id !== `${activeGroup.id}_${user.uid}`).filter(d => d.timestamp && (now - d.timestamp < 3500)); 
                     setTypingStatus(typingUsers);
-                }, (err) => console.log("Typing Fetch Blocked"));
+                });
                 return () => unsubTyping();
             }, [activeGroup.id, user.uid]);
 
@@ -656,6 +704,16 @@
                 setEditingMessageId(null);
             };
 
+            const handleSaveTaskTitle = async () => {
+                if (!newTaskTitle.trim() || !selectedMessage) return;
+                try {
+                    await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { text: newTaskTitle });
+                    logImmutableAction("TASK_TITLE_EDIT", `Original: "${selectedMessage.text}" | Edited: "${newTaskTitle}"`, `Task ID: ${selectedMessage.id}`);
+                    setSelectedMessage(prev => ({...prev, text: newTaskTitle}));
+                    setIsEditingTaskTitle(false);
+                } catch (e) { alert("Failed to update task title."); }
+            };
+
             const setReminder = async () => {
                 if (!selectedMessage || !reminderDateTime) return;
                 try {
@@ -689,13 +747,13 @@
                     logImmutableAction("TASK_DELEGATE", `Delegated Task ID: ${selectedMessage.id}`, `To: ${delegateAssignees.join(', ')}`);
                     await notifyInvolvedInTask(selectedMessage, `${toSentenceCase(user.email.split('@')[0])} transferred a task.`);
                     
-                    setActiveModal(null); setDelegateAssignees([]);
+                    setActiveModal(null); setDelegateAssignees([]); setShowDelegateDropdown(false);
                 } catch (error) {}
             };
 
             const handleCompleteTask = async () => {
                 if (!selectedMessage) return;
-                if (!selectedMessage.taskData.assignees?.includes(user.email) && !currentUserData?.isAdmin && !isVipAdmin) return alert("Only the Assignees or an Admin can complete this task.");
+                if (!selectedMessage.taskData.assignees?.includes(user.email) && !currentUserData?.isAdmin && !isVipAdmin && selectedMessage.senderEmail !== user.email) return alert("Only the Assignees, Creator, or an Admin can complete this task.");
                 try {
                     const now = new Date();
                     const updatedTrail = [...selectedMessage.taskData.trail, { action: "Marked Completed", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: "System" }];
@@ -708,7 +766,7 @@
                 } catch (error) {}
             };
 
-            const handleAddComment = async () => {
+            const handleAddComment = async (closeModal = false) => {
                 if (!selectedMessage || !trailComment.trim()) return;
                 try {
                     const now = new Date();
@@ -718,7 +776,10 @@
                     logImmutableAction("TASK_COMMENT", `Comment: "${trailComment}"`, `Task ID: ${selectedMessage.id}`);
                     await notifyInvolvedInTask(selectedMessage, `${toSentenceCase(user.email.split('@')[0])} updated a task.`);
                     
-                    setTrailComment(""); setSelectedMessage(prev => ({...prev, taskData: {...prev.taskData, trail: updatedTrail}}));
+                    setTrailComment(""); 
+                    setSelectedMessage(prev => ({...prev, taskData: {...prev.taskData, trail: updatedTrail}}));
+                    
+                    if (closeModal) setActiveModal(null);
                 } catch (error) {}
             };
 
@@ -826,7 +887,7 @@
                                         </div>
                                     </div>
                                 ) : (
-                                    <div onClick={() => { setSelectedMessage(msg); setActiveModal(msg.isTask ? 'task_trail' : 'context'); }} className="cursor-pointer">
+                                    <div onClick={() => { setSelectedMessage(msg); setIsEditingTaskTitle(false); setActiveModal(msg.isTask ? 'task_trail' : 'context'); }} className="cursor-pointer">
                                         {msg.isTask && (
                                             <div className="flex justify-between items-center mb-2 pb-2 border-b border-black/5">
                                                 <span className="flex items-center gap-1.5 text-[10px] font-bold text-blue-800 tracking-wider"><i className="fa-regular fa-square-check"></i> OFFICIAL TASK</span>
@@ -983,11 +1044,7 @@
                             <div className="hidden md:flex w-80 bg-[#f8fafc] border-r border-slate-200 flex-col shrink-0 z-20 shadow-[2px_0_15px_rgba(0,0,0,0.03)] app-entrance">
                                 <div className="p-5 glass-header flex items-center gap-3 relative group">
                                     <div className="relative">
-                                        {currentUserData?.profilePicUrl ? (
-                                            <img src={getCachedImage(user.uid, currentUserData.profilePicUrl)} className="w-12 h-12 rounded-2xl object-cover shadow-sm border border-white" />
-                                        ) : (
-                                            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#008069] to-teal-500 text-white flex items-center justify-center font-bold text-xl shadow-sm border border-white">{user.email.substring(0,1).toUpperCase()}</div>
-                                        )}
+                                        <MemoizedAvatar uid={user.uid} url={currentUserData?.profilePicUrl} name={currentUserData?.name || user.email.split('@')[0]} sizeClass="w-12 h-12" extraClasses="border-2 border-white ring-1 ring-slate-100" />
                                         <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full"></div>
                                     </div>
                                     <div className="overflow-hidden flex-1 pl-1">
@@ -1007,7 +1064,7 @@
                                     <div className="mb-4 shrink-0 space-y-1">
                                         {myGroups.map(g => (
                                             <div key={g.id} onClick={() => { setActiveGroup(g); setShowRightSidebar(false); }} className={`flex items-center gap-3 p-2.5 rounded-2xl cursor-pointer transition-all ${activeGroup.id === g.id ? 'bg-white shadow-sm border border-slate-200/60' : 'hover:bg-slate-100 border border-transparent'}`}>
-                                                {g.profilePicUrl ? <img src={getCachedImage(g.id, g.profilePicUrl)} className="w-10 h-10 rounded-xl object-cover shadow-sm" /> : <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm shadow-inner ${activeGroup.id === g.id ? 'bg-teal-50 text-teal-600' : 'bg-slate-200 text-slate-500'}`}><i className="fa-solid fa-people-group"></i></div>}
+                                                <MemoizedAvatar uid={g.id} url={g.profilePicUrl} name={g.name} sizeClass="w-10 h-10" isGroup={true} />
                                                 <div className="flex-1 overflow-hidden"><div className={`font-semibold text-[14px] truncate ${activeGroup.id === g.id ? 'text-[#008069]' : 'text-slate-700'}`}>{toSentenceCase(g.name)}</div><div className="text-[11px] font-medium text-slate-400 truncate">{g.id==='demo' ? 'Default Group' : `${g.members?.length || 0} Members`}</div></div>
                                             </div>
                                         ))}
@@ -1022,7 +1079,7 @@
                                             return (
                                                 <div key={u.uid} onClick={() => { setActiveGroup({id: dmIdStr, name: u.name, isDM: true, members: [user.email, u.email]}); setShowRightSidebar(false); }} className={`flex items-center gap-3 p-2.5 rounded-2xl cursor-pointer transition-all ${activeGroup.id === dmIdStr ? 'bg-white shadow-sm border border-slate-200/60' : 'hover:bg-slate-100 border border-transparent'}`}>
                                                     <div className="relative">
-                                                        {u.profilePicUrl ? <img src={getCachedImage(u.uid, u.profilePicUrl)} className="w-10 h-10 rounded-xl object-cover shadow-sm" /> : <div className="w-10 h-10 rounded-xl bg-slate-200 flex items-center justify-center text-[12px] font-bold text-slate-500 shadow-inner">{toSentenceCase(u.name).substring(0,2)}</div>}
+                                                        <MemoizedAvatar uid={u.uid} url={u.profilePicUrl} name={u.name} sizeClass="w-10 h-10" />
                                                         {u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000) && <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></div>}
                                                     </div>
                                                     <div className="flex-1 overflow-hidden flex justify-between items-center">
@@ -1051,7 +1108,7 @@
                                 {/* HEADER */}
                                 <div className="h-[68px] glass-header flex items-center justify-between px-5 shrink-0 z-30 sticky top-0">
                                     <div className="flex items-center gap-3.5 cursor-pointer group" onClick={()=>{ if(!activeGroup.isDM) setActiveModal('group_settings'); }}>
-                                        {activeGroup.isDM ? <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center text-purple-600 shadow-sm border border-purple-50 group-hover:scale-105 transition-transform"><i className="fa-solid fa-user"></i></div> : activeGroup.profilePicUrl ? <img src={getCachedImage(activeGroup.id, activeGroup.profilePicUrl)} className="w-11 h-11 rounded-2xl object-cover shadow-sm group-hover:scale-105 transition-transform"/> : <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-teal-100 to-teal-200 flex items-center justify-center text-teal-600 shadow-sm border border-teal-50 group-hover:scale-105 transition-transform"><i className="fa-solid fa-people-group"></i></div>}
+                                        {activeGroup.isDM ? <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center text-purple-600 shadow-sm border border-purple-50 group-hover:scale-105 transition-transform"><i className="fa-solid fa-user"></i></div> : activeGroup.profilePicUrl ? <MemoizedAvatar uid={activeGroup.id} url={activeGroup.profilePicUrl} name={activeGroup.name} sizeClass="w-11 h-11" extraClasses="group-hover:scale-105 transition-transform" /> : <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-teal-100 to-teal-200 flex items-center justify-center text-teal-600 shadow-sm border border-teal-50 group-hover:scale-105 transition-transform"><i className="fa-solid fa-people-group"></i></div>}
                                         <div><h1 className="text-[17px] font-bold text-slate-800 tracking-tight">{toSentenceCase(activeGroup.name)}</h1><p className="text-[12px] font-medium text-slate-500">{activeGroup.isDM ? 'End-to-End Encrypted' : `${activeGroup.members?.length||0} Members`}</p></div>
                                     </div>
 
@@ -1065,7 +1122,7 @@
                                             return u.lastActive && (Date.now() - u.lastActive.toMillis() < 900000) && u.uid !== user.uid;
                                         }).slice(0, 7).map(onlineUser => (
                                             <div key={onlineUser.uid} className="relative group cursor-default" title={`${toSentenceCase(onlineUser.name)} is Online`}>
-                                                {onlineUser.profilePicUrl ? <img src={getCachedImage(onlineUser.uid, onlineUser.profilePicUrl)} className="w-7 h-7 rounded-full object-cover shadow-sm" /> : <div className="w-7 h-7 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[9px] font-bold text-[#54656f] shadow-sm">{toSentenceCase(onlineUser.name).substring(0,2)}</div>}
+                                                <MemoizedAvatar uid={onlineUser.uid} url={onlineUser.profilePicUrl} name={onlineUser.name} sizeClass="w-7 h-7" extraClasses="shadow-sm" />
                                                 <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#00a884] border-2 border-[#f0f2f5] rounded-full"></div>
                                             </div>
                                         ))}
@@ -1188,14 +1245,14 @@
                                         <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1">Users</div>
                                         {dbUsers.filter(u => (u.name||"").toLowerCase().includes(inputText.split(/\s+/).pop().substring(1).toLowerCase())).map(u => (
                                             <div key={u.uid} onMouseDown={(e) => e.preventDefault()} onClick={() => { const words = inputText.split(/\s+/); words[words.length - 1] = `@${u.name} `; setInputText(words.join(' ')); chatInputRef.current?.focus(); }} className="p-2 rounded-xl hover:bg-slate-100 cursor-pointer text-[14px] flex items-center gap-3 text-slate-800 font-semibold transition-colors">
-                                                {u.profilePicUrl ? <img src={getCachedImage(u.uid, u.profilePicUrl)} className="w-7 h-7 rounded-lg object-cover shadow-sm"/> : <div className="w-7 h-7 rounded-lg bg-emerald-100 text-[#008069] flex items-center justify-center text-[11px] shadow-sm"><i className="fa-solid fa-at"></i></div>}
+                                                <MemoizedAvatar uid={u.uid} url={u.profilePicUrl} name={u.name} sizeClass="w-7 h-7" />
                                                 {toSentenceCase(u.name)}
                                             </div>
                                         ))}
                                         <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-t border-b border-slate-100 my-1">Teams</div>
                                         {groups.filter(g => (g.name||"").toLowerCase().includes(inputText.split(/\s+/).pop().substring(1).toLowerCase()) && !g.isArchived).map(g => (
                                             <div key={g.id} onMouseDown={(e) => e.preventDefault()} onClick={() => { const words = inputText.split(/\s+/); words[words.length - 1] = `@${g.name.replace(/\s+/g, '')} `; setInputText(words.join(' ')); chatInputRef.current?.focus(); }} className="p-2 rounded-xl hover:bg-blue-50 cursor-pointer text-[14px] flex items-center gap-3 text-blue-800 font-bold transition-colors">
-                                                {g.profilePicUrl ? <img src={getCachedImage(g.id, g.profilePicUrl)} className="w-7 h-7 rounded-lg object-cover shadow-sm"/> : <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center text-[10px] shadow-sm"><i className="fa-solid fa-users"></i></div>}
+                                                <MemoizedAvatar uid={g.id} url={g.profilePicUrl} name={g.name} sizeClass="w-7 h-7" isGroup={true} />
                                                 {toSentenceCase(g.name)}
                                             </div>
                                         ))}
@@ -1233,7 +1290,7 @@
                                                     <div className="text-[12px] font-medium text-slate-400 text-center p-6 bg-slate-50/50 rounded-xl border border-dashed border-slate-200 m-2">Inbox zero!</div>
                                                 ) : (
                                                     tasksAssignedToMe.map(task => (
-                                                        <div key={task.id} onClick={() => { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'demo',name:'Demo', isDM: false}); setSelectedMessage(task); setActiveModal('task_trail'); }} className="p-3 bg-white hover:bg-blue-50/50 rounded-xl cursor-pointer border border-slate-100 hover:border-blue-200 transition-all shadow-sm">
+                                                        <div key={task.id} onClick={() => { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'demo',name:'Demo', isDM: false}); setSelectedMessage(task); setIsEditingTaskTitle(false); setActiveModal('task_trail'); }} className="p-3 bg-white hover:bg-blue-50/50 rounded-xl cursor-pointer border border-slate-100 hover:border-blue-200 transition-all shadow-sm">
                                                             <div className="font-bold text-[13px] text-slate-800 truncate mb-1">{task.text || 'File Task'}</div>
                                                             <div className="flex justify-between items-center mt-2">
                                                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{groups.find(g=>g.id===task.groupId)?.name || 'Main'}</span>
@@ -1252,7 +1309,7 @@
                                                     <div className="text-[12px] font-medium text-slate-400 text-center p-6 bg-slate-50/50 rounded-xl border border-dashed border-slate-200 m-2">No active delegations</div>
                                                 ) : (
                                                     tasksAssignedByMe.map(task => (
-                                                        <div key={task.id} onClick={() => { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'demo',name:'Demo', isDM: false}); setSelectedMessage(task); setActiveModal('task_trail'); }} className="p-3 bg-white hover:bg-purple-50/50 rounded-xl cursor-pointer border border-slate-100 hover:border-purple-200 transition-all shadow-sm">
+                                                        <div key={task.id} onClick={() => { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'demo',name:'Demo', isDM: false}); setSelectedMessage(task); setIsEditingTaskTitle(false); setActiveModal('task_trail'); }} className="p-3 bg-white hover:bg-purple-50/50 rounded-xl cursor-pointer border border-slate-100 hover:border-purple-200 transition-all shadow-sm">
                                                             <div className="font-bold text-[13px] text-slate-800 truncate mb-1">{task.text || 'File Task'}</div>
                                                             <div className="text-[11px] font-medium text-slate-500 truncate mb-2">To: {(task.taskData.assignees||[]).map(a=>toSentenceCase(a.split('@')[0])).join(', ')}</div>
                                                             <div className="flex justify-between items-center">
@@ -1377,6 +1434,7 @@
                         </div>
                     )}
 
+                    {/* UPDATED SECURE TASK TRAIL MODAL (Dropdown, Edit Title, Save & Close) */}
                     {activeModal === 'task_trail' && selectedMessage?.taskData && (
                         <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] z-[60] flex items-center justify-center md:p-4 animate-in fade-in" onClick={() => setActiveModal(null)}>
                             <div className="bg-[#f8fafc] w-full h-full md:h-auto md:max-h-[90vh] md:max-w-3xl md:rounded-3xl flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 transform-gpu" onClick={e => e.stopPropagation()}>
@@ -1388,7 +1446,24 @@
                                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
                                         <div className="flex items-start gap-3 mb-4">
                                             <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg shadow-inner shrink-0 mt-1"><i className="fa-solid fa-thumbtack"></i></div>
-                                            <p className="text-[16px] font-semibold text-slate-800 leading-relaxed">{selectedMessage.text}</p>
+                                            
+                                            {/* TASK TITLE EDITING LOGIC */}
+                                            {isEditingTaskTitle ? (
+                                                <div className="flex-1 flex gap-2">
+                                                    <textarea autoFocus value={newTaskTitle} onChange={e=>setNewTaskTitle(e.target.value)} className="w-full text-[15px] font-semibold p-3 rounded-xl border border-blue-500 text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20 transition-all resize-none shadow-inner" rows="2"></textarea>
+                                                    <div className="flex flex-col gap-2 shrink-0">
+                                                        <button onClick={handleSaveTaskTitle} className="w-10 h-10 bg-blue-600 text-white rounded-xl shadow-sm hover:bg-blue-700 transition-colors flex items-center justify-center"><i className="fa-solid fa-check"></i></button>
+                                                        <button onClick={()=>setIsEditingTaskTitle(false)} className="w-10 h-10 bg-slate-100 text-slate-500 rounded-xl hover:bg-slate-200 transition-colors flex items-center justify-center"><i className="fa-solid fa-xmark"></i></button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="flex-1">
+                                                    <p className="text-[16px] font-semibold text-slate-800 leading-relaxed break-words">{selectedMessage.text}</p>
+                                                    {(selectedMessage.taskData.assignees?.includes(user.email) || selectedMessage.senderEmail === user.email || currentUserData?.isAdmin || isVipAdmin) && (
+                                                        <button onClick={() => { setIsEditingTaskTitle(true); setNewTaskTitle(selectedMessage.text); }} className="mt-2 text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg border border-blue-100 flex items-center gap-1.5 transition-colors uppercase tracking-wider"><i className="fa-solid fa-pen"></i> Edit Objective</button>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
                                             <div className="flex flex-col"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Assigned To</span><span className="text-[13px] font-bold text-blue-700 truncate">{(selectedMessage.taskData.assignees||[]).map(a=>toSentenceCase(a.split('@')[0])).join(', ')}</span></div>
@@ -1402,7 +1477,7 @@
                                                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex-1 transform-gpu transition-all hover:shadow-md hover:-translate-y-0.5">
                                                     <div className="flex justify-between items-center mb-1.5"><span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border ${item.action === 'Marked Completed' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : item.fileUrl ? 'bg-purple-50 text-purple-600 border-purple-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>{item.action}</span><span className="text-[11px] font-medium text-slate-400">{item.time.split(',')[0]}</span></div>
                                                     <div className="text-[14px] font-bold text-slate-800">{toSentenceCase((item.by||'').split('@')[0])} {item.to && item.to !== 'System' && <span className="text-slate-400 font-medium mx-1">→</span>} {item.to && item.to !== 'System' && <span className="text-blue-600">{toSentenceCase((item.to||'').split('@')[0])}</span>}</div>
-                                                    {item.comment && <div className="mt-2 text-[13px] text-slate-600 font-medium bg-slate-50 p-2.5 rounded-lg border border-slate-100">"{item.comment}"</div>}
+                                                    {item.comment && <div className="mt-2 text-[13px] text-slate-600 font-medium bg-slate-50 p-2.5 rounded-lg border border-slate-100 break-words">"{item.comment}"</div>}
                                                     {item.fileUrl && (<a href={item.fileUrl} target="_blank" className="mt-2 text-[12px] font-bold text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-purple-100 flex items-center w-max gap-2 transition-colors"><i className="fa-solid fa-download"></i> Download Attachment</a>)}
                                                 </div>
                                             </div>
@@ -1411,33 +1486,55 @@
                                 </div>
                                 {selectedMessage.taskData.status !== "Completed" && (selectedMessage.taskData.assignees?.includes(user.email) || currentUserData?.isAdmin || isVipAdmin) && (
                                     <div className="bg-white p-4 flex flex-col gap-3 shrink-0 border-t border-slate-200 shadow-[0_-10px_30px_rgba(0,0,0,0.03)] relative z-20">
-                                        <div className="flex flex-col md:flex-row gap-3">
-                                            <div className="flex-1 bg-slate-50 p-3 rounded-2xl border border-slate-200">
-                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1"><i className="fa-solid fa-shuffle mr-1 text-blue-400"></i> Reassign / Transfer</div>
-                                                <div className="h-[72px] overflow-y-auto space-y-1 bg-white border border-slate-100 p-1.5 rounded-xl mb-2 shadow-inner">
-                                                    {(activeGroup.id === 'demo' ? dbUsers : dbUsers.filter(u=>activeGroup.members?.includes(u.email))).map(u => (
-                                                        <label key={u.uid} className="flex items-center gap-3 cursor-pointer p-1.5 hover:bg-slate-50 rounded-lg transition-colors">
-                                                            <input type="checkbox" checked={delegateAssignees.includes(u.email)} onChange={(e) => {
-                                                                if (e.target.checked) setDelegateAssignees([...delegateAssignees, u.email]);
-                                                                else setDelegateAssignees(delegateAssignees.filter(m => m !== u.email));
-                                                            }} className="w-4 h-4 accent-[#008069]" />
-                                                            <span className="text-[13px] font-semibold text-slate-700">{toSentenceCase(u.name)}</span>
-                                                        </label>
-                                                    ))}
+                                        <div className="flex flex-col md:flex-row gap-4">
+                                            
+                                            {/* MULTI-SELECT DROPDOWN REASSIGN */}
+                                            <div className="flex-1 bg-slate-50 p-3 rounded-2xl border border-slate-200 flex flex-col">
+                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1 flex justify-between items-center">
+                                                    <span><i className="fa-solid fa-shuffle mr-1 text-blue-400"></i> Reassign / Transfer</span>
+                                                    {delegateAssignees.length > 0 && <span className="text-[#008069]">{delegateAssignees.length} Selected</span>}
                                                 </div>
-                                                <button onClick={handleDelegateTask} disabled={delegateAssignees.length === 0} className="w-full bg-[#008069] text-white py-2 rounded-xl text-[13px] disabled:opacity-50 font-bold shadow-sm hover:bg-[#006e5a] transition-all hover:shadow-md">Execute Transfer</button>
+                                                
+                                                <div className="relative mb-3 flex-1">
+                                                    <button onClick={() => setShowDelegateDropdown(!showDelegateDropdown)} className="w-full bg-white border border-slate-200 text-left px-4 py-3 rounded-xl flex justify-between items-center text-[13px] font-semibold text-slate-700 shadow-sm focus:ring-2 focus:ring-[#008069]/20 transition-all">
+                                                        <span>{delegateAssignees.length === 0 ? "Select New Assignees..." : (delegateAssignees||[]).map(a=>toSentenceCase(a.split('@')[0])).join(', ')}</span>
+                                                        <i className={`fa-solid fa-chevron-${showDelegateDropdown ? 'up' : 'down'} text-slate-400`}></i>
+                                                    </button>
+                                                    
+                                                    {showDelegateDropdown && (
+                                                        <div className="absolute top-[105%] left-0 w-full bg-white border border-slate-200 shadow-xl max-h-48 overflow-y-auto z-50 rounded-xl py-1 custom-checkbox">
+                                                            {(activeGroup.id === 'demo' ? dbUsers : dbUsers.filter(u=>activeGroup.members?.includes(u.email))).map(u => (
+                                                                <label key={u.uid} className="flex items-center gap-3 cursor-pointer px-4 py-2.5 hover:bg-slate-50 transition-colors relative">
+                                                                    <input type="checkbox" checked={delegateAssignees.includes(u.email)} onChange={(e) => {
+                                                                        if (e.target.checked) setDelegateAssignees([...delegateAssignees, u.email]);
+                                                                        else setDelegateAssignees(delegateAssignees.filter(m => m !== u.email));
+                                                                    }} className="absolute opacity-0 w-0 h-0" />
+                                                                    <div className="w-5 h-5 rounded border-2 border-slate-300 flex items-center justify-center transition-colors"><i className="fa-solid fa-check text-white text-[10px] opacity-0 transition-opacity"></i></div>
+                                                                    <span className="text-[14px] font-medium text-slate-700">{toSentenceCase(u.name)}</span>
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <button onClick={handleDelegateTask} disabled={delegateAssignees.length === 0} className="w-full bg-[#008069] text-white py-3 rounded-xl text-[13px] disabled:opacity-50 font-bold shadow-sm hover:bg-[#006e5a] transition-all hover:shadow-md mt-auto">Execute Transfer</button>
                                             </div>
+                                            
+                                            {/* ADD UPDATE WITH SAVE & CLOSE */}
                                             <div className="flex-1 bg-slate-50 p-3 rounded-2xl border border-slate-200 flex flex-col">
                                                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1"><i className="fa-solid fa-comment-dots mr-1 text-amber-400"></i> Add Update</div>
                                                 <div className="flex-1 flex flex-col justify-between">
-                                                    <div className="flex items-center bg-white rounded-xl px-3 py-1 border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-[#008069]/20 transition-all">
-                                                        <input type="text" value={trailComment} onChange={(e) => setTrailComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddComment()} placeholder="Type update & press Enter..." className="flex-1 outline-none text-[13px] font-medium text-slate-700 py-2.5" />
+                                                    <div className="flex items-center bg-white rounded-xl px-3 py-1 border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-[#008069]/20 transition-all mb-3">
+                                                        <input type="text" value={trailComment} onChange={(e) => setTrailComment(e.target.value)} onKeyDown={(e) => { if(e.key === 'Enter'){ e.preventDefault(); handleAddComment(true); }}} placeholder="Type update & press Enter..." className="flex-1 outline-none text-[13px] font-medium text-slate-700 py-3" />
                                                         <input type="file" ref={trailFileInputRef} className="hidden" onChange={handleTrailFileUpload} />
                                                         <button onClick={() => trailFileInputRef.current.click()} className="text-slate-400 hover:text-[#008069] p-2 hover:bg-teal-50 rounded-lg transition-colors"><i className="fa-solid fa-paperclip text-lg"></i></button>
                                                     </div>
-                                                    <button onClick={handleCompleteTask} className="w-full bg-[#00a884] text-white py-3 rounded-xl text-[13px] font-bold shadow-[0_4px_15px_rgba(0,168,132,0.3)] hover:bg-[#009676] transition-all flex items-center justify-center gap-2 mt-2"><i className="fa-solid fa-shield-check text-lg"></i> Mark Completed</button>
+                                                    <div className="flex gap-2 mt-auto">
+                                                        <button onClick={() => handleAddComment(true)} disabled={!trailComment.trim()} className="flex-1 bg-[#008069] disabled:bg-slate-300 disabled:text-white text-white py-3 rounded-xl text-[13px] font-bold shadow-sm hover:bg-[#006e5a] transition-all"><i className="fa-solid fa-floppy-disk mr-1"></i> Save & Close</button>
+                                                        <button onClick={handleCompleteTask} className="w-14 shrink-0 bg-emerald-500 text-white py-3 rounded-xl text-[13px] font-bold shadow-sm hover:bg-emerald-600 transition-all flex items-center justify-center" title="Mark Completed"><i className="fa-solid fa-shield-check text-lg"></i></button>
+                                                    </div>
                                                 </div>
                                             </div>
+
                                         </div>
                                     </div>
                                 )}
@@ -1489,70 +1586,94 @@
         function App() {
             const [user, setUser] = useState(null);
             const [isFirebaseLoaded, setIsFirebaseLoaded] = useState(false);
+            const [authChecked, setAuthChecked] = useState(false);
             const [email, setEmail] = useState("");
             const [password, setPassword] = useState("");
             const [showPassword, setShowPassword] = useState(false);
             const [authError, setAuthError] = useState("");
 
             useEffect(() => {
-                const setupAuth = () => { window.onAuthStateChanged(window.auth, setUser); setIsFirebaseLoaded(true); };
+                const setupAuth = () => { 
+                    window.onAuthStateChanged(window.auth, (u) => {
+                        setUser(u);
+                        // Shield UI until first Auth state resolves
+                        setTimeout(() => setAuthChecked(true), 300); 
+                    }); 
+                    setIsFirebaseLoaded(true); 
+                };
                 if (window.auth) setupAuth(); else window.addEventListener('firebaseReady', setupAuth);
                 return () => window.removeEventListener('firebaseReady', setupAuth);
             }, []);
 
-            const handleLogin = (e) => { 
+            const handleLogin = async (e) => { 
                 e.preventDefault(); 
                 setAuthError(""); 
                 if ("Notification" in window && Notification.permission !== "granted") Notification.requestPermission();
                 
-                // --- BROWSER AUDIO UNLOCK TRIGGER ---
+                // AUDIO UNLOCK
                 const audioEl = document.getElementById('app-sound');
                 if (audioEl) {
-                    audioEl.volume = 0; // Silent prime
+                    audioEl.volume = 0; 
                     audioEl.play().then(() => {
-                        audioEl.pause();
-                        audioEl.currentTime = 0;
-                        audioEl.volume = 1.0;
-                        window.audioPrimed = true;
+                        audioEl.pause(); audioEl.currentTime = 0; audioEl.volume = 1.0; window.audioPrimed = true;
                     }).catch(err => console.log("Audio prime failed", err));
                 }
 
-                window.signInWithEmailAndPassword(window.auth, email, password).catch(err => setAuthError("Login Failed")); 
+                try {
+                    // ZERO-PERSISTENCE SESSION ENFORCEMENT
+                    await window.setPersistence(window.auth, window.browserSessionPersistence);
+                    await window.signInWithEmailAndPassword(window.auth, email, password);
+                } catch (err) {
+                    setAuthError("Login Failed. Check credentials.");
+                }
             };
+
             const handleRegister = async (e) => {
                 e.preventDefault(); setAuthError("");
                 if ("Notification" in window && Notification.permission !== "granted") Notification.requestPermission();
                 try {
+                    await window.setPersistence(window.auth, window.browserSessionPersistence);
                     const cred = await window.createUserWithEmailAndPassword(window.auth, email, password);
                     const isVp = cred.user.email.toLowerCase() === 'viceprincipal@mpgs.edu.in';
                     await window.setDoc(window.doc(window.db, "users", cred.user.uid), { uid: cred.user.uid, email: cred.user.email, name: toSentenceCase(cred.user.email.split('@')[0]), isApproved: isVp, isAdmin: isVp, canCreateGroups: isVp });
                 } catch (err) { setAuthError("Registration Failed"); }
             };
 
-            if (!isFirebaseLoaded) return <div className="flex justify-center items-center h-screen bg-[#f0f2f5] font-semibold text-[#54656f]">Connecting...</div>;
+            if (!isFirebaseLoaded || !authChecked) return (
+                <div className="flex flex-col justify-center items-center h-screen bg-[#f3f4f6] text-[#008069]">
+                    <div className="w-12 h-12 border-4 border-[#008069] border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <span className="font-bold tracking-widest uppercase text-sm">Authenticating Session...</span>
+                </div>
+            );
 
             if (!user) {
                 return (
-                    <div className="flex flex-col items-center justify-center min-h-screen bg-[#f0f2f5] p-4 relative">
-                        <div className="absolute top-0 left-0 w-full h-48 bg-[#00a884] z-0"></div>
-                        <div className="w-full max-w-sm bg-white rounded-xl shadow-lg p-8 z-10">
+                    <div className="flex flex-col items-center justify-center min-h-screen bg-[#f0f2f5] p-4 relative app-entrance">
+                        <div className="absolute top-0 left-0 w-full h-[40vh] bg-[#00a884] z-0 transition-all duration-1000"></div>
+                        <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-8 z-10 transform-gpu transition-all">
                             <div className="flex justify-center mb-6">
-                                <div className="w-20 h-20 bg-[#00a884] rounded-full flex items-center justify-center text-white text-3xl shadow-md">
-                                    <i className="fa-regular fa-comments"></i>
-                                    <i className="fa-solid fa-list-check ml-1 text-2xl"></i>
+                                <div className="w-20 h-20 bg-gradient-to-br from-[#00a884] to-teal-600 rounded-2xl flex items-center justify-center text-white text-3xl shadow-inner border-2 border-white ring-1 ring-slate-200 transform hover:scale-105 transition-transform">
+                                    <i className="fa-solid fa-list-check"></i>
                                 </div>
                             </div>
-                            <h1 className="text-xl font-bold text-center text-[#111b21] mb-2 tracking-wide">Talk & Task</h1>
-                            <p className="text-xs text-[#54656f] text-center mb-6 font-semibold uppercase tracking-wider">Enterprise Portal</p>
+                            <h1 className="text-2xl font-bold text-center text-slate-800 mb-1 tracking-tight">Talk & Task</h1>
+                            <p className="text-[10px] text-[#00a884] text-center mb-8 font-bold uppercase tracking-widest">Enterprise Portal</p>
                             
-                            {authError && <div className="bg-red-50 text-red-600 p-3 rounded mb-4 text-[13px]">{authError}</div>}
-                            <form className="space-y-4">
-                                <input type="email" placeholder="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3 border-b-2 border-gray-300 focus:border-[#00a884] outline-none transition-colors text-[15px]" />
+                            {authError && <div className="bg-red-50 text-red-600 p-3 rounded-xl mb-4 text-[13px] font-semibold border border-red-100 text-center">{authError}</div>}
+                            <form className="space-y-5">
                                 <div className="relative">
-                                    <input type={showPassword ? "text" : "password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-3 border-b-2 border-gray-300 focus:border-[#00a884] outline-none transition-colors text-[15px] pr-10" />
-                                    <i className={`fa-solid ${showPassword ? 'fa-eye-slash' : 'fa-eye'} absolute right-3 top-4 text-gray-400 hover:text-[#00a884] cursor-pointer`} onClick={() => setShowPassword(!showPassword)}></i>
+                                    <label className="text-[10px] text-[#008069] font-bold uppercase tracking-widest absolute -top-2.5 left-3 bg-white px-1">Email Address</label>
+                                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-4 pt-5 border border-slate-300 rounded-2xl text-[14px] outline-none bg-white focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/20 transition-all font-semibold text-slate-800" />
                                 </div>
-                                <div className="pt-4"><button onClick={handleLogin} className="w-full bg-[#00a884] text-white py-3 rounded shadow hover:bg-[#008f6f] font-semibold transition-colors mb-3">Log In</button><button onClick={handleRegister} className="w-full bg-white border border-[#00a884] text-[#00a884] py-3 rounded hover:bg-[#f0f2f5] font-semibold transition-colors">Create Account</button></div>
+                                <div className="relative">
+                                    <label className="text-[10px] text-[#008069] font-bold uppercase tracking-widest absolute -top-2.5 left-3 bg-white px-1">Security Key</label>
+                                    <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-4 pt-5 border border-slate-300 rounded-2xl text-[14px] outline-none bg-white focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/20 transition-all font-semibold text-slate-800 pr-12" />
+                                    <i className={`fa-solid ${showPassword ? 'fa-eye-slash' : 'fa-eye'} absolute right-4 top-[18px] text-slate-400 hover:text-[#008069] cursor-pointer text-lg transition-colors`} onClick={() => setShowPassword(!showPassword)}></i>
+                                </div>
+                                <div className="pt-2">
+                                    <button onClick={handleLogin} className="w-full bg-[#008069] text-white py-4 rounded-2xl shadow-[0_4px_15px_rgba(0,128,105,0.3)] hover:bg-[#006e5a] font-bold text-[15px] transition-all hover:scale-[1.02] active:scale-[0.98] mb-3">Secure Log In</button>
+                                    <button onClick={handleRegister} className="w-full bg-slate-50 border border-slate-200 text-slate-600 py-4 rounded-2xl hover:bg-slate-100 font-bold text-[15px] transition-all">Create Account</button>
+                                </div>
                             </form>
                         </div>
                     </div>

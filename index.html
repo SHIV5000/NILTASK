@@ -200,7 +200,10 @@
             const trailFileInputRef = useRef(null);
             const profilePicInputRef = useRef(null);
             const groupPicInputRef = useRef(null);
+            
+            // Notification Reference Trackers
             const prevNotifCountRef = useRef(0);
+            const prevMessagesCountRef = useRef(0);
             const lastTypingTime = useRef(0); 
 
             useEffect(() => { setIsLoaded(true); }, []);
@@ -236,6 +239,7 @@
                 }
             }, []);
 
+            // --- DATA FETCHING ---
             useEffect(() => {
                 const qPersonal = window.query(window.collection(window.db, "reminders"), window.where("userId", "==", user.uid), window.where("isTriggered", "==", false));
                 const unsubPersonal = window.onSnapshot(qPersonal, (snapshot) => setActiveReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.log("Personal Reminders DB Rule blocked or empty"));
@@ -301,6 +305,7 @@
                 return () => { clearInterval(heartbeatInterval); unsubCurrent(); unsubUsers(); unsubGroups(); };
             }, [user, currentUserData?.isAdmin, isVipAdmin]);
 
+            // --- INCOMING MESSAGE AUDIO TRIGGER FIX ---
             useEffect(() => {
                 const q = window.query(window.collection(window.db, "messages"), window.orderBy("timestamp", "asc"));
                 const unsubscribe = window.onSnapshot(q, (snapshot) => {
@@ -308,11 +313,31 @@
                         const data = doc.data();
                         return { id: doc.id, ...data, sender: data.senderEmail, isMine: data.senderUid === user.uid, time: data.timestamp ? new Date(data.timestamp.toDate()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Sending...', dateString: data.timestamp ? new Date(data.timestamp.toDate()).toISOString().split('T')[0] : '', isTask: data.isTask === true, groupId: data.groupId || "demo", reactions: data.reactions || {}, seenBy: data.seenBy || [], bookmarkedBy: data.bookmarkedBy || [], isPinned: data.isPinned || false };
                     });
+                    
                     setMessages(loadedMessages);
+                    
+                    // REAL-TIME ALERT FIX: Check for brand new messages
+                    if (prevMessagesCountRef.current > 0 && loadedMessages.length > prevMessagesCountRef.current) {
+                        const newMsg = loadedMessages[loadedMessages.length - 1];
+                        
+                        // If someone else sent it, trigger sound and toast!
+                        if (!newMsg.isMine) {
+                            playAlertSound();
+                            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                                navigator.serviceWorker.controller.postMessage({ 
+                                    type: 'SHOW_NOTIFICATION', 
+                                    title: `New Message from ${toSentenceCase(newMsg.sender.split('@')[0])}`, 
+                                    body: newMsg.text || 'Sent an attachment' 
+                                });
+                            }
+                        }
+                    }
+                    prevMessagesCountRef.current = loadedMessages.length;
+
                     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
                 }, (err) => console.log("Messages Fetch Blocked"));
                 return () => unsubscribe();
-            }, [user.uid]);
+            }, [user.uid, playAlertSound]);
 
             useEffect(() => {
                 const unreadMessages = messages.filter(m => m.groupId === activeGroup.id && !m.isMine && !(m.seenBy || []).includes(user.email));
@@ -868,7 +893,7 @@
 
             return (
                 <div className={`flex h-screen w-full bg-[#f3f4f6] text-slate-800 overflow-hidden relative font-sans transition-opacity duration-700 ease-out ${isLoaded ? 'opacity-100' : 'opacity-0'}`}>
-                 <audio id="app-sound" src="https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3?filename=success-1-6297.mp3" preload="auto" className="hidden"></audio>
+                    <audio id="app-sound" src="https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3?filename=success-1-6297.mp3" preload="auto" className="hidden"></audio>
                     {viewMode === "admin" ? (
                         <div className="flex flex-col h-full w-full bg-[#f8fafc] overflow-hidden animate-in fade-in z-40">
                             <div className="glass-header bg-[#008069]/90 text-white p-4 flex items-center justify-between shadow-sm shrink-0">
@@ -954,7 +979,7 @@
                         </div>
                     ) : (
                         <div className="flex h-full w-full relative">
-                            {/* LEFT SIDEBAR (Glass & Card Design) */}
+                            {/* LEFT SIDEBAR */}
                             <div className="hidden md:flex w-80 bg-[#f8fafc] border-r border-slate-200 flex-col shrink-0 z-20 shadow-[2px_0_15px_rgba(0,0,0,0.03)] app-entrance">
                                 <div className="p-5 glass-header flex items-center gap-3 relative group">
                                     <div className="relative">

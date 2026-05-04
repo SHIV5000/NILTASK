@@ -26,11 +26,10 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 
-    <!-- Initialize Firebase -->
+    <!-- Initialize Firebase (Google SSO & In-Memory Persistence Injected) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        // CRITICAL FIX: Added setPersistence and browserSessionPersistence
-        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+        import { getAuth, onAuthStateChanged, signOut, setPersistence, inMemoryPersistence, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, updateDoc, setDoc, getDocs, where, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
         import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
 
@@ -45,15 +44,14 @@
 
         const app = initializeApp(firebaseConfig);
         window.auth = getAuth(app);
+        
+        // Exported Auth Tools for React Component
         window.setPersistence = setPersistence;
-        window.browserSessionPersistence = browserSessionPersistence;
-        window.signInWithEmailAndPassword = signInWithEmailAndPassword;
-        window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+        window.inMemoryPersistence = inMemoryPersistence;
+        window.GoogleAuthProvider = GoogleAuthProvider;
+        window.signInWithPopup = signInWithPopup;
         window.signOut = signOut;
         window.onAuthStateChanged = onAuthStateChanged;
-        
-        window.secondaryApp = initializeApp(firebaseConfig, "Secondary");
-        window.secondaryAuth = getAuth(window.secondaryApp);
 
         window.db = getFirestore(app);
         window.collection = collection;
@@ -199,7 +197,7 @@
             const [allAdminReminders, setAllAdminReminders] = useState([]);
             const [immutableAuditLogs, setImmutableAuditLogs] = useState([]);
 
-            const [adminForm, setAdminForm] = useState({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false });
+            const [adminForm, setAdminForm] = useState({ uid: '', name: '', email: '', isAdmin: false, canCreateGroups: false });
             const [profileForm, setProfileForm] = useState({ name: "", fontSize: "text-[15px] md:text-[16px]", fontFamily: "font-sans" });
             const [groupForm, setGroupForm] = useState({ name: "", members: [], profilePicUrl: null });
             const [editingGroup, setEditingGroup] = useState(null);
@@ -240,14 +238,13 @@
                     }, INACTIVITY_LIMIT);
                 };
 
-                // Track physical activity
                 window.addEventListener('mousemove', resetTimer);
                 window.addEventListener('keydown', resetTimer);
                 window.addEventListener('click', resetTimer);
                 window.addEventListener('touchstart', resetTimer);
                 window.addEventListener('scroll', resetTimer, true);
                 
-                resetTimer(); // Init timer
+                resetTimer(); 
 
                 return () => {
                     clearTimeout(timeoutId);
@@ -267,7 +264,6 @@
                     const idTokenResult = await window.auth.currentUser.getIdTokenResult();
                     return !!idTokenResult.claims.admin;
                 } catch (e) {
-                    console.error("Token verify error:", e);
                     return false;
                 }
             }, []);
@@ -292,6 +288,7 @@
                 }
             }, []);
 
+            // --- DATA FETCHING ---
             useEffect(() => {
                 const qPersonal = window.query(window.collection(window.db, "reminders"), window.where("userId", "==", user.uid), window.where("isTriggered", "==", false));
                 const unsubPersonal = window.onSnapshot(qPersonal, (snapshot) => setActiveReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
@@ -326,7 +323,7 @@
                                 navigator.serviceWorker.controller.postMessage({ type: 'SHOW_NOTIFICATION', title: 'Talk & Task Reminder', body: `⏰ "${rem.messageText}"` });
                             } else if ("Notification" in window && Notification.permission === "granted") {
                                 new Notification("Talk & Task Reminder", { body: `⏰ "${rem.messageText}"`, icon: "https://cdn-icons-png.flaticon.com/512/825/825590.png" });
-                            } else alert(`⏰ Reminder: "${rem.messageText}"`);
+                            }
                             try { await window.updateDoc(window.doc(window.db, "reminders", rem.id), { isTriggered: true }); } catch (error) {}
                         }
                     });
@@ -335,9 +332,15 @@
             }, [activeReminders, playAlertSound]);
 
             useEffect(() => {
-                const syncUserToDB = async () => { try { await window.setDoc(window.doc(window.db, "users", user.uid), { uid: user.uid, email: user.email, name: toSentenceCase(user.email.split('@')[0]), lastActive: window.serverTimestamp() }, { merge: true }); } catch (error) {} };
+                const syncUserToDB = async () => { 
+                    try { 
+                        // Only merge lastActive so we don't accidentally overwrite approval status if not needed
+                        await window.setDoc(window.doc(window.db, "users", user.uid), { lastActive: window.serverTimestamp() }, { merge: true }); 
+                    } catch (error) {} 
+                };
                 syncUserToDB();
                 const heartbeatInterval = setInterval(() => { window.updateDoc(window.doc(window.db, "users", user.uid), { lastActive: window.serverTimestamp() }).catch(()=>{}); }, 60000);
+                
                 const unsubCurrent = window.onSnapshot(window.doc(window.db, "users", user.uid), (doc) => { 
                     if (doc.exists()) {
                         const data = doc.data(); setCurrentUserData(data);
@@ -357,6 +360,7 @@
                 return () => { clearInterval(heartbeatInterval); unsubCurrent(); unsubUsers(); unsubGroups(); };
             }, [user, currentUserData?.isAdmin, isVipAdmin]);
 
+            // --- INCOMING MESSAGE AUDIO TRIGGER ---
             useEffect(() => {
                 const q = window.query(window.collection(window.db, "messages"), window.orderBy("timestamp", "asc"));
                 const unsubscribe = window.onSnapshot(q, (snapshot) => {
@@ -526,7 +530,7 @@
                 dbUsers.forEach(u => { if (messageText.toLowerCase().includes(`@${(u.name || "").toLowerCase()}`)) mentions.push(u.email); });
                 groups.forEach(g => {
                     const teamTag = `@${(g.name || "").replace(/\s+/g, '').toLowerCase()}`;
-                    if (messageText.toLowerCase().includes(teamTag) && !g.isArchived) { (g.members || []).forEach(m => mentions.push(m)); }
+                    if (messageText.toLowerCase().includes(teamTag) && !g.isArchived) { (g.members || []).forEach(m => mentionspush(m)); }
                 });
 
                 const uniqueMentions = [...new Set(mentions)];
@@ -796,16 +800,12 @@
 
             const handleToggleApprove = async (u) => { await window.updateDoc(window.doc(window.db, "users", u.uid), { isApproved: !u.isApproved }); };
             
-            const handleAddUserSubmit = async (e) => { 
+            // ADMIN: Edit existing user (No longer adding via password)
+            const handleEditUserSubmit = async (e) => { 
                 e.preventDefault(); 
-                try { 
-                    const cred = await window.createUserWithEmailAndPassword(window.secondaryAuth, adminForm.email, adminForm.password); 
-                    await window.setDoc(window.doc(window.db, "users", cred.user.uid), { uid: cred.user.uid, email: cred.user.email, name: toSentenceCase(adminForm.name || cred.user.email.split('@')[0]), isApproved: true, isAdmin: adminForm.isAdmin, canCreateGroups: adminForm.canCreateGroups }); 
-                    window.signOut(window.secondaryAuth); setActiveModal(null); setAdminForm({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false }); 
-                } catch(err){alert(err.message);} 
+                await window.updateDoc(window.doc(window.db, "users", adminForm.uid), { name: toSentenceCase(adminForm.name), isAdmin: adminForm.isAdmin, canCreateGroups: adminForm.canCreateGroups }); 
+                setActiveModal(null); 
             };
-            
-            const handleEditUserSubmit = async (e) => { e.preventDefault(); await window.updateDoc(window.doc(window.db, "users", adminForm.uid), { name: toSentenceCase(adminForm.name), isAdmin: adminForm.isAdmin, canCreateGroups: adminForm.canCreateGroups }); setActiveModal(null); };
 
             const handleAdminArchiveGroup = async (groupId, groupName) => { 
                 if(window.confirm("Archive this department? Users will no longer see it.")) {
@@ -947,7 +947,7 @@
             if (currentUserData && currentUserData.isApproved !== true && !currentUserData.isAdmin && !isVipAdmin) {
                 return (
                     <div className="flex items-center justify-center h-screen bg-gray-100 p-4 text-gray-800">
-                        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 border-t-8 border-[#008069] text-center transform-gpu hover:scale-105 transition-transform"><i className="fa-solid fa-user-clock text-5xl text-[#008069] mb-4 animate-pulse"></i><h1 className="text-2xl font-bold mb-2">Pending Approval</h1><p className="text-sm text-gray-500 mb-6">Account requires Admin verification.</p><button onClick={onLogout} className="bg-gray-100 text-gray-700 py-2 px-6 rounded-full font-bold shadow-sm hover:bg-gray-200 transition-colors">Sign Out</button></div>
+                        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 border-t-8 border-[#008069] text-center transform-gpu hover:scale-105 transition-transform"><i className="fa-solid fa-user-clock text-5xl text-[#008069] mb-4 animate-pulse"></i><h1 className="text-2xl font-bold mb-2">Pending Approval</h1><p className="text-sm text-gray-500 mb-6">Your Google Account requires Admin verification to join the portal.</p><button onClick={onLogout} className="bg-gray-100 text-gray-700 py-2 px-6 rounded-full font-bold shadow-sm hover:bg-gray-200 transition-colors">Sign Out</button></div>
                     </div>
                 );
             }
@@ -994,17 +994,19 @@
 
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                     <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col max-h-[450px] transform-gpu transition-all hover:shadow-md">
-                                        <div className="bg-slate-50/50 p-5 border-b border-slate-100 flex justify-between items-center shrink-0"><h2 className="font-bold text-slate-800 flex items-center gap-3 text-lg"><div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center"><i className="fa-solid fa-users"></i></div> Users & Roles</h2><button onClick={() => { setAdminForm({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false }); setActiveModal('admin_add_user'); }} className="bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm hover:bg-blue-700 transition-colors"><i className="fa-solid fa-plus mr-1"></i> New</button></div>
+                                        <div className="bg-slate-50/50 p-5 border-b border-slate-100 flex justify-between items-center shrink-0">
+                                            <h2 className="font-bold text-slate-800 flex items-center gap-3 text-lg"><div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center"><i className="fa-solid fa-users"></i></div> Users & Roles</h2>
+                                            <div className="text-[10px] font-bold text-blue-600 bg-blue-100 px-3 py-1.5 rounded-lg">Staff must log in via Google to appear here.</div>
+                                        </div>
                                         <div className="p-0 overflow-y-auto flex-1">
                                             <table className="w-full text-left text-[13px]">
                                                 <tbody className="divide-y divide-slate-100">
                                                     {dbUsers.map(u => (
                                                         <tr key={u.uid} className="hover:bg-slate-50/50 transition-colors">
-                                                            <td className="px-5 py-3"><div className="font-semibold text-slate-800 flex items-center gap-2">{toSentenceCase(u.name)}{u.isAdmin && <div className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider">ADMIN</div>}</div><div className="text-[11px] text-slate-500 mt-0.5">{u.email}</div></td>
+                                                            <td className="px-5 py-3"><div className="font-semibold text-slate-800 flex items-center gap-2"><MemoizedAvatar uid={u.uid} url={u.profilePicUrl} name={u.name} sizeClass="w-6 h-6" /> {toSentenceCase(u.name)}{u.isAdmin && <div className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider">ADMIN</div>}</div><div className="text-[11px] text-slate-500 mt-0.5">{u.email}</div></td>
                                                             <td className="px-5 py-3 text-right">
                                                                 <button onClick={() => handleToggleApprove(u)} className={`mr-2 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider transition-colors ${u.isApproved ? 'bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100' : 'bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100'}`}>{u.isApproved ? 'APPROVED' : 'PENDING'}</button>
                                                                 <button onClick={() => { setAdminForm({ ...u, canCreateGroups: u.canCreateGroups || false }); setActiveModal('admin_edit_user'); }} className="text-slate-400 hover:text-blue-600 p-2 transition-colors"><i className="fa-solid fa-pen"></i></button>
-                                                                <button onClick={() => handleRemoveUser(u.uid)} disabled={u.email === user.email} className="text-slate-400 hover:text-red-500 p-2 transition-colors disabled:opacity-30"><i className="fa-solid fa-trash"></i></button>
                                                             </td>
                                                         </tr>
                                                     ))}
@@ -1378,14 +1380,6 @@
                         </div>
                     )}
 
-                    {activeModal === 'admin_add_user' && (
-                        <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] z-[70] flex items-center justify-center p-4"><div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl animate-in zoom-in-95 transform-gpu"><div className="flex justify-between items-center mb-8 border-b border-slate-100 pb-4"><h3 className="font-bold text-xl text-slate-800 flex items-center gap-3"><div className="w-10 h-10 bg-teal-50 text-[#008069] rounded-xl flex items-center justify-center shadow-inner"><i className="fa-solid fa-user-plus"></i></div> Register Staff</h3><button onClick={() => setActiveModal(null)} className="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 flex items-center justify-center"><i className="fa-solid fa-xmark"></i></button></div><form onSubmit={handleAddUserSubmit} className="space-y-4"><input required type="text" placeholder="Full Name" value={adminForm.name} onChange={(e) => setAdminForm({...adminForm, name: e.target.value})} className="w-full p-3.5 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#008069]/20 focus:border-[#008069] transition-all font-medium" /><input required type="email" placeholder="Corporate Email" value={adminForm.email} onChange={(e) => setAdminForm({...adminForm, email: e.target.value})} className="w-full p-3.5 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#008069]/20 focus:border-[#008069] transition-all font-medium" /><input required minLength="6" type="password" placeholder="Secure Password" value={adminForm.password} onChange={(e) => setAdminForm({...adminForm, password: e.target.value})} className="w-full p-3.5 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#008069]/20 focus:border-[#008069] transition-all font-medium" /><div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4"><label className="flex items-center gap-3 text-[13px] font-bold text-slate-700 cursor-pointer"><input type="checkbox" checked={adminForm.isAdmin} onChange={(e) => setAdminForm({...adminForm, isAdmin: e.target.checked})} className="w-5 h-5 accent-[#008069] rounded"/> Grant Full Admin Rights</label><label className="flex items-center gap-3 text-[13px] font-bold text-slate-700 cursor-pointer"><input type="checkbox" checked={adminForm.canCreateGroups} onChange={(e) => setAdminForm({...adminForm, canCreateGroups: e.target.checked})} className="w-5 h-5 accent-[#008069] rounded"/> Allow Department Creation</label></div><button type="submit" className="w-full bg-[#008069] text-white py-3.5 mt-2 rounded-xl font-bold shadow-[0_4px_15px_rgba(0,128,105,0.3)] hover:bg-[#006e5a] transition-all">Create Account</button></form></div></div>
-                    )}
-
-                    {activeModal === 'admin_edit_user' && (
-                        <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] z-[70] flex items-center justify-center p-4"><div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl animate-in zoom-in-95 transform-gpu"><div className="flex justify-between items-center mb-8 border-b border-slate-100 pb-4"><h3 className="font-bold text-xl text-slate-800 flex items-center gap-3"><div className="w-10 h-10 bg-teal-50 text-[#008069] rounded-xl flex items-center justify-center shadow-inner"><i className="fa-solid fa-user-pen"></i></div> Edit Staff Role</h3><button onClick={() => setActiveModal(null)} className="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 flex items-center justify-center"><i className="fa-solid fa-xmark"></i></button></div><form onSubmit={handleEditUserSubmit} className="space-y-4"><input disabled type="email" value={adminForm.email} className="w-full p-3.5 border border-slate-200 rounded-xl text-sm bg-slate-50 text-slate-400 font-medium" /><input required type="text" value={adminForm.name} onChange={(e) => setAdminForm({...adminForm, name: e.target.value})} className="w-full p-3.5 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#008069]/20 focus:border-[#008069] transition-all font-medium" /><div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4"><label className="flex items-center gap-3 text-[13px] font-bold text-slate-800 cursor-pointer"><input type="checkbox" checked={adminForm.isAdmin} onChange={(e) => setAdminForm({...adminForm, isAdmin: e.target.checked})} className="w-5 h-5 accent-[#008069] rounded"/> Grant Full Admin Rights</label><label className="flex items-center gap-3 text-[13px] font-bold text-slate-800 cursor-pointer"><input type="checkbox" checked={adminForm.canCreateGroups} onChange={(e) => setAdminForm({...adminForm, canCreateGroups: e.target.checked})} className="w-5 h-5 accent-[#008069] rounded"/> Allow Department Creation</label></div><button type="submit" className="w-full bg-[#008069] text-white py-3.5 mt-2 rounded-xl font-bold shadow-[0_4px_15px_rgba(0,128,105,0.3)] hover:bg-[#006e5a] transition-all">Save Changes</button></form></div></div>
-                    )}
-
                     {activeModal === 'group_form_modal' && (
                         <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] z-[60] flex items-center justify-center p-4" onClick={() => setActiveModal(null)}>
                             <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl animate-in zoom-in-95 transform-gpu" onClick={e => e.stopPropagation()}>
@@ -1434,7 +1428,7 @@
                         </div>
                     )}
 
-                    {/* UPDATED SECURE TASK TRAIL MODAL (Dropdown, Edit Title, Save & Close) */}
+                    {/* SECURE TASK TRAIL MODAL (Dropdown, Edit Title, Save & Close) */}
                     {activeModal === 'task_trail' && selectedMessage?.taskData && (
                         <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] z-[60] flex items-center justify-center md:p-4 animate-in fade-in" onClick={() => setActiveModal(null)}>
                             <div className="bg-[#f8fafc] w-full h-full md:h-auto md:max-h-[90vh] md:max-w-3xl md:rounded-3xl flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 transform-gpu" onClick={e => e.stopPropagation()}>
@@ -1587,16 +1581,12 @@
             const [user, setUser] = useState(null);
             const [isFirebaseLoaded, setIsFirebaseLoaded] = useState(false);
             const [authChecked, setAuthChecked] = useState(false);
-            const [email, setEmail] = useState("");
-            const [password, setPassword] = useState("");
-            const [showPassword, setShowPassword] = useState(false);
             const [authError, setAuthError] = useState("");
 
             useEffect(() => {
                 const setupAuth = () => { 
                     window.onAuthStateChanged(window.auth, (u) => {
                         setUser(u);
-                        // Shield UI until first Auth state resolves
                         setTimeout(() => setAuthChecked(true), 300); 
                     }); 
                     setIsFirebaseLoaded(true); 
@@ -1605,12 +1595,12 @@
                 return () => window.removeEventListener('firebaseReady', setupAuth);
             }, []);
 
-            const handleLogin = async (e) => { 
-                e.preventDefault(); 
-                setAuthError(""); 
+            // --- GOOGLE SSO INTEGRATION ---
+            const handleGoogleLogin = async (e) => {
+                e.preventDefault();
+                setAuthError("");
                 if ("Notification" in window && Notification.permission !== "granted") Notification.requestPermission();
                 
-                // AUDIO UNLOCK
                 const audioEl = document.getElementById('app-sound');
                 if (audioEl) {
                     audioEl.volume = 0; 
@@ -1621,22 +1611,32 @@
 
                 try {
                     // ZERO-PERSISTENCE SESSION ENFORCEMENT
-                    await window.setPersistence(window.auth, window.browserSessionPersistence);
-                    await window.signInWithEmailAndPassword(window.auth, email, password);
-                } catch (err) {
-                    setAuthError("Login Failed. Check credentials.");
-                }
-            };
+                    await window.setPersistence(window.auth, window.inMemoryPersistence);
+                    
+                    const provider = new window.GoogleAuthProvider();
+                    provider.setCustomParameters({ prompt: 'select_account' }); // FORCE ACCOUNT SELECTION EVERY TIME
+                    
+                    const result = await window.signInWithPopup(window.auth, provider);
+                    const loggedInUser = result.user;
 
-            const handleRegister = async (e) => {
-                e.preventDefault(); setAuthError("");
-                if ("Notification" in window && Notification.permission !== "granted") Notification.requestPermission();
-                try {
-                    await window.setPersistence(window.auth, window.browserSessionPersistence);
-                    const cred = await window.createUserWithEmailAndPassword(window.auth, email, password);
-                    const isVp = cred.user.email.toLowerCase() === 'viceprincipal@mpgs.edu.in';
-                    await window.setDoc(window.doc(window.db, "users", cred.user.uid), { uid: cred.user.uid, email: cred.user.email, name: toSentenceCase(cred.user.email.split('@')[0]), isApproved: isVp, isAdmin: isVp, canCreateGroups: isVp });
-                } catch (err) { setAuthError("Registration Failed"); }
+                    // Automatically create "Pending" user doc if it doesn't exist
+                    const userDoc = await window.getDocs(window.query(window.collection(window.db, "users"), window.where("uid", "==", loggedInUser.uid)));
+                    if (userDoc.empty) {
+                        const isVp = loggedInUser.email.toLowerCase() === 'viceprincipal@mpgs.edu.in';
+                        await window.setDoc(window.doc(window.db, "users", loggedInUser.uid), {
+                            uid: loggedInUser.uid,
+                            email: loggedInUser.email,
+                            name: toSentenceCase(loggedInUser.email.split('@')[0]),
+                            isApproved: isVp, // Must be approved by admin later
+                            isAdmin: isVp,
+                            canCreateGroups: isVp,
+                            profilePicUrl: loggedInUser.photoURL || null
+                        });
+                    }
+                } catch (err) {
+                    console.error(err);
+                    setAuthError("Google Sign-In Cancelled or Failed.");
+                }
             };
 
             if (!isFirebaseLoaded || !authChecked) return (
@@ -1661,18 +1661,11 @@
                             
                             {authError && <div className="bg-red-50 text-red-600 p-3 rounded-xl mb-4 text-[13px] font-semibold border border-red-100 text-center">{authError}</div>}
                             <form className="space-y-5">
-                                <div className="relative">
-                                    <label className="text-[10px] text-[#008069] font-bold uppercase tracking-widest absolute -top-2.5 left-3 bg-white px-1">Email Address</label>
-                                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-4 pt-5 border border-slate-300 rounded-2xl text-[14px] outline-none bg-white focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/20 transition-all font-semibold text-slate-800" />
-                                </div>
-                                <div className="relative">
-                                    <label className="text-[10px] text-[#008069] font-bold uppercase tracking-widest absolute -top-2.5 left-3 bg-white px-1">Security Key</label>
-                                    <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-4 pt-5 border border-slate-300 rounded-2xl text-[14px] outline-none bg-white focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/20 transition-all font-semibold text-slate-800 pr-12" />
-                                    <i className={`fa-solid ${showPassword ? 'fa-eye-slash' : 'fa-eye'} absolute right-4 top-[18px] text-slate-400 hover:text-[#008069] cursor-pointer text-lg transition-colors`} onClick={() => setShowPassword(!showPassword)}></i>
-                                </div>
                                 <div className="pt-2">
-                                    <button onClick={handleLogin} className="w-full bg-[#008069] text-white py-4 rounded-2xl shadow-[0_4px_15px_rgba(0,128,105,0.3)] hover:bg-[#006e5a] font-bold text-[15px] transition-all hover:scale-[1.02] active:scale-[0.98] mb-3">Secure Log In</button>
-                                    <button onClick={handleRegister} className="w-full bg-slate-50 border border-slate-200 text-slate-600 py-4 rounded-2xl hover:bg-slate-100 font-bold text-[15px] transition-all">Create Account</button>
+                                    <button onClick={handleGoogleLogin} className="w-full bg-white border border-slate-200 text-slate-700 py-4 rounded-2xl shadow-sm hover:bg-slate-50 font-bold text-[15px] transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-3">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="24px" height="24px"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
+                                        Sign in with Google
+                                    </button>
                                 </div>
                             </form>
                         </div>

@@ -128,7 +128,7 @@
 
         /* Doodle Watermark */
         .doodle-watermark {
-            position: sticky;
+            position: absolute;
             inset: 0;
             pointer-events: none;
             user-select: none;
@@ -376,6 +376,7 @@
             // =====================================================================
             const [inputText, setInputText] = useState("");
             const [searchQuery, setSearchQuery] = useState("");
+            const [sidebarSearch, setSidebarSearch] = useState("");
             const [chatFilter, setChatFilter] = useState("all");
             const [selectedMessage, setSelectedMessage] = useState(null);
             const [replyingTo, setReplyingTo] = useState(null);
@@ -468,11 +469,11 @@
             // --- 5J. Tool Preferences (for hover actions) -----------------------
             // =====================================================================
             const [toolPreferences, setToolPreferences] = useState({
-                reply: true, react: true, edit: true, delete: true, pin: true, bookmark: true
+                reply: true, react: true, edit: true, delete: true, pin: true, bookmark: true, showWatermark: true
             });
 
             // =====================================================================
-            // --- LIFECYCLE: Loader & Auto-Logout --------------------------------
+            // --- LIFECYCLE: Loader, Audio Priming & Auto-Logout -----------------
             // =====================================================================
             useEffect(() => {
                 let tipIndex = 0;
@@ -486,6 +487,24 @@
                     setIsLoaded(true);
                 }, 4000);
                 return () => { clearTimeout(timer); clearInterval(tipInterval); };
+            }, []);
+
+            // Prime Audio on First Click to fix browser blocking issues
+            useEffect(() => {
+                const primeAudio = () => {
+                    if (!window.audioPrimed) {
+                        const audioEl = document.getElementById('app-sound');
+                        if (audioEl) {
+                            audioEl.volume = 0;
+                            audioEl.play().then(() => {
+                                audioEl.pause(); audioEl.currentTime = 0; audioEl.volume = 1.0; window.audioPrimed = true;
+                            }).catch(()=>{});
+                        }
+                    }
+                };
+                window.addEventListener('click', primeAudio, { once: true });
+                window.addEventListener('touchstart', primeAudio, { once: true });
+                return () => { window.removeEventListener('click', primeAudio); window.removeEventListener('touchstart', primeAudio); };
             }, []);
 
             useEffect(() => {
@@ -571,9 +590,9 @@
                     setMessages(loadedMessages);
                     if (prevMessagesCountRef.current > 0 && loadedMessages.length > prevMessagesCountRef.current && !isWorkspaceLoading) {
                         const newMsg = loadedMessages[loadedMessages.length - 1];
-                        if (!newMsg.isMine) {
+                        if (!newMsg.isMine && Date.now() - (newMsg.timestamp?.toMillis?.() || Date.now()) < 5000) {
                             playAlertSound();
-                            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                            if (document.hidden && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
                                 navigator.serviceWorker.controller.postMessage({ type: 'SHOW_NOTIFICATION', title: `New Message from ${toSentenceCase((newMsg.sender || "").split('@')[0])}`, body: newMsg.text || 'Sent an attachment' });
                             }
                         }
@@ -624,8 +643,14 @@
             // --- DERIVED / COMPUTED VALUES (useMemo) ----------------------------
             // =====================================================================
             const myGroups = useMemo(() => {
-                return groups.filter(g => g.members?.includes(user.email) && !g.isArchived);
-            }, [groups, user.email]);
+                let filtered = groups.filter(g => g.members?.includes(user.email) && !g.isArchived);
+                if (sidebarSearch) filtered = filtered.filter(g => g.name.toLowerCase().includes(sidebarSearch.toLowerCase()));
+                return filtered;
+            }, [groups, user.email, sidebarSearch]);
+
+            const dmUsers = useMemo(() => {
+                return dbUsers.filter(u => u.uid !== user.uid && (!sidebarSearch || u.name.toLowerCase().includes(sidebarSearch.toLowerCase())));
+            }, [dbUsers, user.uid, sidebarSearch]);
 
             const activeActionableTasks = useMemo(() => {
                 return messages.filter(m => m.isTask && m.taskData?.status !== "Completed" && m.taskData?.assignees?.includes(user.email) && !(m.taskData?.dismissedBy || []).includes(user.uid));
@@ -776,19 +801,31 @@
                 } catch (err) {}
             };
 
-            const handleFileUpload = async (e) => {
-                const file = e.target.files[0];
+            const uploadFileDirectly = async (file) => {
                 if (!file) return;
                 setIsUploading(true); setUploadProgress(0);
-                const uniqueFileName = `${Date.now()}_${file.name}`;
+                const uniqueFileName = `${Date.now()}_${file.name || 'pasted_image.png'}`;
                 const uploadTask = window.uploadBytesResumable(window.ref(window.storage, `chat_uploads/${uniqueFileName}`), file);
                 uploadTask.on('state_changed', (snapshot) => setUploadProgress((snapshot.bytesTransferred / snapshot.totalBytes) * 100), (error) => { setIsUploading(false); alert("File upload failed."); }, async () => {
                     try {
                         const downloadURL = await window.getDownloadURL(uploadTask.snapshot.ref);
-                        await window.addDoc(window.collection(window.db, "messages"), { text: `Shared a file: ${file.name}`, senderUid: user.uid, senderEmail: user.email, timestamp: window.serverTimestamp(), isTask: false, hasReminder: false, isPrivateMention: false, allowedUsers: [], seenBy: [user.email], deliveredTo: [user.email], isPinned: false, bookmarkedBy: [], fileUrl: downloadURL, fileName: file.name, fileType: file.type, groupId: activeGroup.id, reactions: {} });
-                        logImmutableAction("FILE_UPLOAD", `Uploaded file: ${file.name}`, "Public");
+                        await window.addDoc(window.collection(window.db, "messages"), { text: `Shared a file: ${file.name || 'Image'}`, senderUid: user.uid, senderEmail: user.email, timestamp: window.serverTimestamp(), isTask: false, hasReminder: false, isPrivateMention: false, allowedUsers: [], seenBy: [user.email], deliveredTo: [user.email], isPinned: false, bookmarkedBy: [], fileUrl: downloadURL, fileName: file.name || 'Pasted Image', fileType: file.type, groupId: activeGroup.id, reactions: {} });
+                        logImmutableAction("FILE_UPLOAD", `Uploaded file: ${file.name || 'Pasted Image'}`, "Public");
                     } catch (err) {} finally { setIsUploading(false); setUploadProgress(0); if(fileInputRef.current) fileInputRef.current.value = ""; }
                 });
+            };
+
+            const handleFileUpload = (e) => { uploadFileDirectly(e.target.files[0]); };
+
+            const handlePaste = (e) => {
+                const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+                for (let index in items) {
+                    const item = items[index];
+                    if (item.kind === 'file' && item.type.startsWith('image/')) {
+                        const blob = item.getAsFile();
+                        if (blob) uploadFileDirectly(blob);
+                    }
+                }
             };
 
             const handleTogglePin = async (msg) => {
@@ -1340,6 +1377,16 @@
                                         <div className="text-[12px] font-medium text-slate-500">{user.email}</div>
                                     </div>
                                 </div>
+                                
+                                {/* Universal Search Bar in Sidebar */}
+                                <div className="p-3 bg-white border-b border-slate-100 shrink-0">
+                                    <div className="bg-[#f0f2f5] rounded-lg flex items-center px-3 py-2 focus-within:bg-white focus-within:ring-1 focus-within:ring-[#00a884] transition-all">
+                                        <i className="fa-solid fa-search text-[13px] text-[#54656f] mr-2"></i>
+                                        <input type="text" placeholder="Search contacts & departments..." value={sidebarSearch} onChange={(e) => setSidebarSearch(e.target.value)} className="bg-transparent outline-none flex-1 text-[13px] text-slate-800" />
+                                        {sidebarSearch && <button onClick={() => setSidebarSearch('')} className="text-slate-400 hover:text-slate-600 ml-1"><i className="fa-solid fa-xmark text-xs"></i></button>}
+                                    </div>
+                                </div>
+
                                 {/* Group / User List */}
                                 <div className="flex-1 overflow-y-auto flex flex-col bg-white">
                                     {myGroups.map(g => {
@@ -1360,7 +1407,7 @@
                                         );
                                     })}
                                     {/* Direct Messages */}
-                                    {dbUsers.filter(u => u.uid !== user.uid).map(u => {
+                                    {dmUsers.map(u => {
                                         const dmIdList = [user.uid, u.uid].sort();
                                         const dmIdStr = dmIdList.join('_');
                                         const unreadInfo = getUnreadInfoForUser(u.email, u.uid);
@@ -1400,7 +1447,7 @@
                             </div>
 
                             {/* CENTER - Chat Feed & Input */}
-                            <div className="flex-1 flex flex-col relative h-full bg-[#efeae2]">
+                            <div className="flex-1 flex flex-col relative h-full bg-[#efeae2] overflow-hidden">
                                 {/* Chat Header */}
                                 <div className="h-[59px] bg-[#f0f2f5] flex items-center justify-between px-3 md:px-4 shrink-0 z-30 sticky top-0 border-b border-slate-200/60 safe-top">
                                     <button onClick={() => setMobileSidebarOpen(true)} className="md:hidden w-10 h-10 rounded-full hover:bg-black/5 flex items-center justify-center text-[#54656f] mr-1 shrink-0"><i className="fa-solid fa-bars text-xl"></i></button>
@@ -1428,7 +1475,7 @@
                                         </div>
                                     </div>
                                     
-                                    {/* ACTION ICONS GROUP (Fix for mobile wrapping out of view) */}
+                                    {/* ACTION ICONS GROUP */}
                                     <div className="flex items-center gap-1 shrink-0">
                                         <button onClick={() => setShowFilterMenu(!showFilterMenu)} className={`w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-colors ${showFilterMenu ? 'bg-black/10' : 'hover:bg-black/5'} text-[#54656f] text-[19px]`} title="Filter Messages"><i className="fa-solid fa-sliders"></i></button>
                                         
@@ -1500,42 +1547,50 @@
                                 </div>
 
                                 {/* Message List with Doodle Watermark */}
-                                <div ref={chatContainerRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto px-4 md:px-[8%] py-4 space-y-1.5 wa-bg relative pb-10" onClick={() => setShowFilterMenu(false)}>
-                                    {/* Doodle Watermark */}
-                                    <div className="doodle-watermark">
-                                        {Array.from({ length: 15 }).map((_, rowIdx) => (
-                                            <div key={rowIdx} className="doodle-row">
-                                                {Array.from({ length: 8 }).map((_, i) => (
-                                                    <span key={i} className="doodle-item" style={{ fontFamily: '"Segoe UI", Roboto, Helvetica, Arial, sans-serif', fontSize: '20pt', transform: 'rotate(-20deg)', opacity: 0.7 }}>
-                                                        {toSentenceCase(currentUserData?.name || user.email.split('@')[0])}
-                                                    </span>
+                                <div ref={chatContainerRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto px-4 md:px-[8%] wa-bg relative" onClick={() => setShowFilterMenu(false)}>
+                                    
+                                    {/* Wrapping Chat to bottom so no scrolling exists above the banner */}
+                                    <div className="flex flex-col min-h-full justify-end py-4 pb-10">
+                                        
+                                        {/* Doodle Watermark (only if enabled) */}
+                                        {toolPreferences.showWatermark !== false && (
+                                            <div className="doodle-watermark">
+                                                {Array.from({ length: 15 }).map((_, rowIdx) => (
+                                                    <div key={rowIdx} className="doodle-row">
+                                                        {Array.from({ length: 8 }).map((_, i) => (
+                                                            <span key={i} className="doodle-item" style={{ fontFamily: '"Segoe UI", Roboto, Helvetica, Arial, sans-serif', fontSize: '20pt', transform: 'rotate(-20deg)', opacity: 0.7 }}>
+                                                                {toSentenceCase(currentUserData?.name || user.email.split('@')[0])}
+                                                            </span>
+                                                        ))}
+                                                    </div>
                                                 ))}
                                             </div>
-                                        ))}
-                                    </div>
-                                    <div className="text-center mb-6 mt-4 relative z-[1]"><span className="text-[12.5px] text-[#54656f] bg-[#ffeecd] px-4 py-1.5 rounded-lg shadow-sm font-medium"><i className="fa-solid fa-lock mr-1.5 text-[10px]"></i> Messages and tasks are end-to-server encrypted.</span></div>
-                                    {pinnedMessages.length > 0 && (
-                                        <div className="sticky top-2 z-10 bg-white shadow-[0_1px_2px_rgba(11,20,26,0.1)] rounded-lg p-2.5 mb-6 animate-in slide-in-from-top-4 cursor-pointer transform-gpu hover:bg-slate-50 transition-colors mx-auto w-[92%] md:w-full md:max-w-[65vw] relative z-[1]" onClick={() => scrollToMessage(pinnedMessages[0].id)}>
-                                            <div className="flex justify-between items-center text-[12px] text-[#54656f] font-medium mb-1"><span><i className="fa-solid fa-thumbtack mr-1 text-[#8696a0]"></i> Pinned Message</span></div>
-                                            <div className="text-[14px] text-[#111b21] line-clamp-1 truncate">{pinnedMessages[0].text || pinnedMessages[0].fileName}</div>
+                                        )}
+
+                                        <div className="text-center mb-6 mt-4 relative z-[1]"><span className="text-[12.5px] text-[#54656f] bg-[#ffeecd] px-4 py-1.5 rounded-lg shadow-sm font-medium"><i className="fa-solid fa-lock mr-1.5 text-[10px]"></i> Messages and tasks are end-to-server encrypted.</span></div>
+                                        {pinnedMessages.length > 0 && (
+                                            <div className="sticky top-2 z-10 bg-white shadow-[0_1px_2px_rgba(11,20,26,0.1)] rounded-lg p-2.5 mb-6 animate-in slide-in-from-top-4 cursor-pointer transform-gpu hover:bg-slate-50 transition-colors mx-auto w-[92%] md:w-full md:max-w-[65vw] relative z-[1]" onClick={() => scrollToMessage(pinnedMessages[0].id)}>
+                                                <div className="flex justify-between items-center text-[12px] text-[#54656f] font-medium mb-1"><span><i className="fa-solid fa-thumbtack mr-1 text-[#8696a0]"></i> Pinned Message</span></div>
+                                                <div className="text-[14px] text-[#111b21] line-clamp-1 truncate">{pinnedMessages[0].text || pinnedMessages[0].fileName}</div>
+                                            </div>
+                                        )}
+                                        <div className="relative z-[1] flex flex-col justify-end">
+                                            {messagesToRender.map(m => renderMessageNode(m))}
                                         </div>
-                                    )}
-                                    <div className="relative z-[1]">
-                                        {messagesToRender.map(m => renderMessageNode(m))}
-                                    </div>
-                                    {typingStatus.length > 0 && (
-                                        <div className="flex items-start animate-in fade-in slide-in-from-bottom-2 mt-2 relative z-[1]">
-                                            <div className="bg-white px-4 py-2 rounded-lg rounded-tl-none shadow-sm text-[13px] text-[#00a884] font-medium flex items-center gap-2">
-                                                <span>{typingStatus.map(t => toSentenceCase(t.name)).join(', ')} is typing</span>
-                                                <div className="flex gap-1 items-center h-full pt-1">
-                                                    <div className="w-1.5 h-1.5 bg-[#00a884] rounded-full animate-bounce" style={{animationDelay: '0ms'}}></div>
-                                                    <div className="w-1.5 h-1.5 bg-[#00a884] rounded-full animate-bounce" style={{animationDelay: '150ms'}}></div>
-                                                    <div className="w-1.5 h-1.5 bg-[#00a884] rounded-full animate-bounce" style={{animationDelay: '300ms'}}></div>
+                                        {typingStatus.length > 0 && (
+                                            <div className="flex items-start animate-in fade-in slide-in-from-bottom-2 mt-2 relative z-[1]">
+                                                <div className="bg-white px-4 py-2 rounded-lg rounded-tl-none shadow-sm text-[13px] text-[#00a884] font-medium flex items-center gap-2">
+                                                    <span>{typingStatus.map(t => toSentenceCase(t.name)).join(', ')} is typing</span>
+                                                    <div className="flex gap-1 items-center h-full pt-1">
+                                                        <div className="w-1.5 h-1.5 bg-[#00a884] rounded-full animate-bounce" style={{animationDelay: '0ms'}}></div>
+                                                        <div className="w-1.5 h-1.5 bg-[#00a884] rounded-full animate-bounce" style={{animationDelay: '150ms'}}></div>
+                                                        <div className="w-1.5 h-1.5 bg-[#00a884] rounded-full animate-bounce" style={{animationDelay: '300ms'}}></div>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    )}
-                                    <div ref={messagesEndRef} className="h-6 relative z-[1]"></div>
+                                        )}
+                                        <div ref={messagesEndRef} className="h-6 shrink-0 relative z-[1]"></div>
+                                    </div>
                                 </div>
 
                                 {/* Floating Arrow */}
@@ -1592,7 +1647,7 @@
                                         )}
                                     </div>
                                     <div className="flex-1 bg-white rounded-lg flex items-end shadow-sm overflow-hidden">
-                                        <textarea ref={chatInputRef} rows={1} placeholder="Type a message" className="bg-transparent flex-1 outline-none text-[15px] text-[#111b21] resize-none py-[10px] px-4 w-full" style={{ minHeight: '42px', maxHeight: '120px' }} value={inputText} onChange={(e) => { setInputText(e.target.value); handleTypingEvent(); e.target.style.height = 'auto'; e.target.style.height = (e.target.scrollHeight < 120 ? e.target.scrollHeight : 120) + 'px'; }} onKeyDown={handleKeyDown} />
+                                        <textarea ref={chatInputRef} rows={1} placeholder="Type or Paste a message..." className="bg-transparent flex-1 outline-none text-[15px] text-[#111b21] resize-none py-[10px] px-4 w-full" style={{ minHeight: '42px', maxHeight: '120px' }} value={inputText} onPaste={handlePaste} onChange={(e) => { setInputText(e.target.value); handleTypingEvent(); e.target.style.height = 'auto'; e.target.style.height = (e.target.scrollHeight < 120 ? e.target.scrollHeight : 120) + 'px'; }} onKeyDown={handleKeyDown} />
                                     </div>
                                     {inputText.trim() ? (
                                         <button onClick={handleSendMessage} className="shrink-0 w-[42px] h-[42px] flex justify-center items-center text-[#54656f] hover:text-[#00a884] transition-colors"><i className="fa-solid fa-paper-plane text-[22px]"></i></button>
@@ -1654,18 +1709,26 @@
                     )}
 
                     {/* ========================================================================= */}
-                    {/* === MODALS & OVERLAYS (preserved from original, with mobile adaptation) === */}
+                    {/* === MODALS & OVERLAYS                                                 === */}
                     {/* ========================================================================= */}
 
-                    {/* Context Menu Modal */}
+                    {/* Beautiful Context Menu Modal */}
                     {activeModal === 'context' && selectedMessage && (
-                        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in" onClick={() => setActiveModal(null)}>
-                            <div className="bg-white w-full max-w-sm rounded-2xl shadow-[0_17px_50px_0_rgba(11,20,26,.19),0_12px_15px_0_rgba(11,20,26,.24)] animate-in zoom-in-95 transform-gpu overflow-hidden" onClick={e => e.stopPropagation()}>
-                                <div className="p-5 border-b border-slate-100 bg-[#f0f2f5]"><p className="text-[14px] text-[#111b21] line-clamp-3 italic text-center">"{selectedMessage.text || selectedMessage.fileName}"</p></div>
-                                <div className="py-2">
-                                    <button onClick={() => { setActiveModal(null); setReplyingTo(selectedMessage); setTimeout(()=>chatInputRef.current?.focus(), 100); }} className="w-full flex items-center gap-4 px-6 py-3 hover:bg-[#f5f6f6] transition-colors text-left text-[15px] text-[#3b4a54]"><i className="fa-solid fa-reply w-5 text-center"></i> Reply</button>
-                                    <button onClick={() => setActiveModal('reminder')} className="w-full flex items-center gap-4 px-6 py-3 hover:bg-[#f5f6f6] transition-colors text-left text-[15px] text-[#3b4a54]"><i className="fa-regular fa-clock w-5 text-center"></i> Set Reminder</button>
-                                    <button onClick={() => setActiveModal('task_convert')} className="w-full flex items-center gap-4 px-6 py-3 hover:bg-[#f5f6f6] transition-colors text-left text-[15px] text-[#3b4a54]"><i className="fa-regular fa-square-check w-5 text-center"></i> Convert to Task</button>
+                        <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] z-[60] flex items-center justify-center p-4 animate-in fade-in" onClick={() => setActiveModal(null)}>
+                            <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl animate-in zoom-in-95 transform-gpu overflow-hidden" onClick={e => e.stopPropagation()}>
+                                <div className="p-6 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-[#f0f2f5] flex items-center justify-center min-h-[100px]">
+                                    <p className="text-[15px] text-[#111b21] line-clamp-3 italic text-center font-medium">"{selectedMessage.text || selectedMessage.fileName}"</p>
+                                </div>
+                                <div className="p-3 space-y-1">
+                                    <button onClick={() => { setActiveModal(null); setReplyingTo(selectedMessage); setTimeout(()=>chatInputRef.current?.focus(), 100); }} className="w-full flex items-center gap-4 px-5 py-4 hover:bg-teal-50 hover:text-[#008069] rounded-xl transition-all text-left text-[16px] font-semibold text-[#3b4a54] group">
+                                        <div className="w-10 h-10 rounded-full bg-slate-100 group-hover:bg-teal-100 flex items-center justify-center transition-colors"><i className="fa-solid fa-reply text-lg"></i></div> Reply to Message
+                                    </button>
+                                    <button onClick={() => setActiveModal('reminder')} className="w-full flex items-center gap-4 px-5 py-4 hover:bg-yellow-50 hover:text-yellow-600 rounded-xl transition-all text-left text-[16px] font-semibold text-[#3b4a54] group">
+                                        <div className="w-10 h-10 rounded-full bg-slate-100 group-hover:bg-yellow-100 flex items-center justify-center transition-colors"><i className="fa-regular fa-clock text-lg"></i></div> Set Reminder Alert
+                                    </button>
+                                    <button onClick={() => setActiveModal('task_convert')} className="w-full flex items-center gap-4 px-5 py-4 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition-all text-left text-[16px] font-semibold text-[#3b4a54] group">
+                                        <div className="w-10 h-10 rounded-full bg-slate-100 group-hover:bg-blue-100 flex items-center justify-center transition-colors"><i className="fa-regular fa-square-check text-lg"></i></div> Convert to Official Task
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -1691,14 +1754,12 @@
                                     </div>
                                     {/* Tool Preferences */}
                                     <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
-                                        <div className="text-[12px] font-bold text-slate-600 uppercase tracking-wider mb-3">Hover Tools (visible on message hover)</div>
+                                        <div className="text-[12px] font-bold text-slate-600 uppercase tracking-wider mb-3">Preferences</div>
                                         <div className="space-y-2">
-                                            <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-white rounded-lg transition-colors"><input type="checkbox" checked={toolPreferences.reply} onChange={(e) => setToolPreferences(prev => ({...prev, reply: e.target.checked}))} className="w-4 h-4 accent-[#008069]" /><span className="text-[14px] font-medium text-slate-700"><i className="fa-solid fa-reply mr-2 text-[#54656f]"></i> Reply</span></label>
+                                            <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-white rounded-lg transition-colors"><input type="checkbox" checked={toolPreferences.showWatermark !== false} onChange={(e) => setToolPreferences(prev => ({...prev, showWatermark: e.target.checked}))} className="w-4 h-4 accent-[#008069]" /><span className="text-[14px] font-medium text-slate-700"><i className="fa-solid fa-droplet mr-2 text-[#54656f]"></i> Show Background Watermark</span></label>
+                                            <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-white rounded-lg transition-colors"><input type="checkbox" checked={toolPreferences.reply} onChange={(e) => setToolPreferences(prev => ({...prev, reply: e.target.checked}))} className="w-4 h-4 accent-[#008069]" /><span className="text-[14px] font-medium text-slate-700"><i className="fa-solid fa-reply mr-2 text-[#54656f]"></i> Reply Button</span></label>
                                             <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-white rounded-lg transition-colors"><input type="checkbox" checked={toolPreferences.react} onChange={(e) => setToolPreferences(prev => ({...prev, react: e.target.checked}))} className="w-4 h-4 accent-[#008069]" /><span className="text-[14px] font-medium text-slate-700"><i className="fa-regular fa-face-smile mr-2 text-[#54656f]"></i> Quick Emoji Reactions</span></label>
                                             <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-white rounded-lg transition-colors"><input type="checkbox" checked={toolPreferences.bookmark} onChange={(e) => setToolPreferences(prev => ({...prev, bookmark: e.target.checked}))} className="w-4 h-4 accent-[#008069]" /><span className="text-[14px] font-medium text-slate-700"><i className="fa-solid fa-bookmark mr-2 text-[#54656f]"></i> Save for Later</span></label>
-                                            <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-white rounded-lg transition-colors"><input type="checkbox" checked={toolPreferences.pin} onChange={(e) => setToolPreferences(prev => ({...prev, pin: e.target.checked}))} className="w-4 h-4 accent-[#008069]" /><span className="text-[14px] font-medium text-slate-700"><i className="fa-solid fa-thumbtack mr-2 text-[#54656f]"></i> Pin</span></label>
-                                            <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-white rounded-lg transition-colors"><input type="checkbox" checked={toolPreferences.edit} onChange={(e) => setToolPreferences(prev => ({...prev, edit: e.target.checked}))} className="w-4 h-4 accent-[#008069]" /><span className="text-[14px] font-medium text-slate-700"><i className="fa-solid fa-pen mr-2 text-[#54656f]"></i> Edit</span></label>
-                                            <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-white rounded-lg transition-colors"><input type="checkbox" checked={toolPreferences.delete} onChange={(e) => setToolPreferences(prev => ({...prev, delete: e.target.checked}))} className="w-4 h-4 accent-[#008069]" /><span className="text-[14px] font-medium text-slate-700"><i className="fa-solid fa-trash mr-2 text-[#54656f]"></i> Delete</span></label>
                                         </div>
                                     </div>
                                     <button onClick={handleProfileSubmit} disabled={profileUploadProgress > 0} className="w-full bg-[#008069] text-white py-4 rounded-2xl shadow-[0_4px_15px_rgba(0,128,105,0.3)] hover:bg-[#006e5a] font-bold text-[15px] transition-all hover:scale-[1.02] active:scale-[0.98]">{profileUploadProgress > 0 ? `Uploading ${Math.round(profileUploadProgress)}%` : 'Save Changes'}</button>
@@ -1762,7 +1823,7 @@
                         </div>
                     )}
 
-                    {/* Task Trail Modal - Reordered Layout */}
+                    {/* Task Trail Modal */}
                     {activeModal === 'task_trail' && selectedMessage?.taskData && (
                         <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] z-[60] flex items-center justify-center md:p-4 animate-in fade-in" onClick={() => setActiveModal(null)}>
                             <div className="bg-[#f8fafc] w-full h-full md:h-auto md:max-h-[90vh] md:max-w-3xl md:rounded-2xl flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 transform-gpu modal-mobile-full" onClick={e => e.stopPropagation()}>
@@ -1954,7 +2015,7 @@
                             isAdmin: isFirstUser || isMaster,
                             canCreateGroups: isFirstUser || isMaster,
                             profilePicUrl: loggedInUser.photoURL || null,
-                            toolPreferences: { reply: true, react: true, edit: true, delete: true, pin: true, bookmark: true }
+                            toolPreferences: { reply: true, react: true, edit: true, delete: true, pin: true, bookmark: true, showWatermark: true }
                         });
                     } else if (isMaster) {
                         await window.setDoc(window.doc(window.db, "users", loggedInUser.uid), {

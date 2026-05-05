@@ -523,14 +523,11 @@
             }, [toolPreferences.soundProfile]);
 
             const playTaskSound = useCallback(() => {
-                const audioEl = document.getElementById('task-sound');
-                if (audioEl && window.audioPrimed) {
-                    audioEl.currentTime = 0; audioEl.volume = 1.0;
-                    const playPromise = audioEl.play();
-                    if (playPromise !== undefined) {
-                        playPromise.catch(e => console.warn("Task audio blocked:", e));
-                    }
-                }
+                try {
+                    const audio = new Audio("https://cdn.pixabay.com/download/audio/2021/08/09/audio_9ed1023bc2.mp3?filename=correct-2-46134.mp3");
+                    audio.volume = 0.8;
+                    audio.play().catch(()=>{});
+                } catch(e) {}
             }, []);
 
             useEffect(() => {
@@ -552,9 +549,7 @@
                     }
                     prevMessagesCountRef.current = loadedMessages.length;
                     
-                    if(!pendingScrollTarget) {
-                        setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
-                    }
+                    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
                 });
 
                 const unsubTyping = window.onSnapshot(window.collection(window.db, "typing"), (snapshot) => {
@@ -564,7 +559,7 @@
                 });
 
                 return () => { unsubscribe(); unsubTyping(); };
-            }, [user.uid, activeGroup?.id, playAlertSound, isWorkspaceLoading, pendingScrollTarget]);
+            }, [user.uid, activeGroup?.id, playAlertSound, isWorkspaceLoading]);
 
             useEffect(() => {
                 if (!activeGroup?.id || !user.email) return;
@@ -721,7 +716,7 @@
 
             const handleSendMessage = async () => {
                 if (!inputText.trim() || !activeGroup) return;
-                const messageText = inputText.trim();
+                const messageText = inputText.trim(); // EXACT PRESERVATION OF USER CASE
                 setInputText(""); setEmojiPickerOpen(false);
                 try { window.deleteDoc(window.doc(window.db, "typing", `${activeGroup.id}_${user.uid}`)); } catch(e) {}
 
@@ -748,6 +743,7 @@
                 }
 
                 try {
+                    // Send to Active Group
                     await window.addDoc(window.collection(window.db, "messages"), {
                         text: messageText, senderUid: user.uid, senderEmail: user.email, timestamp: window.serverTimestamp(),
                         isTask: false, hasReminder: false, isPrivateMention: isPrivate, allowedUsers: allowedUsers,
@@ -755,6 +751,7 @@
                         groupId: activeGroup.id, reactions: {}, ...(replyData || {})
                     });
                     
+                    // Direct Message Notifications & Cross-Posting
                     if (activeGroup.isDM) {
                         const recipientEmail = activeGroup.members.find(m => m !== user.email);
                         const recipient = dbUsers.find(u => u.email === recipientEmail);
@@ -762,6 +759,7 @@
                             try { await window.addDoc(window.collection(window.db, "notifications"), { userId: recipient.uid, type: "message", text: `${(user.email||"").split('@')[0]} sent you a direct message.`, messageId: null, groupId: activeGroup.id, timestamp: window.serverTimestamp(), isRead: false }); } catch (e) {}
                         }
                     } else if (uniqueMentions.length > 0) {
+                        // Cross-Post @Mentions to DMs
                         uniqueMentions.forEach(async (mentionedEmail) => {
                             if (mentionedEmail === user.email) return;
                             const mentionedUser = dbUsers.find(u => u.email === mentionedEmail);
@@ -1498,7 +1496,7 @@
                                                 <span className="text-[13px] text-[#54656f] truncate max-w-[150px] lg:max-w-[400px]">
                                                     {activeGroup.isDM ? 'End-to-Server Encrypted' :
                                                         (dbUsers.filter(u => activeGroup.members?.includes(u.email) && u.lastActive && (Date.now() - (u.lastActive?.toMillis?.() || 0) < 900000) && u.uid !== user.uid).length > 0)
-                                                        ? dbUsers.filter(u => activeGroup.members?.includes(u.email) && u.lastActive && (Date.now() - (u.lastActive?.toMillis?.() || 0) < 900000) && u.uid !== user.uid).map(u=>(u.name||"").split(' ')[0]).join(', ') + ' (Online)'
+                                                        ? dbUsers.filter(u => activeGroup.members?.includes(u.email) && u.lastActive && (Date.now() - (u.lastActive?.toMillis?.() || 0) < 900000) && u.uid !== user.uid).map(u=>u.name.split(' ')[0]).join(', ') + ' (Online)'
                                                         : `${activeGroup.members?.length||0} Members`
                                                     }
                                                 </span>

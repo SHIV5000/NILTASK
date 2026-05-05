@@ -146,7 +146,7 @@
             display: flex;
             flex-wrap: wrap;
             justify-content: center;
-            gap: 1rem 2rem;
+            gap: 1.5rem 3rem;
         }
         .doodle-watermark .doodle-item {
             display: inline-block;
@@ -1503,19 +1503,13 @@
                                 <div ref={chatContainerRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto px-4 md:px-[8%] py-4 space-y-1.5 wa-bg relative pb-10" onClick={() => setShowFilterMenu(false)}>
                                     {/* Doodle Watermark */}
                                     <div className="doodle-watermark">
-                                        {Array.from({ length: 10 }).map((_, rowIdx) => (
+                                        {Array.from({ length: 15 }).map((_, rowIdx) => (
                                             <div key={rowIdx} className="doodle-row">
-                                                {Array.from({ length: 8 + Math.floor(Math.random() * 6) }).map((_, i) => {
-                                                    const fonts = ['"Segoe UI"', '"Comic Sans MS"', '"Georgia"', '"Impact"', '"Courier New"', '"Trebuchet MS"', '"Palatino"', '"Brush Script MT"', '"Arial Black"', '"Verdana"'];
-                                                    const font = fonts[Math.floor(Math.random() * fonts.length)];
-                                                    const size = 8 + Math.floor(Math.random() * 7);
-                                                    const rotation = (Math.random() - 0.5) * 25;
-                                                    return (
-                                                        <span key={i} className="doodle-item" style={{ fontFamily: font, fontSize: `${size}px`, transform: `rotate(${rotation}deg)`, opacity: 0.4 + Math.random() * 0.4 }}>
-                                                            {toSentenceCase(currentUserData?.name || user.email.split('@')[0])}
-                                                        </span>
-                                                    );
-                                                })}
+                                                {Array.from({ length: 8 }).map((_, i) => (
+                                                    <span key={i} className="doodle-item" style={{ fontFamily: '"Segoe UI", sans-serif', fontSize: '14pt', transform: 'rotate(-20deg)', opacity: 0.6 }}>
+                                                        {toSentenceCase(currentUserData?.name || user.email.split('@')[0])}
+                                                    </span>
+                                                ))}
                                             </div>
                                         ))}
                                     </div>

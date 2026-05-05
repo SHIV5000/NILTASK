@@ -131,30 +131,67 @@
         }
 
         /* Embossed Watermark for logged-in user */
-        .watermark-emboss {
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            user-select: none;
-            z-index: 0;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0.04;
-        }
-        .watermark-emboss span {
-            font-size: clamp(4rem, 8vw, 10rem);
-            font-weight: 900;
-            color: #111b21;
-            transform: rotate(-20deg);
-            white-space: nowrap;
-            letter-spacing: 0.05em;
-            text-transform: uppercase;
-            font-family: 'Impact', 'Arial Black', 'Segoe UI Black', sans-serif;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.15), -1px -1px 2px rgba(255, 255, 255, 0.3);
-        }
+        
+.watermark-emboss {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    user-select: none;
+    z-index: 0;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.05;
+}
 
+/* Base Layer */
+.watermark-emboss span {
+    position: relative;
+    font-size: clamp(4rem, 8vw, 10rem);
+    font-weight: 900;
+    color: #111b21;
+    transform: rotate(-20deg);
+    white-space: nowrap;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-family: 'Impact', 'Arial Black', 'Segoe UI Black', sans-serif;
+
+    /* Core emboss */
+    text-shadow:
+        1px 1px 1px rgba(255,255,255,0.4),
+        -1px -1px 1px rgba(0,0,0,0.25),
+        2px 2px 3px rgba(0,0,0,0.15),
+        -2px -2px 3px rgba(255,255,255,0.25);
+}
+
+/* Top highlight layer */
+.watermark-emboss span::before {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    color: rgba(255,255,255,0.15);
+    transform: translate(-2px, -2px);
+    z-index: -1;
+}
+
+/* Bottom shadow layer */
+.watermark-emboss span::after {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    color: rgba(0,0,0,0.2);
+    transform: translate(2px, 2px);
+    z-index: -2;
+}
+
+
+
+
+
+
+
+        
         /* Message Highlight Transition */
         .highlight-msg {
             transition: background-color 1s ease-out;
@@ -1641,7 +1678,7 @@
                                     <div className="watermark-emboss">
                                         <span>{toSentenceCase(currentUserData?.name || user.email.split('@')[0])}</span>
                                     </div>
-                                    <div className="text-center mb-6 mt-4 relative z-[1]"><span className="text-[12.5px] text-[#54656f] bg-[#ffeecd] px-4 py-1.5 rounded-lg shadow-sm font-medium"><i className="fa-solid fa-lock mr-1.5 text-[10px]"></i> Messages and tasks are end-to-end encrypted. No one outside of this chat can read or listen to them.</span></div>
+                                    <div className="text-center mb-6 mt-4 relative z-[1]"><span className="text-[12.5px] text-[#54656f] bg-[#ffeecd] px-4 py-1.5 rounded-lg shadow-sm font-medium"><i className="fa-solid fa-lock mr-1.5 text-[10px]"></i> Messages and tasks are end-to-server encrypted.</span></div>
                                     {pinnedMessages.length > 0 && (
                                         <div className="sticky top-2 z-10 bg-white shadow-[0_1px_2px_rgba(11,20,26,0.1)] rounded-lg p-2.5 mb-6 animate-in slide-in-from-top-4 cursor-pointer transform-gpu hover:bg-slate-50 transition-colors mx-auto max-w-[85vw] md:max-w-[65vw] relative z-[1]" onClick={() => scrollToMessage(pinnedMessages[0].id)}>
                                             <div className="flex justify-between items-center text-[12px] text-[#54656f] font-medium mb-1"><span><i className="fa-solid fa-thumbtack mr-1 text-[#8696a0]"></i> Pinned Message</span></div>

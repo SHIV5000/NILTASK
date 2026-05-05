@@ -84,15 +84,6 @@
         window.dispatchEvent(new Event('firebaseReady'));
     </script>
 
-    <script>
-        // PWA service worker registration
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('service-worker.js').catch(err => console.log('SW registration failed'));
-            });
-        }
-    </script>
-
     <!-- ========================================================================= -->
     <!-- SECTION 3 : GLOBAL CSS (THEME, SCROLLBARS, ANIMATIONS)                    -->
     <!-- ========================================================================= -->
@@ -128,7 +119,7 @@
 
         /* Doodle Watermark */
         .doodle-watermark {
-            position: fixed;
+            position: absolute;
             inset: 0;
             pointer-events: none;
             user-select: none;
@@ -169,6 +160,29 @@
             border-radius: 12px;
             position: relative;
             z-index: 5;
+        }
+
+        /* UNIQUE LIQUID TYPING INDICATOR */
+        @keyframes liquidWave {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .typing-gradient-text {
+            background: linear-gradient(270deg, #008069, #00a884, #25d366, #008069);
+            background-size: 300% 300%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: liquidWave 3s ease infinite;
+            font-weight: bold;
+        }
+        @keyframes avatarPulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 168, 132, 0.4); }
+            70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(0, 168, 132, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 168, 132, 0); }
+        }
+        .typing-avatar-pulse {
+            animation: avatarPulse 1.5s infinite;
         }
 
         /* Glassmorphism Headers & Panels */
@@ -305,16 +319,6 @@
             return str.toLowerCase().replace(/(^\w{1})|(\s+\w{1})/g, letter => letter.toUpperCase());
         };
 
-        const getCachedImage = (uid, url) => {
-            if (!url) return null;
-            try {
-                const cachedUrl = localStorage.getItem(`avatar_${uid}`);
-                if (cachedUrl === url) return url;
-                localStorage.setItem(`avatar_${uid}`, url);
-            } catch (e) { console.warn("Local storage blocked"); }
-            return url;
-        };
-
         const MemoizedAvatar = React.memo(({ uid, url, name, sizeClass = "w-10 h-10", isGroup = false, extraClasses = "" }) => {
             const cachedUrl = useMemo(() => {
                 if (!url) return null;
@@ -441,7 +445,6 @@
             const profilePicInputRef = useRef(null);
             const groupPicInputRef = useRef(null);
             const emojiPickerRef = useRef(null);
-            const prevNotifCountRef = useRef(0);
             const prevMessagesCountRef = useRef(0);
             const lastTypingTime = useRef(0);
             const highlightTimerRef = useRef(null);
@@ -469,7 +472,7 @@
             // --- 5J. Tool Preferences (for hover actions) -----------------------
             // =====================================================================
             const [toolPreferences, setToolPreferences] = useState({
-                reply: true, react: true, edit: true, delete: true, pin: true, bookmark: true, showWatermark: true
+                reply: true, react: true, edit: true, delete: true, pin: true, bookmark: true, showWatermark: true, soundProfile: 'classic'
             });
 
             // =====================================================================
@@ -494,12 +497,9 @@
                 const primeAudio = () => {
                     if (!window.audioPrimed) {
                         const audioEl = document.getElementById('app-sound');
-                        if (audioEl) {
-                            audioEl.volume = 0;
-                            audioEl.play().then(() => {
-                                audioEl.pause(); audioEl.currentTime = 0; audioEl.volume = 1.0; window.audioPrimed = true;
-                            }).catch(()=>{});
-                        }
+                        const taskAudioEl = document.getElementById('task-sound');
+                        if (audioEl) { audioEl.volume = 0; audioEl.play().then(() => { audioEl.pause(); audioEl.currentTime = 0; audioEl.volume = 1.0; window.audioPrimed = true; }).catch(()=>{}); }
+                        if (taskAudioEl) { taskAudioEl.volume = 0; taskAudioEl.play().then(() => { taskAudioEl.pause(); taskAudioEl.currentTime = 0; taskAudioEl.volume = 1.0; }).catch(()=>{}); }
                     }
                 };
                 window.addEventListener('click', primeAudio, { once: true });
@@ -544,7 +544,10 @@
                 const unsubPersonal = window.onSnapshot(qPersonal, (snapshot) => setActiveReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
 
                 const qAlerts = window.query(window.collection(window.db, "notifications"), window.where("userId", "==", user.uid), window.where("isRead", "==", false));
-                const unsubAlerts = window.onSnapshot(qAlerts, (snapshot) => setGenericNotifications(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
+                const unsubAlerts = window.onSnapshot(qAlerts, (snapshot) => {
+                    const sorted = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (b.timestamp?.toMillis?.() || 0) - (a.timestamp?.toMillis?.() || 0));
+                    setGenericNotifications(sorted);
+                });
 
                 let unsubAdmin = () => {}; let unsubAudit = () => {};
                 if (currentUserData?.isAdmin || isVipAdmin) {
@@ -579,6 +582,28 @@
                 });
                 return () => { clearInterval(heartbeatInterval); unsubCurrent(); unsubUsers(); unsubGroups(); };
             }, [user, currentUserData?.isAdmin, isVipAdmin]);
+
+            const playAlertSound = useCallback(() => {
+                const audioUrls = {
+                    classic: "https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3",
+                    soft: "https://cdn.pixabay.com/download/audio/2022/03/15/audio_793bdf2292.mp3",
+                    subtle: "https://cdn.pixabay.com/download/audio/2022/03/10/audio_c8c8a73467.mp3"
+                };
+                const audioEl = document.getElementById('app-sound');
+                if (audioEl && window.audioPrimed) {
+                    audioEl.src = audioUrls[toolPreferences.soundProfile || 'classic'] || audioUrls.classic;
+                    audioEl.currentTime = 0; audioEl.volume = 1.0;
+                    audioEl.play().catch(e => console.warn("Browser blocked audio:", e));
+                }
+            }, [toolPreferences.soundProfile]);
+
+            const playTaskSound = useCallback(() => {
+                const audioEl = document.getElementById('task-sound');
+                if (audioEl && window.audioPrimed) {
+                    audioEl.currentTime = 0; audioEl.volume = 1.0;
+                    audioEl.play().catch(e => console.warn("Browser blocked audio:", e));
+                }
+            }, []);
 
             useEffect(() => {
                 const q = window.query(window.collection(window.db, "messages"), window.orderBy("timestamp", "asc"));
@@ -710,14 +735,6 @@
             // =====================================================================
             // --- ACTION HANDLERS (LOGIC & FIREBASE WRITES) ----------------------
             // =====================================================================
-            const playAlertSound = useCallback(() => {
-                const audioEl = document.getElementById('app-sound');
-                if (audioEl && window.audioPrimed) {
-                    audioEl.currentTime = 0; audioEl.volume = 1.0;
-                    audioEl.play().catch(e => console.warn("Browser blocked audio:", e));
-                }
-            }, []);
-
             const logImmutableAction = useCallback(async (actionType, content, target = "") => {
                 try {
                     await window.addDoc(window.collection(window.db, "audit_logs"), {
@@ -736,17 +753,9 @@
                 }
             }, [activeGroup.id, user.uid, currentUserData?.name, user.email]);
 
-            const formatMessage = useCallback((txt) => {
-                if(!txt.trim()) return txt;
-                let formatted = txt.trim();
-                formatted = formatted.charAt(0).toUpperCase() + formatted.slice(1);
-                if (!/[.!?]$/.test(formatted) && !formatted.includes('\n')) formatted += '.';
-                return formatted;
-            }, []);
-
             const handleSendMessage = async () => {
                 if (!inputText.trim()) return;
-                const messageText = formatMessage(inputText);
+                const messageText = inputText.trim();
                 setInputText(""); setEmojiPickerOpen(false);
                 try { window.deleteDoc(window.doc(window.db, "typing", `${activeGroup.id}_${user.uid}`)); } catch(e) {}
 
@@ -757,7 +766,7 @@
                     if (messageText.toLowerCase().includes(teamTag) && !g.isArchived) { (g.members || []).forEach(m => mentions.push(m)); }
                 });
                 const uniqueMentions = [...new Set(mentions)];
-                const isPrivate = uniqueMentions.length > 0;
+                const isPrivate = uniqueMentions.length > 0 && !activeGroup.isDM;
                 const allowedUsers = isPrivate ? [...new Set([user.email, ...uniqueMentions])] : [];
 
                 let replyData = null;
@@ -773,12 +782,38 @@
                 }
 
                 try {
+                    // Send to Active Group
                     await window.addDoc(window.collection(window.db, "messages"), {
                         text: messageText, senderUid: user.uid, senderEmail: user.email, timestamp: window.serverTimestamp(),
                         isTask: false, hasReminder: false, isPrivateMention: isPrivate, allowedUsers: allowedUsers,
                         seenBy: [user.email], deliveredTo: [user.email], isPinned: false, bookmarkedBy: [], fileUrl: null, fileName: null, fileType: null,
                         groupId: activeGroup.id, reactions: {}, ...(replyData || {})
                     });
+                    
+                    // Direct Message Notifications & Cross-Posting
+                    if (activeGroup.isDM) {
+                        const recipientEmail = activeGroup.members.find(m => m !== user.email);
+                        const recipient = dbUsers.find(u => u.email === recipientEmail);
+                        if (recipient) {
+                            try { await window.addDoc(window.collection(window.db, "notifications"), { userId: recipient.uid, type: "message", text: `${toSentenceCase((user.email||"").split('@')[0])} sent you a direct message.`, messageId: null, timestamp: window.serverTimestamp(), isRead: false }); } catch (e) {}
+                        }
+                    } else if (uniqueMentions.length > 0) {
+                        // Cross-Post @Mentions to DMs
+                        uniqueMentions.forEach(async (mentionedEmail) => {
+                            if (mentionedEmail === user.email) return;
+                            const mentionedUser = dbUsers.find(u => u.email === mentionedEmail);
+                            if (mentionedUser) {
+                                const dmIdList = [user.uid, mentionedUser.uid].sort();
+                                const dmIdStr = dmIdList.join('_');
+                                await window.addDoc(window.collection(window.db, "messages"), {
+                                    text: `[Forwarded from ${activeGroup.name}]\n\n${messageText}`, senderUid: user.uid, senderEmail: user.email, timestamp: window.serverTimestamp(),
+                                    isTask: false, hasReminder: false, isPrivateMention: false, allowedUsers: [user.email, mentionedEmail], seenBy: [user.email], deliveredTo: [user.email], isPinned: false, bookmarkedBy: [], fileUrl: null, fileName: null, fileType: null, groupId: dmIdStr, reactions: {}
+                                });
+                                await window.addDoc(window.collection(window.db, "notifications"), { userId: mentionedUser.uid, type: "mention", text: `${toSentenceCase((user.email||"").split('@')[0])} mentioned you in ${activeGroup.name}.`, messageId: null, timestamp: window.serverTimestamp(), isRead: false });
+                            }
+                        });
+                    }
+
                     logImmutableAction("MESSAGE_CREATE", `Sent message: "${messageText}"`, isPrivate ? `Private: ${uniqueMentions.join(', ')}` : "Public");
                     setReplyingTo(null);
                 } catch (error) { alert("Failed to send message."); }
@@ -884,6 +919,7 @@
                         logImmutableAction("TASK_FILE", `Attached file ${file.name}`, `Task ID: ${selectedMessage.id}`);
                         await notifyInvolvedInTask(selectedMessage, `${toSentenceCase((user.email||"").split('@')[0])} attached a file to a task.`);
                         setSelectedMessage(prev => ({...prev, taskData: {...prev.taskData, trail: updatedTrail}}));
+                        playTaskSound();
                     } catch(e) {} finally { setTrailFileUploading(false); if(trailFileInputRef.current) trailFileInputRef.current.value = ""; }
                 });
             };
@@ -953,6 +989,7 @@
                     logImmutableAction("TASK_TITLE_EDIT", `Original: "${selectedMessage.text}" | Edited: "${newTaskTitle}"`, `Task ID: ${selectedMessage.id}`);
                     setSelectedMessage(prev => ({...prev, text: newTaskTitle}));
                     setIsEditingTaskTitle(false);
+                    playTaskSound();
                 } catch (e) { alert("Failed to update task title."); }
             };
 
@@ -975,6 +1012,7 @@
                     }, { merge: true });
                     logImmutableAction("TASK_CREATE", `Converted to Task: "${selectedMessage.text}"`, `Assignees: ${taskAssignees.join(', ')}`);
                     setActiveModal(null); setTaskAssignees([]);
+                    playTaskSound();
                 } catch (error) { alert("Failed to create task."); }
             };
 
@@ -987,6 +1025,7 @@
                     logImmutableAction("TASK_DELEGATE", `Delegated Task ID: ${selectedMessage.id}`, `To: ${delegateAssignees.join(', ')}`);
                     await notifyInvolvedInTask(selectedMessage, `${toSentenceCase((user.email||"").split('@')[0])} transferred a task.`);
                     setActiveModal(null); setDelegateAssignees([]); setShowDelegateDropdown(false);
+                    playTaskSound();
                 } catch (error) {}
             };
 
@@ -1000,6 +1039,7 @@
                     logImmutableAction("TASK_COMPLETE", `Completed Task ID: ${selectedMessage.id}`, "");
                     await notifyInvolvedInTask(selectedMessage, `${toSentenceCase((user.email||"").split('@')[0])} marked a task as Completed.`);
                     setActiveModal(null);
+                    playTaskSound();
                 } catch (error) {}
             };
 
@@ -1013,6 +1053,7 @@
                     await notifyInvolvedInTask(selectedMessage, `${toSentenceCase((user.email||"").split('@')[0])} updated a task.`);
                     setTrailComment("");
                     setSelectedMessage(prev => ({...prev, taskData: {...prev.taskData, trail: updatedTrail}}));
+                    playTaskSound();
                     if (closeModal) setActiveModal(null);
                 } catch (error) {}
             };
@@ -1074,16 +1115,33 @@
             }, [messages, user.uid, user.email]);
 
             // =====================================================================
-            // --- NAVIGATE FROM NOTIFICATION -------------------------------------
+            // --- NAVIGATE FROM NOTIFICATION (Smart Scroll & Highlight) ----------
             // =====================================================================
             const navigateToMessageFromNotification = useCallback((msgId, groupId) => {
                 setShowNotifications(false);
                 if (activeGroup.id !== groupId) {
-                    const targetGroup = groups.find(g => g.id === groupId) || { id: groupId || 'demo', name: 'Default Group', isDM: false, members: [] };
-                    setActiveGroup(targetGroup);
+                    let target = groups.find(g => g.id === groupId);
+                    if (!target && groupId.includes('_')) {
+                        const otherUid = groupId.replace(user.uid, '').replace('_', '');
+                        const otherUser = dbUsers.find(u => u.uid === otherUid);
+                        if (otherUser) target = { id: groupId, name: otherUser.name, isDM: true, members: [user.email, otherUser.email] };
+                    }
+                    if(target) setActiveGroup(target);
                 }
-                setTimeout(() => { scrollToMessage(msgId); }, 350);
-            }, [activeGroup.id, groups, scrollToMessage]);
+                
+                let retries = 0;
+                const tryScroll = () => {
+                    const el = document.getElementById(`msg-${msgId}`);
+                    if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        triggerHighlight(msgId);
+                    } else if (retries < 15) {
+                        retries++;
+                        setTimeout(tryScroll, 200);
+                    }
+                };
+                setTimeout(tryScroll, 100);
+            }, [activeGroup.id, groups, dbUsers, user, triggerHighlight]);
 
             // =====================================================================
             // --- RENDER HELPERS (Message Bubble) --------------------------------
@@ -1238,7 +1296,9 @@
             // =====================================================================
             return (
                 <div className="flex h-screen w-full bg-[#f3f4f6] text-[#111b21] overflow-hidden relative font-sans transition-opacity duration-700 ease-out opacity-100">
+                    {/* AUDIO ENGINES */}
                     <audio id="app-sound" src="https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3?filename=success-1-6297.mp3" preload="auto" className="hidden"></audio>
+                    <audio id="task-sound" src="https://cdn.pixabay.com/download/audio/2021/08/09/audio_9ed1023bc2.mp3?filename=correct-2-46134.mp3" preload="auto" className="hidden"></audio>
 
                     {viewMode === "admin" ? (
                         /* =======================================================
@@ -1496,19 +1556,23 @@
                                                             <div>
                                                                 {activeActionableTasks.map(task => (
                                                                     <div key={task.id} className="p-4 bg-white hover:bg-[#f5f6f6] cursor-pointer border-b border-slate-100 transition-colors" onClick={() => navigateToMessageFromNotification(task.id, task.groupId)}>
-                                                                        <div className="text-[13px] font-medium text-[#00a884] mb-1"><i className="fa-regular fa-square-check mr-1.5"></i>Pending Task</div>
+                                                                        <div className="text-[13px] font-medium text-[#00a884] mb-1 flex items-center justify-between"><span className="flex items-center"><i className="fa-regular fa-square-check mr-1.5"></i>Pending Task</span> <span className="text-[10px] text-slate-400">{task.time}</span></div>
                                                                         <div className="text-[14px] text-[#111b21] line-clamp-2 leading-snug">"{task.text}"</div>
                                                                     </div>
                                                                 ))}
-                                                                {genericNotifications.map(n => (
-                                                                    <div key={n.id} className="p-4 bg-white hover:bg-[#f5f6f6] cursor-pointer border-b border-slate-100 transition-colors flex items-start gap-3" onClick={() => { if(n.messageId) navigateToMessageFromNotification(n.messageId, activeGroup.id); }}>
-                                                                        <div className="w-8 h-8 rounded-full bg-[#d9fdd3] flex items-center justify-center text-[#00a884] shrink-0 mt-0.5"><i className={n.type === 'reply' ? "fa-solid fa-reply text-xs" : "fa-solid fa-bolt text-xs"}></i></div>
-                                                                        <div>
-                                                                            <div className="text-[14px] font-medium text-[#111b21]">{n.type === 'reply' ? 'New Reply' : 'New Reaction'}</div>
-                                                                            <div className="text-[13px] text-[#54656f] mt-0.5 leading-snug">{n.text}</div>
+                                                                {genericNotifications.map(n => {
+                                                                    const timeStr = n.timestamp?.toDate ? new Date(n.timestamp.toDate()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Just now';
+                                                                    return (
+                                                                        <div key={n.id} className="p-4 bg-white hover:bg-[#f5f6f6] cursor-pointer border-b border-slate-100 transition-colors flex items-start gap-3 relative" onClick={() => { if(n.messageId) navigateToMessageFromNotification(n.messageId, activeGroup.id); }}>
+                                                                            <div className="w-8 h-8 rounded-full bg-[#d9fdd3] flex items-center justify-center text-[#00a884] shrink-0 mt-0.5"><i className={n.type === 'reply' ? "fa-solid fa-reply text-xs" : n.type === 'message' ? "fa-solid fa-message text-xs" : n.type === 'mention' ? "fa-solid fa-at text-xs" : "fa-solid fa-bolt text-xs"}></i></div>
+                                                                            <div className="flex-1 overflow-hidden">
+                                                                                <div className="text-[14px] font-medium text-[#111b21]">{n.type === 'reply' ? 'New Reply' : n.type === 'message' ? 'Direct Message' : n.type === 'mention' ? 'Mentioned You' : 'New Reaction'}</div>
+                                                                                <div className="text-[13px] text-[#54656f] mt-0.5 leading-snug truncate pr-8">{n.text}</div>
+                                                                            </div>
+                                                                            <div className="absolute bottom-4 right-4 text-[10px] text-slate-400 font-medium">{timeStr}</div>
                                                                         </div>
-                                                                    </div>
-                                                                ))}
+                                                                    );
+                                                                })}
                                                             </div>
                                                         }
                                                     </div>
@@ -1579,13 +1643,17 @@
                                         </div>
                                         {typingStatus.length > 0 && (
                                             <div className="flex items-start animate-in fade-in slide-in-from-bottom-2 mt-2 relative z-[1]">
-                                                <div className="bg-white px-4 py-2 rounded-lg rounded-tl-none shadow-sm text-[13px] text-[#00a884] font-medium flex items-center gap-2">
-                                                    <span>{typingStatus.map(t => toSentenceCase(t.name)).join(', ')} is typing</span>
-                                                    <div className="flex gap-1 items-center h-full pt-1">
-                                                        <div className="w-1.5 h-1.5 bg-[#00a884] rounded-full animate-bounce" style={{animationDelay: '0ms'}}></div>
-                                                        <div className="w-1.5 h-1.5 bg-[#00a884] rounded-full animate-bounce" style={{animationDelay: '150ms'}}></div>
-                                                        <div className="w-1.5 h-1.5 bg-[#00a884] rounded-full animate-bounce" style={{animationDelay: '300ms'}}></div>
+                                                <div className="bg-white px-4 py-2.5 rounded-2xl rounded-tl-none shadow-[0_4px_15px_rgba(0,168,132,0.15)] flex items-center gap-3 border border-teal-50">
+                                                    <div className="flex -space-x-2">
+                                                        {typingStatus.map(t => {
+                                                            const uidPart = t.id.split('_')[1];
+                                                            const typist = dbUsers.find(u => u.uid === uidPart || u.name === t.name) || {};
+                                                            return <MemoizedAvatar key={t.id} uid={uidPart} url={typist.profilePicUrl} name={t.name} sizeClass="w-7 h-7 typing-avatar-pulse border-2 border-white relative z-10" />
+                                                        })}
                                                     </div>
+                                                    <span className="typing-gradient-text text-[13px] tracking-wide">
+                                                        {typingStatus.map(t => toSentenceCase(t.name)).join(', ')} {typingStatus.length > 1 ? 'are' : 'is'} typing...
+                                                    </span>
                                                 </div>
                                             </div>
                                         )}
@@ -1757,6 +1825,18 @@
                                         <div className="text-[12px] font-bold text-slate-600 uppercase tracking-wider mb-3">Preferences</div>
                                         <div className="space-y-2">
                                             <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-white rounded-lg transition-colors"><input type="checkbox" checked={toolPreferences.showWatermark !== false} onChange={(e) => setToolPreferences(prev => ({...prev, showWatermark: e.target.checked}))} className="w-4 h-4 accent-[#008069]" /><span className="text-[14px] font-medium text-slate-700"><i className="fa-solid fa-droplet mr-2 text-[#54656f]"></i> Show Background Watermark</span></label>
+                                            
+                                            <label className="flex flex-col gap-1 cursor-pointer p-2 mt-1 hover:bg-white rounded-lg transition-colors">
+                                                <span className="text-[12px] font-bold text-slate-600 uppercase tracking-wider"><i className="fa-solid fa-music mr-1 text-[#54656f]"></i> Alert Sound</span>
+                                                <select value={toolPreferences.soundProfile || 'classic'} onChange={e => setToolPreferences(prev => ({...prev, soundProfile: e.target.value}))} className="w-full p-2 border border-slate-200 rounded text-[13px] bg-slate-50 outline-none focus:ring-2 focus:ring-[#008069]/20 text-slate-700">
+                                                    <option value="classic">Classic Chime</option>
+                                                    <option value="soft">Soft Pulse</option>
+                                                    <option value="subtle">Subtle Pop</option>
+                                                </select>
+                                            </label>
+
+                                            <div className="h-px bg-slate-200 my-2"></div>
+
                                             <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-white rounded-lg transition-colors"><input type="checkbox" checked={toolPreferences.reply} onChange={(e) => setToolPreferences(prev => ({...prev, reply: e.target.checked}))} className="w-4 h-4 accent-[#008069]" /><span className="text-[14px] font-medium text-slate-700"><i className="fa-solid fa-reply mr-2 text-[#54656f]"></i> Reply Button</span></label>
                                             <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-white rounded-lg transition-colors"><input type="checkbox" checked={toolPreferences.react} onChange={(e) => setToolPreferences(prev => ({...prev, react: e.target.checked}))} className="w-4 h-4 accent-[#008069]" /><span className="text-[14px] font-medium text-slate-700"><i className="fa-regular fa-face-smile mr-2 text-[#54656f]"></i> Quick Emoji Reactions</span></label>
                                             <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-white rounded-lg transition-colors"><input type="checkbox" checked={toolPreferences.bookmark} onChange={(e) => setToolPreferences(prev => ({...prev, bookmark: e.target.checked}))} className="w-4 h-4 accent-[#008069]" /><span className="text-[14px] font-medium text-slate-700"><i className="fa-solid fa-bookmark mr-2 text-[#54656f]"></i> Save for Later</span></label>
@@ -1986,13 +2066,16 @@
                 setAuthError("");
                 if ("Notification" in window && Notification.permission !== "granted") Notification.requestPermission();
 
-                const audioEl = document.getElementById('app-sound');
-                if (audioEl) {
-                    audioEl.volume = 0;
-                    audioEl.play().then(() => {
-                        audioEl.pause(); audioEl.currentTime = 0; audioEl.volume = 1.0; window.audioPrimed = true;
-                    }).catch(err => console.log("Audio prime failed", err));
-                }
+                const primeAllAudio = () => {
+                    if(!window.audioPrimed) {
+                        const a1 = document.getElementById('app-sound');
+                        const a2 = document.getElementById('task-sound');
+                        if (a1) { a1.volume=0; a1.play().then(()=>{a1.pause(); a1.currentTime=0; a1.volume=1.0;}).catch(()=>{}); }
+                        if (a2) { a2.volume=0; a2.play().then(()=>{a2.pause(); a2.currentTime=0; a2.volume=1.0;}).catch(()=>{}); }
+                        window.audioPrimed = true;
+                    }
+                };
+                primeAllAudio();
 
                 try {
                     await window.setPersistence(window.auth, window.inMemoryPersistence);
@@ -2015,7 +2098,7 @@
                             isAdmin: isFirstUser || isMaster,
                             canCreateGroups: isFirstUser || isMaster,
                             profilePicUrl: loggedInUser.photoURL || null,
-                            toolPreferences: { reply: true, react: true, edit: true, delete: true, pin: true, bookmark: true, showWatermark: true }
+                            toolPreferences: { reply: true, react: true, edit: true, delete: true, pin: true, bookmark: true, showWatermark: true, soundProfile: 'classic' }
                         });
                     } else if (isMaster) {
                         await window.setDoc(window.doc(window.db, "users", loggedInUser.uid), {

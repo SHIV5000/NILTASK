@@ -1506,7 +1506,7 @@
                                         {Array.from({ length: 15 }).map((_, rowIdx) => (
                                             <div key={rowIdx} className="doodle-row">
                                                 {Array.from({ length: 8 }).map((_, i) => (
-                                                    <span key={i} className="doodle-item" style={{ fontFamily: '"Segoe UI", sans-serif', fontSize: '16pt', transform: 'rotate(-20deg)', opacity: 0.7 }}>
+                                                    <span key={i} className="doodle-item" style={{ fontFamily: '"Segoe UI", Roboto, Helvetica, Arial, sans-serif', fontSize: '20pt', transform: 'rotate(-20deg)', opacity: 0.7 }}>
                                                         {toSentenceCase(currentUserData?.name || user.email.split('@')[0])}
                                                     </span>
                                                 ))}

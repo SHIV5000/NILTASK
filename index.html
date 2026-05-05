@@ -828,7 +828,7 @@
                 e.preventDefault();
                 const file = profilePicInputRef.current?.files[0];
                 try {
-                    let updateData = { name: toSentenceCase(profileForm.name), fontSize: profileForm.fontSize, fontFamily: profileForm.fontFamily, toolPreferences };
+                    let updateData = { name: profileForm.name, fontSize: profileForm.fontSize, fontFamily: profileForm.fontFamily, toolPreferences};
                     if (file) {
                         setProfileUploadProgress(10);
                         const uniqueFileName = `${user.uid}_${Date.now()}_avatar`;

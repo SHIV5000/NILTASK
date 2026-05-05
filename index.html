@@ -3,6 +3,9 @@
 <head>
     <!-- ========================================================================= -->
     <!-- SECTION 1 : META, PWA & EXTERNAL DEPENDENCIES                             -->
+    <!-- Purpose: Sets up the document environment, mobile viewport rules, PWA     -->
+    <!-- manifest linking, and imports all required external libraries via CDN     -->
+    <!-- (Tailwind CSS, FontAwesome, React, Babel, jsPDF).                         -->
     <!-- ========================================================================= -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -32,6 +35,9 @@
 
     <!-- ========================================================================= -->
     <!-- SECTION 2 : FIREBASE INITIALIZATION & SERVICE WORKER                      -->
+    <!-- Purpose: Initializes the Google Firebase backend connection (Auth, DB,    -->
+    <!-- Storage) and attaches them to the global `window` object for React to use.-->
+    <!-- Also registers the Service Worker for Offline/PWA capabilities.           -->
     <!-- ========================================================================= -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
@@ -94,6 +100,9 @@
 
     <!-- ========================================================================= -->
     <!-- SECTION 3 : GLOBAL CSS (THEME, SCROLLBARS, ANIMATIONS)                    -->
+    <!-- Purpose: Custom styles that Tailwind cannot easily handle natively.       -->
+    <!-- Includes keyframes for pulses, mobile safe-area paddings, custom chat     -->
+    <!-- background (wa-bg), and fixed watermark logic.                            -->
     <!-- ========================================================================= -->
     <style>
         :root {
@@ -138,19 +147,8 @@
             gap: 1.2rem;
             padding: 2rem 0;
         }
-        .doodle-watermark .doodle-row {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 1.5rem 3rem;
-        }
-        .doodle-watermark .doodle-item {
-            display: inline-block;
-            white-space: nowrap;
-            color: #111b21;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
+        .doodle-watermark .doodle-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 1.5rem 3rem; }
+        .doodle-watermark .doodle-item { display: inline-block; white-space: nowrap; color: #111b21; text-transform: uppercase; letter-spacing: 0.05em; }
 
         @keyframes msgHighlightPulse {
             0% { box-shadow: 0 0 0 0 rgba(0,128,105,0.6); border: 2px solid transparent; }
@@ -159,111 +157,39 @@
             70% { box-shadow: 0 0 0 8px rgba(0,128,105,0.1), 0 0 15px 3px rgba(0,128,105,0.25); border: 2px solid #008069; }
             100% { box-shadow: 0 0 0 0 rgba(0,128,105,0); border: 2px solid transparent; }
         }
-        .highlight-flash {
-            animation: msgHighlightPulse 3s ease-out forwards;
-            border-radius: 12px;
-            position: relative;
-            z-index: 5;
-        }
+        .highlight-flash { animation: msgHighlightPulse 3s ease-out forwards; border-radius: 12px; position: relative; z-index: 5; }
 
         /* Liquid Typing Indicator */
-        @keyframes liquidWave {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-        }
-        .typing-gradient-text {
-            background: linear-gradient(270deg, #008069, #00a884, #25d366, #008069);
-            background-size: 300% 300%;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            animation: liquidWave 3s ease infinite;
-            font-weight: bold;
-        }
-        @keyframes avatarPulse {
-            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 168, 132, 0.4); }
-            70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(0, 168, 132, 0); }
-            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 168, 132, 0); }
-        }
-        .typing-avatar-pulse {
-            animation: avatarPulse 1.5s infinite;
-        }
+        @keyframes liquidWave { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        .typing-gradient-text { background: linear-gradient(270deg, #008069, #00a884, #25d366, #008069); background-size: 300% 300%; -webkit-background-clip: text; -webkit-text-fill-color: transparent; animation: liquidWave 3s ease infinite; font-weight: bold; }
+        @keyframes avatarPulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 168, 132, 0.4); } 70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(0, 168, 132, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 168, 132, 0); } }
+        .typing-avatar-pulse { animation: avatarPulse 1.5s infinite; }
 
-        .glass-header {
-            background: rgba(255, 255, 255, 0.85);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border-bottom: 1px solid rgba(0,0,0,0.05);
-        }
-        .glass-panel {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-        }
+        .glass-header { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid rgba(0,0,0,0.05); }
+        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
 
-        @keyframes subtleSlideUp {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+        @keyframes subtleSlideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .app-entrance { animation: subtleSlideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
         .custom-checkbox input:checked + div { background-color: #008069; border-color: #008069; }
         .custom-checkbox input:checked + div i { opacity: 1; }
 
-        @keyframes flip-hourglass {
-            0% { transform: rotate(0deg); }
-            50% { transform: rotate(180deg); }
-            100% { transform: rotate(180deg); }
-        }
+        @keyframes flip-hourglass { 0% { transform: rotate(0deg); } 50% { transform: rotate(180deg); } 100% { transform: rotate(180deg); } }
         .animate-sandclock { animation: flip-hourglass 2s infinite ease-in-out; }
 
         .msg-row-spacing { margin-bottom: 1.25rem; }
         .text-shadow { text-shadow: 0 1px 1px rgba(0,0,0,0.1); }
 
-        @keyframes onlinePulse {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(37,211,102,0.5); }
-            50% { box-shadow: 0 0 0 6px rgba(37,211,102,0); }
-        }
+        @keyframes onlinePulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(37,211,102,0.5); } 50% { box-shadow: 0 0 0 6px rgba(37,211,102,0); } }
         .online-dot { animation: onlinePulse 2s infinite; }
 
-        .emoji-picker-popup {
-            position: absolute;
-            bottom: 100%;
-            left: 0;
-            margin-bottom: 8px;
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.2);
-            padding: 10px;
-            display: grid;
-            grid-template-columns: repeat(8, 1fr);
-            gap: 4px;
-            z-index: 50;
-            width: 320px;
-            max-width: 90vw;
-            max-height: 260px;
-            overflow-y: auto;
-        }
-        .emoji-picker-popup button {
-            font-size: 22px;
-            padding: 6px;
-            border-radius: 8px;
-            cursor: pointer;
-            background: transparent;
-            border: none;
-            transition: background 0.15s;
-            line-height: 1;
-        }
+        .emoji-picker-popup { position: absolute; bottom: 100%; left: 0; margin-bottom: 8px; background: white; border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.2); padding: 10px; display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; z-index: 50; width: 320px; max-width: 90vw; max-height: 260px; overflow-y: auto; }
+        .emoji-picker-popup button { font-size: 22px; padding: 6px; border-radius: 8px; cursor: pointer; background: transparent; border: none; transition: background 0.15s; line-height: 1; }
         .emoji-picker-popup button:hover { background: #f0f2f5; }
 
         @media (max-width: 767px) {
-            .mobile-sidebar-overlay {
-                position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 55; animation: fadeIn 0.2s ease-out;
-            }
-            .mobile-sidebar-panel {
-                position: fixed; left: 0; top: 0; bottom: 0; width: 85vw; max-width: 360px; z-index: 56;
-                transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 4px 0 20px rgba(0,0,0,0.15);
-            }
+            .mobile-sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 55; animation: fadeIn 0.2s ease-out; }
+            .mobile-sidebar-panel { position: fixed; left: 0; top: 0; bottom: 0; width: 85vw; max-width: 360px; z-index: 56; transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 4px 0 20px rgba(0,0,0,0.15); }
             .mobile-sidebar-panel.open { transform: translateX(0); }
             @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
             .modal-mobile-full { width: 100vw !important; height: 100vh !important; max-height: 100vh !important; border-radius: 0 !important; margin: 0 !important; }
@@ -281,8 +207,17 @@
 
         // =========================================================================
         // === SECTION 4 : UTILITY FUNCTIONS & MEMOIZED COMPONENTS               ===
+        // Purpose: Helper functions for formatting (toSentenceCase), local storage
+        // caching for fast image loading (getCachedImage), and standalone React 
+        // components like the User Avatars and Error Boundaries.
         // =========================================================================
 
+        const toSentenceCase = (str) => {
+            if (!str) return "";
+            return str.toLowerCase().replace(/(^\w{1})|(\s+\w{1})/g, letter => letter.toUpperCase());
+        };
+
+        // Component 4.1: MemoizedAvatar
         const MemoizedAvatar = React.memo(({ uid, url, name, sizeClass = "w-10 h-10", isGroup = false, extraClasses = "" }) => {
             const cachedUrl = useMemo(() => {
                 if (!url) return null;
@@ -302,6 +237,7 @@
             );
         });
 
+        // Component 4.2: ErrorBoundary
         class ErrorBoundary extends React.Component {
             constructor(props) { super(props); this.state = { hasError: false, error: null, errorInfo: null }; }
             static getDerivedStateFromError(error) { return { hasError: true }; }
@@ -324,8 +260,11 @@
 
         // =========================================================================
         // === SECTION 5 : MAIN CHAT APPLICATION COMPONENT                       ===
+        // Purpose: The core application containing all logical states, Firebase
+        // stream listeners, interaction handlers, and UI render paths.
         // =========================================================================
         function ChatApp({ user, onLogout }) {
+            // --- 5.1 View & Modal States ---
             const [isVipAdmin, setIsVipAdmin] = useState(false);
             const [activeModal, setActiveModal] = useState(null);
             const [showRightSidebar, setShowRightSidebar] = useState(false);
@@ -336,6 +275,7 @@
             const [isLoaded, setIsLoaded] = useState(false);
             const [isWorkspaceLoading, setIsWorkspaceLoading] = useState(true);
 
+            // --- 5.2 Chat Interaction States ---
             const [inputText, setInputText] = useState("");
             const [searchQuery, setSearchQuery] = useState("");
             const [sidebarSearch, setSidebarSearch] = useState("");
@@ -345,6 +285,7 @@
             const [editingMessageId, setEditingMessageId] = useState(null);
             const [editMessageText, setEditMessageText] = useState("");
 
+            // --- 5.3 Task specific states ---
             const [taskAssignees, setTaskAssignees] = useState([]);
             const [taskDeadline, setTaskDeadline] = useState("");
             const [delegateAssignees, setDelegateAssignees] = useState([]);
@@ -354,6 +295,7 @@
             const [isEditingTaskTitle, setIsEditingTaskTitle] = useState(false);
             const [newTaskTitle, setNewTaskTitle] = useState("");
 
+            // --- 5.4 Data Stream Arrays (Firestore Sync) ---
             const [messages, setMessages] = useState([]);
             const [dbUsers, setDbUsers] = useState([]);
             const [groups, setGroups] = useState([]);
@@ -365,6 +307,7 @@
             const [allAdminReminders, setAllAdminReminders] = useState([]);
             const [immutableAuditLogs, setImmutableAuditLogs] = useState([]);
 
+            // --- 5.5 Admin/Form Management States ---
             const [adminForm, setAdminForm] = useState({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false });
             const [profileForm, setProfileForm] = useState({ name: "", fontSize: "text-[14.2px]", fontFamily: "font-sans" });
             const [groupForm, setGroupForm] = useState({ name: "", members: [], profilePicUrl: null });
@@ -374,12 +317,14 @@
             const [adminFilterType, setAdminFilterType] = useState("");
             const [adminFilterGroup, setAdminFilterGroup] = useState("");
 
+            // --- 5.6 File Upload Progress ---
             const [uploadProgress, setUploadProgress] = useState(0);
             const [isUploading, setIsUploading] = useState(false);
             const [trailFileUploading, setTrailFileUploading] = useState(false);
             const [profileUploadProgress, setProfileUploadProgress] = useState(0);
             const [groupPicUploadProgress, setGroupPicUploadProgress] = useState(0);
 
+            // --- 5.7 DOM Element References ---
             const messagesEndRef = useRef(null);
             const chatContainerRef = useRef(null);
             const chatInputRef = useRef(null);
@@ -391,6 +336,7 @@
             const prevMessagesCountRef = useRef(0);
             const lastTypingTime = useRef(0);
             const highlightTimerRef = useRef(null);
+            const [pendingScrollTarget, setPendingScrollTarget] = useState(null);
 
             const loaderTips = [
                 "Tip: Type '@' to instantly mention your peers or entire departments.",
@@ -408,6 +354,11 @@
             const [toolPreferences, setToolPreferences] = useState({
                 reply: true, react: true, edit: true, delete: true, pin: true, bookmark: true, showWatermark: true, soundProfile: 'classic'
             });
+
+            // =====================================================================
+            // --- SECTION 5.A : CORE LIFECYCLE HOOKS (EFFECTS)                  ---
+            // Purpose: Handles initialization, data subscriptions, and timers.
+            // =====================================================================
 
             useEffect(() => {
                 let tipIndex = 0;
@@ -466,6 +417,7 @@
             }, []);
             useEffect(() => { verifyAdminStatus().then(res => setIsVipAdmin(res)); }, [verifyAdminStatus]);
 
+            // Database Listener: Reminders, Notifications, Admin Logs
             useEffect(() => {
                 const qPersonal = window.query(window.collection(window.db, "reminders"), window.where("userId", "==", user.uid), window.where("isTriggered", "==", false));
                 const unsubPersonal = window.onSnapshot(qPersonal, (snapshot) => setActiveReminders(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
@@ -491,6 +443,7 @@
                 return () => { unsubPersonal(); unsubAlerts(); unsubAdmin(); unsubAudit(); };
             }, [user.uid, currentUserData?.isAdmin, isVipAdmin]);
 
+            // Database Listener: Users & Departments
             useEffect(() => {
                 const heartbeatInterval = setInterval(() => { window.updateDoc(window.doc(window.db, "users", user.uid), { lastActive: window.serverTimestamp() }).catch(() => {}); }, 60000);
                 const unsubCurrent = window.onSnapshot(window.doc(window.db, "users", user.uid), (doc) => {
@@ -508,6 +461,7 @@
                 return () => { clearInterval(heartbeatInterval); unsubCurrent(); unsubUsers(); unsubGroups(); };
             }, [user, currentUserData?.isAdmin, isVipAdmin]);
 
+            // Sound Execution Functions
             const playAlertSound = useCallback(() => {
                 const audioUrls = {
                     classic: "https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3",
@@ -530,6 +484,7 @@
                 } catch(e) {}
             }, []);
 
+            // Database Listener: Real-time Messages Sync
             useEffect(() => {
                 const q = window.query(window.collection(window.db, "messages"), window.orderBy("timestamp", "asc"));
                 const unsubscribe = window.onSnapshot(q, (snapshot) => {
@@ -549,7 +504,9 @@
                     }
                     prevMessagesCountRef.current = loadedMessages.length;
                     
-                    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
+                    if(!pendingScrollTarget) {
+                        setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
+                    }
                 });
 
                 const unsubTyping = window.onSnapshot(window.collection(window.db, "typing"), (snapshot) => {
@@ -559,8 +516,9 @@
                 });
 
                 return () => { unsubscribe(); unsubTyping(); };
-            }, [user.uid, activeGroup?.id, playAlertSound, isWorkspaceLoading]);
+            }, [user.uid, activeGroup?.id, playAlertSound, isWorkspaceLoading, pendingScrollTarget]);
 
+            // Database Updater: Seen status marking
             useEffect(() => {
                 if (!activeGroup?.id || !user.email) return;
                 const unseenMsgs = messages.filter(m => m.groupId === activeGroup.id && !m.isMine && !(m.seenBy || []).includes(user.email));
@@ -576,6 +534,7 @@
                 batchUpdate();
             }, [activeGroup?.id, messages, user.email]);
 
+            // UI Listeners: Click outside to close emoji picker
             useEffect(() => {
                 const handleClickOutside = (e) => { if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target)) { setEmojiPickerOpen(false); } };
                 if (emojiPickerOpen) { document.addEventListener('mousedown', handleClickOutside); document.addEventListener('touchstart', handleClickOutside); }
@@ -584,41 +543,32 @@
 
             useEffect(() => { return () => { if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current); }; }, []);
             
+            // Animation Helper: Triggers message highlight pulse
             const triggerHighlight = useCallback((msgId) => {
                 setHighlightedMsgId(msgId);
                 if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
                 highlightTimerRef.current = setTimeout(() => { setHighlightedMsgId(null); }, 3100);
             }, []);
 
-            const navigateToMessageFromNotification = useCallback((msgId, groupId) => {
-                setShowNotifications(false);
-                setViewMode("chat");
-                setShowRightSidebar(false);
-                setMobileSidebarOpen(false);
-
-                if (activeGroup?.id !== groupId) {
-                    let target = groups.find(g => g.id === groupId);
-                    if (!target && groupId && groupId.includes('_')) {
-                        const otherUid = groupId.replace(user.uid, '').replace('_', '');
-                        const otherUser = dbUsers.find(u => u.uid === otherUid);
-                        if (otherUser) target = { id: groupId, name: otherUser.name, isDM: true, members: [user.email, otherUser.email] };
-                    }
-                    if (target) setActiveGroup(target);
-                }
-
-                let retries = 0;
-                const tryScroll = () => {
-                    const el = document.getElementById(`msg-${msgId}`);
+            // Handle Smart Scrolling for Notifications (DOM Polling)
+            useEffect(() => {
+                if (pendingScrollTarget && activeGroup) {
+                    const el = document.getElementById(`msg-${pendingScrollTarget}`);
                     if (el) {
-                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        triggerHighlight(msgId);
-                    } else if (retries < 20) {
-                        retries++;
-                        setTimeout(tryScroll, 100);
+                        setTimeout(() => {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            triggerHighlight(pendingScrollTarget);
+                            setPendingScrollTarget(null);
+                        }, 200);
                     }
-                };
-                setTimeout(tryScroll, 100);
-            }, [activeGroup, groups, dbUsers, user, triggerHighlight]);
+                }
+            }, [messages, pendingScrollTarget, activeGroup, triggerHighlight]);
+
+
+            // =====================================================================
+            // --- SECTION 5.B : COMPUTED STATE (useMemo)                        ---
+            // Purpose: Efficiently calculates derived arrays (filtered tasks, logs)
+            // =====================================================================
 
             const myGroups = useMemo(() => {
                 let filtered = groups.filter(g => g.members?.includes(user.email) && !g.isArchived);
@@ -686,6 +636,12 @@
                 return logs;
             }, [immutableAuditLogs, adminFilterUser, adminFilterDate, adminFilterType, adminFilterGroup]);
 
+            // =====================================================================
+            // --- SECTION 5.C : ACTION HANDLERS (LOGIC & FIREBASE WRITES)       ---
+            // Purpose: Executing business logic, logging audit actions, and saving
+            // to the Firebase database.
+            // =====================================================================
+
             const scrollToMessageDirect = useCallback((msgId) => {
                 const el = document.getElementById(`msg-${msgId}`);
                 if (el) {
@@ -714,9 +670,10 @@
                 }
             }, [activeGroup, user.uid, currentUserData?.name, user.email]);
 
+            // CORE: Send Text Message & Handle @Mentions Routing
             const handleSendMessage = async () => {
                 if (!inputText.trim() || !activeGroup) return;
-                const messageText = inputText.trim(); // EXACT PRESERVATION OF USER CASE
+                const messageText = inputText.trim();
                 setInputText(""); setEmojiPickerOpen(false);
                 try { window.deleteDoc(window.doc(window.db, "typing", `${activeGroup.id}_${user.uid}`)); } catch(e) {}
 
@@ -743,7 +700,6 @@
                 }
 
                 try {
-                    // Send to Active Group
                     await window.addDoc(window.collection(window.db, "messages"), {
                         text: messageText, senderUid: user.uid, senderEmail: user.email, timestamp: window.serverTimestamp(),
                         isTask: false, hasReminder: false, isPrivateMention: isPrivate, allowedUsers: allowedUsers,
@@ -751,7 +707,6 @@
                         groupId: activeGroup.id, reactions: {}, ...(replyData || {})
                     });
                     
-                    // Direct Message Notifications & Cross-Posting
                     if (activeGroup.isDM) {
                         const recipientEmail = activeGroup.members.find(m => m !== user.email);
                         const recipient = dbUsers.find(u => u.email === recipientEmail);
@@ -759,7 +714,6 @@
                             try { await window.addDoc(window.collection(window.db, "notifications"), { userId: recipient.uid, type: "message", text: `${(user.email||"").split('@')[0]} sent you a direct message.`, messageId: null, groupId: activeGroup.id, timestamp: window.serverTimestamp(), isRead: false }); } catch (e) {}
                         }
                     } else if (uniqueMentions.length > 0) {
-                        // Cross-Post @Mentions to DMs
                         uniqueMentions.forEach(async (mentionedEmail) => {
                             if (mentionedEmail === user.email) return;
                             const mentionedUser = dbUsers.find(u => u.email === mentionedEmail);
@@ -797,6 +751,7 @@
                 } catch (err) {}
             };
 
+            // CORE: Paste-to-Upload & File Sharing
             const uploadFileDirectly = async (file) => {
                 if (!file || !activeGroup) return;
                 setIsUploading(true); setUploadProgress(0);
@@ -856,6 +811,7 @@
                 } catch (error) { alert("Profile update failed."); setProfileUploadProgress(0); }
             };
 
+            // CORE: Task Action Logic
             const notifyInvolvedInTask = async (taskMsg, actionText) => {
                 const involvedEmails = new Set([ taskMsg.senderEmail, ...(taskMsg.taskData?.assignees || []), ...(taskMsg.taskData?.trail?.map(t => t.by) || []) ]);
                 involvedEmails.delete(user.email);
@@ -1046,6 +1002,7 @@
                 }
             };
 
+            // CORE: Admin Logic
             const handleToggleApprove = async (u) => { await window.updateDoc(window.doc(window.db, "users", u.uid), { isApproved: !u.isApproved }); };
 
             const handleEditUserSubmit = async (e) => {
@@ -1087,6 +1044,11 @@
                 const pendingTasks = dmMessages.filter(m => m.isTask && m.taskData?.status !== "Completed" && m.taskData?.assignees?.includes(user.email) && !(m.taskData?.dismissedBy || []).includes(user.uid) && m.senderEmail === otherUserEmail && !m.taskData?.isArchived);
                 return { unreadCount: unreadMsgs.length, pendingTaskCount: pendingTasks.length, total: unreadMsgs.length + pendingTasks.length };
             }, [messages, user.uid, user.email]);
+
+            // =====================================================================
+            // --- SECTION 5.D : RENDER HELPERS (UI BUILDERS)                    ---
+            // Purpose: Dynamically generate chat bubbles, cards, and modal pieces.
+            // =====================================================================
 
             const getBubbleStyles = (msg) => {
                 let baseStyles = "";
@@ -1190,6 +1152,12 @@
                     </div>
                 );
             }, [messages, editingMessageId, editMessageText, user.email, currentUserData, handleTogglePin, handleToggleBookmark, handleReaction, handleDeleteMessage, scrollToMessageDirect, activeGroup, isVipAdmin, toolPreferences, highlightedMsgId]);
+
+
+            // =====================================================================
+            // --- SECTION 5.E : MAIN RENDER CYCLE                               ---
+            // Purpose: Renders the Full App UI, Sidebars, Modals, and Dashboard.
+            // =====================================================================
 
             if (currentUserData && currentUserData.isApproved !== true && !currentUserData.isAdmin && !isVipAdmin) {
                 return (
@@ -1786,7 +1754,8 @@
                     )}
 
                     {/* ========================================================================= */}
-                    {/* === MODALS & OVERLAYS                                                 === */}
+                    {/* === SECTION 5.F : MODALS & OVERLAYS                               === */}
+                    {/* Purpose: Floating windows for Context Menus, Profile, Tasks, etc. */}
                     {/* ========================================================================= */}
 
                     {/* Beautiful Context Menu Modal */}
@@ -2011,7 +1980,7 @@
                                             {selectedMessage.taskData.status !== "Completed" && (
                                                 <button onClick={handleCompleteTask} className="flex-[2] bg-emerald-600 text-white py-3 rounded-xl text-[13px] font-bold shadow-sm hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"><i className="fa-solid fa-check"></i> Mark Completed</button>
                                             )}
-                                            <button onClick={handleArchiveTask} className="flex-1 bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-800 py-3 rounded-xl text-[13px] font-bold transition-all flex items-center justify-center gap-2 border border-slate-200"><i className="fa-solid fa-box-archive"></i> Archive</button>
+                                            <button onClick={handleArchiveTask} className="flex-1 bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-800 py-3 rounded-xl text-[13px] font-bold transition-all flex items-center justify-center gap-2 border border-slate-200"><i className="fa-solid fa-box-archive"></i> Archive Task</button>
                                         </div>
 
                                     </div>

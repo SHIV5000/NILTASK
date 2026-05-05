@@ -287,16 +287,6 @@
             return str.toLowerCase().replace(/(^\w{1})|(\s+\w{1})/g, letter => letter.toUpperCase());
         };
 
-        const getCachedImage = (uid, url) => {
-            if (!url) return null;
-            try {
-                const cachedUrl = localStorage.getItem(`avatar_${uid}`);
-                if (cachedUrl === url) return url;
-                localStorage.setItem(`avatar_${uid}`, url);
-            } catch (e) { console.warn("Local storage blocked"); }
-            return url;
-        };
-
         const MemoizedAvatar = React.memo(({ uid, url, name, sizeClass = "w-10 h-10", isGroup = false, extraClasses = "" }) => {
             const cachedUrl = useMemo(() => {
                 if (!url) return null;
@@ -442,9 +432,7 @@
                 const primeAudio = () => {
                     if (!window.audioPrimed) {
                         const audioEl = document.getElementById('app-sound');
-                        const taskAudioEl = document.getElementById('task-sound');
                         if (audioEl) { audioEl.volume = 0; audioEl.play().then(() => { audioEl.pause(); audioEl.currentTime = 0; audioEl.volume = 1.0; window.audioPrimed = true; }).catch(()=>{}); }
-                        if (taskAudioEl) { taskAudioEl.volume = 0; taskAudioEl.play().then(() => { taskAudioEl.pause(); taskAudioEl.currentTime = 0; taskAudioEl.volume = 1.0; }).catch(()=>{}); }
                     }
                 };
                 window.addEventListener('click', primeAudio, { once: true });
@@ -538,11 +526,11 @@
             }, [toolPreferences.soundProfile]);
 
             const playTaskSound = useCallback(() => {
-                const audioEl = document.getElementById('task-sound');
-                if (audioEl && window.audioPrimed) {
-                    audioEl.currentTime = 0; audioEl.volume = 1.0;
-                    audioEl.play().catch(e => console.warn("Browser blocked audio:", e));
-                }
+                try {
+                    const audio = new Audio("https://cdn.pixabay.com/download/audio/2021/08/09/audio_9ed1023bc2.mp3?filename=correct-2-46134.mp3");
+                    audio.volume = 0.8;
+                    audio.play().catch(()=>{});
+                } catch(e) {}
             }, []);
 
             useEffect(() => {
@@ -616,7 +604,7 @@
                             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                             triggerHighlight(pendingScrollTarget);
                             setPendingScrollTarget(null);
-                        }, 200); // give DOM a tiny moment to render
+                        }, 200);
                     }
                 }
             }, [messages, pendingScrollTarget, activeGroup, triggerHighlight]);
@@ -717,7 +705,7 @@
 
             const handleSendMessage = async () => {
                 if (!inputText.trim() || !activeGroup) return;
-                const messageText = inputText.trim(); // Removed formatMessage enforcing Sentence Case
+                const messageText = inputText.trim(); // EXACT PRESERVATION OF USER CASE
                 setInputText(""); setEmojiPickerOpen(false);
                 try { window.deleteDoc(window.doc(window.db, "typing", `${activeGroup.id}_${user.uid}`)); } catch(e) {}
 
@@ -739,7 +727,7 @@
                         originalSender: (replyingTo.sender||"").split('@')[0]
                     };
                     if (replyingTo.senderUid !== user.uid) {
-                        try { await window.addDoc(window.collection(window.db, "notifications"), { userId: replyingTo.senderUid, type: "reply", text: `${toSentenceCase((user.email||"").split('@')[0])} replied to your message.`, messageId: replyingTo.id, timestamp: window.serverTimestamp(), isRead: false }); } catch (e) {}
+                        try { await window.addDoc(window.collection(window.db, "notifications"), { userId: replyingTo.senderUid, type: "reply", text: `${toSentenceCase((user.email||"").split('@')[0])} replied to your message.`, messageId: replyingTo.id, groupId: activeGroup.id, timestamp: window.serverTimestamp(), isRead: false }); } catch (e) {}
                     }
                 }
 
@@ -757,7 +745,7 @@
                         const recipientEmail = activeGroup.members.find(m => m !== user.email);
                         const recipient = dbUsers.find(u => u.email === recipientEmail);
                         if (recipient) {
-                            try { await window.addDoc(window.collection(window.db, "notifications"), { userId: recipient.uid, type: "message", text: `${toSentenceCase((user.email||"").split('@')[0])} sent you a direct message.`, messageId: null, timestamp: window.serverTimestamp(), isRead: false }); } catch (e) {}
+                            try { await window.addDoc(window.collection(window.db, "notifications"), { userId: recipient.uid, type: "message", text: `${toSentenceCase((user.email||"").split('@')[0])} sent you a direct message.`, messageId: null, groupId: activeGroup.id, timestamp: window.serverTimestamp(), isRead: false }); } catch (e) {}
                         }
                     } else if (uniqueMentions.length > 0) {
                         // Cross-Post @Mentions to DMs
@@ -771,7 +759,7 @@
                                     text: `[Forwarded from ${activeGroup.name}]\n\n${messageText}`, senderUid: user.uid, senderEmail: user.email, timestamp: window.serverTimestamp(),
                                     isTask: false, hasReminder: false, isPrivateMention: false, allowedUsers: [user.email, mentionedEmail], seenBy: [user.email], deliveredTo: [user.email], isPinned: false, bookmarkedBy: [], fileUrl: null, fileName: null, fileType: null, groupId: dmIdStr, reactions: {}
                                 });
-                                await window.addDoc(window.collection(window.db, "notifications"), { userId: mentionedUser.uid, type: "mention", text: `${toSentenceCase((user.email||"").split('@')[0])} mentioned you in ${activeGroup.name}.`, messageId: null, timestamp: window.serverTimestamp(), isRead: false });
+                                await window.addDoc(window.collection(window.db, "notifications"), { userId: mentionedUser.uid, type: "mention", text: `${toSentenceCase((user.email||"").split('@')[0])} mentioned you in ${activeGroup.name}.`, messageId: null, groupId: dmIdStr, timestamp: window.serverTimestamp(), isRead: false });
                             }
                         });
                     }
@@ -793,7 +781,7 @@
                 if (usersForEmoji.length === 0) delete updatedReactions[emoji]; else updatedReactions[emoji] = usersForEmoji;
                 try {
                     await window.updateDoc(window.doc(window.db, "messages", msgId), { reactions: updatedReactions });
-                    if (isAdding && msg.senderUid !== user.uid) await window.addDoc(window.collection(window.db, "notifications"), { userId: msg.senderUid, type: "reaction", text: `${toSentenceCase((user.email||"").split('@')[0])} reacted ${emoji}.`, messageId: msgId, timestamp: window.serverTimestamp(), isRead: false });
+                    if (isAdding && msg.senderUid !== user.uid) await window.addDoc(window.collection(window.db, "notifications"), { userId: msg.senderUid, type: "reaction", text: `${toSentenceCase((user.email||"").split('@')[0])} reacted ${emoji}.`, messageId: msgId, groupId: msg.groupId, timestamp: window.serverTimestamp(), isRead: false });
                     if (isAdding) logImmutableAction("REACTION", `Reacted ${emoji} to message`, `Message ID: ${msgId}`);
                 } catch (err) {}
             };
@@ -862,7 +850,7 @@
                 involvedEmails.delete(user.email);
                 const uidsToNotify = dbUsers.filter(u => involvedEmails.has(u.email)).map(u => u.uid);
                 for (const uid of uidsToNotify) {
-                    try { await window.addDoc(window.collection(window.db, "notifications"), { userId: uid, type: "task", text: actionText, messageId: taskMsg.id, timestamp: window.serverTimestamp(), isRead: false }); } catch (e) {}
+                    try { await window.addDoc(window.collection(window.db, "notifications"), { userId: uid, type: "task", text: actionText, messageId: taskMsg.id, groupId: taskMsg.groupId, timestamp: window.serverTimestamp(), isRead: false }); } catch (e) {}
                 }
             };
 
@@ -1014,6 +1002,13 @@
                 } catch (error) {}
             };
 
+            const handleQuickArchive = async (taskId) => {
+                try {
+                    await window.updateDoc(window.doc(window.db, "messages", taskId), { "taskData.isArchived": true });
+                    logImmutableAction("TASK_ARCHIVED", `Archived Task ID: ${taskId}`, "");
+                } catch (e) {}
+            };
+
             const handleAddComment = async (closeModal = false) => {
                 if (!selectedMessage || !trailComment.trim()) return;
                 try {
@@ -1081,20 +1076,6 @@
                 const pendingTasks = dmMessages.filter(m => m.isTask && m.taskData?.status !== "Completed" && m.taskData?.assignees?.includes(user.email) && !(m.taskData?.dismissedBy || []).includes(user.uid) && m.senderEmail === otherUserEmail && !m.taskData?.isArchived);
                 return { unreadCount: unreadMsgs.length, pendingTaskCount: pendingTasks.length, total: unreadMsgs.length + pendingTasks.length };
             }, [messages, user.uid, user.email]);
-
-            const navigateToMessageFromNotification = useCallback((msgId, groupId) => {
-                setShowNotifications(false);
-                if (activeGroup?.id !== groupId) {
-                    let target = groups.find(g => g.id === groupId);
-                    if (!target && groupId.includes('_')) {
-                        const otherUid = groupId.replace(user.uid, '').replace('_', '');
-                        const otherUser = dbUsers.find(u => u.uid === otherUid);
-                        if (otherUser) target = { id: groupId, name: otherUser.name, isDM: true, members: [user.email, otherUser.email] };
-                    }
-                    if(target) setActiveGroup(target);
-                }
-                setPendingScrollTarget(msgId);
-            }, [activeGroup, groups, dbUsers, user]);
 
             const getBubbleStyles = (msg) => {
                 let baseStyles = "";
@@ -1239,7 +1220,6 @@
                 <div className="flex h-screen w-full bg-[#f3f4f6] text-[#111b21] overflow-hidden relative font-sans transition-opacity duration-700 ease-out opacity-100">
                     {/* AUDIO ENGINES */}
                     <audio id="app-sound" src="https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3?filename=success-1-6297.mp3" preload="auto" className="hidden"></audio>
-                    <audio id="task-sound" src="https://cdn.pixabay.com/download/audio/2021/08/09/audio_9ed1023bc2.mp3?filename=correct-2-46134.mp3" preload="auto" className="hidden"></audio>
 
                     {viewMode === "admin" ? (
                         <div className="flex flex-col h-full w-full bg-[#f8fafc] overflow-hidden animate-in fade-in z-40">
@@ -1743,7 +1723,10 @@
                                                                 <div className="font-medium text-[14px] text-[#111b21] truncate mb-1">{task.text || 'File Task'}</div>
                                                                 <div className="flex justify-between items-center mt-1.5">
                                                                     <span className={`text-[12px] truncate max-w-[120px] font-semibold ${isTaskDM ? 'text-[#54656f]' : 'text-[#800020]'}`}>{groupNameStr}</span>
-                                                                    <span className="text-[11px] font-semibold text-[#ea0038]">Due {new Date(task.taskData.deadline).toLocaleDateString()}</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-[11px] font-semibold text-[#ea0038]">Due {new Date(task.taskData.deadline).toLocaleDateString()}</span>
+                                                                        <button onClick={(e) => { e.stopPropagation(); handleQuickArchive(task.id); }} className="text-slate-400 hover:text-slate-600 p-1" title="Archive Task"><i className="fa-solid fa-box-archive"></i></button>
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         )
@@ -1774,7 +1757,10 @@
                                                                 <div className="text-[12px] text-[#54656f] truncate mb-1.5">To: {(task.taskData.assignees||[]).map(a=>toSentenceCase((a||"").split('@')[0])).join(', ')}</div>
                                                                 <div className="flex justify-between items-center">
                                                                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm ${task.taskData.status==='Pending'?'bg-amber-100 text-amber-700':'bg-[#d1e8ff] text-blue-700'}`}>{task.taskData.status}</span>
-                                                                    <span className="text-[11px] font-semibold text-[#ea0038]">Due {new Date(task.taskData.deadline).toLocaleDateString()}</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-[11px] font-semibold text-[#ea0038]">Due {new Date(task.taskData.deadline).toLocaleDateString()}</span>
+                                                                        <button onClick={(e) => { e.stopPropagation(); handleQuickArchive(task.id); }} className="text-slate-400 hover:text-slate-600 p-1" title="Archive Task"><i className="fa-solid fa-box-archive"></i></button>
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         )
@@ -2001,8 +1987,8 @@
 
                                             {/* Add Update */}
                                             <div className="flex-[2] flex flex-col gap-2">
-                                                <div className="flex items-center bg-slate-50 rounded-xl px-3 py-1 border border-slate-200 focus-within:ring-2 focus-within:ring-[#008069]/20 transition-all">
-                                                    <input type="text" value={trailComment} onChange={(e) => setTrailComment(e.target.value)} onKeyDown={(e) => { if(e.key === 'Enter'){ e.preventDefault(); handleAddComment(true); }}} placeholder="Type update & press Enter..." className="flex-1 bg-transparent outline-none text-[13px] font-medium text-slate-700 py-2.5" />
+                                                <div className="flex items-center bg-slate-50 rounded-xl px-3 py-1 border border-slate-200 focus-within:ring-2 focus-within:ring-[#008069]/20 transition-all h-full">
+                                                    <input type="text" value={trailComment} onChange={(e) => setTrailComment(e.target.value)} onKeyDown={(e) => { if(e.key === 'Enter'){ e.preventDefault(); handleAddComment(true); }}} placeholder="Type update & press Enter..." className="flex-1 bg-transparent outline-none text-[13px] font-medium text-slate-700 py-2.5 h-full" />
                                                     <input type="file" ref={trailFileInputRef} className="hidden" onChange={handleTrailFileUpload} />
                                                     <button onClick={() => trailFileInputRef.current.click()} className="text-slate-400 hover:text-slate-600 p-2 hover:bg-white rounded-lg transition-colors"><i className="fa-solid fa-paperclip"></i></button>
                                                     <button onClick={() => handleAddComment(true)} disabled={!trailComment.trim()} className="ml-1 text-[#008069] disabled:text-slate-300 p-2 hover:bg-teal-50 rounded-lg transition-colors"><i className="fa-solid fa-paper-plane"></i></button>
@@ -2012,9 +1998,9 @@
                                         
                                         <div className="flex gap-3 pt-2">
                                             {selectedMessage.taskData.status !== "Completed" && (
-                                                <button onClick={handleCompleteTask} className="flex-1 bg-emerald-600 text-white py-3 rounded-xl text-[13px] font-bold shadow-sm hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"><i className="fa-solid fa-check"></i> Mark Completed</button>
+                                                <button onClick={handleCompleteTask} className="flex-[2] bg-emerald-600 text-white py-3 rounded-xl text-[13px] font-bold shadow-sm hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"><i className="fa-solid fa-check"></i> Mark Completed</button>
                                             )}
-                                            <button onClick={handleArchiveTask} className="flex-1 bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-800 py-3 rounded-xl text-[13px] font-bold transition-all flex items-center justify-center gap-2 border border-slate-200"><i className="fa-solid fa-box-archive"></i> Archive Task</button>
+                                            <button onClick={handleArchiveTask} className="flex-1 bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-800 py-3 rounded-xl text-[13px] font-bold transition-all flex items-center justify-center gap-2 border border-slate-200"><i className="fa-solid fa-box-archive"></i> Archive</button>
                                         </div>
 
                                     </div>

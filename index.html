@@ -84,11 +84,18 @@
         window.dispatchEvent(new Event('firebaseReady'));
     </script>
 
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js').catch(err => console.log('SW registration failed'));
+            });
+        }
+    </script>
+
     <!-- ========================================================================= -->
     <!-- SECTION 3 : GLOBAL CSS (THEME, SCROLLBARS, ANIMATIONS)                    -->
     <!-- ========================================================================= -->
     <style>
-        /* Base & Typography */
         :root {
             --safe-area-inset-top: env(safe-area-inset-top, 0px);
             --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
@@ -103,13 +110,11 @@
             -webkit-tap-highlight-color: transparent;
         }
 
-        /* Scrollbar Styling */
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
 
-        /* WhatsApp-like Chat Background */
         .wa-bg {
             background-color: #e5dbd3;
             background-image: url('data:image/svg+xml,%3Csvg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="%23cbd5e1" fill-opacity="0.2" fill-rule="evenodd"%3E%3Ccircle cx="3" cy="3" r="3"/%3E%3Ccircle cx="13" cy="13" r="3"/%3E%3C/g%3E%3C/svg%3E');
@@ -117,9 +122,9 @@
             position: relative;
         }
 
-        /* Doodle Watermark */
+        /* Fixed Watermark */
         .doodle-watermark {
-            position: absolute;
+            position: fixed;
             inset: 0;
             pointer-events: none;
             user-select: none;
@@ -147,7 +152,6 @@
             letter-spacing: 0.05em;
         }
 
-        /* Message Highlight Pulse */
         @keyframes msgHighlightPulse {
             0% { box-shadow: 0 0 0 0 rgba(0,128,105,0.6); border: 2px solid transparent; }
             20% { box-shadow: 0 0 0 8px rgba(0,128,105,0.2), 0 0 20px 4px rgba(0,128,105,0.4); border: 2px solid #008069; }
@@ -162,7 +166,7 @@
             z-index: 5;
         }
 
-        /* UNIQUE LIQUID TYPING INDICATOR */
+        /* Liquid Typing Indicator */
         @keyframes liquidWave {
             0% { background-position: 0% 50%; }
             50% { background-position: 100% 50%; }
@@ -185,7 +189,6 @@
             animation: avatarPulse 1.5s infinite;
         }
 
-        /* Glassmorphism Headers & Panels */
         .glass-header {
             background: rgba(255, 255, 255, 0.85);
             backdrop-filter: blur(12px);
@@ -198,21 +201,15 @@
             -webkit-backdrop-filter: blur(16px);
         }
 
-        /* Entrance Animations */
         @keyframes subtleSlideUp {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
         .app-entrance { animation: subtleSlideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
-        /* Custom Checkboxes */
-        .custom-checkbox input:checked + div {
-            background-color: #008069;
-            border-color: #008069;
-        }
+        .custom-checkbox input:checked + div { background-color: #008069; border-color: #008069; }
         .custom-checkbox input:checked + div i { opacity: 1; }
 
-        /* Hourglass Loading Animation */
         @keyframes flip-hourglass {
             0% { transform: rotate(0deg); }
             50% { transform: rotate(180deg); }
@@ -220,20 +217,15 @@
         }
         .animate-sandclock { animation: flip-hourglass 2s infinite ease-in-out; }
 
-        /* Message bubble extra spacing */
         .msg-row-spacing { margin-bottom: 1.25rem; }
-
-        /* Tailwind custom utilities */
         .text-shadow { text-shadow: 0 1px 1px rgba(0,0,0,0.1); }
 
-        /* Online dot */
         @keyframes onlinePulse {
             0%, 100% { box-shadow: 0 0 0 0 rgba(37,211,102,0.5); }
             50% { box-shadow: 0 0 0 6px rgba(37,211,102,0); }
         }
         .online-dot { animation: onlinePulse 2s infinite; }
 
-        /* Emoji Picker */
         .emoji-picker-popup {
             position: absolute;
             bottom: 100%;
@@ -264,41 +256,17 @@
         }
         .emoji-picker-popup button:hover { background: #f0f2f5; }
 
-        /* Mobile Sidebar */
         @media (max-width: 767px) {
             .mobile-sidebar-overlay {
-                position: fixed;
-                inset: 0;
-                background: rgba(0,0,0,0.4);
-                z-index: 55;
-                animation: fadeIn 0.2s ease-out;
+                position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 55; animation: fadeIn 0.2s ease-out;
             }
             .mobile-sidebar-panel {
-                position: fixed;
-                left: 0;
-                top: 0;
-                bottom: 0;
-                width: 85vw;
-                max-width: 360px;
-                z-index: 56;
-                transform: translateX(-100%);
-                transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                box-shadow: 4px 0 20px rgba(0,0,0,0.15);
+                position: fixed; left: 0; top: 0; bottom: 0; width: 85vw; max-width: 360px; z-index: 56;
+                transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 4px 0 20px rgba(0,0,0,0.15);
             }
-            .mobile-sidebar-panel.open {
-                transform: translateX(0);
-            }
-            @keyframes fadeIn {
-                from { opacity: 0; }
-                to { opacity: 1; }
-            }
-            .modal-mobile-full {
-                width: 100vw !important;
-                height: 100vh !important;
-                max-height: 100vh !important;
-                border-radius: 0 !important;
-                margin: 0 !important;
-            }
+            .mobile-sidebar-panel.open { transform: translateX(0); }
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+            .modal-mobile-full { width: 100vw !important; height: 100vh !important; max-height: 100vh !important; border-radius: 0 !important; margin: 0 !important; }
         }
         .safe-top { padding-top: var(--safe-area-inset-top); }
         .safe-bottom { padding-bottom: var(--safe-area-inset-bottom); }
@@ -311,9 +279,6 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
-        // =========================================================================
-        // === SECTION 4 : UTILITY FUNCTIONS & MEMOIZED COMPONENTS               ===
-        // =========================================================================
         const toSentenceCase = (str) => {
             if (!str) return "";
             return str.toLowerCase().replace(/(^\w{1})|(\s+\w{1})/g, letter => letter.toUpperCase());
@@ -332,7 +297,7 @@
 
             if (cachedUrl) return <img src={cachedUrl} loading="lazy" className={`${sizeClass} rounded-full object-cover shadow-sm ${extraClasses}`} alt={name} />;
             return (
-                <div className={`${sizeClass} rounded-full ${isGroup ? 'bg-[#dfe5e7] text-[#54656f]' : 'bg-[#dfe5e7] text-[#54656f]'} flex items-center justify-center font-semibold text-sm shadow-sm ${extraClasses}`}>
+                <div className={`${sizeClass} rounded-full ${isGroup ? 'bg-rose-50 text-[#800020] border border-rose-100' : 'bg-[#dfe5e7] text-[#54656f]'} flex items-center justify-center font-bold text-sm shadow-sm ${extraClasses}`}>
                     {isGroup ? <i className="fa-solid fa-users"></i> : toSentenceCase(name || '').substring(0,2)}
                 </div>
             );
@@ -358,13 +323,7 @@
 
         const EMOJI_LIST = ['😀','😂','🤣','😍','🥰','😘','😜','🤪','😎','🤩','😇','🙂','😊','🥳','😡','🤬','💀','👻','👍','👎','❤️','🔥','⭐','✨','🎉','💯','✅','❌','🤔','🙏','💪','🤝','👋','🙌','🤲','🫶','👀','🗣️','💬','📎','📌','🗑️','✏️','📷','🎵','🌈','🍕'];
 
-        // =========================================================================
-        // === SECTION 5 : MAIN CHAT APPLICATION COMPONENT                       ===
-        // =========================================================================
         function ChatApp({ user, onLogout }) {
-            // =====================================================================
-            // --- 5A. UI & View States -------------------------------------------
-            // =====================================================================
             const [isVipAdmin, setIsVipAdmin] = useState(false);
             const [activeModal, setActiveModal] = useState(null);
             const [showRightSidebar, setShowRightSidebar] = useState(false);
@@ -375,9 +334,6 @@
             const [isLoaded, setIsLoaded] = useState(false);
             const [isWorkspaceLoading, setIsWorkspaceLoading] = useState(true);
 
-            // =====================================================================
-            // --- 5B. Chat Input & Interaction States ----------------------------
-            // =====================================================================
             const [inputText, setInputText] = useState("");
             const [searchQuery, setSearchQuery] = useState("");
             const [sidebarSearch, setSidebarSearch] = useState("");
@@ -387,9 +343,6 @@
             const [editingMessageId, setEditingMessageId] = useState(null);
             const [editMessageText, setEditMessageText] = useState("");
 
-            // =====================================================================
-            // --- 5C. Task & Delegation States -----------------------------------
-            // =====================================================================
             const [taskAssignees, setTaskAssignees] = useState([]);
             const [taskDeadline, setTaskDeadline] = useState("");
             const [delegateAssignees, setDelegateAssignees] = useState([]);
@@ -399,13 +352,11 @@
             const [isEditingTaskTitle, setIsEditingTaskTitle] = useState(false);
             const [newTaskTitle, setNewTaskTitle] = useState("");
 
-            // =====================================================================
-            // --- 5D. Database Arrays (Firestore Streams) ------------------------
-            // =====================================================================
             const [messages, setMessages] = useState([]);
             const [dbUsers, setDbUsers] = useState([]);
             const [groups, setGroups] = useState([]);
-            const [activeGroup, setActiveGroup] = useState({ id: "demo", name: "Demo" });
+            // Initialize activeGroup as null to show Welcome Screen
+            const [activeGroup, setActiveGroup] = useState(null); 
             const [currentUserData, setCurrentUserData] = useState(null);
             const [typingStatus, setTypingStatus] = useState([]);
             const [activeReminders, setActiveReminders] = useState([]);
@@ -413,9 +364,6 @@
             const [allAdminReminders, setAllAdminReminders] = useState([]);
             const [immutableAuditLogs, setImmutableAuditLogs] = useState([]);
 
-            // =====================================================================
-            // --- 5E. Forms & Admin States ---------------------------------------
-            // =====================================================================
             const [adminForm, setAdminForm] = useState({ uid: '', name: '', email: '', password: '', isAdmin: false, canCreateGroups: false });
             const [profileForm, setProfileForm] = useState({ name: "", fontSize: "text-[14.2px]", fontFamily: "font-sans" });
             const [groupForm, setGroupForm] = useState({ name: "", members: [], profilePicUrl: null });
@@ -425,18 +373,12 @@
             const [adminFilterType, setAdminFilterType] = useState("");
             const [adminFilterGroup, setAdminFilterGroup] = useState("");
 
-            // =====================================================================
-            // --- 5F. Upload Tracking --------------------------------------------
-            // =====================================================================
             const [uploadProgress, setUploadProgress] = useState(0);
             const [isUploading, setIsUploading] = useState(false);
             const [trailFileUploading, setTrailFileUploading] = useState(false);
             const [profileUploadProgress, setProfileUploadProgress] = useState(0);
             const [groupPicUploadProgress, setGroupPicUploadProgress] = useState(0);
 
-            // =====================================================================
-            // --- 5G. DOM Refs & Timers ------------------------------------------
-            // =====================================================================
             const messagesEndRef = useRef(null);
             const chatContainerRef = useRef(null);
             const chatInputRef = useRef(null);
@@ -448,10 +390,8 @@
             const prevMessagesCountRef = useRef(0);
             const lastTypingTime = useRef(0);
             const highlightTimerRef = useRef(null);
+            const [pendingScrollTarget, setPendingScrollTarget] = useState(null);
 
-            // =====================================================================
-            // --- 5H. Loader Tips -------------------------------------------------
-            // =====================================================================
             const loaderTips = [
                 "Tip: Type '@' to instantly mention your peers or entire departments.",
                 "Tip: Convert any message into an official trackable Task using the context menu.",
@@ -461,23 +401,14 @@
             ];
             const [currentTip, setCurrentTip] = useState(loaderTips[0]);
 
-            // =====================================================================
-            // --- 5I. Mobile Sidebar & Emoji Picker States -----------------------
-            // =====================================================================
             const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
             const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
             const [highlightedMsgId, setHighlightedMsgId] = useState(null);
 
-            // =====================================================================
-            // --- 5J. Tool Preferences (for hover actions) -----------------------
-            // =====================================================================
             const [toolPreferences, setToolPreferences] = useState({
                 reply: true, react: true, edit: true, delete: true, pin: true, bookmark: true, showWatermark: true, soundProfile: 'classic'
             });
 
-            // =====================================================================
-            // --- LIFECYCLE: Loader, Audio Priming & Auto-Logout -----------------
-            // =====================================================================
             useEffect(() => {
                 let tipIndex = 0;
                 const tipInterval = setInterval(() => {
@@ -492,7 +423,6 @@
                 return () => { clearTimeout(timer); clearInterval(tipInterval); };
             }, []);
 
-            // Prime Audio on First Click to fix browser blocking issues
             useEffect(() => {
                 const primeAudio = () => {
                     if (!window.audioPrimed) {
@@ -527,9 +457,6 @@
                 };
             }, [onLogout]);
 
-            // =====================================================================
-            // --- LIFECYCLE: Admin Status & Data Syncing -------------------------
-            // =====================================================================
             const verifyAdminStatus = useCallback(async () => {
                 if (!window.auth.currentUser) return false;
                 try {
@@ -576,9 +503,7 @@
                 const unsubUsers = window.onSnapshot(window.query(window.collection(window.db, "users"), window.orderBy("email", "asc")), (snapshot) => setDbUsers(snapshot.docs.map(doc => doc.data())));
                 const unsubGroups = window.onSnapshot(window.collection(window.db, "groups"), (snapshot) => {
                     const fetchedGroups = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    if (fetchedGroups.length === 0 && (currentUserData?.isAdmin || isVipAdmin)) {
-                        window.addDoc(window.collection(window.db, "groups"), { name: "Demo", members: [user.email], admins: [user.email], createdBy: user.email, createdAt: window.serverTimestamp(), isArchived: false }).catch(() => {});
-                    } else { setGroups(fetchedGroups); }
+                    setGroups(fetchedGroups);
                 });
                 return () => { clearInterval(heartbeatInterval); unsubCurrent(); unsubUsers(); unsubGroups(); };
             }, [user, currentUserData?.isAdmin, isVipAdmin]);
@@ -623,20 +548,23 @@
                         }
                     }
                     prevMessagesCountRef.current = loadedMessages.length;
-                    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
+                    
+                    if(!pendingScrollTarget) {
+                        setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
+                    }
                 });
 
                 const unsubTyping = window.onSnapshot(window.collection(window.db, "typing"), (snapshot) => {
                     const typingData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                    const currentTyping = typingData.filter(t => t.groupId === activeGroup.id && t.name && Date.now() - t.timestamp < 3000);
+                    const currentTyping = typingData.filter(t => t.groupId === activeGroup?.id && t.name && Date.now() - t.timestamp < 3000);
                     setTypingStatus(currentTyping);
                 });
 
                 return () => { unsubscribe(); unsubTyping(); };
-            }, [user.uid, activeGroup.id, playAlertSound, isWorkspaceLoading]);
+            }, [user.uid, activeGroup?.id, playAlertSound, isWorkspaceLoading, pendingScrollTarget]);
 
             useEffect(() => {
-                if (!activeGroup.id || !user.email) return;
+                if (!activeGroup?.id || !user.email) return;
                 const unseenMsgs = messages.filter(m => m.groupId === activeGroup.id && !m.isMine && !(m.seenBy || []).includes(user.email));
                 if (unseenMsgs.length === 0) return;
                 const batchUpdate = async () => {
@@ -648,7 +576,7 @@
                     }
                 };
                 batchUpdate();
-            }, [activeGroup.id, messages, user.email]);
+            }, [activeGroup?.id, messages, user.email]);
 
             useEffect(() => {
                 const handleClickOutside = (e) => { if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target)) { setEmojiPickerOpen(false); } };
@@ -664,9 +592,20 @@
                 highlightTimerRef.current = setTimeout(() => { setHighlightedMsgId(null); }, 3100);
             }, []);
 
-            // =====================================================================
-            // --- DERIVED / COMPUTED VALUES (useMemo) ----------------------------
-            // =====================================================================
+            // Handle Smart Scrolling for Notifications
+            useEffect(() => {
+                if (pendingScrollTarget && activeGroup) {
+                    const el = document.getElementById(`msg-${pendingScrollTarget}`);
+                    if (el) {
+                        setTimeout(() => {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            triggerHighlight(pendingScrollTarget);
+                            setPendingScrollTarget(null);
+                        }, 200); // give DOM a tiny moment to render
+                    }
+                }
+            }, [messages, pendingScrollTarget, activeGroup, triggerHighlight]);
+
             const myGroups = useMemo(() => {
                 let filtered = groups.filter(g => g.members?.includes(user.email) && !g.isArchived);
                 if (sidebarSearch) filtered = filtered.filter(g => g.name.toLowerCase().includes(sidebarSearch.toLowerCase()));
@@ -678,15 +617,17 @@
             }, [dbUsers, user.uid, sidebarSearch]);
 
             const activeActionableTasks = useMemo(() => {
-                return messages.filter(m => m.isTask && m.taskData?.status !== "Completed" && m.taskData?.assignees?.includes(user.email) && !(m.taskData?.dismissedBy || []).includes(user.uid));
+                return messages.filter(m => m.isTask && m.taskData?.status !== "Completed" && m.taskData?.assignees?.includes(user.email) && !(m.taskData?.dismissedBy || []).includes(user.uid) && !m.taskData?.isArchived);
             }, [messages, user.email, user.uid]);
             const totalNotifications = genericNotifications.length + activeActionableTasks.length;
 
             const pinnedMessages = useMemo(() => {
+                if(!activeGroup) return [];
                 return messages.filter(m => m.groupId === activeGroup.id && m.isPinned);
-            }, [messages, activeGroup.id]);
+            }, [messages, activeGroup]);
 
             const messagesToRender = useMemo(() => {
+                if(!activeGroup) return [];
                 let filtered = messages.filter(m => {
                     if (m.groupId !== activeGroup.id) return false;
                     if (m.isPrivateMention && !m.allowedUsers?.includes(user.email)) return false;
@@ -705,10 +646,17 @@
                 }
                 else if (chatFilter === 'bookmarked') filtered = filtered.filter(m => m.bookmarkedBy?.includes(user.email));
                 return filtered;
-            }, [messages, activeGroup.id, user.email, chatFilter, searchQuery]);
+            }, [messages, activeGroup, user.email, chatFilter, searchQuery]);
 
-            const tasksAssignedToMe = useMemo(() => messages.filter(m => m.isTask && m.taskData?.assignees?.includes(user.email) && m.taskData?.status !== "Completed" && !(m.taskData?.dismissedBy || []).includes(user.uid)), [messages, user.email, user.uid]);
-            const tasksAssignedByMe = useMemo(() => messages.filter(m => m.isTask && m.senderEmail === user.email && m.taskData?.status !== "Completed"), [messages, user.email]);
+            const tasksAssignedToMe = useMemo(() => {
+                return messages.filter(m => m.isTask && m.taskData?.assignees?.includes(user.email) && !m.taskData?.isArchived)
+                    .sort((a,b) => new Date(a.taskData.deadline).getTime() - new Date(b.taskData.deadline).getTime());
+            }, [messages, user.email]);
+
+            const tasksAssignedByMe = useMemo(() => {
+                return messages.filter(m => m.isTask && m.senderEmail === user.email && !m.taskData?.isArchived)
+                    .sort((a,b) => new Date(a.taskData.deadline).getTime() - new Date(b.taskData.deadline).getTime());
+            }, [messages, user.email]);
 
             const filteredAuditLogs = useMemo(() => {
                 let logs = immutableAuditLogs;
@@ -732,10 +680,8 @@
                 }
             }, [triggerHighlight]);
 
-            // =====================================================================
-            // --- ACTION HANDLERS (LOGIC & FIREBASE WRITES) ----------------------
-            // =====================================================================
             const logImmutableAction = useCallback(async (actionType, content, target = "") => {
+                if(!activeGroup) return;
                 try {
                     await window.addDoc(window.collection(window.db, "audit_logs"), {
                         type: actionType, user: user.email, content, target,
@@ -743,18 +689,19 @@
                         timestamp: window.serverTimestamp()
                     });
                 } catch(e) {}
-            }, [user.email, activeGroup.id, activeGroup.name]);
+            }, [user.email, activeGroup]);
 
             const handleTypingEvent = useCallback(() => {
+                if(!activeGroup) return;
                 const now = Date.now();
                 if (now - lastTypingTime.current > 1500) {
                     lastTypingTime.current = now;
                     try { window.setDoc(window.doc(window.db, "typing", `${activeGroup.id}_${user.uid}`), { groupId: activeGroup.id, name: currentUserData?.name || user.email.split('@')[0], timestamp: now }, { merge: true }); } catch (e) {}
                 }
-            }, [activeGroup.id, user.uid, currentUserData?.name, user.email]);
+            }, [activeGroup, user.uid, currentUserData?.name, user.email]);
 
             const handleSendMessage = async () => {
-                if (!inputText.trim()) return;
+                if (!inputText.trim() || !activeGroup) return;
                 const messageText = inputText.trim();
                 setInputText(""); setEmojiPickerOpen(false);
                 try { window.deleteDoc(window.doc(window.db, "typing", `${activeGroup.id}_${user.uid}`)); } catch(e) {}
@@ -837,7 +784,7 @@
             };
 
             const uploadFileDirectly = async (file) => {
-                if (!file) return;
+                if (!file || !activeGroup) return;
                 setIsUploading(true); setUploadProgress(0);
                 const uniqueFileName = `${Date.now()}_${file.name || 'pasted_image.png'}`;
                 const uploadTask = window.uploadBytesResumable(window.ref(window.storage, `chat_uploads/${uniqueFileName}`), file);
@@ -864,7 +811,7 @@
             };
 
             const handleTogglePin = async (msg) => {
-                if (!currentUserData?.isAdmin && !isVipAdmin && activeGroup.admins && !activeGroup.admins.includes(user.email)) return alert("Only Department Admins can pin announcements.");
+                if (!currentUserData?.isAdmin && !isVipAdmin && activeGroup?.admins && !activeGroup.admins.includes(user.email)) return alert("Only Department Admins can pin announcements.");
                 try { await window.updateDoc(window.doc(window.db, "messages", msg.id), { isPinned: !msg.isPinned }); } catch (e) {}
             };
 
@@ -962,9 +909,8 @@
             };
 
             const handleClearNotifications = async () => {
-                const taskPromises = activeActionableTasks.map(task => window.updateDoc(window.doc(window.db, "messages", task.id), { "taskData.dismissedBy": [...(task.taskData.dismissedBy || []), user.uid] }));
                 const alertPromises = genericNotifications.map(n => window.updateDoc(window.doc(window.db, "notifications", n.id), { isRead: true }));
-                await Promise.all([...taskPromises, ...alertPromises]);
+                await Promise.all([...alertPromises]);
                 setShowNotifications(false);
             };
 
@@ -1008,7 +954,7 @@
                     const now = new Date();
                     await window.setDoc(window.doc(window.db, "messages", selectedMessage.id), {
                         isTask: true,
-                        taskData: { deadline: taskDeadline, assignees: taskAssignees, status: "Pending", dismissedBy: [], trail: [{ action: "Task Created", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: taskAssignees.map(a=>toSentenceCase((a||"").split('@')[0])).join(', ') }] }
+                        taskData: { deadline: taskDeadline, assignees: taskAssignees, status: "Pending", isArchived: false, dismissedBy: [], trail: [{ action: "Task Created", by: user.email, time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: taskAssignees.map(a=>toSentenceCase((a||"").split('@')[0])).join(', ') }] }
                     }, { merge: true });
                     logImmutableAction("TASK_CREATE", `Converted to Task: "${selectedMessage.text}"`, `Assignees: ${taskAssignees.join(', ')}`);
                     setActiveModal(null); setTaskAssignees([]);
@@ -1040,6 +986,16 @@
                     await notifyInvolvedInTask(selectedMessage, `${toSentenceCase((user.email||"").split('@')[0])} marked a task as Completed.`);
                     setActiveModal(null);
                     playTaskSound();
+                } catch (error) {}
+            };
+
+            const handleArchiveTask = async () => {
+                if (!selectedMessage) return;
+                if (!selectedMessage.taskData.assignees?.includes(user.email) && !currentUserData?.isAdmin && !isVipAdmin && selectedMessage.senderEmail !== user.email) return alert("Only Assignees, Creator, or Admin can archive.");
+                try {
+                    await window.updateDoc(window.doc(window.db, "messages", selectedMessage.id), { "taskData.isArchived": true });
+                    logImmutableAction("TASK_ARCHIVED", `Archived Task ID: ${selectedMessage.id}`, "");
+                    setActiveModal(null);
                 } catch (error) {}
             };
 
@@ -1102,24 +1058,18 @@
                 doc.save(`Secure_Audit_Ledger_${new Date().toISOString().split('T')[0]}.pdf`);
             };
 
-            // =====================================================================
-            // --- UNREAD COUNTS PER DM USER --------------------------------------
-            // =====================================================================
             const getUnreadInfoForUser = useCallback((otherUserEmail, otherUserUid) => {
                 const dmIdList = [user.uid, otherUserUid].sort();
                 const dmIdStr = dmIdList.join('_');
                 const dmMessages = messages.filter(m => m.groupId === dmIdStr);
                 const unreadMsgs = dmMessages.filter(m => m.senderUid !== user.uid && !(m.seenBy || []).includes(user.email));
-                const pendingTasks = dmMessages.filter(m => m.isTask && m.taskData?.status !== "Completed" && m.taskData?.assignees?.includes(user.email) && !(m.taskData?.dismissedBy || []).includes(user.uid) && m.senderEmail === otherUserEmail);
+                const pendingTasks = dmMessages.filter(m => m.isTask && m.taskData?.status !== "Completed" && m.taskData?.assignees?.includes(user.email) && !(m.taskData?.dismissedBy || []).includes(user.uid) && m.senderEmail === otherUserEmail && !m.taskData?.isArchived);
                 return { unreadCount: unreadMsgs.length, pendingTaskCount: pendingTasks.length, total: unreadMsgs.length + pendingTasks.length };
             }, [messages, user.uid, user.email]);
 
-            // =====================================================================
-            // --- NAVIGATE FROM NOTIFICATION (Smart Scroll & Highlight) ----------
-            // =====================================================================
             const navigateToMessageFromNotification = useCallback((msgId, groupId) => {
                 setShowNotifications(false);
-                if (activeGroup.id !== groupId) {
+                if (activeGroup?.id !== groupId) {
                     let target = groups.find(g => g.id === groupId);
                     if (!target && groupId.includes('_')) {
                         const otherUid = groupId.replace(user.uid, '').replace('_', '');
@@ -1128,24 +1078,9 @@
                     }
                     if(target) setActiveGroup(target);
                 }
-                
-                let retries = 0;
-                const tryScroll = () => {
-                    const el = document.getElementById(`msg-${msgId}`);
-                    if (el) {
-                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        triggerHighlight(msgId);
-                    } else if (retries < 15) {
-                        retries++;
-                        setTimeout(tryScroll, 200);
-                    }
-                };
-                setTimeout(tryScroll, 100);
-            }, [activeGroup.id, groups, dbUsers, user, triggerHighlight]);
+                setPendingScrollTarget(msgId);
+            }, [activeGroup, groups, dbUsers, user]);
 
-            // =====================================================================
-            // --- RENDER HELPERS (Message Bubble) --------------------------------
-            // =====================================================================
             const getBubbleStyles = (msg) => {
                 let baseStyles = "";
                 if (msg.isTask) baseStyles = "bg-[#d1e8ff] text-[#111b21] border border-[#b8daff]";
@@ -1169,7 +1104,7 @@
                         {toolPreferences.reply && <button onClick={(e)=>{e.stopPropagation(); setReplyingTo(msg); setTimeout(()=>chatInputRef.current?.focus(), 100);}} className="text-slate-400 hover:text-[#008069] text-[13px] p-1.5 transition-colors" title="Reply"><i className="fa-solid fa-reply"></i></button>}
                         {toolPreferences.react && ['👍', '❤️', '😂', '😮'].map(e => <button key={e} onClick={(ev)=>{ev.stopPropagation(); handleReaction(msg.id, e);}} className="hover:scale-125 transition-transform text-[16px] ml-0.5">{e}</button>)}
                         {toolPreferences.bookmark && <button onClick={(e)=>{e.stopPropagation(); handleToggleBookmark(msg);}} className={`${isBookmarked ? 'text-[#008069]' : 'text-slate-400 hover:text-[#008069]'} text-[13px] p-1.5 transition-colors`} title="Save for later"><i className="fa-solid fa-bookmark"></i></button>}
-                        {toolPreferences.pin && (currentUserData?.isAdmin || isVipAdmin || activeGroup.admins?.includes(user.email)) && <button onClick={(e)=>{e.stopPropagation(); handleTogglePin(msg);}} className={`${msg.isPinned ? 'text-[#008069]' : 'text-slate-400 hover:text-[#008069]'} text-[13px] p-1.5 transition-colors`} title="Pin"><i className="fa-solid fa-thumbtack"></i></button>}
+                        {toolPreferences.pin && (currentUserData?.isAdmin || isVipAdmin || activeGroup?.admins?.includes(user.email)) && <button onClick={(e)=>{e.stopPropagation(); handleTogglePin(msg);}} className={`${msg.isPinned ? 'text-[#008069]' : 'text-slate-400 hover:text-[#008069]'} text-[13px] p-1.5 transition-colors`} title="Pin"><i className="fa-solid fa-thumbtack"></i></button>}
                         {canModify && toolPreferences.edit && <button onClick={(e)=>{e.stopPropagation(); setEditingMessageId(msg.id); setEditMessageText(msg.text);}} className="text-slate-400 hover:text-[#008069] text-[13px] p-1.5 transition-colors" title="Edit"><i className="fa-solid fa-pen"></i></button>}
                         {canModify && toolPreferences.delete && <button onClick={(e)=>{e.stopPropagation(); handleDeleteMessage(msg);}} className="text-slate-400 hover:text-red-500 text-[13px] p-1.5 transition-colors" title="Delete"><i className="fa-solid fa-trash"></i></button>}
                     </div>
@@ -1203,7 +1138,7 @@
                                                 <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shadow-sm ${msg.taskData.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{msg.taskData.status}</span>
                                             </div>
                                         )}
-                                        {msg.isPrivateMention && <div className="text-[11px] font-semibold flex items-center gap-1.5 mb-1.5 pb-1 border-b border-black/5 text-purple-700 tracking-tight"><i className="fa-solid fa-lock"></i> PRIVATE</div>}
+                                        {msg.isPrivateMention && <div className="text-[11px] font-semibold flex items-center gap-1.5 mb-1.5 pb-1 border-b border-black/5 text-purple-700 tracking-tight"><i className="fa-solid fa-lock"></i> {msg.text.startsWith('[Forwarded') ? 'FORWARDED DM' : 'PRIVATE'}</div>}
                                         {msg.fileUrl ? (
                                             <div className="flex flex-col gap-1 my-1">
                                                 {msg.fileType?.startsWith('image/') ? <img src={msg.fileUrl} alt="Shared" className="rounded max-w-full max-h-64 object-cover cursor-pointer shadow-sm" onClick={(e) => { e.stopPropagation(); window.open(msg.fileUrl, '_blank'); }}/> :
@@ -1249,9 +1184,6 @@
                 );
             }, [messages, editingMessageId, editMessageText, user.email, currentUserData, handleTogglePin, handleToggleBookmark, handleReaction, handleDeleteMessage, scrollToMessage, activeGroup, isVipAdmin, toolPreferences, highlightedMsgId]);
 
-            // =====================================================================
-            // --- RENDER: SECURITY LOCKOUT SCREEN --------------------------------
-            // =====================================================================
             if (currentUserData && currentUserData.isApproved !== true && !currentUserData.isAdmin && !isVipAdmin) {
                 return (
                     <div className="flex items-center justify-center h-screen bg-gray-100 p-4 text-gray-800">
@@ -1265,9 +1197,6 @@
                 );
             }
 
-            // =====================================================================
-            // --- RENDER: WORKSPACE LOADING SCREEN ------------------------------
-            // =====================================================================
             if (isWorkspaceLoading) {
                 return (
                     <div className="flex flex-col items-center justify-center h-screen w-full bg-[#f0f2f5] text-[#111b21] fixed inset-0 z-50">
@@ -1291,9 +1220,6 @@
                 );
             }
 
-            // =====================================================================
-            // --- MAIN APPLICATION LAYOUT ----------------------------------------
-            // =====================================================================
             return (
                 <div className="flex h-screen w-full bg-[#f3f4f6] text-[#111b21] overflow-hidden relative font-sans transition-opacity duration-700 ease-out opacity-100">
                     {/* AUDIO ENGINES */}
@@ -1301,11 +1227,7 @@
                     <audio id="task-sound" src="https://cdn.pixabay.com/download/audio/2021/08/09/audio_9ed1023bc2.mp3?filename=correct-2-46134.mp3" preload="auto" className="hidden"></audio>
 
                     {viewMode === "admin" ? (
-                        /* =======================================================
-                           ADMIN DASHBOARD VIEW
-                           ======================================================= */
                         <div className="flex flex-col h-full w-full bg-[#f8fafc] overflow-hidden animate-in fade-in z-40">
-                            {/* Header */}
                             <div className="glass-header bg-[#008069]/90 text-white p-4 flex items-center justify-between shadow-sm shrink-0 safe-top">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur shadow-inner">
@@ -1394,7 +1316,7 @@
                                                     {groups.length === 0 && <tr><td className="p-5 text-center text-slate-400 italic">No custom groups created yet.</td></tr>}
                                                     {groups.map(g => (
                                                         <tr key={g.id} className="hover:bg-slate-50/50 transition-colors">
-                                                            <td className="px-5 py-3"><div className="font-semibold text-slate-800 flex items-center gap-2">{toSentenceCase(g.name)} {g.isArchived && <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold tracking-wider border border-slate-200">ARCHIVED</span>}</div><div className="text-[11px] text-slate-500 mt-0.5">{g.members?.length || 0} Members | Created by {toSentenceCase((g.createdBy||"").split('@')[0])}</div></td>
+                                                            <td className="px-5 py-3"><div className="font-semibold text-slate-800 flex items-center gap-2"><span className="text-[#800020]">{toSentenceCase(g.name)}</span> {g.isArchived && <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold tracking-wider border border-slate-200">ARCHIVED</span>}</div><div className="text-[11px] text-slate-500 mt-0.5">{g.members?.length || 0} Members | Created by {toSentenceCase((g.createdBy||"").split('@')[0])}</div></td>
                                                             <td className="px-5 py-3 text-right">
                                                                 <button onClick={() => { setGroupForm({name: g.name, members: g.members, profilePicUrl: g.profilePicUrl}); setEditingGroup(g); setActiveModal('group_form_modal'); }} className="text-slate-400 hover:text-[#008069] p-2 transition-colors"><i className="fa-solid fa-pen"></i></button>
                                                                 {g.isArchived ? (
@@ -1413,16 +1335,11 @@
                             </div>
                         </div>
                     ) : (
-                        /* =======================================================
-                           CHAT & TASK VIEW (LEFT SIDEBAR, CENTER, RIGHT)
-                           ======================================================= */
                         <div className="flex h-full w-full relative">
-                            {/* Mobile Sidebar Overlay */}
                             {mobileSidebarOpen && <div className="mobile-sidebar-overlay md:hidden" onClick={() => setMobileSidebarOpen(false)}></div>}
                             
-                            {/* LEFT SIDEBAR - Contact List */}
+                            {/* LEFT SIDEBAR */}
                             <div className={`hidden md:flex w-[30%] min-w-[300px] max-w-[400px] bg-white border-r border-slate-200 flex-col shrink-0 z-20 shadow-[2px_0_15px_rgba(0,0,0,0.03)] ${mobileSidebarOpen ? 'mobile-sidebar-panel open flex' : 'mobile-sidebar-panel'}`}>
-                                {/* Header */}
                                 <div className="h-[59px] bg-[#f0f2f5] flex items-center justify-between px-4 shrink-0 border-b border-slate-200/60 group relative safe-top">
                                     <div className="flex items-center gap-3">
                                         <MemoizedAvatar uid={user.uid} url={currentUserData?.profilePicUrl} name={currentUserData?.name || user.email.split('@')[0]} sizeClass="w-10 h-10 cursor-pointer hover:opacity-80 transition-opacity" />
@@ -1438,7 +1355,6 @@
                                     </div>
                                 </div>
                                 
-                                {/* Universal Search Bar in Sidebar */}
                                 <div className="p-3 bg-white border-b border-slate-100 shrink-0">
                                     <div className="bg-[#f0f2f5] rounded-lg flex items-center px-3 py-2 focus-within:bg-white focus-within:ring-1 focus-within:ring-[#00a884] transition-all">
                                         <i className="fa-solid fa-search text-[13px] text-[#54656f] mr-2"></i>
@@ -1447,40 +1363,38 @@
                                     </div>
                                 </div>
 
-                                {/* Group / User List */}
                                 <div className="flex-1 overflow-y-auto flex flex-col bg-white">
                                     {myGroups.map(g => {
                                         const hasUnread = messages.some(m => m.groupId === g.id && !m.isMine && !(m.seenBy || []).includes(user.email));
                                         return (
-                                            <div key={g.id} onClick={() => { setActiveGroup(g); setShowRightSidebar(false); setMobileSidebarOpen(false); }} className={`flex items-center h-[72px] cursor-pointer transition-colors relative ${activeGroup.id === g.id ? 'bg-[#f0f2f5]' : 'hover:bg-[#f5f6f6]'} pl-3 pr-4`}>
+                                            <div key={g.id} onClick={() => { setActiveGroup(g); setShowRightSidebar(false); setMobileSidebarOpen(false); }} className={`flex items-center h-[72px] cursor-pointer transition-colors relative ${activeGroup?.id === g.id ? 'bg-[#f0f2f5]' : 'hover:bg-[#f5f6f6]'} pl-3 pr-4`}>
                                                 <MemoizedAvatar uid={g.id} url={g.profilePicUrl} name={g.name} sizeClass="w-[49px] h-[49px]" isGroup={true} extraClasses="mr-3 shrink-0" />
                                                 <div className="flex-1 overflow-hidden border-b border-slate-100 h-full flex flex-col justify-center pr-2">
                                                     <div className="flex justify-between items-center mb-[2px]">
-                                                        <span className={`font-medium text-[16px] truncate ${activeGroup.id === g.id ? 'text-[#111b21]' : 'text-[#111b21]'}`}>{toSentenceCase(g.name)}</span>
+                                                        <span className={`font-bold text-[16px] truncate text-[#800020]`}>{toSentenceCase(g.name)}</span>
                                                     </div>
                                                     <div className="flex justify-between items-center">
-                                                        <span className="text-[13px] text-[#54656f] truncate pr-4">{g.id==='demo' ? 'Default Space' : `${g.members?.length || 0} Members`}</span>
+                                                        <span className="text-[13px] text-[#54656f] truncate pr-4">{`${g.members?.length || 0} Members`}</span>
                                                         {hasUnread && <div className="w-[18px] h-[18px] bg-[#25d366] rounded-full text-white text-[10px] font-bold flex items-center justify-center shrink-0 shadow-sm">1</div>}
                                                     </div>
                                                 </div>
                                             </div>
                                         );
                                     })}
-                                    {/* Direct Messages */}
                                     {dmUsers.map(u => {
                                         const dmIdList = [user.uid, u.uid].sort();
                                         const dmIdStr = dmIdList.join('_');
                                         const unreadInfo = getUnreadInfoForUser(u.email, u.uid);
                                         const isOnline = u.lastActive && (Date.now() - (u.lastActive?.toMillis?.() || 0) < 900000);
                                         return (
-                                            <div key={u.uid} onClick={() => { setActiveGroup({id: dmIdStr, name: u.name, isDM: true, members: [user.email, u.email]}); setShowRightSidebar(false); setMobileSidebarOpen(false); }} className={`flex items-center h-[72px] cursor-pointer transition-colors relative ${activeGroup.id === dmIdStr ? 'bg-[#f0f2f5]' : 'hover:bg-[#f5f6f6]'} pl-3 pr-4`}>
+                                            <div key={u.uid} onClick={() => { setActiveGroup({id: dmIdStr, name: u.name, isDM: true, members: [user.email, u.email]}); setShowRightSidebar(false); setMobileSidebarOpen(false); }} className={`flex items-center h-[72px] cursor-pointer transition-colors relative ${activeGroup?.id === dmIdStr ? 'bg-[#f0f2f5]' : 'hover:bg-[#f5f6f6]'} pl-3 pr-4`}>
                                                 <div className="relative mr-3 shrink-0">
                                                     <MemoizedAvatar uid={u.uid} url={u.profilePicUrl} name={u.name} sizeClass="w-[49px] h-[49px]" />
                                                     {isOnline && <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-[#25d366] border-[3px] border-white rounded-full online-dot"></div>}
                                                 </div>
                                                 <div className="flex-1 overflow-hidden border-b border-slate-100 h-full flex flex-col justify-center pr-2">
                                                     <div className="flex justify-between items-center mb-[2px]">
-                                                        <span className={`font-medium text-[16px] truncate ${unreadInfo.total > 0 ? 'font-bold' : ''}`}>{toSentenceCase(u.name)}</span>
+                                                        <span className={`text-[16px] truncate ${unreadInfo.total > 0 ? 'font-bold text-[#111b21]' : 'font-medium text-[#111b21]'}`}>{toSentenceCase(u.name)}</span>
                                                     </div>
                                                     <div className="flex justify-between items-center">
                                                         <span className={`text-[12px] truncate pr-4 ${unreadInfo.total > 0 ? 'text-[#111b21] font-semibold' : 'text-[#54656f]'}`}>
@@ -1496,7 +1410,6 @@
                                         );
                                     })}
                                 </div>
-                                {/* Admin Panel Button */}
                                 {(currentUserData?.isAdmin || isVipAdmin) && (
                                     <div className="p-3 bg-white border-t border-slate-200">
                                         <button onClick={() => setViewMode("admin")} className="w-full bg-[#f0f2f5] hover:bg-[#e9edef] text-[#111b21] py-2.5 rounded-lg text-[14px] font-semibold transition-colors flex items-center justify-center gap-2">
@@ -1506,44 +1419,25 @@
                                 )}
                             </div>
 
-                            {/* CENTER - Chat Feed & Input */}
-                            <div className="flex-1 flex flex-col relative h-full bg-[#efeae2] overflow-hidden">
-                                {/* Chat Header */}
-                                <div className="h-[59px] bg-[#f0f2f5] flex items-center justify-between px-3 md:px-4 shrink-0 z-30 sticky top-0 border-b border-slate-200/60 safe-top">
-                                    <button onClick={() => setMobileSidebarOpen(true)} className="md:hidden w-10 h-10 rounded-full hover:bg-black/5 flex items-center justify-center text-[#54656f] mr-1 shrink-0"><i className="fa-solid fa-bars text-xl"></i></button>
-                                    
-                                    <div className="flex items-center gap-3 cursor-pointer flex-1 min-w-0" onClick={()=>{ if(!activeGroup.isDM) setActiveModal('group_settings'); }}>
-                                        {activeGroup.isDM ? <MemoizedAvatar uid={activeGroup.id} url={null} name={activeGroup.name} sizeClass="w-10 h-10" /> : activeGroup.profilePicUrl ? <MemoizedAvatar uid={activeGroup.id} url={activeGroup.profilePicUrl} name={activeGroup.name} sizeClass="w-10 h-10" /> : <div className="w-10 h-10 rounded-full bg-[#dfe5e7] flex items-center justify-center text-[#54656f] shadow-sm"><i className="fa-solid fa-users"></i></div>}
-                                        <div className="flex flex-col min-w-0 flex-1">
-                                            <span className="text-[16px] font-medium text-[#111b21] leading-tight truncate">{toSentenceCase(activeGroup.name)}</span>
-                                            <span className="text-[13px] text-[#54656f] truncate max-w-[150px] lg:max-w-[400px]">
-                                                {activeGroup.isDM ? 'End-to-Server Encrypted' :
-                                                    (dbUsers.filter(u => activeGroup.members?.includes(u.email) && u.lastActive && (Date.now() - (u.lastActive?.toMillis?.() || 0) < 900000) && u.uid !== user.uid).length > 0)
-                                                    ? dbUsers.filter(u => activeGroup.members?.includes(u.email) && u.lastActive && (Date.now() - (u.lastActive?.toMillis?.() || 0) < 900000) && u.uid !== user.uid).map(u=>toSentenceCase((u.name||"").split(' ')[0])).join(', ') + ' (Online)'
-                                                    : `${activeGroup.members?.length||0} Members`
-                                                }
-                                            </span>
-                                        </div>
+                            {/* CENTER PANE - CHAT OR WELCOME */}
+                            {!activeGroup ? (
+                                <div className="flex-1 flex flex-col items-center justify-center bg-[#f0f2f5] text-center p-8 relative">
+                                    <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-sm mb-6 text-[#00a884] ring-4 ring-white border border-slate-100">
+                                        <i className="fa-solid fa-comments text-4xl"></i>
                                     </div>
-
-                                    {/* Universal Search Bar */}
-                                    <div className="hidden md:flex flex-1 max-w-md mx-4">
-                                        <div className="bg-white rounded-full flex items-center px-4 py-1.5 shadow-sm border border-slate-200 focus-within:ring-2 focus-within:ring-[#00a884]/30 focus-within:border-[#00a884] transition-all w-full">
-                                            <i className="fa-solid fa-search text-[14px] text-[#54656f] mr-2"></i>
-                                            <input type="text" placeholder="Search messages..." className="bg-transparent outline-none flex-1 text-[13px] text-[#111b21] placeholder-[#8696a0]" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-                                            {searchQuery && <button onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-slate-600 ml-1"><i className="fa-solid fa-xmark text-xs"></i></button>}
-                                        </div>
+                                    <h2 className="text-2xl font-bold text-slate-800 mb-2">Welcome to Talk & Task</h2>
+                                    <p className="text-slate-500 mb-8 max-w-md">Select a department or direct message from the sidebar to start collaborating, or create a new workspace.</p>
+                                    <div className="flex flex-col gap-4 w-full max-w-xs">
+                                        {(currentUserData?.isAdmin || isVipAdmin || currentUserData?.canCreateGroups) && (
+                                            <button onClick={() => { setGroupForm({name: "", members: [], profilePicUrl: null}); setEditingGroup(null); setActiveModal('group_form_modal'); }} className="w-full bg-[#008069] text-white px-6 py-3.5 rounded-xl font-bold shadow-sm hover:bg-[#006e5a] transition-all"><i className="fa-solid fa-layer-group mr-2"></i> Create Department</button>
+                                        )}
                                     </div>
-                                    
-                                    {/* ACTION ICONS GROUP */}
-                                    <div className="flex items-center gap-1 shrink-0">
-                                        <button onClick={() => setShowFilterMenu(!showFilterMenu)} className={`w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-colors ${showFilterMenu ? 'bg-black/10' : 'hover:bg-black/5'} text-[#54656f] text-[19px]`} title="Filter Messages"><i className="fa-solid fa-sliders"></i></button>
-                                        
-                                        {/* Notifications */}
+                                    {/* Action Icons (Global for when no group selected) */}
+                                    <div className="absolute top-4 right-4 flex items-center gap-2">
                                         <div className="relative">
-                                            <button onClick={() => setShowNotifications(!showNotifications)} className={`w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-colors ${showNotifications ? 'bg-black/10' : 'hover:bg-black/5'} text-[#54656f] text-[19px] relative`}>
+                                            <button onClick={() => setShowNotifications(!showNotifications)} className={`w-10 h-10 bg-white rounded-full flex items-center justify-center transition-colors shadow-sm text-[#54656f] text-[19px] relative`}>
                                                 <i className="fa-solid fa-bell"></i>
-                                                {totalNotifications > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-[#25d366] rounded-full border border-[#f0f2f5]"></span>}
+                                                {totalNotifications > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-[#25d366] rounded-full border border-white"></span>}
                                             </button>
                                             {showNotifications && (
                                                 <div className="absolute top-full right-0 mt-2 w-80 max-w-[90vw] bg-white rounded-lg shadow-[0_2px_5px_0_rgba(11,20,26,.26),0_2px_10px_0_rgba(11,20,26,.16)] z-50 overflow-hidden animate-in slide-in-from-top-2 border border-slate-100">
@@ -1554,16 +1448,19 @@
                                                     <div className="max-h-80 overflow-y-auto">
                                                         {totalNotifications === 0 ? <div className="p-8 text-center text-[14px] text-[#54656f]">No new alerts</div> :
                                                             <div>
-                                                                {activeActionableTasks.map(task => (
-                                                                    <div key={task.id} className="p-4 bg-white hover:bg-[#f5f6f6] cursor-pointer border-b border-slate-100 transition-colors" onClick={() => navigateToMessageFromNotification(task.id, task.groupId)}>
-                                                                        <div className="text-[13px] font-medium text-[#00a884] mb-1 flex items-center justify-between"><span className="flex items-center"><i className="fa-regular fa-square-check mr-1.5"></i>Pending Task</span> <span className="text-[10px] text-slate-400">{task.time}</span></div>
-                                                                        <div className="text-[14px] text-[#111b21] line-clamp-2 leading-snug">"{task.text}"</div>
-                                                                    </div>
-                                                                ))}
+                                                                {activeActionableTasks.map(task => {
+                                                                    const timeStr = task.timestamp?.toDate ? new Date(task.timestamp.toDate()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+                                                                    return (
+                                                                        <div key={task.id} className="p-4 bg-white hover:bg-[#f5f6f6] cursor-pointer border-b border-slate-100 transition-colors relative" onClick={() => navigateToMessageFromNotification(task.id, task.groupId)}>
+                                                                            <div className="text-[13px] font-medium text-[#00a884] mb-1 flex items-center justify-between"><span className="flex items-center"><i className="fa-regular fa-square-check mr-1.5"></i>Pending Task</span> <span className="text-[10px] text-slate-400">{timeStr}</span></div>
+                                                                            <div className="text-[14px] text-[#111b21] line-clamp-2 leading-snug">"{task.text}"</div>
+                                                                        </div>
+                                                                    );
+                                                                })}
                                                                 {genericNotifications.map(n => {
                                                                     const timeStr = n.timestamp?.toDate ? new Date(n.timestamp.toDate()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Just now';
                                                                     return (
-                                                                        <div key={n.id} className="p-4 bg-white hover:bg-[#f5f6f6] cursor-pointer border-b border-slate-100 transition-colors flex items-start gap-3 relative" onClick={() => { if(n.messageId) navigateToMessageFromNotification(n.messageId, activeGroup.id); }}>
+                                                                        <div key={n.id} className="p-4 bg-white hover:bg-[#f5f6f6] cursor-pointer border-b border-slate-100 transition-colors flex items-start gap-3 relative" onClick={() => { if(n.messageId) navigateToMessageFromNotification(n.messageId, n.groupId || activeGroup?.id); }}>
                                                                             <div className="w-8 h-8 rounded-full bg-[#d9fdd3] flex items-center justify-center text-[#00a884] shrink-0 mt-0.5"><i className={n.type === 'reply' ? "fa-solid fa-reply text-xs" : n.type === 'message' ? "fa-solid fa-message text-xs" : n.type === 'mention' ? "fa-solid fa-at text-xs" : "fa-solid fa-bolt text-xs"}></i></div>
                                                                             <div className="flex-1 overflow-hidden">
                                                                                 <div className="text-[14px] font-medium text-[#111b21]">{n.type === 'reply' ? 'New Reply' : n.type === 'message' ? 'Direct Message' : n.type === 'mention' ? 'Mentioned You' : 'New Reaction'}</div>
@@ -1579,151 +1476,226 @@
                                                 </div>
                                             )}
                                         </div>
-
-                                        <button onClick={() => setShowRightSidebar(!showRightSidebar)} className={`w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-colors ${showRightSidebar ? 'bg-black/10 text-[#111b21]' : 'hover:bg-black/5 text-[#54656f]'} text-[19px]`} title="Task Hub"><i className="fa-solid fa-clipboard-list"></i></button>
-                                        
-                                        {/* Filter Menu */}
-                                        {showFilterMenu && (
-                                            <div className="absolute top-[55px] right-24 bg-white rounded-lg shadow-[0_2px_5px_0_rgba(11,20,26,.26),0_2px_10px_0_rgba(11,20,26,.16)] z-50 overflow-hidden animate-in fade-in py-2 w-48 border border-slate-100">
-                                                {['all', 'tasks-pending', 'tasks-completed', 'messages', 'today', 'bookmarked'].map(f => (
-                                                    <div key={f} onClick={() => { setChatFilter(f); setShowFilterMenu(false); }} className={`px-4 py-2.5 text-[14px] cursor-pointer transition-colors flex items-center gap-3 ${chatFilter === f ? 'bg-[#f0f2f5] text-[#111b21]' : 'text-[#3b4a54] hover:bg-[#f5f6f6]'}`}>
-                                                        {f === 'all' && <i className="fa-solid fa-layer-group w-5 text-center"></i>}
-                                                        {f === 'tasks-pending' && <i className="fa-regular fa-clock w-5 text-center"></i>}
-                                                        {f === 'tasks-completed' && <i className="fa-regular fa-square-check w-5 text-center"></i>}
-                                                        {f === 'messages' && <i className="fa-regular fa-comment w-5 text-center"></i>}
-                                                        {f === 'today' && <i className="fa-regular fa-calendar-day w-5 text-center"></i>}
-                                                        {f === 'bookmarked' && <i className="fa-solid fa-bookmark w-5 text-center"></i>}
-                                                        {f === 'bookmarked' ? 'Saved Messages' : f === 'all' ? 'All Content' : f.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
                                     </div>
                                 </div>
-
-                                {/* Mobile Search */}
-                                <div className="md:hidden px-3 py-2 bg-[#f0f2f5] border-b border-slate-200/60">
-                                    <div className="bg-white rounded-full flex items-center px-4 py-1.5 shadow-sm border border-slate-200 focus-within:ring-2 focus-within:ring-[#00a884]/30 transition-all">
-                                        <i className="fa-solid fa-search text-[14px] text-[#54656f] mr-2"></i>
-                                        <input type="text" placeholder="Search messages..." className="bg-transparent outline-none flex-1 text-[13px] text-[#111b21] placeholder-[#8696a0]" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-                                        {searchQuery && <button onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-slate-600 ml-1"><i className="fa-solid fa-xmark text-xs"></i></button>}
-                                    </div>
-                                </div>
-
-                                {/* Message List with Doodle Watermark */}
-                                <div ref={chatContainerRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto px-4 md:px-[8%] wa-bg relative" onClick={() => setShowFilterMenu(false)}>
-                                    
-                                    {/* Wrapping Chat to bottom so no scrolling exists above the banner */}
-                                    <div className="flex flex-col min-h-full justify-end py-4 pb-10">
+                            ) : (
+                                <div className="flex-1 flex flex-col relative h-full bg-[#efeae2] overflow-hidden">
+                                    <div className="h-[59px] bg-[#f0f2f5] flex items-center justify-between px-3 md:px-4 shrink-0 z-30 sticky top-0 border-b border-slate-200/60 safe-top">
+                                        <button onClick={() => setMobileSidebarOpen(true)} className="md:hidden w-10 h-10 rounded-full hover:bg-black/5 flex items-center justify-center text-[#54656f] mr-1 shrink-0"><i className="fa-solid fa-bars text-xl"></i></button>
                                         
-                                        {/* Doodle Watermark (only if enabled) */}
-                                        {toolPreferences.showWatermark !== false && (
-                                            <div className="doodle-watermark">
-                                                {Array.from({ length: 15 }).map((_, rowIdx) => (
-                                                    <div key={rowIdx} className="doodle-row">
-                                                        {Array.from({ length: 8 }).map((_, i) => (
-                                                            <span key={i} className="doodle-item" style={{ fontFamily: '"Segoe UI", Roboto, Helvetica, Arial, sans-serif', fontSize: '20pt', transform: 'rotate(-20deg)', opacity: 0.7 }}>
-                                                                {toSentenceCase(currentUserData?.name || user.email.split('@')[0])}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                ))}
+                                        <div className="flex items-center gap-3 cursor-pointer flex-1 min-w-0" onClick={()=>{ if(!activeGroup.isDM) setActiveModal('group_settings'); }}>
+                                            {activeGroup.isDM ? <MemoizedAvatar uid={activeGroup.id} url={null} name={activeGroup.name} sizeClass="w-10 h-10" /> : activeGroup.profilePicUrl ? <MemoizedAvatar uid={activeGroup.id} url={activeGroup.profilePicUrl} name={activeGroup.name} sizeClass="w-10 h-10" /> : <div className="w-10 h-10 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center text-[#800020] shadow-sm"><i className="fa-solid fa-users"></i></div>}
+                                            <div className="flex flex-col min-w-0 flex-1">
+                                                <span className={`text-[16px] font-bold leading-tight truncate ${activeGroup.isDM ? 'text-[#111b21]' : 'text-[#800020]'}`}>{toSentenceCase(activeGroup.name)}</span>
+                                                <span className="text-[13px] text-[#54656f] truncate max-w-[150px] lg:max-w-[400px]">
+                                                    {activeGroup.isDM ? 'End-to-Server Encrypted' :
+                                                        (dbUsers.filter(u => activeGroup.members?.includes(u.email) && u.lastActive && (Date.now() - (u.lastActive?.toMillis?.() || 0) < 900000) && u.uid !== user.uid).length > 0)
+                                                        ? dbUsers.filter(u => activeGroup.members?.includes(u.email) && u.lastActive && (Date.now() - (u.lastActive?.toMillis?.() || 0) < 900000) && u.uid !== user.uid).map(u=>toSentenceCase((u.name||"").split(' ')[0])).join(', ') + ' (Online)'
+                                                        : `${activeGroup.members?.length||0} Members`
+                                                    }
+                                                </span>
                                             </div>
-                                        )}
-
-                                        <div className="text-center mb-6 mt-4 relative z-[1]"><span className="text-[12.5px] text-[#54656f] bg-[#ffeecd] px-4 py-1.5 rounded-lg shadow-sm font-medium"><i className="fa-solid fa-lock mr-1.5 text-[10px]"></i> Messages and tasks are end-to-server encrypted.</span></div>
-                                        {pinnedMessages.length > 0 && (
-                                            <div className="sticky top-2 z-10 bg-white shadow-[0_1px_2px_rgba(11,20,26,0.1)] rounded-lg p-2.5 mb-6 animate-in slide-in-from-top-4 cursor-pointer transform-gpu hover:bg-slate-50 transition-colors mx-auto w-[92%] md:w-full md:max-w-[65vw] relative z-[1]" onClick={() => scrollToMessage(pinnedMessages[0].id)}>
-                                                <div className="flex justify-between items-center text-[12px] text-[#54656f] font-medium mb-1"><span><i className="fa-solid fa-thumbtack mr-1 text-[#8696a0]"></i> Pinned Message</span></div>
-                                                <div className="text-[14px] text-[#111b21] line-clamp-1 truncate">{pinnedMessages[0].text || pinnedMessages[0].fileName}</div>
-                                            </div>
-                                        )}
-                                        <div className="relative z-[1] flex flex-col justify-end">
-                                            {messagesToRender.map(m => renderMessageNode(m))}
                                         </div>
-                                        {typingStatus.length > 0 && (
-                                            <div className="flex items-start animate-in fade-in slide-in-from-bottom-2 mt-2 relative z-[1]">
-                                                <div className="bg-white px-4 py-2.5 rounded-2xl rounded-tl-none shadow-[0_4px_15px_rgba(0,168,132,0.15)] flex items-center gap-3 border border-teal-50">
-                                                    <div className="flex -space-x-2">
-                                                        {typingStatus.map(t => {
-                                                            const uidPart = t.id.split('_')[1];
-                                                            const typist = dbUsers.find(u => u.uid === uidPart || u.name === t.name) || {};
-                                                            return <MemoizedAvatar key={t.id} uid={uidPart} url={typist.profilePicUrl} name={t.name} sizeClass="w-7 h-7 typing-avatar-pulse border-2 border-white relative z-10" />
-                                                        })}
+
+                                        <div className="hidden md:flex flex-1 max-w-md mx-4">
+                                            <div className="bg-white rounded-full flex items-center px-4 py-1.5 shadow-sm border border-slate-200 focus-within:ring-2 focus-within:ring-[#00a884]/30 focus-within:border-[#00a884] transition-all w-full">
+                                                <i className="fa-solid fa-search text-[14px] text-[#54656f] mr-2"></i>
+                                                <input type="text" placeholder="Search messages..." className="bg-transparent outline-none flex-1 text-[13px] text-[#111b21] placeholder-[#8696a0]" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                                                {searchQuery && <button onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-slate-600 ml-1"><i className="fa-solid fa-xmark text-xs"></i></button>}
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <button onClick={() => setShowFilterMenu(!showFilterMenu)} className={`w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-colors ${showFilterMenu ? 'bg-black/10' : 'hover:bg-black/5'} text-[#54656f] text-[19px]`} title="Filter Messages"><i className="fa-solid fa-sliders"></i></button>
+                                            
+                                            <div className="relative">
+                                                <button onClick={() => setShowNotifications(!showNotifications)} className={`w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-colors ${showNotifications ? 'bg-black/10' : 'hover:bg-black/5'} text-[#54656f] text-[19px] relative`}>
+                                                    <i className="fa-solid fa-bell"></i>
+                                                    {totalNotifications > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-[#25d366] rounded-full border border-[#f0f2f5]"></span>}
+                                                </button>
+                                                {showNotifications && (
+                                                    <div className="absolute top-full right-0 mt-2 w-80 max-w-[90vw] bg-white rounded-lg shadow-[0_2px_5px_0_rgba(11,20,26,.26),0_2px_10px_0_rgba(11,20,26,.16)] z-50 overflow-hidden animate-in slide-in-from-top-2 border border-slate-100">
+                                                        <div className="p-4 flex justify-between items-center bg-[#f0f2f5]">
+                                                            <span className="text-[16px] font-medium text-[#111b21]">Alerts</span>
+                                                            <button onClick={handleClearNotifications} className="text-[13px] text-[#00a884] font-medium hover:underline">Clear All</button>
+                                                        </div>
+                                                        <div className="max-h-80 overflow-y-auto">
+                                                            {totalNotifications === 0 ? <div className="p-8 text-center text-[14px] text-[#54656f]">No new alerts</div> :
+                                                                <div>
+                                                                    {activeActionableTasks.map(task => {
+                                                                        const timeStr = task.timestamp?.toDate ? new Date(task.timestamp.toDate()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+                                                                        return (
+                                                                            <div key={task.id} className="p-4 bg-white hover:bg-[#f5f6f6] cursor-pointer border-b border-slate-100 transition-colors relative" onClick={() => navigateToMessageFromNotification(task.id, task.groupId)}>
+                                                                                <div className="text-[13px] font-medium text-[#00a884] mb-1 flex items-center justify-between"><span className="flex items-center"><i className="fa-regular fa-square-check mr-1.5"></i>Pending Task</span> <span className="text-[10px] text-slate-400">{timeStr}</span></div>
+                                                                                <div className="text-[14px] text-[#111b21] line-clamp-2 leading-snug">"{task.text}"</div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                    {genericNotifications.map(n => {
+                                                                        const timeStr = n.timestamp?.toDate ? new Date(n.timestamp.toDate()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Just now';
+                                                                        return (
+                                                                            <div key={n.id} className="p-4 bg-white hover:bg-[#f5f6f6] cursor-pointer border-b border-slate-100 transition-colors flex items-start gap-3 relative" onClick={() => { if(n.messageId) navigateToMessageFromNotification(n.messageId, n.groupId || activeGroup.id); }}>
+                                                                                <div className="w-8 h-8 rounded-full bg-[#d9fdd3] flex items-center justify-center text-[#00a884] shrink-0 mt-0.5"><i className={n.type === 'reply' ? "fa-solid fa-reply text-xs" : n.type === 'message' ? "fa-solid fa-message text-xs" : n.type === 'mention' ? "fa-solid fa-at text-xs" : "fa-solid fa-bolt text-xs"}></i></div>
+                                                                                <div className="flex-1 overflow-hidden">
+                                                                                    <div className="text-[14px] font-medium text-[#111b21]">{n.type === 'reply' ? 'New Reply' : n.type === 'message' ? 'Direct Message' : n.type === 'mention' ? 'Mentioned You' : 'New Reaction'}</div>
+                                                                                    <div className="text-[13px] text-[#54656f] mt-0.5 leading-snug truncate pr-8">{n.text}</div>
+                                                                                </div>
+                                                                                <div className="absolute bottom-4 right-4 text-[10px] text-slate-400 font-medium">{timeStr}</div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            }
+                                                        </div>
                                                     </div>
-                                                    <span className="typing-gradient-text text-[13px] tracking-wide">
-                                                        {typingStatus.map(t => toSentenceCase(t.name)).join(', ')} {typingStatus.length > 1 ? 'are' : 'is'} typing...
-                                                    </span>
+                                                )}
+                                            </div>
+
+                                            <button onClick={() => setShowRightSidebar(!showRightSidebar)} className={`w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-colors ${showRightSidebar ? 'bg-black/10 text-[#111b21]' : 'hover:bg-black/5 text-[#54656f]'} text-[19px]`} title="Task Hub"><i className="fa-solid fa-clipboard-list"></i></button>
+                                            
+                                            {/* Filter Menu */}
+                                            {showFilterMenu && (
+                                                <div className="absolute top-[55px] right-24 bg-white rounded-lg shadow-[0_2px_5px_0_rgba(11,20,26,.26),0_2px_10px_0_rgba(11,20,26,.16)] z-50 overflow-hidden animate-in fade-in py-2 w-48 border border-slate-100">
+                                                    {['all', 'tasks-pending', 'tasks-completed', 'messages', 'today', 'bookmarked'].map(f => (
+                                                        <div key={f} onClick={() => { setChatFilter(f); setShowFilterMenu(false); }} className={`px-4 py-2.5 text-[14px] cursor-pointer transition-colors flex items-center gap-3 ${chatFilter === f ? 'bg-[#f0f2f5] text-[#111b21]' : 'text-[#3b4a54] hover:bg-[#f5f6f6]'}`}>
+                                                            {f === 'all' && <i className="fa-solid fa-layer-group w-5 text-center"></i>}
+                                                            {f === 'tasks-pending' && <i className="fa-regular fa-clock w-5 text-center"></i>}
+                                                            {f === 'tasks-completed' && <i className="fa-regular fa-square-check w-5 text-center"></i>}
+                                                            {f === 'messages' && <i className="fa-regular fa-comment w-5 text-center"></i>}
+                                                            {f === 'today' && <i className="fa-regular fa-calendar-day w-5 text-center"></i>}
+                                                            {f === 'bookmarked' && <i className="fa-solid fa-bookmark w-5 text-center"></i>}
+                                                            {f === 'bookmarked' ? 'Saved Messages' : f === 'all' ? 'All Content' : f.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                            </div>
-                                        )}
-                                        <div ref={messagesEndRef} className="h-6 shrink-0 relative z-[1]"></div>
-                                    </div>
-                                </div>
-
-                                {/* Floating Arrow */}
-                                <button onClick={scrollToPosition} className="absolute bottom-[80px] right-4 bg-white text-[#54656f] shadow-[0_1px_1px_0_rgba(11,20,26,.1),0_2px_5px_0_rgba(11,20,26,.2)] rounded-full w-10 h-10 flex items-center justify-center z-30 transition-transform">
-                                    <i className={`fa-solid ${isAtBottom ? 'fa-arrow-up' : 'fa-arrow-down'} text-[16px]`}></i>
-                                </button>
-
-                                {/* Reply Banner */}
-                                {replyingTo && (
-                                    <div className="bg-[#f0f2f5] px-4 py-2 flex items-center justify-between shrink-0 animate-in slide-in-from-bottom-2 z-10 relative">
-                                        <div className="flex-1 bg-[#e9edef] rounded-lg p-2 border-l-4 border-[#00a884] flex items-center justify-between">
-                                            <div className="flex flex-col overflow-hidden pr-2">
-                                                <div className="text-[13px] font-semibold text-[#00a884]">{toSentenceCase((replyingTo.sender||"").split('@')[0])}</div>
-                                                <div className="text-[13px] text-[#54656f] truncate">"{replyingTo.text || replyingTo.fileName}"</div>
-                                            </div>
-                                            <button onClick={()=>setReplyingTo(null)} className="w-8 h-8 rounded-full text-[#54656f] hover:bg-black/5 transition-colors flex items-center justify-center text-[20px]"><i className="fa-solid fa-xmark"></i></button>
+                                            )}
                                         </div>
                                     </div>
-                                )}
 
-                                {/* @Mention Popup */}
-                                {inputText.split(/\s+/).pop().startsWith('@') && inputText.split(/\s+/).pop().length > 0 && (
-                                    <div className="absolute bottom-[65px] left-4 bg-white shadow-[0_2px_5px_0_rgba(11,20,26,.26),0_2px_10px_0_rgba(11,20,26,.16)] rounded-lg w-72 max-h-56 overflow-y-auto z-20 py-2 animate-in slide-in-from-bottom-2 border border-slate-100">
-                                        <div className="px-4 py-1 text-[12px] font-bold text-[#00a884] tracking-wide mb-1">Users</div>
-                                        {dbUsers.filter(u => (u.name||"").toLowerCase().includes(inputText.split(/\s+/).pop().substring(1).toLowerCase())).map(u => (
-                                            <div key={u.uid} onMouseDown={(e) => e.preventDefault()} onClick={() => { const words = inputText.split(/\s+/); words[words.length - 1] = `@${u.name} `; setInputText(words.join(' ')); chatInputRef.current?.focus(); }} className="px-4 py-2 hover:bg-[#f5f6f6] cursor-pointer text-[14px] flex items-center gap-3 text-[#111b21] transition-colors">
-                                                <MemoizedAvatar uid={u.uid} url={u.profilePicUrl} name={u.name} sizeClass="w-8 h-8" />
-                                                {toSentenceCase(u.name)}
-                                            </div>
-                                        ))}
-                                        <div className="px-4 py-1 text-[12px] font-bold text-[#00a884] tracking-wide border-t border-slate-100 my-1 pt-2">Teams</div>
-                                        {groups.filter(g => (g.name||"").toLowerCase().includes(inputText.split(/\s+/).pop().substring(1).toLowerCase()) && !g.isArchived).map(g => (
-                                            <div key={g.id} onMouseDown={(e) => e.preventDefault()} onClick={() => { const words = inputText.split(/\s+/); words[words.length - 1] = `@${g.name.replace(/\s+/g, '')} `; setInputText(words.join(' ')); chatInputRef.current?.focus(); }} className="px-4 py-2 hover:bg-[#f5f6f6] cursor-pointer text-[14px] flex items-center gap-3 text-[#111b21] transition-colors">
-                                                <MemoizedAvatar uid={g.id} url={g.profilePicUrl} name={g.name} sizeClass="w-8 h-8" isGroup={true} />
-                                                {toSentenceCase(g.name)}
-                                            </div>
-                                        ))}
+                                    {/* Mobile Search */}
+                                    <div className="md:hidden px-3 py-2 bg-[#f0f2f5] border-b border-slate-200/60">
+                                        <div className="bg-white rounded-full flex items-center px-4 py-1.5 shadow-sm border border-slate-200 focus-within:ring-2 focus-within:ring-[#00a884]/30 transition-all">
+                                            <i className="fa-solid fa-search text-[14px] text-[#54656f] mr-2"></i>
+                                            <input type="text" placeholder="Search messages..." className="bg-transparent outline-none flex-1 text-[13px] text-[#111b21] placeholder-[#8696a0]" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                                            {searchQuery && <button onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-slate-600 ml-1"><i className="fa-solid fa-xmark text-xs"></i></button>}
+                                        </div>
                                     </div>
-                                )}
 
-                                {/* Message Input Area with Emoji Picker */}
-                                <div className="bg-[#f0f2f5] px-3 md:px-4 py-3 shrink-0 z-10 flex items-end gap-2 safe-bottom relative w-full">
-                                    <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"/>
-                                    <button className="w-[42px] h-[42px] flex items-center justify-center text-[#54656f] hover:text-[#111b21] transition-colors shrink-0 text-[22px]" onClick={() => fileInputRef.current.click()} disabled={isUploading}><i className="fa-solid fa-plus"></i></button>
-                                    {/* Emoji Picker */}
-                                    <div className="relative shrink-0" ref={emojiPickerRef}>
-                                        <button onClick={() => setEmojiPickerOpen(!emojiPickerOpen)} className="w-[42px] h-[42px] flex items-center justify-center text-[#54656f] hover:text-[#111b21] transition-colors text-[22px]" title="Emoji"><i className="fa-regular fa-face-smile"></i></button>
-                                        {emojiPickerOpen && (
-                                            <div className="emoji-picker-popup">
-                                                {EMOJI_LIST.map(emoji => (
-                                                    <button key={emoji} onClick={() => { setInputText(prev => prev + emoji); chatInputRef.current?.focus(); }}>{emoji}</button>
-                                                ))}
+                                    {/* Message List with Doodle Watermark */}
+                                    <div ref={chatContainerRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto px-4 md:px-[8%] wa-bg relative" onClick={() => setShowFilterMenu(false)}>
+                                        
+                                        {/* Wrapping Chat to bottom so no scrolling exists above the banner */}
+                                        <div className="flex flex-col min-h-full justify-end py-4 pb-10">
+                                            
+                                            {/* Doodle Watermark (only if enabled) */}
+                                            {toolPreferences.showWatermark !== false && (
+                                                <div className="doodle-watermark">
+                                                    {Array.from({ length: 15 }).map((_, rowIdx) => (
+                                                        <div key={rowIdx} className="doodle-row">
+                                                            {Array.from({ length: 8 }).map((_, i) => (
+                                                                <span key={i} className="doodle-item" style={{ fontFamily: '"Segoe UI", Roboto, Helvetica, Arial, sans-serif', fontSize: '20pt', transform: 'rotate(-20deg)', opacity: 0.7 }}>
+                                                                    {toSentenceCase(currentUserData?.name || user.email.split('@')[0])}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            <div className="text-center mb-6 mt-4 relative z-[1]"><span className="text-[12.5px] text-[#54656f] bg-[#ffeecd] px-4 py-1.5 rounded-lg shadow-sm font-medium"><i className="fa-solid fa-lock mr-1.5 text-[10px]"></i> Messages and tasks are end-to-server encrypted.</span></div>
+                                            {pinnedMessages.length > 0 && (
+                                                <div className="sticky top-2 z-10 bg-white shadow-[0_1px_2px_rgba(11,20,26,0.1)] rounded-lg p-2.5 mb-6 animate-in slide-in-from-top-4 cursor-pointer transform-gpu hover:bg-slate-50 transition-colors mx-auto w-[92%] md:w-full md:max-w-[65vw] relative z-[1]" onClick={() => scrollToMessage(pinnedMessages[0].id)}>
+                                                    <div className="flex justify-between items-center text-[12px] text-[#54656f] font-medium mb-1"><span><i className="fa-solid fa-thumbtack mr-1 text-[#8696a0]"></i> Pinned Message</span></div>
+                                                    <div className="text-[14px] text-[#111b21] line-clamp-1 truncate">{pinnedMessages[0].text || pinnedMessages[0].fileName}</div>
+                                                </div>
+                                            )}
+                                            <div className="relative z-[1] flex flex-col justify-end">
+                                                {messagesToRender.map(m => renderMessageNode(m))}
                                             </div>
+                                            {typingStatus.length > 0 && (
+                                                <div className="flex items-start animate-in fade-in slide-in-from-bottom-2 mt-2 relative z-[1]">
+                                                    <div className="bg-white px-4 py-2.5 rounded-2xl rounded-tl-none shadow-[0_4px_15px_rgba(0,168,132,0.15)] flex items-center gap-3 border border-teal-50">
+                                                        <div className="flex -space-x-2">
+                                                            {typingStatus.map(t => {
+                                                                const uidPart = t.id.split('_')[1] || t.id;
+                                                                const typist = dbUsers.find(u => u.uid === uidPart || u.name === t.name) || {};
+                                                                return <MemoizedAvatar key={t.id} uid={uidPart} url={typist.profilePicUrl} name={t.name} sizeClass="w-7 h-7 typing-avatar-pulse border-2 border-white relative z-10" />
+                                                            })}
+                                                        </div>
+                                                        <span className="typing-gradient-text text-[13px] tracking-wide">
+                                                            {typingStatus.map(t => toSentenceCase(t.name)).join(', ')} {typingStatus.length > 1 ? 'are' : 'is'} typing...
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div ref={messagesEndRef} className="h-6 shrink-0 relative z-[1]"></div>
+                                        </div>
+                                    </div>
+
+                                    {/* Floating Arrow */}
+                                    <button onClick={scrollToPosition} className="absolute bottom-[80px] right-4 bg-white text-[#54656f] shadow-[0_1px_1px_0_rgba(11,20,26,.1),0_2px_5px_0_rgba(11,20,26,.2)] rounded-full w-10 h-10 flex items-center justify-center z-30 transition-transform">
+                                        <i className={`fa-solid ${isAtBottom ? 'fa-arrow-up' : 'fa-arrow-down'} text-[16px]`}></i>
+                                    </button>
+
+                                    {/* Reply Banner */}
+                                    {replyingTo && (
+                                        <div className="bg-[#f0f2f5] px-4 py-2 flex items-center justify-between shrink-0 animate-in slide-in-from-bottom-2 z-10 relative">
+                                            <div className="flex-1 bg-[#e9edef] rounded-lg p-2 border-l-4 border-[#00a884] flex items-center justify-between">
+                                                <div className="flex flex-col overflow-hidden pr-2">
+                                                    <div className="text-[13px] font-semibold text-[#00a884]">{toSentenceCase((replyingTo.sender||"").split('@')[0])}</div>
+                                                    <div className="text-[13px] text-[#54656f] truncate">"{replyingTo.text || replyingTo.fileName}"</div>
+                                                </div>
+                                                <button onClick={()=>setReplyingTo(null)} className="w-8 h-8 rounded-full text-[#54656f] hover:bg-black/5 transition-colors flex items-center justify-center text-[20px]"><i className="fa-solid fa-xmark"></i></button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* @Mention Popup */}
+                                    {inputText.split(/\s+/).pop().startsWith('@') && inputText.split(/\s+/).pop().length > 0 && (
+                                        <div className="absolute bottom-[65px] left-4 bg-white shadow-[0_2px_5px_0_rgba(11,20,26,.26),0_2px_10px_0_rgba(11,20,26,.16)] rounded-lg w-72 max-h-56 overflow-y-auto z-20 py-2 animate-in slide-in-from-bottom-2 border border-slate-100">
+                                            <div className="px-4 py-1 text-[12px] font-bold text-[#00a884] tracking-wide mb-1">Users</div>
+                                            {dbUsers.filter(u => (u.name||"").toLowerCase().includes(inputText.split(/\s+/).pop().substring(1).toLowerCase())).map(u => (
+                                                <div key={u.uid} onMouseDown={(e) => e.preventDefault()} onClick={() => { const words = inputText.split(/\s+/); words[words.length - 1] = `@${u.name} `; setInputText(words.join(' ')); chatInputRef.current?.focus(); }} className="px-4 py-2 hover:bg-[#f5f6f6] cursor-pointer text-[14px] flex items-center gap-3 text-[#111b21] transition-colors">
+                                                    <MemoizedAvatar uid={u.uid} url={u.profilePicUrl} name={u.name} sizeClass="w-8 h-8" />
+                                                    {toSentenceCase(u.name)}
+                                                </div>
+                                            ))}
+                                            <div className="px-4 py-1 text-[12px] font-bold text-[#00a884] tracking-wide border-t border-slate-100 my-1 pt-2">Teams</div>
+                                            {groups.filter(g => (g.name||"").toLowerCase().includes(inputText.split(/\s+/).pop().substring(1).toLowerCase()) && !g.isArchived).map(g => (
+                                                <div key={g.id} onMouseDown={(e) => e.preventDefault()} onClick={() => { const words = inputText.split(/\s+/); words[words.length - 1] = `@${g.name.replace(/\s+/g, '')} `; setInputText(words.join(' ')); chatInputRef.current?.focus(); }} className="px-4 py-2 hover:bg-[#f5f6f6] cursor-pointer text-[14px] flex items-center gap-3 text-[#111b21] transition-colors">
+                                                    <MemoizedAvatar uid={g.id} url={g.profilePicUrl} name={g.name} sizeClass="w-8 h-8" isGroup={true} />
+                                                    {toSentenceCase(g.name)}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Message Input Area with Emoji Picker */}
+                                    <div className="bg-[#f0f2f5] px-3 md:px-4 py-3 shrink-0 z-10 flex items-end gap-2 safe-bottom relative w-full">
+                                        <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"/>
+                                        <button className="w-[42px] h-[42px] flex items-center justify-center text-[#54656f] hover:text-[#111b21] transition-colors shrink-0 text-[22px]" onClick={() => fileInputRef.current.click()} disabled={isUploading}><i className="fa-solid fa-plus"></i></button>
+                                        {/* Emoji Picker */}
+                                        <div className="relative shrink-0" ref={emojiPickerRef}>
+                                            <button onClick={() => setEmojiPickerOpen(!emojiPickerOpen)} className="w-[42px] h-[42px] flex items-center justify-center text-[#54656f] hover:text-[#111b21] transition-colors text-[22px]" title="Emoji"><i className="fa-regular fa-face-smile"></i></button>
+                                            {emojiPickerOpen && (
+                                                <div className="emoji-picker-popup">
+                                                    {EMOJI_LIST.map(emoji => (
+                                                        <button key={emoji} onClick={() => { setInputText(prev => prev + emoji); chatInputRef.current?.focus(); }}>{emoji}</button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex-1 bg-white rounded-lg flex items-end shadow-sm overflow-hidden">
+                                            <textarea ref={chatInputRef} rows={1} placeholder="Type or Paste a message..." className="bg-transparent flex-1 outline-none text-[15px] text-[#111b21] resize-none py-[10px] px-4 w-full" style={{ minHeight: '42px', maxHeight: '120px' }} value={inputText} onPaste={handlePaste} onChange={(e) => { setInputText(e.target.value); handleTypingEvent(); e.target.style.height = 'auto'; e.target.style.height = (e.target.scrollHeight < 120 ? e.target.scrollHeight : 120) + 'px'; }} onKeyDown={handleKeyDown} />
+                                        </div>
+                                        {inputText.trim() ? (
+                                            <button onClick={handleSendMessage} className="shrink-0 w-[42px] h-[42px] flex justify-center items-center text-[#54656f] hover:text-[#00a884] transition-colors"><i className="fa-solid fa-paper-plane text-[22px]"></i></button>
+                                        ) : (
+                                            <button className="shrink-0 w-[42px] h-[42px] flex justify-center items-center text-[#54656f] opacity-50 cursor-not-allowed"><i className="fa-solid fa-paper-plane text-[22px]"></i></button>
                                         )}
                                     </div>
-                                    <div className="flex-1 bg-white rounded-lg flex items-end shadow-sm overflow-hidden">
-                                        <textarea ref={chatInputRef} rows={1} placeholder="Type or Paste a message..." className="bg-transparent flex-1 outline-none text-[15px] text-[#111b21] resize-none py-[10px] px-4 w-full" style={{ minHeight: '42px', maxHeight: '120px' }} value={inputText} onPaste={handlePaste} onChange={(e) => { setInputText(e.target.value); handleTypingEvent(); e.target.style.height = 'auto'; e.target.style.height = (e.target.scrollHeight < 120 ? e.target.scrollHeight : 120) + 'px'; }} onKeyDown={handleKeyDown} />
-                                    </div>
-                                    {inputText.trim() ? (
-                                        <button onClick={handleSendMessage} className="shrink-0 w-[42px] h-[42px] flex justify-center items-center text-[#54656f] hover:text-[#00a884] transition-colors"><i className="fa-solid fa-paper-plane text-[22px]"></i></button>
-                                    ) : (
-                                        <button className="shrink-0 w-[42px] h-[42px] flex justify-center items-center text-[#54656f] opacity-50 cursor-not-allowed"><i className="fa-solid fa-paper-plane text-[22px]"></i></button>
-                                    )}
                                 </div>
-                            </div>
+                            )}
 
                             {/* RIGHT SIDEBAR - Tasks */}
                             {showRightSidebar && (
@@ -1739,15 +1711,28 @@
                                                 {tasksAssignedToMe.length === 0 ? (
                                                     <div className="text-[13px] font-medium text-slate-400 text-center p-6 mt-4">Inbox zero!</div>
                                                 ) : (
-                                                    tasksAssignedToMe.map(task => (
-                                                        <div key={task.id} onClick={() => { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'demo',name:'Demo', isDM: false}); setSelectedMessage(task); setIsEditingTaskTitle(false); setActiveModal('task_trail'); }} className="p-3 bg-white hover:bg-[#f5f6f6] rounded-lg cursor-pointer border-b border-slate-100 transition-all">
-                                                            <div className="font-medium text-[14px] text-[#111b21] truncate mb-1">{task.text || 'File Task'}</div>
-                                                            <div className="flex justify-between items-center mt-1.5">
-                                                                <span className="text-[12px] text-[#54656f] truncate max-w-[120px]">{groups.find(g=>g.id===task.groupId)?.name || 'Main'}</span>
-                                                                <span className="text-[11px] font-semibold text-[#ea0038]">Due {new Date(task.taskData.deadline).toLocaleDateString()}</span>
+                                                    tasksAssignedToMe.map(task => {
+                                                        const groupObj = groups.find(g=>g.id===task.groupId);
+                                                        const isTaskDM = !groupObj;
+                                                        const groupNameStr = isTaskDM ? 'Direct Message' : groupObj.name;
+                                                        return (
+                                                            <div key={task.id} onClick={() => { 
+                                                                if(groupObj) setActiveGroup(groupObj); 
+                                                                else {
+                                                                    const otherUid = task.groupId.replace(user.uid, '').replace('_', '');
+                                                                    const otherUser = dbUsers.find(u => u.uid === otherUid);
+                                                                    if (otherUser) setActiveGroup({ id: task.groupId, name: otherUser.name, isDM: true, members: [user.email, otherUser.email] });
+                                                                }
+                                                                setSelectedMessage(task); setIsEditingTaskTitle(false); setActiveModal('task_trail'); 
+                                                            }} className="p-3 bg-white hover:bg-[#f5f6f6] rounded-lg cursor-pointer border-b border-slate-100 transition-all">
+                                                                <div className="font-medium text-[14px] text-[#111b21] truncate mb-1">{task.text || 'File Task'}</div>
+                                                                <div className="flex justify-between items-center mt-1.5">
+                                                                    <span className={`text-[12px] truncate max-w-[120px] font-semibold ${isTaskDM ? 'text-[#54656f]' : 'text-[#800020]'}`}>{groupNameStr}</span>
+                                                                    <span className="text-[11px] font-semibold text-[#ea0038]">Due {new Date(task.taskData.deadline).toLocaleDateString()}</span>
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    ))
+                                                        )
+                                                    })
                                                 )}
                                             </div>
                                         </div>
@@ -1757,16 +1742,28 @@
                                                 {tasksAssignedByMe.length === 0 ? (
                                                     <div className="text-[13px] font-medium text-slate-400 text-center p-6 mt-4">No active delegations</div>
                                                 ) : (
-                                                    tasksAssignedByMe.map(task => (
-                                                        <div key={task.id} onClick={() => { setActiveGroup(groups.find(g=>g.id===task.groupId)||{id:'demo',name:'Demo', isDM: false}); setSelectedMessage(task); setIsEditingTaskTitle(false); setActiveModal('task_trail'); }} className="p-3 bg-white hover:bg-[#f5f6f6] rounded-lg cursor-pointer border-b border-slate-100 transition-all">
-                                                            <div className="font-medium text-[14px] text-[#111b21] truncate mb-1">{task.text || 'File Task'}</div>
-                                                            <div className="text-[12px] text-[#54656f] truncate mb-1.5">To: {(task.taskData.assignees||[]).map(a=>toSentenceCase((a||"").split('@')[0])).join(', ')}</div>
-                                                            <div className="flex justify-between items-center">
-                                                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm ${task.taskData.status==='Pending'?'bg-amber-100 text-amber-700':'bg-[#d1e8ff] text-blue-700'}`}>{task.taskData.status}</span>
-                                                                <span className="text-[11px] font-semibold text-[#ea0038]">Due {new Date(task.taskData.deadline).toLocaleDateString()}</span>
+                                                    tasksAssignedByMe.map(task => {
+                                                        const groupObj = groups.find(g=>g.id===task.groupId);
+                                                        const isTaskDM = !groupObj;
+                                                        return (
+                                                            <div key={task.id} onClick={() => { 
+                                                                if(groupObj) setActiveGroup(groupObj); 
+                                                                else {
+                                                                    const otherUid = task.groupId.replace(user.uid, '').replace('_', '');
+                                                                    const otherUser = dbUsers.find(u => u.uid === otherUid);
+                                                                    if (otherUser) setActiveGroup({ id: task.groupId, name: otherUser.name, isDM: true, members: [user.email, otherUser.email] });
+                                                                }
+                                                                setSelectedMessage(task); setIsEditingTaskTitle(false); setActiveModal('task_trail'); 
+                                                            }} className="p-3 bg-white hover:bg-[#f5f6f6] rounded-lg cursor-pointer border-b border-slate-100 transition-all">
+                                                                <div className="font-medium text-[14px] text-[#111b21] truncate mb-1">{task.text || 'File Task'}</div>
+                                                                <div className="text-[12px] text-[#54656f] truncate mb-1.5">To: {(task.taskData.assignees||[]).map(a=>toSentenceCase((a||"").split('@')[0])).join(', ')}</div>
+                                                                <div className="flex justify-between items-center">
+                                                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm ${task.taskData.status==='Pending'?'bg-amber-100 text-amber-700':'bg-[#d1e8ff] text-blue-700'}`}>{task.taskData.status}</span>
+                                                                    <span className="text-[11px] font-semibold text-[#ea0038]">Due {new Date(task.taskData.deadline).toLocaleDateString()}</span>
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    ))
+                                                        )
+                                                    })
                                                 )}
                                             </div>
                                         </div>
@@ -1785,7 +1782,7 @@
                         <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] z-[60] flex items-center justify-center p-4 animate-in fade-in" onClick={() => setActiveModal(null)}>
                             <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl animate-in zoom-in-95 transform-gpu overflow-hidden" onClick={e => e.stopPropagation()}>
                                 <div className="p-6 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-[#f0f2f5] flex items-center justify-center min-h-[100px]">
-                                    <p className="text-[15px] text-[#111b21] line-clamp-3 italic text-center font-medium">"{selectedMessage.text || selectedMessage.fileName}"</p>
+                                    <p className="text-[15px] text-[#111b21] line-clamp-3 italic text-center font-medium break-words">"{selectedMessage.text || selectedMessage.fileName}"</p>
                                 </div>
                                 <div className="p-3 space-y-1">
                                     <button onClick={() => { setActiveModal(null); setReplyingTo(selectedMessage); setTimeout(()=>chatInputRef.current?.focus(), 100); }} className="w-full flex items-center gap-4 px-5 py-4 hover:bg-teal-50 hover:text-[#008069] rounded-xl transition-all text-left text-[16px] font-semibold text-[#3b4a54] group">
@@ -1828,7 +1825,7 @@
                                             
                                             <label className="flex flex-col gap-1 cursor-pointer p-2 mt-1 hover:bg-white rounded-lg transition-colors">
                                                 <span className="text-[12px] font-bold text-slate-600 uppercase tracking-wider"><i className="fa-solid fa-music mr-1 text-[#54656f]"></i> Alert Sound</span>
-                                                <select value={toolPreferences.soundProfile || 'classic'} onChange={e => setToolPreferences(prev => ({...prev, soundProfile: e.target.value}))} className="w-full p-2 border border-slate-200 rounded text-[13px] bg-slate-50 outline-none focus:ring-2 focus:ring-[#008069]/20 text-slate-700">
+                                                <select value={toolPreferences.soundProfile || 'classic'} onChange={e => { setToolPreferences(prev => ({...prev, soundProfile: e.target.value})); setTimeout(()=>{ const audioUrls = { classic: "https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3", soft: "https://cdn.pixabay.com/download/audio/2022/03/15/audio_793bdf2292.mp3", subtle: "https://cdn.pixabay.com/download/audio/2022/03/10/audio_c8c8a73467.mp3" }; const a = new Audio(audioUrls[e.target.value]); a.play().catch(()=>{}); }, 100); }} className="w-full p-2 border border-slate-200 rounded text-[13px] bg-slate-50 outline-none focus:ring-2 focus:ring-[#008069]/20 text-slate-700">
                                                     <option value="classic">Classic Chime</option>
                                                     <option value="soft">Soft Pulse</option>
                                                     <option value="subtle">Subtle Pop</option>
@@ -1983,7 +1980,12 @@
                                                 <button onClick={() => handleAddComment(true)} disabled={!trailComment.trim()} className="flex-1 bg-[#008069] disabled:bg-slate-300 disabled:text-white text-white py-3 rounded-xl text-[13px] font-bold shadow-sm hover:bg-[#006e5a] transition-all flex items-center justify-center"><i className="fa-solid fa-floppy-disk mr-1.5"></i> Save & Close</button>
                                             </div>
                                         </div>
-                                        <button onClick={handleCompleteTask} className="w-full bg-emerald-500 text-white py-3 rounded-xl text-[13px] font-bold shadow-sm hover:bg-emerald-600 transition-all flex items-center justify-center gap-2"><i className="fa-solid fa-shield-check text-lg"></i> Mark as Completed</button>
+                                        <div className="flex gap-2">
+                                            {selectedMessage.taskData.status !== "Completed" && (
+                                                <button onClick={handleCompleteTask} className="flex-1 bg-emerald-500 text-white py-3 rounded-xl text-[13px] font-bold shadow-sm hover:bg-emerald-600 transition-all flex items-center justify-center gap-2"><i className="fa-solid fa-shield-check text-lg"></i> Mark Completed</button>
+                                            )}
+                                            <button onClick={handleArchiveTask} className="flex-1 bg-slate-200 text-slate-700 hover:bg-slate-300 py-3 rounded-xl text-[13px] font-bold transition-all flex items-center justify-center gap-2"><i className="fa-solid fa-box-archive text-lg"></i> Archive Task</button>
+                                        </div>
                                     </div>
                                 )}
                             </div>

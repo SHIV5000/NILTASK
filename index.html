@@ -355,6 +355,35 @@
                 reply: true, react: true, edit: true, delete: true, pin: true, bookmark: true, showWatermark: true, soundProfile: 'classic'
             });
 
+            // ── NEW FEATURE STATES ──────────────────────────────────────────────────
+            // F1: Scheduled Messages
+            const [scheduledMessages, setScheduledMessages] = useState([]);
+            const [scheduleDateTime, setScheduleDateTime] = useState("");
+            const [showScheduleInput, setShowScheduleInput] = useState(false);
+            const [pendingScheduledText, setPendingScheduledText] = useState("");
+
+            // F2: Task Analytics
+            const [analyticsView, setAnalyticsView] = useState("overview"); // overview | staff | overdue
+
+            // F3: Recurring Task Templates
+            const [taskTemplates, setTaskTemplates] = useState([]);
+            const [templateForm, setTemplateForm] = useState({ title: "", assignees: [], deadlineDays: 1, groupId: "", recurring: "once", category: "General" });
+            const [editingTemplate, setEditingTemplate] = useState(null);
+
+            // F4: Offline Draft Queue
+            const [offlineDrafts, setOfflineDrafts] = useState([]);
+            const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+            // F5: Inactivity Warning
+            const [showInactivityWarning, setShowInactivityWarning] = useState(false);
+            const [inactivityCountdown, setInactivityCountdown] = useState(60);
+            const inactivityTimerRef = useRef(null);
+            const inactivityCountdownRef = useRef(null);
+            const lastActivityRef = useRef(Date.now());
+
+            // F6: Scheduled Message (per-message send scheduling)
+            const [msgScheduleDateTime, setMsgScheduleDateTime] = useState("");
+
             // =====================================================================
             // --- SECTION 5.A : CORE LIFECYCLE HOOKS (EFFECTS)                  ---
             // Purpose: Handles initialization, data subscriptions, and timers.
@@ -543,6 +572,107 @@
 
             useEffect(() => { return () => { if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current); }; }, []);
             
+            // ── F1 + F6: Scheduled Messages Firestore listener + heartbeat sender ──
+            useEffect(() => {
+                if (!user?.email) return;
+                const q = window.query(window.collection(window.db, "scheduled_messages"), window.where("senderEmail", "==", user.email));
+                const unsub = window.onSnapshot(q, snap => {
+                    setScheduledMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                });
+                // heartbeat: every 30s check if any scheduled messages are due
+                const hb = setInterval(async () => {
+                    const now = new Date();
+                    const dueQ = window.query(window.collection(window.db, "scheduled_messages"), window.where("senderEmail", "==", user.email), window.where("status", "==", "pending"));
+                    const dueSnap = await window.getDocs(dueQ);
+                    for (const d of dueSnap.docs) {
+                        const sm = d.data();
+                        if (new Date(sm.scheduledFor) <= now) {
+                            try {
+                                const mentions = [];
+                                (dbUsers || []).forEach(u => { if ((sm.text||"").toLowerCase().includes(`@${(u.name||"").toLowerCase()}`)) mentions.push(u.email); });
+                                const isPrivate = mentions.length > 0 && sm.groupId && !sm.isDM;
+                                if (sm.isTask) {
+                                    await window.addDoc(window.collection(window.db, "messages"), {
+                                        text: sm.text, senderUid: user.uid, senderEmail: user.email, timestamp: window.serverTimestamp(),
+                                        isTask: true, isPrivateMention: false, allowedUsers: [], seenBy: [user.email], deliveredTo: [user.email],
+                                        isPinned: false, bookmarkedBy: [], fileUrl: null, fileName: null, fileType: null,
+                                        groupId: sm.groupId, reactions: {},
+                                        taskData: { deadline: sm.taskDeadline, assignees: sm.taskAssignees || [], status: "Pending", isArchived: false, dismissedBy: [],
+                                            trail: [{ action: "Task Created (Scheduled)", by: user.email, time: new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) + ', ' + new Date().toLocaleDateString(), to: (sm.taskAssignees||[]).map(a=>(a||"").split('@')[0]).join(', ') }] }
+                                    });
+                                } else {
+                                    await window.addDoc(window.collection(window.db, "messages"), {
+                                        text: sm.text, senderUid: user.uid, senderEmail: user.email, timestamp: window.serverTimestamp(),
+                                        isTask: false, hasReminder: false, isPrivateMention: isPrivate, allowedUsers: isPrivate ? [...new Set([user.email, ...mentions])] : [],
+                                        seenBy: [user.email], deliveredTo: [user.email], isPinned: false, bookmarkedBy: [], fileUrl: null, fileName: null, fileType: null,
+                                        groupId: sm.groupId, reactions: {}
+                                    });
+                                }
+                                await window.updateDoc(window.doc(window.db, "scheduled_messages", d.id), { status: "sent" });
+                                logImmutableAction("SCHEDULED_SENT", `Scheduled ${sm.isTask ? 'task' : 'message'} delivered: "${sm.text}"`, `Group ID: ${sm.groupId}`);
+                                playTaskSound();
+                            } catch(e) {}
+                        }
+                    }
+                }, 30000);
+                return () => { unsub(); clearInterval(hb); };
+            }, [user?.email, user?.uid, dbUsers]);
+
+            // ── F3: Task Templates Firestore listener ──
+            useEffect(() => {
+                if (!user?.uid) return;
+                const unsub = window.onSnapshot(window.collection(window.db, "task_templates"), snap => {
+                    setTaskTemplates(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                });
+                return () => unsub();
+            }, [user?.uid]);
+
+            // ── F4: Offline Draft Queue (IndexedDB) ──
+            useEffect(() => {
+                const goOnline = () => {
+                    setIsOnline(true);
+                    flushOfflineDrafts();
+                };
+                const goOffline = () => setIsOnline(false);
+                window.addEventListener('online', goOnline);
+                window.addEventListener('offline', goOffline);
+                loadOfflineDrafts();
+                return () => { window.removeEventListener('online', goOnline); window.removeEventListener('offline', goOffline); };
+            }, []);
+
+            // ── F5: Inactivity Warning (warn at 4 min, logout at 5 min) ──
+            useEffect(() => {
+                const IDLE_WARN = 4 * 60 * 1000;
+                const IDLE_LOGOUT = 60; // seconds after warning
+                const resetInactivity = () => {
+                    lastActivityRef.current = Date.now();
+                    if (showInactivityWarning) return;
+                    clearTimeout(inactivityTimerRef.current);
+                    inactivityTimerRef.current = setTimeout(() => {
+                        setShowInactivityWarning(true);
+                        setInactivityCountdown(IDLE_LOGOUT);
+                        let cnt = IDLE_LOGOUT;
+                        clearInterval(inactivityCountdownRef.current);
+                        inactivityCountdownRef.current = setInterval(() => {
+                            cnt -= 1;
+                            setInactivityCountdown(cnt);
+                            if (cnt <= 0) {
+                                clearInterval(inactivityCountdownRef.current);
+                                window.signOut(window.auth);
+                            }
+                        }, 1000);
+                    }, IDLE_WARN);
+                };
+                const events = ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'];
+                events.forEach(ev => window.addEventListener(ev, resetInactivity));
+                resetInactivity();
+                return () => {
+                    events.forEach(ev => window.removeEventListener(ev, resetInactivity));
+                    clearTimeout(inactivityTimerRef.current);
+                    clearInterval(inactivityCountdownRef.current);
+                };
+            }, [showInactivityWarning]);
+            
             // Animation Helper: Triggers message highlight pulse
             const triggerHighlight = useCallback((msgId) => {
                 setHighlightedMsgId(msgId);
@@ -636,6 +766,47 @@
                 return logs;
             }, [immutableAuditLogs, adminFilterUser, adminFilterDate, adminFilterType, adminFilterGroup]);
 
+            // ── F2: Task Analytics Computed State ──
+            const analyticsData = useMemo(() => {
+                const allTasks = messages.filter(m => m.isTask);
+                const completed = allTasks.filter(m => m.taskData?.status === 'Completed');
+                const pending = allTasks.filter(m => m.taskData?.status === 'Pending');
+                const inProgress = allTasks.filter(m => m.taskData?.status === 'In Progress');
+                const overdue = allTasks.filter(m => m.taskData?.status !== 'Completed' && m.taskData?.deadline && new Date(m.taskData.deadline) < new Date() && !m.taskData?.isArchived);
+                // Per-staff breakdown
+                const staffMap = {};
+                allTasks.forEach(task => {
+                    (task.taskData?.assignees || []).forEach(email => {
+                        if (!staffMap[email]) staffMap[email] = { assigned: 0, completed: 0, pending: 0, overdue: 0 };
+                        staffMap[email].assigned++;
+                        if (task.taskData?.status === 'Completed') staffMap[email].completed++;
+                        else staffMap[email].pending++;
+                        if (task.taskData?.status !== 'Completed' && task.taskData?.deadline && new Date(task.taskData.deadline) < new Date()) staffMap[email].overdue++;
+                    });
+                });
+                // Per-group breakdown
+                const groupMap = {};
+                allTasks.forEach(task => {
+                    const gname = groups.find(g => g.id === task.groupId)?.name || 'DM';
+                    if (!groupMap[gname]) groupMap[gname] = { total: 0, completed: 0 };
+                    groupMap[gname].total++;
+                    if (task.taskData?.status === 'Completed') groupMap[gname].completed++;
+                });
+                // Weekly trend (last 7 days)
+                const trend = [];
+                for (let i = 6; i >= 0; i--) {
+                    const d = new Date(); d.setDate(d.getDate() - i);
+                    const ds = d.toISOString().split('T')[0];
+                    const dayLabel = d.toLocaleDateString('en-IN', { weekday: 'short' });
+                    trend.push({
+                        label: dayLabel,
+                        created: allTasks.filter(m => m.dateString === ds).length,
+                        completed: completed.filter(m => (m.taskData?.trail || []).some(t => t.action === 'Marked Completed' && t.time?.includes(d.toLocaleDateString()))).length
+                    });
+                }
+                return { total: allTasks.length, completed: completed.length, pending: pending.length, inProgress: inProgress.length, overdue: overdue.length, staffMap, groupMap, trend, overdueList: overdue.slice(0,10), completionRate: allTasks.length ? Math.round((completed.length / allTasks.length) * 100) : 0 };
+            }, [messages, groups]);
+
             // =====================================================================
             // --- SECTION 5.C : ACTION HANDLERS (LOGIC & FIREBASE WRITES)       ---
             // Purpose: Executing business logic, logging audit actions, and saving
@@ -660,6 +831,165 @@
                     });
                 } catch(e) {}
             }, [user.email, activeGroup]);
+
+            // ── F1 + F6: Schedule a message or task for future delivery ──
+            const handleScheduleMessage = async (isTask = false, taskData = null) => {
+                const text = pendingScheduledText || inputText.trim();
+                const dt = scheduleDateTime || msgScheduleDateTime;
+                if (!text || !dt || !activeGroup) return alert("Enter message text and a future date/time.");
+                if (new Date(dt) <= new Date()) return alert("Scheduled time must be in the future.");
+                try {
+                    const payload = {
+                        text, senderEmail: user.email, senderUid: user.uid,
+                        groupId: activeGroup.id, groupName: activeGroup.name,
+                        scheduledFor: dt, status: "pending", isTask: isTask,
+                        createdAt: window.serverTimestamp()
+                    };
+                    if (isTask && taskData) {
+                        payload.taskDeadline = taskData.deadline;
+                        payload.taskAssignees = taskData.assignees;
+                    }
+                    await window.addDoc(window.collection(window.db, "scheduled_messages"), payload);
+                    logImmutableAction("SCHEDULED_CREATE", `Scheduled ${isTask ? 'task' : 'message'}: "${text}"`, `Deliver at: ${new Date(dt).toLocaleString()}`);
+                    setInputText(""); setPendingScheduledText(""); setScheduleDateTime(""); setMsgScheduleDateTime(""); setShowScheduleInput(false); setActiveModal(null);
+                    playTaskSound();
+                    alert(`✅ ${isTask ? 'Task' : 'Message'} scheduled for ${new Date(dt).toLocaleString()}`);
+                } catch(e) { alert("Failed to schedule."); }
+            };
+
+            const handleCancelScheduled = async (smId) => {
+                if (!window.confirm("Cancel this scheduled message?")) return;
+                try {
+                    await window.updateDoc(window.doc(window.db, "scheduled_messages", smId), { status: "cancelled" });
+                    logImmutableAction("SCHEDULED_CANCEL", "Cancelled a scheduled message", `ID: ${smId}`);
+                } catch(e) {}
+            };
+
+            // ── F3: Task Template handlers ──
+            const handleSaveTemplate = async () => {
+                if (!templateForm.title.trim()) return alert("Template title required.");
+                try {
+                    const data = { ...templateForm, createdBy: user.email, createdAt: window.serverTimestamp() };
+                    if (editingTemplate) {
+                        await window.updateDoc(window.doc(window.db, "task_templates", editingTemplate.id), data);
+                    } else {
+                        await window.addDoc(window.collection(window.db, "task_templates"), data);
+                    }
+                    setTemplateForm({ title: "", assignees: [], deadlineDays: 1, groupId: "", recurring: "once", category: "General" });
+                    setEditingTemplate(null);
+                    setActiveModal('task_templates');
+                    playTaskSound();
+                } catch(e) { alert("Failed to save template."); }
+            };
+
+            const handleDeleteTemplate = async (tid) => {
+                if (!window.confirm("Delete this template?")) return;
+                try { await window.deleteDoc(window.doc(window.db, "task_templates", tid)); } catch(e) {}
+            };
+
+            const handleUseTemplate = async (tpl) => {
+                const deadline = new Date();
+                deadline.setDate(deadline.getDate() + (tpl.deadlineDays || 1));
+                const deadlineStr = deadline.toISOString().slice(0, 16);
+                const targetGroupId = tpl.groupId || (activeGroup?.id);
+                if (!targetGroupId) return alert("Select a group first or set one in the template.");
+                const targetGroup = groups.find(g => g.id === targetGroupId) || activeGroup;
+                if (!targetGroup) return alert("Target group not found.");
+                try {
+                    const now = new Date();
+                    await window.addDoc(window.collection(window.db, "messages"), {
+                        text: tpl.title, senderUid: user.uid, senderEmail: user.email, timestamp: window.serverTimestamp(),
+                        isTask: true, isPrivateMention: false, allowedUsers: [], seenBy: [user.email], deliveredTo: [user.email],
+                        isPinned: false, bookmarkedBy: [], fileUrl: null, fileName: null, fileType: null,
+                        groupId: targetGroupId, reactions: {},
+                        taskData: {
+                            deadline: deadlineStr, assignees: tpl.assignees || [], status: "Pending", isArchived: false, dismissedBy: [],
+                            trail: [{ action: "Task Created (From Template)", by: user.email, time: now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) + ', ' + now.toLocaleDateString(), to: (tpl.assignees||[]).map(a=>(a||"").split('@')[0]).join(', ') }]
+                        }
+                    });
+                    logImmutableAction("TEMPLATE_USED", `Used template: "${tpl.title}"`, `Group: ${targetGroup.name}`);
+                    setActiveModal(null);
+                    playTaskSound();
+                    if (activeGroup?.id !== targetGroupId) setActiveGroup(targetGroup);
+                } catch(e) { alert("Failed to create task from template."); }
+            };
+
+            // ── F4: Offline Draft Queue (IndexedDB) ──
+            const openDraftDB = () => new Promise((resolve, reject) => {
+                const req = indexedDB.open("TalkTaskDrafts", 1);
+                req.onupgradeneeded = e => { e.target.result.createObjectStore("drafts", { keyPath: "id", autoIncrement: true }); };
+                req.onsuccess = e => resolve(e.target.result);
+                req.onerror = () => reject();
+            });
+
+            const saveOfflineDraft = async (text, groupId, groupName) => {
+                try {
+                    const db2 = await openDraftDB();
+                    const tx = db2.transaction("drafts", "readwrite");
+                    tx.objectStore("drafts").add({ text, groupId, groupName, savedAt: new Date().toISOString() });
+                    loadOfflineDrafts();
+                } catch(e) {}
+            };
+
+            const loadOfflineDrafts = async () => {
+                try {
+                    const db2 = await openDraftDB();
+                    const tx = db2.transaction("drafts", "readonly");
+                    const req = tx.objectStore("drafts").getAll();
+                    req.onsuccess = () => setOfflineDrafts(req.result || []);
+                } catch(e) {}
+            };
+
+            const deleteOfflineDraft = async (id) => {
+                try {
+                    const db2 = await openDraftDB();
+                    const tx = db2.transaction("drafts", "readwrite");
+                    tx.objectStore("drafts").delete(id);
+                    loadOfflineDrafts();
+                } catch(e) {}
+            };
+
+            const flushOfflineDrafts = async () => {
+                try {
+                    const db2 = await openDraftDB();
+                    const tx = db2.transaction("drafts", "readonly");
+                    const req = tx.objectStore("drafts").getAll();
+                    req.onsuccess = async () => {
+                        const drafts = req.result || [];
+                        for (const draft of drafts) {
+                            try {
+                                await window.addDoc(window.collection(window.db, "messages"), {
+                                    text: `[Recovered Draft] ${draft.text}`, senderUid: user.uid, senderEmail: user.email,
+                                    timestamp: window.serverTimestamp(), isTask: false, hasReminder: false, isPrivateMention: false,
+                                    allowedUsers: [], seenBy: [user.email], deliveredTo: [user.email], isPinned: false, bookmarkedBy: [],
+                                    fileUrl: null, fileName: null, fileType: null, groupId: draft.groupId, reactions: {}
+                                });
+                                await deleteOfflineDraft(draft.id);
+                            } catch(e) {}
+                        }
+                    };
+                } catch(e) {}
+            };
+
+            const handleSendOfflineAware = async () => {
+                if (!inputText.trim() || !activeGroup) return;
+                if (!isOnline) {
+                    await saveOfflineDraft(inputText.trim(), activeGroup.id, activeGroup.name);
+                    setInputText("");
+                    alert("📥 You are offline. Message saved as draft and will be sent when you reconnect.");
+                    return;
+                }
+                await handleSendMessage();
+            };
+
+            // ── F5: Inactivity reset ──
+            const handleStayLoggedIn = () => {
+                setShowInactivityWarning(false);
+                clearInterval(inactivityCountdownRef.current);
+                setInactivityCountdown(60);
+                clearTimeout(inactivityTimerRef.current);
+                lastActivityRef.current = Date.now();
+            };
 
             const handleTypingEvent = useCallback(() => {
                 if(!activeGroup) return;
@@ -1209,9 +1539,17 @@
                                     </div>
                                     <div><h1 className="font-bold text-lg tracking-wide">Admin Control Center</h1></div>
                                 </div>
-                                <button onClick={() => setViewMode("chat")} className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-sm backdrop-blur">
-                                    <i className="fa-solid fa-arrow-left"></i> Back to Hub
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button onClick={() => setActiveModal('task_analytics')} className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-sm backdrop-blur">
+                                        <i className="fa-solid fa-chart-bar"></i> Analytics
+                                    </button>
+                                    <button onClick={() => setActiveModal('task_templates')} className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-sm backdrop-blur">
+                                        <i className="fa-solid fa-layer-group"></i> Templates
+                                    </button>
+                                    <button onClick={() => setViewMode("chat")} className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-sm backdrop-blur">
+                                        <i className="fa-solid fa-arrow-left"></i> Back to Hub
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
@@ -1660,10 +1998,19 @@
                                             )}
                                         </div>
                                         <div className="flex-1 bg-white rounded-lg flex items-end shadow-sm overflow-hidden">
-                                            <textarea ref={chatInputRef} rows={1} placeholder="Type or Paste a message..." className="bg-transparent flex-1 outline-none text-[15px] text-[#111b21] resize-none py-[10px] px-4 w-full" style={{ minHeight: '42px', maxHeight: '120px' }} value={inputText} onPaste={handlePaste} onChange={(e) => { setInputText(e.target.value); handleTypingEvent(); e.target.style.height = 'auto'; e.target.style.height = (e.target.scrollHeight < 120 ? e.target.scrollHeight : 120) + 'px'; }} onKeyDown={handleKeyDown} />
+                                            <textarea ref={chatInputRef} rows={1} placeholder={isOnline ? "Type or Paste a message..." : "⚡ Offline — message will be queued"} className="bg-transparent flex-1 outline-none text-[15px] text-[#111b21] resize-none py-[10px] px-4 w-full" style={{ minHeight: '42px', maxHeight: '120px' }} value={inputText} onPaste={handlePaste} onChange={(e) => { setInputText(e.target.value); handleTypingEvent(); e.target.style.height = 'auto'; e.target.style.height = (e.target.scrollHeight < 120 ? e.target.scrollHeight : 120) + 'px'; }} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendOfflineAware(); } }} />
                                         </div>
+                                        {/* Schedule Send Button */}
+                                        <button onClick={() => { if (!inputText.trim()) return alert("Type a message first, then schedule it."); setPendingScheduledText(inputText.trim()); setActiveModal('schedule_send'); }} className="shrink-0 w-[42px] h-[42px] flex justify-center items-center text-[#54656f] hover:text-amber-500 transition-colors" title="Schedule this message"><i className="fa-regular fa-clock text-[20px]"></i></button>
+                                        {/* Offline Drafts indicator */}
+                                        {offlineDrafts.length > 0 && (
+                                            <button onClick={() => setActiveModal('offline_drafts')} className="shrink-0 relative w-[42px] h-[42px] flex justify-center items-center text-amber-500 hover:text-amber-600 transition-colors" title={`${offlineDrafts.length} offline draft(s)`}>
+                                                <i className="fa-solid fa-inbox text-[20px]"></i>
+                                                <span className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">{offlineDrafts.length}</span>
+                                            </button>
+                                        )}
                                         {inputText.trim() ? (
-                                            <button onClick={handleSendMessage} className="shrink-0 w-[42px] h-[42px] flex justify-center items-center text-[#54656f] hover:text-[#00a884] transition-colors"><i className="fa-solid fa-paper-plane text-[22px]"></i></button>
+                                            <button onClick={handleSendOfflineAware} className="shrink-0 w-[42px] h-[42px] flex justify-center items-center text-[#54656f] hover:text-[#00a884] transition-colors"><i className="fa-solid fa-paper-plane text-[22px]"></i></button>
                                         ) : (
                                             <button className="shrink-0 w-[42px] h-[42px] flex justify-center items-center text-[#54656f] opacity-50 cursor-not-allowed"><i className="fa-solid fa-paper-plane text-[22px]"></i></button>
                                         )}

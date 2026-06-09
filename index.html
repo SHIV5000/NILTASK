@@ -22,13 +22,13 @@
             --bg-body: #f0f2f5;
             --bg-sidebar: rgba(255, 255, 255, 0.95);
             --bg-chat: #efeae2;
-            --bg-message-own: #d9f0ec;
+            --bg-message-own: #f2e6e6;
             --bg-message-other: #ffffff;
             --text-primary: #111b21;
             --text-secondary: #667781;
-            --accent: #00a884;
-            --accent-hover: #008f6f;
-            --sent-bg: #d9f0ec;
+            --accent: #800000;
+            --accent-hover: #660000;
+            --sent-bg: #f2e6e6;
             --received-bg: #ffffff;
             --border-color: rgba(134, 150, 160, 0.15);
             --chat-pattern: url("https://www.transparenttextures.com/patterns/cubes.png"); /* Subtle pattern */
@@ -38,13 +38,13 @@
             --bg-body: #111b21;
             --bg-sidebar: rgba(32, 44, 51, 0.98);
             --bg-chat: #0b141a;
-            --bg-message-own: #005c4b;
+            --bg-message-own: #4d0000;
             --bg-message-other: #202c33;
             --text-primary: #e9edef;
             --text-secondary: #8696a0;
-            --accent: #00a884;
-            --accent-hover: #02c299;
-            --sent-bg: #005c4b;
+            --accent: #b30000;
+            --accent-hover: #cc0000;
+            --sent-bg: #4d0000;
             --received-bg: #202c33;
             --border-color: rgba(134, 150, 160, 0.15);
             --chat-pattern: url("https://www.transparenttextures.com/patterns/cubes.png");
@@ -234,11 +234,6 @@
     <div id="root" class="h-screen flex overflow-hidden"></div>
     
     <script type="module">
-        // ========================================================================
-        // NOTE: ALL ORIGINAL LOGIC, IDS, AND FUNCTIONS HAVE BEEN STRICTLY PRESERVED.
-        // ONLY HTML TEMPLATE STRINGS HAVE BEEN UPDATED FOR THEME/UI ENHANCEMENTS.
-        // ========================================================================
-        
         import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
         const SUPABASE_URL = 'https://apfymygzwkzjhhgmtkaj.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwZnlteWd6d2t6amhoZ210a2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5MjM5MTIsImV4cCI6MjA5NjQ5OTkxMn0.RiV6kDDeSq5ZIP68RGwtpLtqPALFloq23owoNm2aA-c';
@@ -259,7 +254,6 @@
         async function signUp(email,pwd) { const {error}=await sb.auth.signUp({email,password:pwd}); if(error) throw error; alert('Check email!'); }
         async function logout() { await sb.auth.signOut(); currentUser=null; renderAuthScreen(); }
         
-        // MODIFIED HTML FOR UI ENHANCEMENT ONLY
         function renderAuthScreen() { 
             applyTheme();
             document.getElementById('root').innerHTML=`
@@ -288,7 +282,6 @@
             document.getElementById('signupBtn').onclick=async()=>{ try{ await signUp(document.getElementById('email').value,document.getElementById('password').value); document.getElementById('authMsg').innerText='Check email!'; } catch(e){ document.getElementById('authMsg').innerText=e.message; } }; 
         }
 
-        // Main App - WhatsApp style layout (MODIFIED HTML FOR UI ENHANCEMENT ONLY)
         function renderMainApp() {
             applyTheme();
             document.getElementById('root').innerHTML = `
@@ -360,7 +353,7 @@
                     </div>
                 </div>
 
-                <!-- Modals (MODIFIED HTML FOR UI ENHANCEMENT ONLY) -->
+                <!-- Modals -->
                 <div id="taskModal" class="fixed inset-0 modal-overlay hidden items-center justify-center z-50">
                     <div class="modal-content rounded-2xl p-6 w-full max-w-md mx-4">
                         <h3 class="text-xl font-bold mb-4 flex items-center gap-2"><i class="fas fa-tasks" style="color: var(--accent)"></i> Convert to Task</h3>
@@ -472,35 +465,48 @@
             const c = document.getElementById('messagesContainer');
             c.scrollTop = c.scrollHeight;
         }
+
         function renderMessages(messages) {
             const c = document.getElementById('messagesContainer');
             if (!c) return;
             if (!messages.length) { c.innerHTML = '<div class="m-auto flex flex-col items-center opacity-50" style="color: var(--text-secondary)"><i class="far fa-comments text-5xl mb-3"></i><p>Say hello! This is the start of your chat.</p></div>'; return; }
-            c.innerHTML = messages.map(msg => {
+            
+            // Organize messages into threads (Slack-style)
+            const msgMap = new Map();
+            messages.forEach(m => msgMap.set(m.id, m));
+            
+            const topLevel = [];
+            const replies = {};
+            
+            messages.forEach(msg => {
+                if (msg.parent_message_id && msgMap.has(msg.parent_message_id)) {
+                    // Flatten thread so replies to replies stay under the root parent
+                    let rootId = msg.parent_message_id;
+                    while (msgMap.get(rootId)?.parent_message_id && msgMap.has(msgMap.get(rootId).parent_message_id)) {
+                        rootId = msgMap.get(rootId).parent_message_id;
+                    }
+                    if (!replies[rootId]) replies[rootId] = [];
+                    replies[rootId].push(msg);
+                } else {
+                    topLevel.push(msg);
+                }
+            });
+
+            function buildMsgHTML(msg, isReply = false) {
                 const isOwn = msg.sender_id === currentUser.id;
                 const senderName = msg.profiles?.full_name || msg.profiles?.email || 'Unknown';
                 const time = new Date(msg.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
                 
-                let replyUI = '';
-                if (msg.parent_message_id) {
-                    const parentMsg = messages.find(m => m.id === msg.parent_message_id);
-                    if (parentMsg) {
-                        const parentName = parentMsg.profiles?.full_name || parentMsg.profiles?.email || 'Unknown';
-                        replyUI = `<div class="mb-2 p-2 rounded-md bg-black/5 dark:bg-white/10 border-l-4 transition-colors hover:bg-black/10 dark:hover:bg-white/20" style="border-color: var(--accent); cursor: pointer;" onclick="document.getElementById('msg-${parentMsg.id}')?.scrollIntoView({behavior: 'smooth', block: 'center'})">
-                            <div class="text-[11px] font-bold" style="color: var(--accent)">${escapeHtml(parentName)}</div>
-                            <div class="text-xs truncate opacity-80">${escapeHtml(parentMsg.text)}</div>
-                        </div>`;
-                    }
-                }
-
-                // MODIFIED HTML FOR UI ENHANCEMENT ONLY (Bubble styling)
-                return `<div id="msg-${msg.id}" class="message-bubble ${isOwn ? 'sent' : 'received'}">
-                            <div class="bubble-content">
+                // Replies align left under the thread like Slack, keeping sender's background color
+                const alignmentClass = isReply ? 'received' : (isOwn ? 'sent' : 'received');
+                const bgClass = isOwn ? 'sent' : 'received';
+                
+                let html = `<div id="msg-${msg.id}" class="message-bubble ${alignmentClass} ${isReply ? 'mt-1 w-full max-w-[95%] opacity-95' : ''}">
+                            <div class="bubble-content" style="background: var(--${bgClass}-bg);">
                                 <div class="message-meta">
-                                    <span>${!isOwn ? escapeHtml(senderName) : ''}</span>
+                                    <span class="font-bold" style="${isReply && !isOwn ? 'color: var(--text-primary)' : 'color: var(--accent)'}">${escapeHtml(senderName)}</span>
                                     <span class="ml-auto">${time} ${isOwn ? '<i class="fas fa-check-double ml-1 text-blue-400"></i>' : ''}</span>
                                 </div>
-                                ${replyUI}
                                 <div class="text-[15px] leading-relaxed">${escapeHtml(msg.text)}</div>
                                 <div class="flex justify-end gap-3 mt-1 pt-1 border-t border-black/5 dark:border-white/5">
                                     <button class="reply-btn text-xs font-medium flex items-center gap-1" data-msg-id="${msg.id}"><i class="fas fa-reply"></i> Reply</button>
@@ -514,7 +520,18 @@
                                 </div>
                             </div>
                         </div>`;
-            }).join('');
+                        
+                // Append threaded replies right below the top-level parent
+                if (!isReply && replies[msg.id] && replies[msg.id].length > 0) {
+                    html += `<div class="ml-4 md:ml-12 pl-4 border-l-2 mb-4 flex flex-col gap-1" style="border-color: var(--accent)">`;
+                    replies[msg.id].forEach(child => { html += buildMsgHTML(child, true); });
+                    html += `</div>`;
+                }
+                return html;
+            }
+
+            c.innerHTML = topLevel.map(msg => buildMsgHTML(msg, false)).join('');
+
             // Attach reply toggles and menu
             document.querySelectorAll('.reply-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
@@ -587,7 +604,6 @@
                     const name = ass.profiles?.full_name || ass.profiles?.email || 'Unknown';
                     const status = ass.status.replace('_', ' ').toUpperCase();
                     let actions = '';
-                    // MODIFIED HTML FOR UI ENHANCEMENT ONLY (Task Action Buttons)
                     if (ass.assignee_id === currentUser.id && ass.status === 'pending_ack') actions = `<button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="ack" class="task-action w-full mt-2 bg-yellow-500 hover:bg-yellow-600 text-white font-medium text-xs py-1.5 rounded-lg shadow-sm transition-colors">Acknowledge</button>`;
                     if (ass.assignee_id === currentUser.id && (ass.status === 'in_progress' || ass.status === 'needs_review')) actions = `<button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="submit" class="task-action w-full mt-2 bg-blue-500 hover:bg-blue-600 text-white font-medium text-xs py-1.5 rounded-lg shadow-sm transition-colors">Submit</button>`;
                     if (isCreator && ass.status === 'submitted') actions = `<div class="flex gap-2 mt-2"><button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="accept" class="task-action flex-1 bg-green-500 hover:bg-green-600 text-white font-medium text-xs py-1.5 rounded-lg shadow-sm transition-colors">Accept</button><button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="review_again" class="task-action flex-1 bg-red-500 hover:bg-red-600 text-white font-medium text-xs py-1.5 rounded-lg shadow-sm transition-colors">Review</button></div>`;

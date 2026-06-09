@@ -49,7 +49,11 @@
         }
 
         /* Enforce Inter font globally, including task cards */
-        body { font-family: 'Inter', sans-serif; background-color: var(--bg-body); color: var(--text-primary); transition: background-color 0.3s, color 0.3s; }
+        body, .jira-card, .jira-card *, .message-bubble, input, select, textarea, button { 
+            font-family: 'Inter', sans-serif !important; 
+        }
+        
+        body { background-color: var(--bg-body); color: var(--text-primary); transition: background-color 0.3s, color 0.3s; }
 
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -111,7 +115,6 @@
             border-left: 4px solid var(--accent);
             transition: transform 0.2s, box-shadow 0.2s;
             width: 100%;
-            /* Removed the separate apple-system font to inherit Inter */
         }
         .jira-card:hover { transform: translateY(-2px); box-shadow: rgba(9, 30, 66, 0.35) 0px 4px 8px 0px; }
         
@@ -174,7 +177,7 @@
         const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let currentUser = null, currentRoom = 'general';
-        let messageSubscription, taskSubscription, assigneeSubscription;
+        let messageSubscription, taskSubscription, assigneeSubscription, trailSubscription;
         let currentTheme = localStorage.getItem('theme') || 'light';
         let quillEditor = null;
         let currSchedText = ''; 
@@ -292,7 +295,7 @@
                                     <input type="file" id="fileAttachment" class="hidden">
                                 </div>
                                 <div class="flex gap-2">
-                                    <button id="scheduleMsgBtn" class="px-4 py-2 rounded-full font-medium text-sm border" style="color: var(--text-secondary); border-color: var(--border-color);">
+                                    <button id="scheduleMsgBtn" class="px-4 py-2 rounded-full font-medium text-sm border bg-transparent" style="color: var(--text-secondary); border-color: var(--border-color); cursor: pointer;">
                                         <i class="far fa-clock"></i> Schedule
                                     </button>
                                     <button id="sendBtn" class="btn-primary flex items-center gap-2">
@@ -318,7 +321,7 @@
                         <p class="text-sm mb-6" style="color: var(--text-secondary)">Select when to send your composed message.</p>
                         <input type="datetime-local" id="scheduleDateTime" class="ui-input w-full p-3 rounded-xl mb-6">
                         <div class="flex gap-3">
-                            <button onclick="closeScheduleModal()" class="flex-1 py-2.5 rounded-xl font-medium ui-input">Cancel</button>
+                            <button onclick="closeScheduleModal()" class="flex-1 py-2.5 rounded-xl font-medium ui-input border-none cursor-pointer">Cancel</button>
                             <button onclick="saveScheduledMessage()" class="flex-1 py-2.5 rounded-xl font-medium btn-primary">Confirm</button>
                         </div>
                     </div>
@@ -337,9 +340,9 @@
                                 <option value="High">High</option>
                             </select>
                         </div>
-                        <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="taskRequireProof"> Require Proof to Complete</label>
+                        <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" id="taskRequireProof"> Require Proof to Complete</label>
                         <div class="flex gap-3 mt-4">
-                            <button onclick="closeTaskModal()" class="flex-1 py-2.5 rounded-xl ui-input">Cancel</button>
+                            <button onclick="closeTaskModal()" class="flex-1 py-2.5 rounded-xl ui-input border-none cursor-pointer hover:bg-gray-100">Cancel</button>
                             <button onclick="saveTaskMultiAssignee()" class="flex-1 py-2.5 rounded-xl btn-primary">Create Ticket</button>
                         </div>
                     </div>
@@ -351,7 +354,7 @@
                         <p id="reminderMessagePreview" class="text-sm mb-4 truncate text-gray-500"></p>
                         <input type="datetime-local" id="reminderDateTime" class="ui-input w-full p-3 rounded-xl mb-6">
                         <div class="flex gap-3">
-                            <button onclick="closeReminderModal()" class="flex-1 py-2.5 rounded-xl ui-input">Cancel</button>
+                            <button onclick="closeReminderModal()" class="flex-1 py-2.5 rounded-xl ui-input border-none cursor-pointer">Cancel</button>
                             <button onclick="saveReminder()" class="flex-1 py-2.5 rounded-xl btn-primary">Set</button>
                         </div>
                     </div>
@@ -482,18 +485,14 @@
                 el.addEventListener('click', () => { 
                     currentRoom = el.dataset.room; 
                     
-                    // 1. Update active styling in sidebar
                     document.querySelectorAll('.channel-item').forEach(item => item.classList.remove('bg-black/5'));
                     el.classList.add('bg-black/5');
 
-                    // 2. Smoothly update title (No Flicker!)
                     const titleSpan = document.getElementById('roomTitleDisplay');
                     if(titleSpan) titleSpan.innerText = el.dataset.name;
 
-                    // 3. Show loading spinner in chat area
                     document.getElementById('messagesContainer').innerHTML = '<div class="m-auto flex flex-col items-center opacity-50"><i class="fas fa-circle-notch fa-spin text-3xl mb-3" style="color: var(--accent)"></i><p>Loading chat...</p></div>';
                     
-                    // 4. Fetch messages
                     loadMessages(); 
                 }); 
             });
@@ -702,11 +701,13 @@
                 if(!comment) return window.showCenterToast('Update cannot be empty', 'fa-times', 'text-red-500');
                 actionText = 'Added Update';
                 await notifyUser(creatorId, `Task Update Added`);
+                el.value = '';
             } else if (action === 'upload') {
                 const el = document.getElementById(`file-${taskId}-${assigneeId}`);
                 if(!el.files.length) return window.showCenterToast('Select a file', 'fa-times', 'text-red-500');
                 comment = `Uploaded file: ${el.files[0].name}`; actionText = 'File Uploaded';
                 await notifyUser(creatorId, `File Uploaded on Task`);
+                el.value = '';
             } else if (action === 'submit') {
                 if (requireProof) {
                     const {data: trails} = await sb.from('task_trails').select('*').eq('task_id', taskId).eq('user_id', currentUser.id).ilike('action', '%File%');
@@ -734,7 +735,7 @@
 
             if (newStatus) { await sb.from('task_assignees').update({ status: newStatus }).eq('task_id', taskId).eq('assignee_id', assigneeId); }
             await sb.from('task_trails').insert({ task_id: taskId, user_id: currentUser.id, action: actionText, comment: comment }); 
-            loadTasksForPanel();
+            loadTasksForPanel(); // Optimistic load
         }
 
         window.toggleTrail = function(taskId) {
@@ -753,7 +754,7 @@
             const {data: trails} = await sb.from('task_trails').select('*, profiles(full_name, email)').in('task_id', ids).order('created_at', {ascending: true});
 
             const assigneesMap = {};
-            if (assignees) assignees.forEach(a => { if (!assigneesMap[a.task_id]) assigneesMap[a.task_id] = []; assigneesMap[a.task_id].push(a); });
+            if (assignees) assignees.forEach(a => { if (!assigneesMap[a.task_id]) assigneesMap[a.task_id] = []; assigneesMap[a.task_id].push({ assignee_id: a.assignee_id, status: a.status, profiles: a.profiles }); });
             
             const trailsMap = {};
             if (trails) trails.forEach(t => { if (!trailsMap[t.task_id]) trailsMap[t.task_id] = []; trailsMap[t.task_id].push(t); });
@@ -762,8 +763,6 @@
             const container = document.getElementById('tasksPanel');
             if(!container) return;
             if(!filteredTasks.length) { container.innerHTML = '<p class="text-xs opacity-50 text-center mt-4">No tasks active.</p>'; return; }
-            
-            let allUsersOptions = globalUsersCache.filter(u => u.id !== currentUser.id).map(u => `<option value="${u.id}">${escapeHtml(u.full_name || u.email)}</option>`).join('');
 
             container.innerHTML = filteredTasks.map(task => {
                 const asgList = assigneesMap[task.id] || [];
@@ -783,31 +782,38 @@
 
                 const borderStyle = allAccepted ? 'border: 2px solid #16a34a; border-left-width: 6px;' : '';
 
+                // Delegate Dropdown options: exclude creator and current user
+                const delegateOptions = globalUsersCache.filter(u => u.id !== currentUser.id && u.id !== task.assigned_by).map(u => `<option value="${u.id}">${escapeHtml(u.full_name || u.email)}</option>`).join('');
+
                 const assigneeRows = asgList.map(ass => {
                     const name = ass.profiles?.full_name || ass.profiles?.email || 'Unknown';
                     const isCreator = task.assigned_by === currentUser.id;
                     const isMe = ass.assignee_id === currentUser.id;
                     let actionsHtml = '';
 
+                    // Transfer Dropdown options: exclude current assignee and current user
+                    const transferOptions = globalUsersCache.filter(u => u.id !== ass.assignee_id && u.id !== currentUser.id).map(u => `<option value="${u.id}">${escapeHtml(u.full_name || u.email)}</option>`).join('');
+
                     if (isMe && !allAccepted) {
                         if (ass.status === 'pending_ack') {
-                            actionsHtml = `<button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'ack')" class="w-full mt-2 bg-yellow-500 text-white text-xs py-2 rounded font-bold transition-colors shadow-sm">Acknowledge</button>`;
+                            actionsHtml = `<button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'ack')" class="w-full mt-2 bg-yellow-500 text-white text-xs py-2 rounded font-bold transition-colors shadow-sm cursor-pointer border-none">Acknowledge</button>`;
                         } else if (ass.status === 'in_progress' || ass.status === 'needs_review') {
+                            const proofHtml = task.require_proof ? `<input type="file" id="file-${task.id}-${ass.assignee_id}" class="text-[10px] flex-1 w-full bg-white border border-gray-300 rounded p-1">` : `<input type="file" id="file-${task.id}-${ass.assignee_id}" class="text-[10px] flex-1 w-full bg-white border border-gray-300 rounded p-1">`;
                             actionsHtml = `
                                 <div class="mt-2 space-y-2">
                                     <div class="flex gap-2">
                                         <input type="text" id="update-txt-${task.id}-${ass.assignee_id}" placeholder="Type update..." class="ui-input flex-1 text-xs px-2 py-1.5 rounded outline-none border border-gray-300">
-                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'update')" class="bg-gray-200 text-gray-700 text-xs px-3 py-1.5 rounded font-bold hover:bg-gray-300 shadow-sm">Update</button>
+                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'update')" class="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded font-bold hover:bg-indigo-700 shadow-sm cursor-pointer border-none">Send</button>
                                     </div>
                                     <div class="flex gap-2 items-center">
-                                        <input type="file" id="file-${task.id}-${ass.assignee_id}" class="text-[10px] flex-1 w-full bg-white border border-gray-300 rounded p-1">
-                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'upload')" class="bg-gray-200 text-gray-700 text-xs px-3 py-1.5 rounded font-bold hover:bg-gray-300 shadow-sm">Upload</button>
+                                        ${proofHtml}
+                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'upload')" class="bg-gray-200 text-gray-700 text-xs px-3 py-1.5 rounded font-bold hover:bg-gray-300 shadow-sm cursor-pointer border-none">Upload</button>
                                     </div>
                                     <div class="flex gap-2 items-center">
-                                        <select id="delegate-${task.id}-${ass.assignee_id}" class="ui-input flex-1 text-[11px] px-1 py-1.5 rounded outline-none border border-gray-300">${allUsersOptions}</select>
-                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'delegate')" class="bg-indigo-100 text-indigo-700 hover:bg-indigo-200 text-[11px] px-2 py-1.5 rounded font-bold shadow-sm">Delegate</button>
+                                        <select id="delegate-${task.id}-${ass.assignee_id}" class="ui-input flex-1 text-[11px] px-1 py-1.5 rounded outline-none border border-gray-300">${delegateOptions}</select>
+                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'delegate')" class="bg-indigo-100 text-indigo-700 hover:bg-indigo-200 text-[11px] px-2 py-1.5 rounded font-bold shadow-sm cursor-pointer border-none">Delegate</button>
                                     </div>
-                                    <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'submit', ${task.require_proof})" class="w-full bg-blue-600 text-white text-xs py-2 rounded font-bold shadow-md hover:bg-blue-700 transition-colors">Submit for Review</button>
+                                    <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'submit', ${task.require_proof})" class="w-full bg-blue-600 text-white text-xs py-2 rounded font-bold shadow-md hover:bg-blue-700 transition-colors cursor-pointer border-none">Submit for Review</button>
                                 </div>`;
                         } else if (ass.status === 'submitted') {
                              actionsHtml = `<div class="mt-2 text-[10px] font-bold text-purple-600 italic border border-purple-100 bg-purple-50 p-1.5 rounded text-center">Waiting for Creator's Review</div>`;
@@ -817,12 +823,12 @@
                             actionsHtml = `
                                 <div class="mt-2 space-y-2">
                                     <div class="flex gap-2">
-                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'accept')" class="flex-1 bg-green-600 text-white text-xs py-2 rounded font-bold shadow-sm hover:bg-green-700">Accept</button>
-                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'review_again')" class="flex-1 bg-red-600 text-white text-xs py-2 rounded font-bold shadow-sm hover:bg-red-700">Review</button>
+                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'accept')" class="flex-1 bg-green-600 text-white text-xs py-2 rounded font-bold shadow-sm hover:bg-green-700 cursor-pointer border-none">Accept</button>
+                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'review_again')" class="flex-1 bg-red-600 text-white text-xs py-2 rounded font-bold shadow-sm hover:bg-red-700 cursor-pointer border-none">Review</button>
                                     </div>
                                     <div class="flex gap-2 items-center">
-                                        <select id="transfer-${task.id}-${ass.assignee_id}" class="ui-input flex-1 text-[11px] px-1 py-1.5 rounded outline-none border border-gray-300">${allUsersOptions}</select>
-                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'transfer')" class="bg-orange-500 text-white hover:bg-orange-600 text-[11px] px-2 py-1.5 rounded font-bold shadow-sm">Transfer</button>
+                                        <select id="transfer-${task.id}-${ass.assignee_id}" class="ui-input flex-1 text-[11px] px-1 py-1.5 rounded outline-none border border-gray-300">${transferOptions}</select>
+                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'transfer')" class="bg-orange-500 text-white hover:bg-orange-600 text-[11px] px-2 py-1.5 rounded font-bold shadow-sm cursor-pointer border-none">Transfer</button>
                                     </div>
                                 </div>`;
                         } else if (ass.status === 'pending_ack') {
@@ -836,6 +842,7 @@
                     if (ass.status === 'delegated') actionsHtml = `<div class="mt-2 text-[10px] font-bold text-indigo-600 bg-indigo-50 p-1.5 rounded border border-indigo-100 text-center"><i class="fas fa-share"></i> DELEGATED</div>`;
                     if (ass.status === 'transferred') actionsHtml = `<div class="mt-2 text-[10px] font-bold text-orange-600 bg-orange-50 p-1.5 rounded border border-orange-100 text-center"><i class="fas fa-exchange-alt"></i> TRANSFERRED</div>`;
                     
+                    let rowStatusColor = `status-text-${ass.status}`;
                     return `<div class="mt-2 text-sm border-t pt-2 border-black/5 bg-gray-50 p-2 rounded-lg">
                                 <div class="flex justify-between items-center font-bold text-gray-800">
                                     <span class="truncate pr-2">${escapeHtml(name)} ${isMe ? '(You)' : ''}</span>
@@ -906,6 +913,9 @@
             
             if(assigneeSubscription) assigneeSubscription.unsubscribe(); 
             assigneeSubscription = sb.channel('assignees-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_assignees'}, () => { loadTasksForPanel(); }).subscribe(); 
+            
+            if(trailSubscription) trailSubscription.unsubscribe(); 
+            trailSubscription = sb.channel('trails-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_trails'}, () => { loadTasksForPanel(); }).subscribe(); 
         }
 
         (async() => { const {data: {session}} = await sb.auth.getSession(); if(!session) renderAuthScreen(); else { currentUser = session.user; await ensureProfile(); renderMainApp(); startSubscriptions(); } })();

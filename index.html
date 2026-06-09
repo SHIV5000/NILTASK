@@ -122,6 +122,48 @@
             }
         }
 
+        // -------------------- Scheduled message modal helpers --------------------
+        let currentScheduleMessageText = '';
+
+        function showScheduleModal(messageText) {
+            currentScheduleMessageText = messageText;
+            const modal = document.getElementById('scheduleModal');
+            document.getElementById('scheduleMessageText').value = messageText;
+            document.getElementById('scheduleDateTime').value = '';
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeScheduleModal() {
+            const modal = document.getElementById('scheduleModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            currentScheduleMessageText = '';
+        }
+
+        async function saveScheduledMessage() {
+            const messageText = document.getElementById('scheduleMessageText').value.trim();
+            const roomId = document.getElementById('scheduleChannel').value;
+            const scheduledTime = document.getElementById('scheduleDateTime').value;
+            if (!messageText || !scheduledTime) {
+                alert('Please enter a message and select a time');
+                return;
+            }
+            const { error } = await sb.from('scheduled_messages').insert({
+                sender_id: currentUser.id,
+                room_id: roomId,
+                message_text: messageText,
+                scheduled_time: new Date(scheduledTime).toISOString(),
+                status: 'pending'
+            });
+            if (error) {
+                alert('Failed to schedule message: ' + error.message);
+            } else {
+                alert('Message scheduled!');
+                closeScheduleModal();
+            }
+        }
+
         // -------------------- Authentication & Profile --------------------
         async function ensureProfile() {
             const { data: existing } = await sb
@@ -264,6 +306,23 @@
                         </div>
                     </div>
                 </div>
+                <!-- Scheduled Message Modal -->
+                <div id="scheduleModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
+                    <div class="bg-white rounded-lg p-6 w-96">
+                        <h3 class="text-lg font-bold mb-4">Schedule Message</h3>
+                        <textarea id="scheduleMessageText" rows="3" placeholder="Message to send later..." class="border p-2 w-full mb-2 rounded"></textarea>
+                        <select id="scheduleChannel" class="border p-2 w-full mb-2 rounded">
+                            <option value="general"># general</option>
+                            <option value="math"># math</option>
+                            <option value="science"># science</option>
+                        </select>
+                        <input type="datetime-local" id="scheduleDateTime" class="border p-2 w-full mb-4 rounded">
+                        <div class="flex justify-end gap-2">
+                            <button id="cancelScheduleBtn" class="px-4 py-2 bg-gray-300 rounded">Cancel</button>
+                            <button id="saveScheduleBtn" class="px-4 py-2 bg-blue-600 text-white rounded">Schedule</button>
+                        </div>
+                    </div>
+                </div>
             `;
 
             // Channel switching
@@ -290,6 +349,8 @@
             document.getElementById('saveTaskBtn').onclick = saveTask;
             document.getElementById('cancelReminderBtn').onclick = closeReminderModal;
             document.getElementById('saveReminderBtn').onclick = saveReminder;
+            document.getElementById('cancelScheduleBtn').onclick = closeScheduleModal;
+            document.getElementById('saveScheduleBtn').onclick = saveScheduledMessage;
 
             loadMessages();
             loadTasks();
@@ -338,6 +399,7 @@
                             <div class="text-sm">${escapeHtml(msg.text)}</div>
                             <div class="text-xs text-gray-400 text-right">${new Date(msg.created_at).toLocaleTimeString()}</div>
                             <div class="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                                <button class="schedule-btn text-gray-400 hover:text-blue-500" data-message-text="${escapeHtml(msg.text)}">📅</button>
                                 <button class="bookmark-btn text-gray-400 hover:text-yellow-500" data-message-id="${msg.id}" data-message-text="${escapeHtml(msg.text)}">⭐</button>
                                 <button class="reminder-btn text-gray-400 hover:text-yellow-600" data-message-id="${msg.id}" data-message-text="${escapeHtml(msg.text)}">🔔</button>
                                 <button class="task-convert-btn text-gray-400 hover:text-green-600" data-message-id="${msg.id}" data-message-text="${escapeHtml(msg.text)}">📋</button>
@@ -363,6 +425,10 @@
                 btn.removeEventListener('click', handleBookmark);
                 btn.addEventListener('click', handleBookmark);
             });
+            document.querySelectorAll('.schedule-btn').forEach(btn => {
+                btn.removeEventListener('click', handleSchedule);
+                btn.addEventListener('click', handleSchedule);
+            });
         }
 
         function handleTaskConvert(e) {
@@ -381,6 +447,12 @@
             const messageId = btn.getAttribute('data-message-id');
             const messageText = btn.getAttribute('data-message-text');
             await toggleBookmark(messageId, messageText, btn);
+        }
+        function handleSchedule(e) {
+            e.stopPropagation();
+            const btn = e.currentTarget;
+            const messageText = btn.getAttribute('data-message-text');
+            showScheduleModal(messageText);
         }
 
         function subscribeToMessages() {
@@ -401,6 +473,7 @@
                                         <div class="text-sm">${escapeHtml(newMsg.text)}</div>
                                         <div class="text-xs text-gray-400 text-right">${new Date(newMsg.created_at).toLocaleTimeString()}</div>
                                         <div class="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                                            <button class="schedule-btn text-gray-400 hover:text-blue-500" data-message-text="${escapeHtml(newMsg.text)}">📅</button>
                                             <button class="bookmark-btn text-gray-400 hover:text-yellow-500" data-message-id="${newMsg.id}" data-message-text="${escapeHtml(newMsg.text)}">⭐</button>
                                             <button class="reminder-btn text-gray-400 hover:text-yellow-600" data-message-id="${newMsg.id}" data-message-text="${escapeHtml(newMsg.text)}">🔔</button>
                                             <button class="task-convert-btn text-gray-400 hover:text-green-600" data-message-id="${newMsg.id}" data-message-text="${escapeHtml(newMsg.text)}">📋</button>
@@ -410,12 +483,7 @@
                             `;
                             container.insertAdjacentHTML('beforeend', msgHtml);
                             container.scrollTop = container.scrollHeight;
-                            const newTaskBtn = container.querySelector('.task-convert-btn:last-child');
-                            if (newTaskBtn) newTaskBtn.addEventListener('click', handleTaskConvert);
-                            const newReminderBtn = container.querySelector('.reminder-btn:last-child');
-                            if (newReminderBtn) newReminderBtn.addEventListener('click', handleReminder);
-                            const newBookmarkBtn = container.querySelector('.bookmark-btn:last-child');
-                            if (newBookmarkBtn) newBookmarkBtn.addEventListener('click', handleBookmark);
+                            attachMessageButtonListeners();
                         });
                     }
                 })
@@ -771,7 +839,7 @@
                     if (roomId && messageId) {
                         currentRoom = roomId;
                         renderMainUI();
-                        // TODO: scroll to message after loading
+                        // TODO: scroll to specific message after loading
                     }
                 });
             });
@@ -783,7 +851,6 @@
                 .channel('bookmarks-changes')
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'bookmarks', filter: `user_id=eq.${currentUser.id}` }, () => {
                     loadBookmarks();
-                    // Also refresh bookmark button colors on existing messages (optional)
                 })
                 .subscribe();
         }

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>MPGS TaskFlow - Complete</title>
+    <title>MPGS TaskFlow - Multi-Assignee Tasks</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -21,13 +21,14 @@
         let currentRoom = 'general';
         let messageSubscription = null;
         let taskSubscription = null;
+        let assigneeSubscription = null;
         let trailSubscription = null;
         let notificationSubscription = null;
         let bookmarkSubscription = null;
 
         const root = document.getElementById('root');
 
-        // -------------------- Helper: escape HTML --------------------
+        // -------------------- Helper functions --------------------
         function escapeHtml(str) {
             if (!str) return '';
             return str.replace(/[&<>]/g, function(m) {
@@ -38,130 +39,12 @@
             });
         }
 
-        // -------------------- Toast notification --------------------
         function showToast(message) {
             const toast = document.createElement('div');
             toast.className = 'fixed bottom-4 right-4 bg-yellow-500 text-white px-4 py-2 rounded shadow-lg z-50 animate-pulse';
             toast.innerText = message;
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 5000);
-        }
-
-        // -------------------- Delegate modal helper --------------------
-        function showDelegateModal(taskId, currentAssigneeId, usersList) {
-            const modalDiv = document.createElement('div');
-            modalDiv.className = 'fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50';
-            modalDiv.innerHTML = `
-                <div class="bg-white rounded-lg p-6 w-96">
-                    <h3 class="text-lg font-bold mb-4">Delegate Task</h3>
-                    <select id="delegateSelect" class="border p-2 w-full mb-4 rounded">
-                        <option value="">Select new assignee</option>
-                        ${usersList.map(u => `<option value="${u.id}">${u.full_name || u.email}</option>`).join('')}
-                    </select>
-                    <div class="flex justify-end gap-2">
-                        <button id="delegateCancel" class="px-4 py-2 bg-gray-300 rounded">Cancel</button>
-                        <button id="delegateConfirm" class="px-4 py-2 bg-green-600 text-white rounded">Delegate</button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modalDiv);
-            document.getElementById('delegateCancel').onclick = () => modalDiv.remove();
-            document.getElementById('delegateConfirm').onclick = async () => {
-                const newAssigneeId = document.getElementById('delegateSelect').value;
-                if (!newAssigneeId) {
-                    alert('Please select an assignee');
-                    return;
-                }
-                await sb.from('tasks').update({ assigned_to: newAssigneeId }).eq('id', taskId);
-                await addTaskTrail(taskId, 'delegate', `Delegated to user ${newAssigneeId}`);
-                loadTasks();
-                modalDiv.remove();
-            };
-        }
-
-        // -------------------- Reminder modal helpers --------------------
-        let currentReminderMessageId = null;
-        let currentReminderMessageText = '';
-
-        function showReminderModal(messageId, messageText) {
-            currentReminderMessageId = messageId;
-            currentReminderMessageText = messageText;
-            const modal = document.getElementById('reminderModal');
-            document.getElementById('reminderMessagePreview').innerText = messageText.substring(0, 100);
-            const defaultDateTime = new Date(Date.now() + 60*60*1000).toISOString().slice(0, 16);
-            document.getElementById('reminderDateTime').value = defaultDateTime;
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-        }
-
-        function closeReminderModal() {
-            const modal = document.getElementById('reminderModal');
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-            currentReminderMessageId = null;
-        }
-
-        async function saveReminder() {
-            if (!currentReminderMessageId) return;
-            const reminderTime = document.getElementById('reminderDateTime').value;
-            if (!reminderTime) {
-                alert('Please select a date and time');
-                return;
-            }
-            const { error } = await sb.from('reminders').insert({
-                user_id: currentUser.id,
-                message_id: currentReminderMessageId,
-                reminder_time: new Date(reminderTime).toISOString(),
-                triggered: false
-            });
-            if (error) {
-                alert('Failed to set reminder: ' + error.message);
-            } else {
-                alert('Reminder set!');
-                closeReminderModal();
-            }
-        }
-
-        // -------------------- Scheduled message modal helpers --------------------
-        let currentScheduleMessageText = '';
-
-        function showScheduleModal(messageText) {
-            currentScheduleMessageText = messageText;
-            const modal = document.getElementById('scheduleModal');
-            document.getElementById('scheduleMessageText').value = messageText;
-            document.getElementById('scheduleDateTime').value = '';
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-        }
-
-        function closeScheduleModal() {
-            const modal = document.getElementById('scheduleModal');
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-            currentScheduleMessageText = '';
-        }
-
-        async function saveScheduledMessage() {
-            const messageText = document.getElementById('scheduleMessageText').value.trim();
-            const roomId = document.getElementById('scheduleChannel').value;
-            const scheduledTime = document.getElementById('scheduleDateTime').value;
-            if (!messageText || !scheduledTime) {
-                alert('Please enter a message and select a time');
-                return;
-            }
-            const { error } = await sb.from('scheduled_messages').insert({
-                sender_id: currentUser.id,
-                room_id: roomId,
-                message_text: messageText,
-                scheduled_time: new Date(scheduledTime).toISOString(),
-                status: 'pending'
-            });
-            if (error) {
-                alert('Failed to schedule message: ' + error.message);
-            } else {
-                alert('Message scheduled!');
-                closeScheduleModal();
-            }
         }
 
         // -------------------- Authentication & Profile --------------------
@@ -192,6 +75,7 @@
             renderMainUI();
             subscribeToMessages();
             subscribeToTasks();
+            subscribeToAssignees();
             subscribeToTrails();
             subscribeToNotifications();
             subscribeToBookmarks();
@@ -230,7 +114,7 @@
         function renderMainUI() {
             root.innerHTML = `
                 <div class="flex h-screen max-h-screen">
-                    <!-- Left: Task + Bookmark Sidebar -->
+                    <!-- Left: Task Sidebar -->
                     <div class="w-80 bg-white border-r flex flex-col overflow-y-auto">
                         <div class="p-4 border-b">
                             <h2 class="font-bold text-lg">My Tasks</h2>
@@ -245,7 +129,7 @@
                             </div>
                         </div>
                     </div>
-                    <!-- Middle: Channels Sidebar -->
+                    <!-- Middle: Channels -->
                     <div class="w-64 bg-white border-r flex flex-col">
                         <h2 class="font-bold p-4 border-b">Channels</h2>
                         <div id="channelList" class="flex-1 p-2">
@@ -257,7 +141,7 @@
                             <button id="logoutBtn" class="text-red-500 text-sm">Logout</button>
                         </div>
                     </div>
-                    <!-- Right: Chat Area -->
+                    <!-- Right: Chat -->
                     <div class="flex-1 flex flex-col">
                         <div class="bg-white border-b p-4">
                             <h2 class="text-xl font-semibold"># ${currentRoom}</h2>
@@ -271,13 +155,13 @@
                         </div>
                     </div>
                 </div>
-                <!-- Task Modal -->
+                <!-- Task Modal (Convert to Task - Multi-assignee) -->
                 <div id="taskModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
                     <div class="bg-white rounded-lg p-6 w-96">
                         <h3 class="text-lg font-bold mb-4">Convert to Task</h3>
                         <input type="text" id="taskTitle" placeholder="Task title" class="border p-2 w-full mb-2 rounded">
-                        <select id="taskAssignee" class="border p-2 w-full mb-2 rounded">
-                            <option value="">Select assignee</option>
+                        <select id="taskAssignees" multiple size="4" class="border p-2 w-full mb-2 rounded">
+                            <option value="">Select assignees (Ctrl+Click for multiple)</option>
                         </select>
                         <input type="date" id="taskDeadline" class="border p-2 w-full mb-2 rounded">
                         <select id="taskPriority" class="border p-2 w-full mb-2 rounded">
@@ -336,6 +220,7 @@
                 await sb.auth.signOut();
                 if (messageSubscription) messageSubscription.unsubscribe();
                 if (taskSubscription) taskSubscription.unsubscribe();
+                if (assigneeSubscription) assigneeSubscription.unsubscribe();
                 if (trailSubscription) trailSubscription.unsubscribe();
                 if (notificationSubscription) notificationSubscription.unsubscribe();
                 if (bookmarkSubscription) bookmarkSubscription.unsubscribe();
@@ -346,7 +231,7 @@
                 if (e.key === 'Enter') sendMessage();
             });
             document.getElementById('cancelTaskBtn').onclick = closeTaskModal;
-            document.getElementById('saveTaskBtn').onclick = saveTask;
+            document.getElementById('saveTaskBtn').onclick = saveTaskMultiAssignee;
             document.getElementById('cancelReminderBtn').onclick = closeReminderModal;
             document.getElementById('saveReminderBtn').onclick = saveReminder;
             document.getElementById('cancelScheduleBtn').onclick = closeScheduleModal;
@@ -357,7 +242,7 @@
             loadBookmarks();
         }
 
-        // -------------------- Chat functions --------------------
+        // -------------------- Chat functions (unchanged) --------------------
         async function sendMessage() {
             const input = document.getElementById('messageInput');
             const text = input.value.trim();
@@ -490,7 +375,131 @@
                 .subscribe();
         }
 
-        // -------------------- Task Modal (Convert to Task) --------------------
+        // -------------------- Reminder, Schedule, Bookmark (unchanged from previous full version) --------------------
+        let currentReminderMessageId = null;
+        function showReminderModal(messageId, messageText) {
+            currentReminderMessageId = messageId;
+            const modal = document.getElementById('reminderModal');
+            document.getElementById('reminderMessagePreview').innerText = messageText.substring(0, 100);
+            const defaultDateTime = new Date(Date.now() + 60*60*1000).toISOString().slice(0, 16);
+            document.getElementById('reminderDateTime').value = defaultDateTime;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+        function closeReminderModal() {
+            const modal = document.getElementById('reminderModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            currentReminderMessageId = null;
+        }
+        async function saveReminder() {
+            if (!currentReminderMessageId) return;
+            const reminderTime = document.getElementById('reminderDateTime').value;
+            if (!reminderTime) {
+                alert('Please select a date and time');
+                return;
+            }
+            const { error } = await sb.from('reminders').insert({
+                user_id: currentUser.id,
+                message_id: currentReminderMessageId,
+                reminder_time: new Date(reminderTime).toISOString(),
+                triggered: false
+            });
+            if (error) alert('Failed to set reminder: ' + error.message);
+            else { alert('Reminder set!'); closeReminderModal(); }
+        }
+
+        let currentScheduleMessageText = '';
+        function showScheduleModal(messageText) {
+            currentScheduleMessageText = messageText;
+            const modal = document.getElementById('scheduleModal');
+            document.getElementById('scheduleMessageText').value = messageText;
+            document.getElementById('scheduleDateTime').value = '';
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+        function closeScheduleModal() {
+            const modal = document.getElementById('scheduleModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+        async function saveScheduledMessage() {
+            const messageText = document.getElementById('scheduleMessageText').value.trim();
+            const roomId = document.getElementById('scheduleChannel').value;
+            const scheduledTime = document.getElementById('scheduleDateTime').value;
+            if (!messageText || !scheduledTime) {
+                alert('Please enter a message and select a time');
+                return;
+            }
+            const { error } = await sb.from('scheduled_messages').insert({
+                sender_id: currentUser.id,
+                room_id: roomId,
+                message_text: messageText,
+                scheduled_time: new Date(scheduledTime).toISOString(),
+                status: 'pending'
+            });
+            if (error) alert('Failed to schedule message: ' + error.message);
+            else { alert('Message scheduled!'); closeScheduleModal(); }
+        }
+
+        async function toggleBookmark(messageId, messageText, btnElement) {
+            const { data: existing } = await sb
+                .from('bookmarks')
+                .select('id')
+                .eq('user_id', currentUser.id)
+                .eq('message_id', messageId)
+                .maybeSingle();
+            if (existing) {
+                await sb.from('bookmarks').delete().eq('id', existing.id);
+                btnElement.classList.remove('text-yellow-500');
+                btnElement.classList.add('text-gray-400');
+            } else {
+                await sb.from('bookmarks').insert({
+                    user_id: currentUser.id,
+                    message_id: messageId
+                });
+                btnElement.classList.remove('text-gray-400');
+                btnElement.classList.add('text-yellow-500');
+            }
+            loadBookmarks();
+        }
+
+        async function loadBookmarks() {
+            const { data: bookmarks, error } = await sb
+                .from('bookmarks')
+                .select('*, messages(id, text, room_id, profiles(full_name, email))')
+                .eq('user_id', currentUser.id)
+                .order('created_at', { ascending: false });
+            const container = document.getElementById('bookmarksList');
+            if (!container) return;
+            if (error || !bookmarks || bookmarks.length === 0) {
+                container.innerHTML = '<div class="text-xs text-gray-500">No saved messages</div>';
+                return;
+            }
+            container.innerHTML = bookmarks.map(bm => {
+                const msg = bm.messages;
+                const sender = msg?.profiles?.full_name || msg?.profiles?.email || 'Unknown';
+                return `
+                    <div class="border rounded p-2 text-xs bg-gray-50">
+                        <div class="font-semibold">${escapeHtml(sender)}</div>
+                        <div class="truncate">${escapeHtml(msg?.text || '')}</div>
+                        <button class="text-blue-500 text-xs mt-1 view-message-btn" data-message-id="${msg?.id}" data-room-id="${msg?.room_id}">View in chat →</button>
+                    </div>
+                `;
+            }).join('');
+            document.querySelectorAll('.view-message-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const messageId = btn.getAttribute('data-message-id');
+                    const roomId = btn.getAttribute('data-room-id');
+                    if (roomId && messageId) {
+                        currentRoom = roomId;
+                        renderMainUI();
+                    }
+                });
+            });
+        }
+
+        // -------------------- Task Modal (Multi-assignee) --------------------
         let currentMessageId = null;
         async function openTaskModal(messageId, messageText) {
             currentMessageId = messageId;
@@ -501,8 +510,8 @@
             document.getElementById('taskRequireProof').checked = false;
             const { data: users, error } = await sb.from('profiles').select('id, email, full_name');
             if (!error && users) {
-                const select = document.getElementById('taskAssignee');
-                select.innerHTML = '<option value="">Select assignee</option>' + users.map(u => `<option value="${u.id}">${u.full_name || u.email}</option>`).join('');
+                const select = document.getElementById('taskAssignees');
+                select.innerHTML = users.map(u => `<option value="${u.id}">${u.full_name || u.email}</option>`).join('');
             }
             modal.classList.remove('hidden');
             modal.classList.add('flex');
@@ -513,34 +522,84 @@
             modal.classList.remove('flex');
             currentMessageId = null;
         }
-        async function saveTask() {
+        async function saveTaskMultiAssignee() {
             if (!currentMessageId) return;
             const title = document.getElementById('taskTitle').value;
-            const assigneeId = document.getElementById('taskAssignee').value;
+            const assigneeIds = Array.from(document.getElementById('taskAssignees').selectedOptions).map(opt => opt.value);
             const deadline = document.getElementById('taskDeadline').value;
             const priority = document.getElementById('taskPriority').value;
             const requireProof = document.getElementById('taskRequireProof').checked;
-            if (!title || !assigneeId) {
-                alert('Please provide title and assignee');
+            if (!title || assigneeIds.length === 0) {
+                alert('Please provide title and at least one assignee');
                 return;
             }
-            const { error } = await sb.from('tasks').insert({
+            // Insert task
+            const { data: task, error: taskError } = await sb.from('tasks').insert({
                 original_message_id: currentMessageId,
                 title: title,
-                assigned_to: assigneeId,
                 assigned_by: currentUser.id,
                 deadline: deadline || null,
                 priority: priority,
                 require_proof: requireProof,
-                status: 'pending_ack'
-            });
-            if (error) {
-                alert('Failed to create task: ' + error.message);
-            } else {
-                alert('Task created!');
-                closeTaskModal();
-                loadTasks();
+                status: 'pending'  // overall task status will be computed from assignees
+            }).select().single();
+            if (taskError) {
+                alert('Failed to create task: ' + taskError.message);
+                return;
             }
+            // Insert assignees
+            const assigneeInserts = assigneeIds.map(assigneeId => ({
+                task_id: task.id,
+                assignee_id: assigneeId,
+                status: 'pending_ack'
+            }));
+            const { error: assigneeError } = await sb.from('task_assignees').insert(assigneeInserts);
+            if (assigneeError) {
+                alert('Failed to assign users: ' + assigneeError.message);
+                // Optionally delete the task
+                await sb.from('tasks').delete().eq('id', task.id);
+                return;
+            }
+            alert('Task created with ' + assigneeIds.length + ' assignee(s)!');
+            closeTaskModal();
+            loadTasks();
+        }
+
+        // -------------------- Task Actions (per assignee) --------------------
+        async function updateAssigneeStatus(taskId, assigneeId, newStatus, actionComment) {
+            const { error } = await sb.from('task_assignees').update({ status: newStatus }).eq('task_id', taskId).eq('assignee_id', assigneeId);
+            if (error) {
+                alert('Action failed: ' + error.message);
+                return false;
+            }
+            await addTaskTrail(taskId, actionComment, `User ${assigneeId} - ${actionComment}`);
+            return true;
+        }
+
+        async function performAssigneeAction(taskId, assigneeId, action) {
+            let newStatus = '';
+            let comment = '';
+            switch (action) {
+                case 'ack':
+                    newStatus = 'in_progress';
+                    comment = 'acknowledged task';
+                    break;
+                case 'submit':
+                    newStatus = 'submitted';
+                    comment = 'submitted for review';
+                    break;
+                case 'accept':
+                    newStatus = 'accepted';
+                    comment = 'accepted by creator';
+                    break;
+                case 'review_again':
+                    newStatus = 'needs_review';
+                    comment = 'needs rework (creator)';
+                    break;
+                default: return;
+            }
+            const success = await updateAssigneeStatus(taskId, assigneeId, newStatus, comment);
+            if (success) loadTasks();
         }
 
         // -------------------- Task Trail --------------------
@@ -572,81 +631,25 @@
             }
         }
 
-        // -------------------- Task Lifecycle Actions --------------------
-        async function performTaskAction(taskId, action) {
-            let newStatus = '';
-            let comment = '';
-            switch (action) {
-                case 'ack':
-                    newStatus = 'in_progress';
-                    comment = 'Task acknowledged and in progress';
-                    break;
-                case 'submit':
-                    newStatus = 'submitted';
-                    comment = 'Task submitted for review';
-                    break;
-                case 'accept':
-                    newStatus = 'accepted';
-                    comment = 'Task accepted as complete';
-                    break;
-                case 'review_again':
-                    newStatus = 'needs_review';
-                    comment = 'Task needs rework';
-                    break;
-                case 'delegate':
-                    const { data: users } = await sb.from('profiles').select('id, email, full_name');
-                    if (!users || users.length === 0) {
-                        alert('No users found to delegate');
-                        return;
-                    }
-                    const currentTask = await sb.from('tasks').select('assigned_to').eq('id', taskId).single();
-                    const filteredUsers = users.filter(u => u.id !== currentTask.data.assigned_to);
-                    showDelegateModal(taskId, currentTask.data.assigned_to, filteredUsers);
-                    return;
-                default:
-                    return;
-            }
-            const { error } = await sb.from('tasks').update({ status: newStatus }).eq('id', taskId);
-            if (error) {
-                alert('Action failed: ' + error.message);
-                return;
-            }
-            await addTaskTrail(taskId, action, comment);
-            loadTasks();
-        }
-
-        function getActionButtons(task, isAssignedToMe, isCreatedByMe) {
-            const status = task.status;
-            let buttons = '';
-            if (status === 'pending_ack' && isAssignedToMe) {
-                buttons += `<button data-task-id="${task.id}" data-action="ack" class="task-action-btn bg-green-500 text-white text-xs px-2 py-1 rounded">Acknowledge</button>`;
-            }
-            if ((status === 'in_progress' || status === 'needs_review') && isAssignedToMe) {
-                buttons += `<button data-task-id="${task.id}" data-action="submit" class="task-action-btn bg-blue-500 text-white text-xs px-2 py-1 rounded">Submit for Review</button>`;
-                buttons += `<button data-task-id="${task.id}" data-action="delegate" class="task-action-btn bg-gray-500 text-white text-xs px-2 py-1 rounded">Delegate</button>`;
-            }
-            if (status === 'submitted' && isCreatedByMe) {
-                buttons += `<button data-task-id="${task.id}" data-action="accept" class="task-action-btn bg-green-500 text-white text-xs px-2 py-1 rounded">Accept</button>`;
-                buttons += `<button data-task-id="${task.id}" data-action="review_again" class="task-action-btn bg-red-500 text-white text-xs px-2 py-1 rounded">Review Again</button>`;
-            }
-            return buttons || '<span class="text-xs text-gray-400">No actions</span>';
-        }
-
-        // -------------------- Task List Rendering --------------------
+        // -------------------- Load and render tasks with assignees --------------------
         async function loadTasks() {
+            // Fetch tasks where user is either creator or assignee
             const { data: tasks, error } = await sb
                 .from('tasks')
                 .select(`
                     *,
-                    assignee:profiles!assigned_to(full_name, email),
-                    creator:profiles!assigned_by(full_name, email)
+                    creator:profiles!assigned_by(full_name, email),
+                    assignees:task_assignees(
+                        assignee_id,
+                        status,
+                        profiles!assignee_id(full_name, email)
+                    )
                 `)
-                .or(`assigned_to.eq.${currentUser.id},assigned_by.eq.${currentUser.id}`)
+                .or(`assigned_by.eq.${currentUser.id},task_assignees.assignee_id.eq.${currentUser.id}`)
                 .order('created_at', { ascending: false });
             if (error) {
                 console.error(error);
-                const tasksDiv = document.getElementById('tasksList');
-                if (tasksDiv) tasksDiv.innerHTML = '<div class="text-red-500">Error loading tasks</div>';
+                document.getElementById('tasksList').innerHTML = '<div class="text-red-500">Error loading tasks</div>';
                 return;
             }
             renderTasks(tasks);
@@ -660,23 +663,49 @@
                 return;
             }
             container.innerHTML = tasks.map(task => {
-                const isAssignedToMe = task.assigned_to === currentUser.id;
-                const isCreatedByMe = task.assigned_by === currentUser.id;
-                const assigneeName = task.assignee?.full_name || task.assignee?.email || 'Unknown';
-                const creatorName = task.creator?.full_name || task.creator?.email || 'Unknown';
-                const statusColors = {
-                    pending_ack: 'bg-yellow-100 text-yellow-800',
-                    in_progress: 'bg-blue-100 text-blue-800',
-                    submitted: 'bg-purple-100 text-purple-800',
-                    accepted: 'bg-green-100 text-green-800',
-                    needs_review: 'bg-red-100 text-red-800'
-                };
-                const statusColor = statusColors[task.status] || 'bg-gray-100';
-                const isAccepted = task.status === 'accepted';
-                const borderClass = isAccepted ? 'border-green-500 border-2' : 'border';
-                
+                const isCreator = task.assigned_by === currentUser.id;
+                const assignees = task.assignees || [];
+                const allAccepted = assignees.every(a => a.status === 'accepted');
+                const borderClass = allAccepted ? 'border-green-500 border-2' : 'border';
+                // Build assignee list with action buttons
+                const assigneeHtml = assignees.map(ass => {
+                    const assigneeName = ass.profiles?.full_name || ass.profiles?.email || 'Unknown';
+                    const status = ass.status;
+                    const statusColors = {
+                        pending_ack: 'bg-yellow-100 text-yellow-800',
+                        in_progress: 'bg-blue-100 text-blue-800',
+                        submitted: 'bg-purple-100 text-purple-800',
+                        accepted: 'bg-green-100 text-green-800',
+                        needs_review: 'bg-red-100 text-red-800'
+                    };
+                    const statusColor = statusColors[status] || 'bg-gray-100';
+                    let actionButtons = '';
+                    if (ass.assignee_id === currentUser.id) {
+                        // Assignee actions
+                        if (status === 'pending_ack') {
+                            actionButtons = `<button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="ack" class="task-assignee-action bg-green-500 text-white text-xs px-2 py-1 rounded mt-1">Acknowledge</button>`;
+                        } else if (status === 'in_progress' || status === 'needs_review') {
+                            actionButtons = `<button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="submit" class="task-assignee-action bg-blue-500 text-white text-xs px-2 py-1 rounded mt-1">Submit for Review</button>`;
+                        }
+                    } else if (isCreator && (status === 'submitted')) {
+                        // Creator actions for submitted tasks
+                        actionButtons = `
+                            <button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="accept" class="task-assignee-action bg-green-500 text-white text-xs px-2 py-1 rounded mt-1">Accept</button>
+                            <button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="review_again" class="task-assignee-action bg-red-500 text-white text-xs px-2 py-1 rounded mt-1">Review Again</button>
+                        `;
+                    }
+                    return `
+                        <div class="flex justify-between items-center border-b py-1 text-xs">
+                            <span>${escapeHtml(assigneeName)}</span>
+                            <span class="px-2 py-0.5 rounded-full ${statusColor}">${status.replace('_', ' ')}</span>
+                            ${actionButtons ? `<div>${actionButtons}</div>` : ''}
+                        </div>
+                    `;
+                }).join('');
+                // Update form for assignee (if task is in_progress or needs_review and current user is assignee)
                 let updateFormHtml = '';
-                if ((task.status === 'in_progress' || task.status === 'needs_review') && isAssignedToMe) {
+                const myAssignee = assignees.find(a => a.assignee_id === currentUser.id);
+                if (myAssignee && (myAssignee.status === 'in_progress' || myAssignee.status === 'needs_review')) {
                     updateFormHtml = `
                         <div class="mt-3 border-t pt-2">
                             <textarea id="comment-${task.id}" placeholder="Add progress update..." class="w-full text-xs border rounded p-1" rows="2"></textarea>
@@ -687,44 +716,37 @@
                         </div>
                     `;
                 }
-                
                 return `
-                    <div class="rounded-lg p-3 bg-white shadow-sm ${borderClass} task-card" data-task-id="${task.id}">
-                        <div class="flex justify-between items-start">
-                            <h3 class="font-semibold text-sm">${escapeHtml(task.title)}</h3>
-                            <span class="text-xs px-2 py-1 rounded-full ${statusColor}">${task.status.replace('_', ' ')}</span>
-                        </div>
-                        <div class="text-xs text-gray-500 mt-1">Assignee: ${assigneeName}</div>
-                        <div class="text-xs text-gray-500">Creator: ${creatorName}</div>
+                    <div class="rounded-lg p-3 bg-white shadow-sm ${borderClass}" data-task-id="${task.id}">
+                        <div class="font-semibold text-sm">${escapeHtml(task.title)}</div>
+                        <div class="text-xs text-gray-500 mt-1">Creator: ${task.creator?.full_name || task.creator?.email || 'Unknown'}</div>
                         ${task.deadline ? `<div class="text-xs text-gray-500">Deadline: ${new Date(task.deadline).toLocaleDateString()}</div>` : ''}
-                        <div class="flex flex-wrap gap-2 mt-2">
-                            ${getActionButtons(task, isAssignedToMe, isCreatedByMe)}
-                        </div>
+                        <div class="mt-2 text-xs font-semibold">Assignees:</div>
+                        <div class="space-y-1">${assigneeHtml}</div>
                         ${updateFormHtml}
                         <div id="trail-${task.id}" class="mt-2 text-xs text-gray-500 max-h-24 overflow-y-auto border-t pt-1 hidden"></div>
                     </div>
                 `;
             }).join('');
-            
-            document.querySelectorAll('.task-action-btn').forEach(btn => {
+            // Attach assignee action buttons
+            document.querySelectorAll('.task-assignee-action').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
                     const taskId = btn.dataset.taskId;
+                    const assigneeId = btn.dataset.assigneeId;
                     const action = btn.dataset.action;
-                    await performTaskAction(taskId, action);
+                    await performAssigneeAction(taskId, assigneeId, action);
                 });
             });
-            
+            // Attach update buttons
             document.querySelectorAll('.task-update-btn').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
                     const taskId = btn.dataset.taskId;
-                    const commentTextarea = document.getElementById(`comment-${taskId}`);
-                    const comment = commentTextarea?.value.trim() || '';
+                    const comment = document.getElementById(`comment-${taskId}`)?.value.trim() || '';
                     const fileInput = document.getElementById(`file-${taskId}`);
                     let fileUrl = null;
                     if (fileInput && fileInput.files.length > 0) {
                         const file = fileInput.files[0];
-                        const fileExt = file.name.split('.').pop();
-                        const fileName = `${taskId}_${Date.now()}.${fileExt}`;
+                        const fileName = `${taskId}_${Date.now()}_${file.name}`;
                         const { error } = await sb.storage.from('task-proofs').upload(fileName, file);
                         if (error) {
                             alert('File upload failed: ' + error.message);
@@ -735,7 +757,7 @@
                     }
                     if (comment || fileUrl) {
                         await addTaskTrail(taskId, 'update', comment, fileUrl);
-                        if (commentTextarea) commentTextarea.value = '';
+                        document.getElementById(`comment-${taskId}`).value = '';
                         if (fileInput) fileInput.value = '';
                         loadTasks();
                     } else {
@@ -743,10 +765,8 @@
                     }
                 });
             });
-            
-            tasks.forEach(task => {
-                loadTaskTrail(task.id);
-            });
+            // Load trails
+            tasks.forEach(task => loadTaskTrail(task.id));
         }
 
         // -------------------- Real-time subscriptions --------------------
@@ -757,7 +777,13 @@
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => loadTasks())
                 .subscribe();
         }
-
+        function subscribeToAssignees() {
+            if (assigneeSubscription) assigneeSubscription.unsubscribe();
+            assigneeSubscription = sb
+                .channel('assignees-changes')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'task_assignees' }, () => loadTasks())
+                .subscribe();
+        }
         function subscribeToTrails() {
             if (trailSubscription) trailSubscription.unsubscribe();
             trailSubscription = sb
@@ -765,97 +791,21 @@
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'task_trails' }, () => loadTasks())
                 .subscribe();
         }
-
         function subscribeToNotifications() {
             if (notificationSubscription) notificationSubscription.unsubscribe();
             notificationSubscription = sb
                 .channel('notifications-channel')
-                .on('postgres_changes', {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'notifications',
-                    filter: `user_id=eq.${currentUser.id}`
-                }, (payload) => {
-                    showToast(payload.new.message);
-                })
-                .subscribe((status) => {
-                    console.log('Notification subscription status:', status);
-                });
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${currentUser.id}` }, (payload) => showToast(payload.new.message))
+                .subscribe();
         }
-
-        // -------------------- Bookmarks --------------------
-        async function toggleBookmark(messageId, messageText, btnElement) {
-            const { data: existing } = await sb
-                .from('bookmarks')
-                .select('id')
-                .eq('user_id', currentUser.id)
-                .eq('message_id', messageId)
-                .maybeSingle();
-            
-            if (existing) {
-                await sb.from('bookmarks').delete().eq('id', existing.id);
-                btnElement.classList.remove('text-yellow-500');
-                btnElement.classList.add('text-gray-400');
-            } else {
-                await sb.from('bookmarks').insert({
-                    user_id: currentUser.id,
-                    message_id: messageId
-                });
-                btnElement.classList.remove('text-gray-400');
-                btnElement.classList.add('text-yellow-500');
-            }
-            loadBookmarks();
-        }
-
-        async function loadBookmarks() {
-            const { data: bookmarks, error } = await sb
-                .from('bookmarks')
-                .select('*, messages(id, text, room_id, profiles(full_name, email))')
-                .eq('user_id', currentUser.id)
-                .order('created_at', { ascending: false });
-            
-            const container = document.getElementById('bookmarksList');
-            if (!container) return;
-            if (error || !bookmarks || bookmarks.length === 0) {
-                container.innerHTML = '<div class="text-xs text-gray-500">No saved messages</div>';
-                return;
-            }
-            container.innerHTML = bookmarks.map(bm => {
-                const msg = bm.messages;
-                const sender = msg?.profiles?.full_name || msg?.profiles?.email || 'Unknown';
-                return `
-                    <div class="border rounded p-2 text-xs bg-gray-50">
-                        <div class="font-semibold">${escapeHtml(sender)}</div>
-                        <div class="truncate">${escapeHtml(msg?.text || '')}</div>
-                        <button class="text-blue-500 text-xs mt-1 view-message-btn" data-message-id="${msg?.id}" data-room-id="${msg?.room_id}">View in chat →</button>
-                    </div>
-                `;
-            }).join('');
-            
-            document.querySelectorAll('.view-message-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const messageId = btn.getAttribute('data-message-id');
-                    const roomId = btn.getAttribute('data-room-id');
-                    if (roomId && messageId) {
-                        currentRoom = roomId;
-                        renderMainUI();
-                        // TODO: scroll to specific message after loading
-                    }
-                });
-            });
-        }
-
         function subscribeToBookmarks() {
             if (bookmarkSubscription) bookmarkSubscription.unsubscribe();
             bookmarkSubscription = sb
                 .channel('bookmarks-changes')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'bookmarks', filter: `user_id=eq.${currentUser.id}` }, () => {
-                    loadBookmarks();
-                })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'bookmarks', filter: `user_id=eq.${currentUser.id}` }, () => loadBookmarks())
                 .subscribe();
         }
 
-        // -------------------- Start the app --------------------
         renderApp();
     </script>
 </body>

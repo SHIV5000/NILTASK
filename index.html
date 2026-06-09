@@ -17,7 +17,6 @@
     <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
     
     <style>
-        /* ========== Modern WhatsApp Premium Theme Variables (Maroon Theme) ========== */
         :root {
             --bg-body: #f0f2f5;
             --bg-sidebar: rgba(255, 255, 255, 0.95);
@@ -26,7 +25,7 @@
             --bg-message-other: #ffffff;
             --text-primary: #111b21;
             --text-secondary: #667781;
-            --accent: #800000;
+            --accent: #800000; /* Maroon */
             --accent-hover: #660000;
             --sent-bg: #f2e6e6;
             --received-bg: #ffffff;
@@ -47,7 +46,6 @@
             --sent-bg: #4d0000;
             --received-bg: #202c33;
             --border-color: rgba(134, 150, 160, 0.15);
-            --chat-pattern: url("https://www.transparenttextures.com/patterns/cubes.png");
         }
 
         body { font-family: 'Inter', sans-serif; background-color: var(--bg-body); color: var(--text-primary); transition: background-color 0.3s, color 0.3s; }
@@ -59,9 +57,8 @@
         .sidebar-glass { background: var(--bg-sidebar); backdrop-filter: blur(10px); border-color: var(--border-color); }
         .chat-area { background-color: var(--bg-chat); background-image: var(--chat-pattern); background-blend-mode: overlay; }
 
-        /* ========== Message Bubbles ========== */
         .message-bubble { 
-            max-width: 75%; /* Fixed at 75% width as requested */
+            max-width: 75%; 
             margin-bottom: 0.75rem; 
             display: flex; 
             flex-direction: column; 
@@ -80,29 +77,32 @@
         .sent .bubble-content { background: var(--sent-bg); border-radius: 16px 0px 16px 16px; }
         .received .bubble-content { background: var(--received-bg); border-radius: 0px 16px 16px 16px; }
 
-        /* Hover Controls (Top Right) */
+        /* Hover Controls (Top Right fixed) */
         .bubble-controls {
             position: absolute; top: 4px; right: 8px;
             display: flex; gap: 8px; opacity: 0; transition: opacity 0.2s;
             background: inherit; padding-left: 10px; border-radius: 8px;
+            z-index: 10;
         }
         .message-bubble:hover .bubble-controls { opacity: 1; }
         .bubble-controls i { cursor: pointer; color: var(--text-secondary); transition: color 0.2s; font-size: 14px; }
         .bubble-controls i:hover { color: var(--accent); }
 
+        .inline-reply-box { display: none; margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 8px; }
+        .inline-reply-box.active { display: flex; gap: 8px; align-items: center; }
+
         /* 4-Second Highlight Animation */
         @keyframes flashHighlight {
-            0% { background-color: rgba(128, 0, 0, 0.3); transform: scale(1.02); }
-            100% { background-color: transparent; transform: scale(1); }
+            0% { background-color: rgba(128, 0, 0, 0.3); transform: scale(1.02); box-shadow: 0 0 15px rgba(128,0,0,0.5); }
+            100% { background-color: transparent; transform: scale(1); box-shadow: none; }
         }
         .highlight-active .bubble-content, .highlight-active.jira-card {
-            animation: flashHighlight 4s ease-out;
+            animation: flashHighlight 4s ease-out forwards;
         }
 
-        /* ========== Jira-Style Task Cards ========== */
         .jira-card {
             background: var(--bg-message-other);
-            border-radius: 4px;
+            border-radius: 6px;
             margin-bottom: 12px;
             padding: 16px;
             box-shadow: rgba(9, 30, 66, 0.25) 0px 1px 2px 0px;
@@ -119,7 +119,6 @@
         .status-needs_review { color: #dc2626; border-left-color: #dc2626 !important; }
         .status-accepted { color: #16a34a; border-left-color: #16a34a !important; }
 
-        /* ========== Modals & Toasts ========== */
         .modal-overlay { background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); }
         .modal-content { background: var(--bg-sidebar); border: 1px solid var(--border-color); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
         
@@ -139,13 +138,13 @@
             box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); border-radius: 12px; z-index: 100;
         }
 
-        /* ========== Input Area (Standard App Style) ========== */
+        /* Input Area (Modern App Style) */
         .input-container {
             background: var(--bg-sidebar); border-top: 1px solid var(--border-color); padding: 12px 20px;
         }
         .quill-wrapper {
             background: var(--bg-message-other); border: 1px solid var(--border-color);
-            border-radius: 20px; overflow: hidden; display: flex; flex-direction: column;
+            border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;
         }
         .ql-toolbar.ql-snow { border: none !important; border-bottom: 1px solid var(--border-color) !important; background: rgba(0,0,0,0.02); padding: 6px 12px !important; }
         .ql-container.ql-snow { border: none !important; font-size: 0.95rem; min-height: 40px; max-height: 120px; overflow-y: auto; }
@@ -167,10 +166,11 @@
         const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let currentUser = null, currentRoom = 'general';
-        let messageSubscription, taskSubscription, assigneeSubscription, notificationSubscription;
+        let messageSubscription, taskSubscription, assigneeSubscription;
         let currentTheme = localStorage.getItem('theme') || 'light';
         let quillEditor = null;
-        let currSchedText = ''; // Stores text for scheduled messages
+        let currSchedText = ''; 
+        let currentReminderId = null;
 
         // Utilities
         function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m] || m)); }
@@ -183,7 +183,7 @@
             setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 500); }, 5000); 
         }
 
-        function scrollToAndHighlight(id) {
+        window.scrollToAndHighlight = function(id) {
             const el = document.getElementById(id);
             if(el) {
                 el.scrollIntoView({behavior: 'smooth', block: 'center'});
@@ -204,10 +204,9 @@
             }
         });
 
-        // Auth & Profile
         async function ensureProfile() { if(!currentUser) return; const {data:ex}=await sb.from('profiles').select('id').eq('id',currentUser.id).maybeSingle(); if(!ex) await sb.from('profiles').insert({id:currentUser.id, email:currentUser.email, full_name:currentUser.email.split('@')[0], role:'teacher'}); }
         async function signIn(email,pwd) { const {data,error}=await sb.auth.signInWithPassword({email,password:pwd}); if(!error && data?.user) { currentUser=data.user; await ensureProfile(); renderMainApp(); startSubscriptions(); return true; } return false; }
-        async function signUp(email,pwd) { const {error}=await sb.auth.signUp({email,password:pwd}); if(error) throw error; alert('Check email!'); }
+        async function signUp(email,pwd) { const {error}=await sb.auth.signUp({email,password:pwd}); if(error) throw error; showCenterToast('Check email for verification!'); }
         async function logout() { await sb.auth.signOut(); currentUser=null; renderAuthScreen(); }
         
         function renderAuthScreen() { 
@@ -232,7 +231,6 @@
             document.getElementById('loginBtn').onclick=async()=>{ const ok=await signIn(document.getElementById('email').value,document.getElementById('password').value); if(!ok) document.getElementById('authMsg').innerText='Invalid credentials'; };
         }
 
-        // Main App
         function renderMainApp() {
             applyTheme();
             document.getElementById('root').innerHTML = `
@@ -252,7 +250,7 @@
                     <!-- Center Chat Area -->
                     <div class="flex-1 flex flex-col chat-area relative">
                         
-                        <!-- Top Bar (With new Icons & Filters) -->
+                        <!-- Top Bar (Filters & Icons) -->
                         <div class="p-4 sidebar-glass border-b z-10 flex justify-between items-center shadow-sm" style="border-color: var(--border-color)">
                             <div class="flex items-center gap-3">
                                 <span class="text-lg font-bold tracking-tight"># ${currentRoom}</span>
@@ -277,19 +275,18 @@
                         <!-- Messages Container -->
                         <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col"></div>
                         
-                        <!-- Input Area (Standard App Style) -->
+                        <!-- Input Area (Modern Chat Style) -->
                         <div class="input-container">
                             <div class="quill-wrapper">
-                                <!-- Formatting toolbar handled by Quill -->
                                 <div id="richEditor"></div>
                             </div>
                             <div class="flex justify-between items-center mt-2 px-2">
                                 <div class="flex gap-4 text-xl" style="color: var(--text-secondary)">
-                                    <i class="far fa-smile cursor-pointer hover:text-[var(--accent)]" title="Emoji"></i>
+                                    <i class="far fa-smile cursor-pointer hover:text-[var(--accent)]" title="Emoji" onclick="showCenterToast('Emoji picker opening...', 'fa-smile', 'text-yellow-400')"></i>
                                     <i class="fas fa-paperclip cursor-pointer hover:text-[var(--accent)]" title="Attach"></i>
                                 </div>
                                 <div class="flex gap-2">
-                                    <button id="scheduleMsgBtn" class="px-4 py-2 rounded-full font-medium" style="background: var(--bg-message-own); color: var(--accent);">
+                                    <button id="scheduleMsgBtn" class="px-4 py-2 rounded-full font-medium text-sm border" style="color: var(--text-secondary); border-color: var(--border-color);">
                                         <i class="far fa-clock"></i> Schedule
                                     </button>
                                     <button id="sendBtn" class="btn-primary flex items-center gap-2">
@@ -307,7 +304,7 @@
                     </div>
                 </div>
 
-                <!-- Schedule Modal (Only Date/Time) -->
+                <!-- Schedule Modal -->
                 <div id="scheduleModal" class="fixed inset-0 modal-overlay hidden items-center justify-center z-50">
                     <div class="modal-content rounded-2xl p-6 w-full max-w-sm mx-4 text-center">
                         <i class="far fa-clock text-4xl mb-4" style="color: var(--accent)"></i>
@@ -324,13 +321,34 @@
                 <!-- Convert to Task Modal -->
                 <div id="taskModal" class="fixed inset-0 modal-overlay hidden items-center justify-center z-50">
                     <div class="modal-content rounded-2xl p-6 w-full max-w-md mx-4">
-                        <h3 class="text-xl font-bold mb-4">Convert to Jira Task</h3>
-                        <input id="taskTitle" class="ui-input w-full p-3 rounded-xl mb-3">
+                        <h3 class="text-xl font-bold mb-4">Create Jira Task</h3>
+                        <input id="taskTitle" class="ui-input w-full p-3 rounded-xl mb-3" placeholder="Task Title">
                         <select id="taskAssignees" multiple size="4" class="ui-input w-full p-2 rounded-xl mb-3"></select>
-                        <input type="date" id="taskDeadline" class="ui-input w-full p-3 rounded-xl mb-3">
+                        <div class="grid grid-cols-2 gap-3 mb-3">
+                            <input type="date" id="taskDeadline" class="ui-input w-full p-3 rounded-xl">
+                            <select id="taskPriority" class="ui-input w-full p-3 rounded-xl">
+                                <option value="Low">Low</option>
+                                <option value="Medium" selected>Medium</option>
+                                <option value="High">High</option>
+                            </select>
+                        </div>
+                        <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="taskRequireProof"> Require Proof</label>
                         <div class="flex gap-3 mt-4">
                             <button onclick="closeTaskModal()" class="flex-1 py-2.5 rounded-xl ui-input">Cancel</button>
                             <button onclick="saveTaskMultiAssignee()" class="flex-1 py-2.5 rounded-xl btn-primary">Create Ticket</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Reminder Modal -->
+                <div id="reminderModal" class="fixed inset-0 modal-overlay hidden items-center justify-center z-50">
+                    <div class="modal-content rounded-2xl p-6 w-full max-w-sm mx-4">
+                        <h3 class="text-xl font-bold mb-4">Set Reminder</h3>
+                        <p id="reminderMessagePreview" class="text-sm mb-4 truncate text-gray-500"></p>
+                        <input type="datetime-local" id="reminderDateTime" class="ui-input w-full p-3 rounded-xl mb-6">
+                        <div class="flex gap-3">
+                            <button onclick="closeReminderModal()" class="flex-1 py-2.5 rounded-xl ui-input">Cancel</button>
+                            <button onclick="saveReminder()" class="flex-1 py-2.5 rounded-xl btn-primary">Set</button>
                         </div>
                     </div>
                 </div>
@@ -351,10 +369,9 @@
             document.getElementById('viewFilter')?.addEventListener('change', applyFilters);
             document.getElementById('messageSearchBar')?.addEventListener('input', applyFilters);
             
-            loadChatsList(); loadMessages(); loadTasksForPanel(); startSubscriptions();
+            loadChatsList(); loadMessages(); loadTasksForPanel(); attachModalButtons();
         }
 
-        // Filters
         function applyFilters() {
             const filter = document.getElementById('viewFilter').value;
             const search = document.getElementById('messageSearchBar').value.toLowerCase();
@@ -364,20 +381,15 @@
                 const text = el.innerText.toLowerCase();
                 
                 if (search && !text.includes(search)) show = false;
-                
-                if (filter === 'messages' && !el.classList.contains('message-bubble')) show = false;
+                if (filter === 'messages' && el.classList.contains('jira-card')) show = false;
                 if (filter === 'tasks' && !el.classList.contains('jira-card')) show = false;
-                // 'today' filter logic would require reading timestamps, keeping simple for DOM filtering
                 
                 el.style.display = show ? 'flex' : 'none';
             });
         }
 
-        // Top Bar Panels (Clock, Bookmark, Bell)
         window.openTopPanel = async function(type) {
-            // Remove existing
             document.querySelectorAll('.top-panel-dropdown').forEach(m => m.remove());
-            
             const panel = document.createElement('div');
             panel.className = 'top-panel-dropdown right-10 top-16 w-80 max-h-96 overflow-y-auto p-4';
             
@@ -401,9 +413,15 @@
                     </div>`;
                 });
             } else if (type === 'alerts') {
-                panel.innerHTML = `<h4 class="font-bold border-b pb-2 mb-2"><i class="far fa-bell"></i> Alerts</h4><p class="text-xs text-gray-500">All caught up!</p>`;
+                panel.innerHTML = `<h4 class="font-bold border-b pb-2 mb-2"><i class="far fa-bell"></i> Alerts</h4>`;
+                const {data} = await sb.from('notifications').select('*').eq('user_id', currentUser.id).order('created_at', {ascending: false}).limit(10);
+                if(!data || data.length===0) panel.innerHTML += `<p class="text-xs text-gray-500">All caught up!</p>`;
+                data?.forEach(d => {
+                     panel.innerHTML += `<div class="mb-2 p-2 bg-black/5 rounded text-sm cursor-pointer hover:bg-black/10" onclick="scrollToAndHighlight('msg-${d.message_id}')">
+                        <span class="block">${escapeHtml(d.message)}</span>
+                    </div>`;
+                });
             }
-            
             document.querySelector('.chat-area').appendChild(panel);
         }
 
@@ -413,10 +431,9 @@
             showCenterToast('Scheduled message cancelled.', 'fa-info-circle', 'text-yellow-400');
         }
 
-        // Scheduling Flow
         window.showScheduleModal = function() {
             currSchedText = quillEditor.root.innerText.trim();
-            if(!currSchedText) { showCenterToast('Type a message in the input box first.', 'fa-exclamation-triangle', 'text-yellow-500'); return; }
+            if(!currSchedText) { showCenterToast('Type a message first.', 'fa-exclamation-triangle', 'text-yellow-500'); return; }
             document.getElementById('scheduleModal').classList.remove('hidden');
             document.getElementById('scheduleModal').classList.add('flex');
         }
@@ -429,17 +446,17 @@
             if(!time) return;
             await sb.from('scheduled_messages').insert({ sender_id: currentUser.id, room_id: currentRoom, message_text: currSchedText, scheduled_time: new Date(time).toISOString(), status: 'pending' });
             closeScheduleModal();
-            quillEditor.root.innerHTML = ''; // Clear input
-            showCenterToast('Message Scheduled Successfully!');
+            quillEditor.root.innerHTML = '';
+            showCenterToast('Message Scheduled Successfully!'); // Fades in 5s automatically
         }
 
         async function loadChatsList() {
             const groups = ['general', 'math', 'science'];
             const {data: users} = await sb.from('profiles').select('id, email, full_name').neq('id', currentUser.id);
             let html = `<div class="px-3 py-2 mt-2 text-[11px] font-bold tracking-wider uppercase" style="color: var(--text-secondary)">Groups</div>`;
-            groups.forEach(g => { html += `<div class="channel-item flex items-center gap-3" data-room="${g}"><div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs" style="background: var(--text-secondary)"><i class="fas fa-users"></i></div><span class="flex-1 truncate"># ${g}</span></div>`; });
+            groups.forEach(g => { html += `<div class="channel-item p-2 mx-2 mb-1 rounded-lg cursor-pointer hover:bg-black/5 flex items-center gap-3" data-room="${g}"><div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs bg-gray-400"><i class="fas fa-users"></i></div><span class="flex-1 truncate"># ${g}</span></div>`; });
             html += `<div class="px-3 py-2 mt-4 text-[11px] font-bold tracking-wider uppercase" style="color: var(--text-secondary)">Direct Messages</div>`;
-            users?.forEach(u => { html += `<div class="channel-item flex items-center gap-3" data-room="dm_${u.id}"><div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-inner" style="background: var(--accent)">${(u.full_name || u.email).charAt(0).toUpperCase()}</div><span class="flex-1 truncate">${u.full_name || u.email}</span></div>`; });
+            users?.forEach(u => { html += `<div class="channel-item p-2 mx-2 mb-1 rounded-lg cursor-pointer hover:bg-black/5 flex items-center gap-3" data-room="dm_${u.id}"><div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs" style="background: var(--accent)">${(u.full_name || u.email).charAt(0).toUpperCase()}</div><span class="flex-1 truncate">${u.full_name || u.email}</span></div>`; });
             document.getElementById('chatsList').innerHTML = html;
             document.querySelectorAll('.channel-item').forEach(el => { el.addEventListener('click', () => { currentRoom = el.dataset.room; renderMainApp(); }); });
         }
@@ -459,8 +476,8 @@
             c.scrollTop = c.scrollHeight;
         }
 
-        window.addEmoji = function(msgId) {
-            showCenterToast('Emoji reaction added!', 'fa-smile', 'text-yellow-400');
+        window.addEmoji = function() {
+            showCenterToast('Emoji added!', 'fa-smile', 'text-yellow-400');
         }
 
         function renderMessages(messages) {
@@ -468,40 +485,74 @@
             if (!c) return;
             if (!messages.length) { c.innerHTML = '<div class="m-auto flex flex-col items-center opacity-50"><i class="far fa-comments text-5xl mb-3"></i><p>Say hello!</p></div>'; return; }
             
-            c.innerHTML = messages.map(msg => {
+            // Slack-style Threading Map
+            const msgMap = new Map();
+            messages.forEach(m => msgMap.set(m.id, m));
+            const topLevel = [];
+            const replies = {};
+            
+            messages.forEach(msg => {
+                if (msg.parent_message_id && msgMap.has(msg.parent_message_id)) {
+                    let rootId = msg.parent_message_id;
+                    while (msgMap.get(rootId)?.parent_message_id && msgMap.has(msgMap.get(rootId).parent_message_id)) rootId = msgMap.get(rootId).parent_message_id;
+                    if (!replies[rootId]) replies[rootId] = [];
+                    replies[rootId].push(msg);
+                } else {
+                    topLevel.push(msg);
+                }
+            });
+
+            function buildMsgHTML(msg, isReply = false) {
                 const isOwn = msg.sender_id === currentUser.id;
                 const senderName = msg.profiles?.full_name || msg.profiles?.email || 'Unknown';
                 const time = new Date(msg.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+                const alignClass = isReply ? 'received mt-1 w-full' : (isOwn ? 'sent' : 'received');
                 
-                return `<div id="msg-${msg.id}" class="message-bubble ${isOwn ? 'sent' : 'received'}">
+                let html = `<div id="msg-${msg.id}" class="message-bubble ${alignClass}">
                             <div class="bubble-content">
-                                <!-- Hover Controls -->
+                                <!-- Top Right Fixed Controls -->
                                 <div class="bubble-controls top-bar-icon">
-                                    <i class="fas fa-plus" title="React" onclick="addEmoji('${msg.id}')"></i>
+                                    <i class="fas fa-reply" title="Reply" onclick="toggleReplyBox('${msg.id}')"></i>
+                                    <i class="fas fa-plus" title="React" onclick="addEmoji()"></i>
                                     <i class="fas fa-ellipsis-v menu-dots" data-msg-id="${msg.id}" data-msg-text="${escapeHtml(msg.text)}"></i>
                                 </div>
                                 
                                 <div class="message-meta">
-                                    <span class="font-bold" style="${isOwn ? 'display:none;' : 'color: var(--accent)'}">${escapeHtml(senderName)}</span>
+                                    <span class="font-bold" style="${isOwn && !isReply ? 'display:none;' : 'color: var(--accent)'}">${escapeHtml(senderName)}</span>
+                                    <span class="ml-auto opacity-60">${time} ${isOwn ? '<i class="fas fa-check-double text-blue-400"></i>' : ''}</span>
                                 </div>
                                 <div class="text-[15px] leading-relaxed pr-10">${escapeHtml(msg.text)}</div>
-                                <div class="text-[10px] text-right mt-1 opacity-60">${time} ${isOwn ? '<i class="fas fa-check-double text-blue-400"></i>' : ''}</div>
+                                
+                                <div id="reply-box-${msg.id}" class="inline-reply-box">
+                                    <input type="text" id="reply-input-${msg.id}" placeholder="Write a reply..." class="ui-input w-full px-2 py-1 rounded-md text-sm">
+                                    <button onclick="sendReply('${msg.id}')" class="px-3 py-1 rounded-md bg-[var(--accent)] text-white text-xs">Send</button>
+                                </div>
                             </div>
                         </div>`;
-            }).join('');
+                
+                if (!isReply && replies[msg.id] && replies[msg.id].length > 0) {
+                    html += `<div class="ml-4 md:ml-12 pl-4 border-l-2 mb-4 flex flex-col gap-1" style="border-color: var(--accent)">`;
+                    replies[msg.id].forEach(child => { html += buildMsgHTML(child, true); });
+                    html += `</div>`;
+                }
+                return html;
+            }
 
-            // Attach Dropdown Menu Logic
+            c.innerHTML = topLevel.map(msg => buildMsgHTML(msg)).join('');
+
+            // Dropdown Menu Logic
             document.querySelectorAll('.menu-dots').forEach(el => {
                 el.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    document.querySelectorAll('.msg-menu-dropdown').forEach(m => m.remove()); // Clear others
+                    document.querySelectorAll('.msg-menu-dropdown').forEach(m => m.remove());
                     const mid = el.dataset.msgId, mtext = el.dataset.msgText;
                     const menu = document.createElement('div');
                     menu.className = 'msg-menu-dropdown p-1';
                     menu.style.minWidth = '160px';
                     menu.innerHTML = `
-                        <div class="cursor-pointer px-3 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2" onclick="openTaskModal('${mid}', '${mtext}')"><i class="fas fa-tasks text-blue-500 w-4"></i> Create Jira Task</div>
-                        <div class="cursor-pointer px-3 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2" onclick="toggleBookmark('${mid}')"><i class="fas fa-star text-yellow-500 w-4"></i> Bookmark</div>
+                        <div class="cursor-pointer px-3 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2" onclick="openTaskModal('${mid}', '${mtext}')"><i class="fas fa-tasks text-emerald-500 w-4"></i> Create Task</div>
+                        <div class="cursor-pointer px-3 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2" onclick="showReminderModal('${mid}', '${mtext}')"><i class="fas fa-bell text-yellow-500 w-4"></i> Reminder</div>
+                        <div class="cursor-pointer px-3 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2" onclick="toggleBookmark('${mid}')"><i class="fas fa-star text-orange-400 w-4"></i> Bookmark</div>
                     `;
                     document.body.appendChild(menu);
                     const rect = el.getBoundingClientRect();
@@ -511,7 +562,23 @@
             });
         }
 
-        // Task Panels (Jira Style)
+        window.toggleReplyBox = function(id) {
+            const box = document.getElementById(`reply-box-${id}`);
+            box.classList.toggle('active');
+            if(box.classList.contains('active')) document.getElementById(`reply-input-${id}`).focus();
+        }
+
+        window.sendReply = async function(parentId) {
+            const input = document.getElementById(`reply-input-${parentId}`);
+            const text = input.value.trim();
+            if(text) {
+                await sb.from('messages').insert({ room_id: currentRoom, sender_id: currentUser.id, text, parent_message_id: parentId, created_at: new Date().toISOString() });
+                input.value = '';
+                toggleReplyBox(parentId);
+                loadMessages();
+            }
+        }
+
         async function loadTasksForPanel() {
             const {data: tasks} = await sb.from('tasks').select('*, creator:profiles!assigned_by(full_name, email)').order('created_at', {ascending: false});
             if (!tasks) return;
@@ -533,7 +600,6 @@
                 const isCreator = task.assigned_by === currentUser.id;
                 const assignees = task.assignees;
                 
-                // Determine Border Color based on first assignee status
                 let statusClass = 'status-pending';
                 if(assignees.length > 0) {
                     const st = assignees[0].status;
@@ -549,7 +615,7 @@
                     let actions = '';
                     if (ass.assignee_id === currentUser.id && ass.status === 'pending_ack') actions = `<button onclick="performTaskAction('${task.id}', '${ass.assignee_id}', 'ack')" class="w-full mt-2 bg-blue-600 text-white text-xs py-1.5 rounded font-semibold">Acknowledge</button>`;
                     if (ass.assignee_id === currentUser.id && (ass.status === 'in_progress' || ass.status === 'needs_review')) actions = `<button onclick="performTaskAction('${task.id}', '${ass.assignee_id}', 'submit')" class="w-full mt-2 bg-purple-600 text-white text-xs py-1.5 rounded font-semibold">Submit for Review</button>`;
-                    if (isCreator && ass.status === 'submitted') actions = `<div class="flex gap-2 mt-2"><button onclick="performTaskAction('${task.id}', '${ass.assignee_id}', 'accept')" class="flex-1 bg-green-600 text-white text-xs py-1.5 rounded font-semibold">Accept/Done</button><button onclick="performTaskAction('${task.id}', '${ass.assignee_id}', 'review_again')" class="flex-1 bg-red-600 text-white text-xs py-1.5 rounded font-semibold">Reject</button></div>`;
+                    if (isCreator && ass.status === 'submitted') actions = `<div class="flex gap-2 mt-2"><button onclick="performTaskAction('${task.id}', '${ass.assignee_id}', 'accept')" class="flex-1 bg-green-600 text-white text-xs py-1.5 rounded font-semibold">Accept</button><button onclick="performTaskAction('${task.id}', '${ass.assignee_id}', 'review_again')" class="flex-1 bg-red-600 text-white text-xs py-1.5 rounded font-semibold">Reject</button></div>`;
                     
                     return `<div class="mt-2 text-sm border-t pt-2">
                                 <div class="flex justify-between items-center font-medium">
@@ -561,8 +627,11 @@
                 }).join('');
                 
                 return `<div class="jira-card ${statusClass}">
-                            <div class="font-bold text-[15px] mb-1" style="color: #172b4d;">${escapeHtml(task.title)}</div>
-                            <div class="text-xs text-gray-500 mb-2"><i class="far fa-calendar-alt"></i> ${task.deadline || 'No Deadline'}</div>
+                            <div class="font-bold text-[15px] mb-1">${escapeHtml(task.title)}</div>
+                            <div class="text-xs text-gray-500 mb-2 flex justify-between">
+                                <span><i class="far fa-calendar-alt"></i> ${task.deadline || 'No Date'}</span>
+                                <span>${task.priority || 'Medium'}</span>
+                            </div>
                             ${assigneeHtml}
                         </div>`;
             }).join('');
@@ -575,11 +644,14 @@
             else if (action === 'accept') newStatus = 'accepted';
             else if (action === 'review_again') newStatus = 'needs_review';
             await sb.from('task_assignees').update({ status: newStatus }).eq('task_id', taskId).eq('assignee_id', assigneeId);
+            await addTaskTrail(taskId, action, 'Task action performed');
             loadTasksForPanel();
         }
 
-        // Task Creation
-        let currentMessageId = null;
+        async function addTaskTrail(taskId, action, comment) { 
+            await sb.from('task_trails').insert({ task_id: taskId, user_id: currentUser.id, action, comment }); 
+        }
+
         window.openTaskModal = async function(mid, text) { 
             currentMessageId = mid; 
             document.querySelectorAll('.msg-menu-dropdown').forEach(m=>m.remove());
@@ -593,12 +665,38 @@
         window.saveTaskMultiAssignee = async function() { 
             const title = document.getElementById('taskTitle').value; 
             const aids = Array.from(document.getElementById('taskAssignees').selectedOptions).map(opt => opt.value); 
-            if(!title || !aids.length) return; 
-            const {data: task} = await sb.from('tasks').insert({ original_message_id: currentMessageId, title, assigned_by: currentUser.id, deadline: document.getElementById('taskDeadline').value || null, status: 'pending' }).select().single(); 
+            if(!title || !aids.length) return showCenterToast('Need Title and Assignee', 'fa-times', 'text-red-500'); 
+            
+            const {data: task} = await sb.from('tasks').insert({ 
+                original_message_id: currentMessageId, 
+                title, 
+                assigned_by: currentUser.id, 
+                deadline: document.getElementById('taskDeadline').value || null, 
+                priority: document.getElementById('taskPriority').value,
+                require_proof: document.getElementById('taskRequireProof').checked,
+                status: 'pending' 
+            }).select().single(); 
+            
             if(!task) return; 
             await sb.from('task_assignees').insert(aids.map(aid => ({ task_id: task.id, assignee_id: aid, status: 'pending_ack' }))); 
             showCenterToast('Ticket Created Successfully'); 
             closeTaskModal(); loadTasksForPanel(); 
+        }
+
+        window.showReminderModal = function(mid, text) { 
+            currentReminderId = mid; 
+            document.querySelectorAll('.msg-menu-dropdown').forEach(m=>m.remove());
+            document.getElementById('reminderMessagePreview').innerText = text; 
+            document.getElementById('reminderModal').classList.remove('hidden'); 
+            document.getElementById('reminderModal').classList.add('flex'); 
+        }
+        window.closeReminderModal = function() { document.getElementById('reminderModal').classList.add('hidden'); document.getElementById('reminderModal').classList.remove('flex'); }
+        window.saveReminder = async function() { 
+            const dt = document.getElementById('reminderDateTime').value; 
+            if(!dt) return; 
+            await sb.from('reminders').insert({ user_id: currentUser.id, message_id: currentReminderId, reminder_time: new Date(dt).toISOString(), triggered: false }); 
+            showCenterToast('Reminder Set Successfully'); 
+            closeReminderModal(); 
         }
 
         window.toggleBookmark = async function(mid) { 
@@ -608,8 +706,11 @@
             else { await sb.from('bookmarks').insert({ user_id: currentUser.id, message_id: mid }); showCenterToast('Message Bookmarked'); } 
         }
 
+        function attachModalButtons() {} // Already attached via onclick in HTML
+
         function startSubscriptions() { 
-            subscribeToMessages(); 
+            if(messageSubscription) messageSubscription.unsubscribe();
+            messageSubscription = sb.channel('public:messages').on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, (p) => { if(p.new.room_id === currentRoom) loadMessages(); }).subscribe();
             if(taskSubscription) taskSubscription.unsubscribe(); taskSubscription = sb.channel('tasks-changes').on('postgres_changes', {event:'*', schema:'public', table:'tasks'}, () => loadTasksForPanel()).subscribe(); 
             if(assigneeSubscription) assigneeSubscription.unsubscribe(); assigneeSubscription = sb.channel('assignees-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_assignees'}, () => loadTasksForPanel()).subscribe(); 
         }

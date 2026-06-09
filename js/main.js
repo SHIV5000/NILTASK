@@ -1,6 +1,6 @@
 import { sb } from './config.js';
 import { currentUser, currentRoom, setCurrentUser, setCurrentRoom } from './state.js';
-import { signIn, signUp, logout, refreshProfile } from './auth.js';
+import { signIn, signUp, logout, ensureProfile as refreshProfile } from './auth.js';
 import { loadMessages, sendMessage, subscribeToMessages } from './chat.js';
 import { loadTasks, subscribeToTasks, subscribeToAssignees, subscribeToTrails } from './tasks.js';
 import { loadBookmarks, subscribeToBookmarks } from './bookmarks.js';

@@ -1,10 +1,7 @@
 import { sb } from './config.js';
-import { currentUser, setCurrentUser } from './main.js'; // circular import handled via getter? Better to export setter.
-
-let currentUser = null;
+import { currentUser, setCurrentUser } from './state.js';  // Import from state, not main
 
 export function getCurrentUser() { return currentUser; }
-export function setCurrentUser(user) { currentUser = user; }
 
 export async function ensureProfile() {
     if (!currentUser) return;
@@ -24,7 +21,11 @@ export async function ensureProfile() {
 }
 
 export async function signIn(email, password) {
-    const { error } = await sb.auth.signInWithPassword({ email, password });
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (!error && data?.user) {
+        setCurrentUser(data.user);
+        await ensureProfile();
+    }
     return { error };
 }
 
@@ -33,6 +34,7 @@ export async function signUp(email, password) {
     return { error };
 }
 
-export async function signOut() {
+export async function logout() {
     await sb.auth.signOut();
+    setCurrentUser(null);
 }

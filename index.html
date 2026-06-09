@@ -480,6 +480,19 @@
                 const isOwn = msg.sender_id === currentUser.id;
                 const senderName = msg.profiles?.full_name || msg.profiles?.email || 'Unknown';
                 const time = new Date(msg.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+                
+                let replyUI = '';
+                if (msg.parent_message_id) {
+                    const parentMsg = messages.find(m => m.id === msg.parent_message_id);
+                    if (parentMsg) {
+                        const parentName = parentMsg.profiles?.full_name || parentMsg.profiles?.email || 'Unknown';
+                        replyUI = `<div class="mb-2 p-2 rounded-md bg-black/5 dark:bg-white/10 border-l-4 transition-colors hover:bg-black/10 dark:hover:bg-white/20" style="border-color: var(--accent); cursor: pointer;" onclick="document.getElementById('msg-${parentMsg.id}')?.scrollIntoView({behavior: 'smooth', block: 'center'})">
+                            <div class="text-[11px] font-bold" style="color: var(--accent)">${escapeHtml(parentName)}</div>
+                            <div class="text-xs truncate opacity-80">${escapeHtml(parentMsg.text)}</div>
+                        </div>`;
+                    }
+                }
+
                 // MODIFIED HTML FOR UI ENHANCEMENT ONLY (Bubble styling)
                 return `<div id="msg-${msg.id}" class="message-bubble ${isOwn ? 'sent' : 'received'}">
                             <div class="bubble-content">
@@ -487,6 +500,7 @@
                                     <span>${!isOwn ? escapeHtml(senderName) : ''}</span>
                                     <span class="ml-auto">${time} ${isOwn ? '<i class="fas fa-check-double ml-1 text-blue-400"></i>' : ''}</span>
                                 </div>
+                                ${replyUI}
                                 <div class="text-[15px] leading-relaxed">${escapeHtml(msg.text)}</div>
                                 <div class="flex justify-end gap-3 mt-1 pt-1 border-t border-black/5 dark:border-white/5">
                                     <button class="reply-btn text-xs font-medium flex items-center gap-1" data-msg-id="${msg.id}"><i class="fas fa-reply"></i> Reply</button>

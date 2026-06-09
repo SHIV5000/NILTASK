@@ -1,5 +1,5 @@
 import { sb } from './config.js';
-import { currentUser, setCurrentUser } from './state.js';  // Import from state, not main
+import { currentUser, setCurrentUser } from './state.js';
 
 export function getCurrentUser() { return currentUser; }
 

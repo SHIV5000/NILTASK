@@ -48,6 +48,7 @@
             --border-color: rgba(134, 150, 160, 0.15);
         }
 
+        /* Enforce Inter font globally, including task cards */
         body { font-family: 'Inter', sans-serif; background-color: var(--bg-body); color: var(--text-primary); transition: background-color 0.3s, color 0.3s; }
 
         ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -100,37 +101,26 @@
             animation: flashHighlight 4s ease-out forwards;
         }
 
-        /* Sidebar Task Cards */
         .jira-card {
             background: var(--bg-message-other);
-            border-radius: 8px;
+            border-radius: 6px;
+            margin-top: 8px;
             margin-bottom: 12px;
-            padding: 12px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 16px;
+            box-shadow: rgba(9, 30, 66, 0.25) 0px 1px 2px 0px;
             border-left: 4px solid var(--accent);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             transition: transform 0.2s, box-shadow 0.2s;
             width: 100%;
+            /* Removed the separate apple-system font to inherit Inter */
         }
-        .jira-card:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .jira-card:hover { transform: translateY(-2px); box-shadow: rgba(9, 30, 66, 0.35) 0px 4px 8px 0px; }
         
         /* Task Status Colors */
-        .status-pending { border-left-color: #6b7280 !important; }
-        .status-in_progress { border-left-color: #2563eb !important; }
-        .status-submitted { border-left-color: #9333ea !important; }
-        .status-needs_review { border-left-color: #dc2626 !important; }
-        .status-accepted { border-left-color: #16a34a !important; }
-
-        .status-text-pending { color: #6b7280; }
-        .status-text-in_progress { color: #2563eb; }
-        .status-text-submitted { color: #9333ea; }
-        .status-text-needs_review { color: #dc2626; }
-        .status-text-accepted { color: #16a34a; }
-
-        /* Trail Accordion */
-        .task-trail-box { display: none; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-color); }
-        .task-trail-box.active { display: block; animation: fadeIn 0.3s; }
-        @keyframes fadeIn { from {opacity: 0;} to {opacity: 1;} }
+        .status-pending { color: #6b7280; border-left-color: #6b7280 !important; }
+        .status-in_progress { color: #2563eb; border-left-color: #2563eb !important; }
+        .status-submitted { color: #9333ea; border-left-color: #9333ea !important; }
+        .status-needs_review { color: #dc2626; border-left-color: #dc2626 !important; }
+        .status-accepted { color: #16a34a; border-left-color: #16a34a !important; }
 
         .modal-overlay { background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); }
         .modal-content { background: var(--bg-sidebar); border: 1px solid var(--border-color); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
@@ -151,7 +141,7 @@
             box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); border-radius: 12px; z-index: 100;
         }
 
-        /* Input Area */
+        /* Input Area (Modern App Style) */
         .input-container {
             background: var(--bg-sidebar); border-top: 1px solid var(--border-color); padding: 12px 20px;
         }
@@ -167,6 +157,11 @@
 
         .ui-input { background: var(--bg-body); color: var(--text-primary); border: 1px solid var(--border-color); }
         .ui-input:focus { border-color: var(--accent); outline: none; }
+        
+        /* Trail Accordion */
+        .task-trail-box { display: none; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-color); }
+        .task-trail-box.active { display: block; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from {opacity: 0;} to {opacity: 1;} }
     </style>
 </head>
 <body class="antialiased overflow-hidden">
@@ -184,11 +179,13 @@
         let quillEditor = null;
         let currSchedText = ''; 
         let currentReminderId = null;
-        let currentMessageId = null; // for tasks
+        let currentMessageId = null; 
+        let globalUsersCache = [];
 
         // Utilities
         function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m] || m)); }
         
+        // Custom Center Toast - Fades away after 5s
         window.showCenterToast = function(msg, icon = 'fa-check-circle', color = 'text-green-400') { 
             const t = document.createElement('div'); 
             t.className = 'center-toast opacity-0'; 
@@ -262,10 +259,10 @@
                         <div id="chatsList" class="flex-1 overflow-y-auto px-2 pb-4"></div>
                     </div>
 
-                    <!-- Center Chat Area (Messages ONLY) -->
+                    <!-- Center Chat Area -->
                     <div class="flex-1 flex flex-col chat-area relative">
                         
-                        <!-- Top Bar -->
+                        <!-- Top Bar (Filters & Icons) -->
                         <div class="p-4 sidebar-glass border-b z-10 flex justify-between items-center shadow-sm" style="border-color: var(--border-color)">
                             <div class="flex items-center gap-3">
                                 <span id="roomTitleDisplay" class="text-lg font-bold tracking-tight"># ${currentRoom}</span>
@@ -276,7 +273,7 @@
                                 <i class="far fa-clock cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="openTopPanel('scheduled')" title="Scheduled Messages"></i>
                                 <i class="far fa-bookmark cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="openTopPanel('bookmarks')" title="Bookmarks"></i>
                                 <i class="far fa-bell cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="openTopPanel('alerts')" title="Notifications"></i>
-                                <input type="text" id="messageSearchBar" placeholder="Search messages..." class="ui-input px-3 py-1 rounded-full text-sm w-48">
+                                <input type="text" id="messageSearchBar" placeholder="Search..." class="ui-input px-3 py-1 rounded-full text-sm w-48">
                             </div>
                         </div>
                         
@@ -306,11 +303,9 @@
                         </div>
                     </div>
 
-                    <!-- Right Sidebar (Tasks Panel) -->
-                    <div class="w-80 sidebar-glass border-l flex flex-col z-20 shadow-sm hidden md:flex" style="border-color: var(--border-color)">
-                        <div class="p-4 border-b flex justify-between items-center">
-                            <h3 class="font-bold flex items-center gap-2"><i class="fas fa-clipboard-list" style="color: var(--accent)"></i> Task Hub</h3>
-                        </div>
+                    <!-- Right Sidebar -->
+                    <div class="w-[400px] sidebar-glass border-l flex flex-col z-20 shadow-sm hidden md:flex" style="border-color: var(--border-color)">
+                        <div class="p-4 border-b"><h3 class="font-bold">Task Overview</h3></div>
                         <div id="tasksPanel" class="flex-1 overflow-y-auto p-4 bg-gray-50/50"></div>
                     </div>
                 </div>
@@ -342,7 +337,7 @@
                                 <option value="High">High</option>
                             </select>
                         </div>
-                        <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="taskRequireProof"> Require Proof</label>
+                        <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="taskRequireProof"> Require Proof to Complete</label>
                         <div class="flex gap-3 mt-4">
                             <button onclick="closeTaskModal()" class="flex-1 py-2.5 rounded-xl ui-input">Cancel</button>
                             <button onclick="saveTaskMultiAssignee()" class="flex-1 py-2.5 rounded-xl btn-primary">Create Ticket</button>
@@ -469,13 +464,15 @@
 
         async function loadChatsList() {
             const groups = ['general', 'math', 'science'];
-            const {data: users} = await sb.from('profiles').select('id, email, full_name').neq('id', currentUser.id);
+            const {data: users} = await sb.from('profiles').select('id, email, full_name');
+            globalUsersCache = users; // Store globally for dropdowns
+            
             let html = `<div class="px-3 py-2 mt-2 text-[11px] font-bold tracking-wider uppercase" style="color: var(--text-secondary)">Groups</div>`;
             groups.forEach(g => { 
                 html += `<div class="channel-item p-2 mx-2 mb-1 rounded-lg cursor-pointer hover:bg-black/5 flex items-center gap-3 ${currentRoom === g ? 'bg-black/5' : ''}" data-room="${g}" data-name="# ${g}"><div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs bg-gray-400"><i class="fas fa-users"></i></div><span class="flex-1 truncate"># ${g}</span></div>`; 
             });
             html += `<div class="px-3 py-2 mt-4 text-[11px] font-bold tracking-wider uppercase" style="color: var(--text-secondary)">Direct Messages</div>`;
-            users?.forEach(u => { 
+            users?.filter(u => u.id !== currentUser.id).forEach(u => { 
                 const name = u.full_name || u.email;
                 html += `<div class="channel-item p-2 mx-2 mb-1 rounded-lg cursor-pointer hover:bg-black/5 flex items-center gap-3 ${currentRoom === 'dm_' + u.id ? 'bg-black/5' : ''}" data-room="dm_${u.id}" data-name="${name}"><div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs" style="background: var(--accent)">${name.charAt(0).toUpperCase()}</div><span class="flex-1 truncate">${name}</span></div>`; 
             });
@@ -485,14 +482,18 @@
                 el.addEventListener('click', () => { 
                     currentRoom = el.dataset.room; 
                     
+                    // 1. Update active styling in sidebar
                     document.querySelectorAll('.channel-item').forEach(item => item.classList.remove('bg-black/5'));
                     el.classList.add('bg-black/5');
 
+                    // 2. Smoothly update title (No Flicker!)
                     const titleSpan = document.getElementById('roomTitleDisplay');
                     if(titleSpan) titleSpan.innerText = el.dataset.name;
 
+                    // 3. Show loading spinner in chat area
                     document.getElementById('messagesContainer').innerHTML = '<div class="m-auto flex flex-col items-center opacity-50"><i class="fas fa-circle-notch fa-spin text-3xl mb-3" style="color: var(--accent)"></i><p>Loading chat...</p></div>';
                     
+                    // 4. Fetch messages
                     loadMessages(); 
                 }); 
             });
@@ -507,16 +508,13 @@
         }
 
         async function loadMessages() {
-            // Fetch Messages
             const {data: msgs} = await sb.from('messages').select('*, profiles(full_name, email)').eq('room_id', currentRoom).order('created_at', {ascending: true});
             renderMessages(msgs || []);
-            
             applyFilters();
             const c = document.getElementById('messagesContainer');
             c.scrollTop = c.scrollHeight;
         }
 
-        // PURE MESSAGE BUBBLES ONLY (No Inline Tasks)
         function renderMessages(messages) {
             const c = document.getElementById('messagesContainer');
             if (!c) return;
@@ -635,20 +633,20 @@
         }
 
         // ==========================================
-        // TASKS PANEL (RIGHT SIDEBAR EXCLUSIVE)
+        // ADVANCED TASK PANEL LIFECYCLE (RIGHT SIDEBAR)
         // ==========================================
         window.openTaskModal = async function(mid, text) { 
             currentMessageId = mid; 
             document.querySelectorAll('.msg-menu-dropdown').forEach(m=>m.remove());
             document.getElementById('taskModal').classList.remove('hidden'); 
             document.getElementById('taskModal').classList.add('flex'); 
-            // Extract pure text from HTML string if needed
             let tmp = document.createElement("DIV");
             tmp.innerHTML = text;
             document.getElementById('taskTitle').value = (tmp.textContent || tmp.innerText || "").substring(0,100); 
             
-            const {data: users} = await sb.from('profiles').select('id,email,full_name'); 
-            document.getElementById('taskAssignees').innerHTML = users.map(u => `<option value="${u.id}">${u.full_name || u.email}</option>`).join(''); 
+            // CAN NOT ASSIGN TO CREATOR
+            const filteredUsers = globalUsersCache.filter(u => u.id !== currentUser.id);
+            document.getElementById('taskAssignees').innerHTML = filteredUsers.map(u => `<option value="${u.id}">${u.full_name || u.email}</option>`).join(''); 
         }
         
         window.closeTaskModal = function() { 
@@ -656,6 +654,10 @@
             document.getElementById('taskModal').classList.remove('flex'); 
         }
         
+        async function notifyUser(userId, message) {
+            await sb.from('notifications').insert({ user_id: userId, message: message, created_at: new Date().toISOString() });
+        }
+
         window.saveTaskMultiAssignee = async function() { 
             const title = document.getElementById('taskTitle').value; 
             const aids = Array.from(document.getElementById('taskAssignees').selectedOptions).map(opt => opt.value); 
@@ -673,35 +675,65 @@
             
             if(!task) return; 
             await sb.from('task_assignees').insert(aids.map(aid => ({ task_id: task.id, assignee_id: aid, status: 'pending_ack' }))); 
-            
-            // Log to trails
             await sb.from('task_trails').insert({ task_id: task.id, user_id: currentUser.id, action: 'Task Created' });
+            
+            for(let aid of aids) {
+                await notifyUser(aid, `New Task Allotted: ${title}`);
+            }
 
             window.showCenterToast('Ticket Created Successfully'); 
             window.closeTaskModal(); 
             loadTasksForPanel(); 
         }
 
-        window.performTaskAction = async function(taskId, assigneeId, action) {
-            let newStatus = '';
-            let logMsg = '';
-            if (action === 'ack') { newStatus = 'in_progress'; logMsg = 'Task Acknowledged'; }
-            else if (action === 'submit') { newStatus = 'submitted'; logMsg = 'Submitted for Review'; }
-            else if (action === 'accept') { newStatus = 'accepted'; logMsg = 'Accepted as Complete'; }
-            else if (action === 'review_again') { newStatus = 'needs_review'; logMsg = 'Requested Rework'; }
+        window.taskAction = async function(taskId, assigneeId, action, requireProof = false) {
+            let actionText = ''; let newStatus = ''; let comment = '';
             
-            await sb.from('task_assignees').update({ status: newStatus }).eq('task_id', taskId).eq('assignee_id', assigneeId);
-            
-            // Check for file proof input if submitting
-            let commentText = logMsg;
-            if (action === 'submit') {
-                const proofInput = document.getElementById(`proof-${taskId}-${assigneeId}`);
-                if (proofInput && proofInput.files.length > 0) {
-                    commentText += ` (Attached: ${proofInput.files[0].name})`;
+            // Get Task to identify Creator
+            const {data: taskData} = await sb.from('tasks').select('*').eq('id', taskId).single();
+            const creatorId = taskData.assigned_by;
+
+            if (action === 'ack') {
+                newStatus = 'in_progress'; actionText = 'Acknowledged the task';
+                await notifyUser(creatorId, `Task Acknowledged by an Assignee`);
+            } else if (action === 'update') {
+                const el = document.getElementById(`update-txt-${taskId}-${assigneeId}`);
+                comment = el.value;
+                if(!comment) return window.showCenterToast('Update cannot be empty', 'fa-times', 'text-red-500');
+                actionText = 'Added Update';
+                await notifyUser(creatorId, `Task Update Added`);
+            } else if (action === 'upload') {
+                const el = document.getElementById(`file-${taskId}-${assigneeId}`);
+                if(!el.files.length) return window.showCenterToast('Select a file', 'fa-times', 'text-red-500');
+                comment = `Uploaded file: ${el.files[0].name}`; actionText = 'File Uploaded';
+                await notifyUser(creatorId, `File Uploaded on Task`);
+            } else if (action === 'submit') {
+                if (requireProof) {
+                    const {data: trails} = await sb.from('task_trails').select('*').eq('task_id', taskId).eq('user_id', currentUser.id).ilike('action', '%File%');
+                    if(!trails || trails.length === 0) return window.showCenterToast('Proof file upload is compulsory to submit!', 'fa-exclamation-triangle', 'text-red-500');
                 }
+                newStatus = 'submitted'; actionText = 'Submitted for Review';
+                await notifyUser(creatorId, `Task Submitted for Review`);
+            } else if (action === 'accept') {
+                newStatus = 'accepted'; actionText = 'Accepted completion';
+                await notifyUser(assigneeId, `Your task submission was Accepted`);
+            } else if (action === 'review_again') {
+                newStatus = 'needs_review'; actionText = 'Requested rework';
+                await notifyUser(assigneeId, `Task needs review/rework`);
+            } else if (action === 'delegate') {
+                const newAssignee = document.getElementById(`delegate-${taskId}-${assigneeId}`).value;
+                newStatus = 'delegated'; actionText = 'Delegated task';
+                await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack' });
+                await notifyUser(newAssignee, `A task was delegated to you`); await notifyUser(creatorId, `Task was delegated`);
+            } else if (action === 'transfer') {
+                const newAssignee = document.getElementById(`transfer-${taskId}-${assigneeId}`).value;
+                newStatus = 'transferred'; actionText = 'Transferred task';
+                await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack' });
+                await notifyUser(newAssignee, `A task was transferred to you`); await notifyUser(assigneeId, `Your task was transferred`);
             }
 
-            await sb.from('task_trails').insert({ task_id: taskId, user_id: currentUser.id, action: commentText }); 
+            if (newStatus) { await sb.from('task_assignees').update({ status: newStatus }).eq('task_id', taskId).eq('assignee_id', assigneeId); }
+            await sb.from('task_trails').insert({ task_id: taskId, user_id: currentUser.id, action: actionText, comment: comment }); 
             loadTasksForPanel();
         }
 
@@ -715,97 +747,126 @@
             if (!tasks) return;
             
             const ids = tasks.map(t => t.id);
-            if(ids.length === 0) {
-                document.getElementById('tasksPanel').innerHTML = '<p class="text-xs opacity-50 text-center mt-4">No tasks active.</p>';
-                return;
-            }
+            if(ids.length === 0) { document.getElementById('tasksPanel').innerHTML = '<p class="text-xs opacity-50 text-center mt-4">No tasks active.</p>'; return; }
 
-            // Fetch assignees and trails
             const {data: assignees} = await sb.from('task_assignees').select('task_id, assignee_id, status, profiles!assignee_id(full_name, email)').in('task_id', ids);
             const {data: trails} = await sb.from('task_trails').select('*, profiles(full_name, email)').in('task_id', ids).order('created_at', {ascending: true});
 
             const assigneesMap = {};
-            if (assignees) assignees.forEach(a => { if (!assigneesMap[a.task_id]) assigneesMap[a.task_id] = []; assigneesMap[a.task_id].push({ assignee_id: a.assignee_id, status: a.status, profiles: a.profiles }); });
+            if (assignees) assignees.forEach(a => { if (!assigneesMap[a.task_id]) assigneesMap[a.task_id] = []; assigneesMap[a.task_id].push(a); });
             
             const trailsMap = {};
             if (trails) trails.forEach(t => { if (!trailsMap[t.task_id]) trailsMap[t.task_id] = []; trailsMap[t.task_id].push(t); });
 
             const filteredTasks = tasks.filter(t => t.assigned_by === currentUser.id || (assigneesMap[t.id] && assigneesMap[t.id].some(a => a.assignee_id === currentUser.id)));
-            
             const container = document.getElementById('tasksPanel');
             if(!container) return;
             if(!filteredTasks.length) { container.innerHTML = '<p class="text-xs opacity-50 text-center mt-4">No tasks active.</p>'; return; }
             
+            let allUsersOptions = globalUsersCache.filter(u => u.id !== currentUser.id).map(u => `<option value="${u.id}">${escapeHtml(u.full_name || u.email)}</option>`).join('');
+
             container.innerHTML = filteredTasks.map(task => {
                 const asgList = assigneesMap[task.id] || [];
                 const trlList = trailsMap[task.id] || [];
                 
+                const activeAssignees = asgList.filter(a => a.status !== 'delegated' && a.status !== 'transferred');
+                const allAccepted = activeAssignees.length > 0 && activeAssignees.every(a => a.status === 'accepted');
+                
                 let overallStatusClass = 'status-pending';
-                let overallStatusText = 'PENDING';
                 if(asgList.length > 0) {
                     const st = asgList[0].status;
-                    if(st==='in_progress') { overallStatusClass = 'status-in_progress'; overallStatusText = 'IN PROGRESS'; }
-                    if(st==='submitted') { overallStatusClass = 'status-submitted'; overallStatusText = 'SUBMITTED'; }
-                    if(st==='needs_review') { overallStatusClass = 'status-needs_review'; overallStatusText = 'NEEDS REVIEW'; }
-                    if(st==='accepted') { overallStatusClass = 'status-accepted'; overallStatusText = 'COMPLETED'; }
+                    if(st==='in_progress') overallStatusClass = 'status-in_progress';
+                    if(st==='submitted') overallStatusClass = 'status-submitted';
+                    if(st==='needs_review') overallStatusClass = 'status-needs_review';
+                    if(allAccepted) overallStatusClass = 'status-accepted';
                 }
 
-                // Render Assignee Rows & Actions
+                const borderStyle = allAccepted ? 'border: 2px solid #16a34a; border-left-width: 6px;' : '';
+
                 const assigneeRows = asgList.map(ass => {
                     const name = ass.profiles?.full_name || ass.profiles?.email || 'Unknown';
-                    const statusText = ass.status.replace('_', ' ').toUpperCase();
-                    let actions = '';
-                    
-                    // Task Lifecycle Buttons
-                    if (ass.assignee_id === currentUser.id && ass.status === 'pending_ack') {
-                        actions = `<button onclick="window.performTaskAction('${task.id}', '${ass.assignee_id}', 'ack')" class="w-full mt-2 bg-yellow-500 text-white text-xs py-1.5 rounded font-semibold cursor-pointer border-none">Acknowledge</button>`;
-                    } 
-                    else if (ass.assignee_id === currentUser.id && (ass.status === 'in_progress' || ass.status === 'needs_review')) {
-                        const proofHtml = task.require_proof ? `<input type="file" id="proof-${task.id}-${ass.assignee_id}" class="text-[10px] w-full mb-1 border p-1 rounded">` : '';
-                        actions = `${proofHtml}<button onclick="window.performTaskAction('${task.id}', '${ass.assignee_id}', 'submit')" class="w-full mt-1 bg-blue-600 text-white text-xs py-1.5 rounded font-semibold cursor-pointer border-none">Submit for Review</button>`;
+                    const isCreator = task.assigned_by === currentUser.id;
+                    const isMe = ass.assignee_id === currentUser.id;
+                    let actionsHtml = '';
+
+                    if (isMe && !allAccepted) {
+                        if (ass.status === 'pending_ack') {
+                            actionsHtml = `<button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'ack')" class="w-full mt-2 bg-yellow-500 text-white text-xs py-2 rounded font-bold transition-colors shadow-sm">Acknowledge</button>`;
+                        } else if (ass.status === 'in_progress' || ass.status === 'needs_review') {
+                            actionsHtml = `
+                                <div class="mt-2 space-y-2">
+                                    <div class="flex gap-2">
+                                        <input type="text" id="update-txt-${task.id}-${ass.assignee_id}" placeholder="Type update..." class="ui-input flex-1 text-xs px-2 py-1.5 rounded outline-none border border-gray-300">
+                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'update')" class="bg-gray-200 text-gray-700 text-xs px-3 py-1.5 rounded font-bold hover:bg-gray-300 shadow-sm">Update</button>
+                                    </div>
+                                    <div class="flex gap-2 items-center">
+                                        <input type="file" id="file-${task.id}-${ass.assignee_id}" class="text-[10px] flex-1 w-full bg-white border border-gray-300 rounded p-1">
+                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'upload')" class="bg-gray-200 text-gray-700 text-xs px-3 py-1.5 rounded font-bold hover:bg-gray-300 shadow-sm">Upload</button>
+                                    </div>
+                                    <div class="flex gap-2 items-center">
+                                        <select id="delegate-${task.id}-${ass.assignee_id}" class="ui-input flex-1 text-[11px] px-1 py-1.5 rounded outline-none border border-gray-300">${allUsersOptions}</select>
+                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'delegate')" class="bg-indigo-100 text-indigo-700 hover:bg-indigo-200 text-[11px] px-2 py-1.5 rounded font-bold shadow-sm">Delegate</button>
+                                    </div>
+                                    <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'submit', ${task.require_proof})" class="w-full bg-blue-600 text-white text-xs py-2 rounded font-bold shadow-md hover:bg-blue-700 transition-colors">Submit for Review</button>
+                                </div>`;
+                        } else if (ass.status === 'submitted') {
+                             actionsHtml = `<div class="mt-2 text-[10px] font-bold text-purple-600 italic border border-purple-100 bg-purple-50 p-1.5 rounded text-center">Waiting for Creator's Review</div>`;
+                        }
+                    } else if (isCreator && !allAccepted) {
+                        if (ass.status === 'submitted') {
+                            actionsHtml = `
+                                <div class="mt-2 space-y-2">
+                                    <div class="flex gap-2">
+                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'accept')" class="flex-1 bg-green-600 text-white text-xs py-2 rounded font-bold shadow-sm hover:bg-green-700">Accept</button>
+                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'review_again')" class="flex-1 bg-red-600 text-white text-xs py-2 rounded font-bold shadow-sm hover:bg-red-700">Review</button>
+                                    </div>
+                                    <div class="flex gap-2 items-center">
+                                        <select id="transfer-${task.id}-${ass.assignee_id}" class="ui-input flex-1 text-[11px] px-1 py-1.5 rounded outline-none border border-gray-300">${allUsersOptions}</select>
+                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'transfer')" class="bg-orange-500 text-white hover:bg-orange-600 text-[11px] px-2 py-1.5 rounded font-bold shadow-sm">Transfer</button>
+                                    </div>
+                                </div>`;
+                        } else if (ass.status === 'pending_ack') {
+                            actionsHtml = `<div class="mt-2 text-[10px] font-bold text-gray-500 bg-gray-100 p-1.5 rounded text-center">ACK PENDING</div>`;
+                        } else if (ass.status === 'in_progress' || ass.status === 'needs_review') {
+                             actionsHtml = `<div class="mt-2 text-[10px] font-bold text-gray-500 bg-gray-100 p-1.5 rounded text-center">Working...</div>`;
+                        }
                     }
+
+                    if (ass.status === 'accepted') actionsHtml = `<div class="mt-2 text-[10px] font-bold text-green-600 bg-green-50 p-1.5 rounded border border-green-100 text-center"><i class="fas fa-check-circle"></i> ACCEPTED</div>`;
+                    if (ass.status === 'delegated') actionsHtml = `<div class="mt-2 text-[10px] font-bold text-indigo-600 bg-indigo-50 p-1.5 rounded border border-indigo-100 text-center"><i class="fas fa-share"></i> DELEGATED</div>`;
+                    if (ass.status === 'transferred') actionsHtml = `<div class="mt-2 text-[10px] font-bold text-orange-600 bg-orange-50 p-1.5 rounded border border-orange-100 text-center"><i class="fas fa-exchange-alt"></i> TRANSFERRED</div>`;
                     
-                    if (task.assigned_by === currentUser.id && ass.status === 'submitted') {
-                        actions = `<div class="flex gap-2 mt-2">
-                            <button onclick="window.performTaskAction('${task.id}', '${ass.assignee_id}', 'accept')" class="flex-1 bg-green-600 text-white text-xs py-1.5 rounded font-semibold cursor-pointer border-none">Accept</button>
-                            <button onclick="window.performTaskAction('${task.id}', '${ass.assignee_id}', 'review_again')" class="flex-1 bg-red-600 text-white text-xs py-1.5 rounded font-semibold cursor-pointer border-none">Review</button>
-                        </div>`;
-                    }
-                    
-                    let rowStatusColor = `status-text-${ass.status}`;
-                    return `<div class="mt-2 text-sm border-t pt-2 border-black/5">
-                                <div class="flex justify-between items-center font-medium">
-                                    <span class="truncate pr-2">${escapeHtml(name)}</span>
-                                    <span class="text-[9px] font-bold ${rowStatusColor}">${statusText}</span>
+                    return `<div class="mt-2 text-sm border-t pt-2 border-black/5 bg-gray-50 p-2 rounded-lg">
+                                <div class="flex justify-between items-center font-bold text-gray-800">
+                                    <span class="truncate pr-2">${escapeHtml(name)} ${isMe ? '(You)' : ''}</span>
+                                    <span class="text-[9px] font-black uppercase tracking-wider text-gray-500">${ass.status.replace('_',' ')}</span>
                                 </div>
-                                ${actions}
+                                ${actionsHtml}
                             </div>`;
                 }).join('');
 
-                // Render Trails
                 const trailRows = trlList.map(t => {
                     const tName = t.profiles?.full_name || t.profiles?.email || 'System';
                     const tTime = new Date(t.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-                    return `<div class="text-xs mb-2 border-l-2 border-gray-300 pl-2">
-                        <div class="font-bold text-gray-700">${escapeHtml(tName)} <span class="text-[9px] font-normal text-gray-400 ml-1">${tTime}</span></div>
-                        <div class="text-gray-600 mt-0.5">${escapeHtml(t.action)}</div>
+                    return `<div class="text-[11px] mb-2 border-l-2 border-indigo-300 pl-2 ml-1">
+                        <div class="font-bold text-indigo-700">${escapeHtml(tName)} <span class="text-[9px] font-normal text-gray-400 ml-1">${tTime}</span></div>
+                        <div class="text-gray-700 mt-0.5 font-medium">${escapeHtml(t.action)} ${t.comment ? `<br><span class="italic text-gray-500">"${escapeHtml(t.comment)}"</span>` : ''}</div>
                     </div>`;
                 }).join('');
 
                 return `
-                <div class="jira-card ${overallStatusClass}">
-                    <div class="flex justify-between items-start mb-1">
-                        <span class="text-[10px] font-bold uppercase tracking-wide text-gray-500">${task.priority} Priority</span>
+                <div class="jira-card ${overallStatusClass}" style="${borderStyle}">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-[10px] font-black uppercase tracking-wide text-gray-500 bg-white border border-gray-200 px-2 py-0.5 rounded shadow-sm">${task.priority} Priority</span>
                         <span class="text-[10px] font-bold text-gray-500"><i class="far fa-calendar-alt"></i> ${task.deadline || 'No Deadline'}</span>
                     </div>
                     <div class="font-bold text-[14px] leading-snug mb-2 text-gray-800">${escapeHtml(task.title)}</div>
                     
                     ${assigneeRows}
                     
-                    <button onclick="window.toggleTrail('${task.id}')" class="w-full mt-3 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-bold py-1.5 rounded uppercase tracking-wider cursor-pointer border-none transition-colors">
+                    <button onclick="window.toggleTrail('${task.id}')" class="w-full mt-3 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-bold py-1.5 rounded uppercase tracking-wider cursor-pointer border border-gray-200 transition-colors shadow-sm">
                         Task Trails (${trlList.length}) <i class="fas fa-chevron-down ml-1"></i>
                     </button>
-                    
                     <div id="trail-${task.id}" class="task-trail-box">
                         ${trailRows || '<div class="text-xs text-gray-400 italic">No trails yet.</div>'}
                     </div>

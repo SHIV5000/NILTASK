@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>MPGS TaskFlow - Chat, Tasks & Notifications</title>
+    <title>MPGS TaskFlow - Complete</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -23,6 +23,7 @@
         let taskSubscription = null;
         let trailSubscription = null;
         let notificationSubscription = null;
+        let bookmarkSubscription = null;
 
         const root = document.getElementById('root');
 
@@ -151,6 +152,7 @@
             subscribeToTasks();
             subscribeToTrails();
             subscribeToNotifications();
+            subscribeToBookmarks();
         }
 
         function renderAuth() {
@@ -186,13 +188,19 @@
         function renderMainUI() {
             root.innerHTML = `
                 <div class="flex h-screen max-h-screen">
-                    <!-- Left: Task Sidebar -->
-                    <div class="w-80 bg-white border-r flex flex-col">
+                    <!-- Left: Task + Bookmark Sidebar -->
+                    <div class="w-80 bg-white border-r flex flex-col overflow-y-auto">
                         <div class="p-4 border-b">
                             <h2 class="font-bold text-lg">My Tasks</h2>
                         </div>
                         <div id="tasksList" class="flex-1 overflow-y-auto p-2 space-y-2">
                             Loading tasks...
+                        </div>
+                        <div class="border-t mt-4 pt-4 p-4">
+                            <h2 class="font-bold text-lg mb-2">📌 Bookmarks</h2>
+                            <div id="bookmarksList" class="space-y-2 max-h-48 overflow-y-auto">
+                                Loading bookmarks...
+                            </div>
                         </div>
                     </div>
                     <!-- Middle: Channels Sidebar -->
@@ -271,6 +279,7 @@
                 if (taskSubscription) taskSubscription.unsubscribe();
                 if (trailSubscription) trailSubscription.unsubscribe();
                 if (notificationSubscription) notificationSubscription.unsubscribe();
+                if (bookmarkSubscription) bookmarkSubscription.unsubscribe();
                 renderApp();
             };
             document.getElementById('sendBtn').onclick = sendMessage;
@@ -284,6 +293,7 @@
 
             loadMessages();
             loadTasks();
+            loadBookmarks();
         }
 
         // -------------------- Chat functions --------------------
@@ -328,6 +338,7 @@
                             <div class="text-sm">${escapeHtml(msg.text)}</div>
                             <div class="text-xs text-gray-400 text-right">${new Date(msg.created_at).toLocaleTimeString()}</div>
                             <div class="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                                <button class="bookmark-btn text-gray-400 hover:text-yellow-500" data-message-id="${msg.id}" data-message-text="${escapeHtml(msg.text)}">⭐</button>
                                 <button class="reminder-btn text-gray-400 hover:text-yellow-600" data-message-id="${msg.id}" data-message-text="${escapeHtml(msg.text)}">🔔</button>
                                 <button class="task-convert-btn text-gray-400 hover:text-green-600" data-message-id="${msg.id}" data-message-text="${escapeHtml(msg.text)}">📋</button>
                             </div>
@@ -336,18 +347,40 @@
                 `;
             }).join('');
             container.scrollTop = container.scrollHeight;
+            attachMessageButtonListeners();
+        }
+
+        function attachMessageButtonListeners() {
             document.querySelectorAll('.task-convert-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    openTaskModal(btn.getAttribute('data-message-id'), btn.getAttribute('data-message-text'));
-                });
+                btn.removeEventListener('click', handleTaskConvert);
+                btn.addEventListener('click', handleTaskConvert);
             });
             document.querySelectorAll('.reminder-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    showReminderModal(btn.getAttribute('data-message-id'), btn.getAttribute('data-message-text'));
-                });
+                btn.removeEventListener('click', handleReminder);
+                btn.addEventListener('click', handleReminder);
             });
+            document.querySelectorAll('.bookmark-btn').forEach(btn => {
+                btn.removeEventListener('click', handleBookmark);
+                btn.addEventListener('click', handleBookmark);
+            });
+        }
+
+        function handleTaskConvert(e) {
+            e.stopPropagation();
+            const btn = e.currentTarget;
+            openTaskModal(btn.getAttribute('data-message-id'), btn.getAttribute('data-message-text'));
+        }
+        function handleReminder(e) {
+            e.stopPropagation();
+            const btn = e.currentTarget;
+            showReminderModal(btn.getAttribute('data-message-id'), btn.getAttribute('data-message-text'));
+        }
+        async function handleBookmark(e) {
+            e.stopPropagation();
+            const btn = e.currentTarget;
+            const messageId = btn.getAttribute('data-message-id');
+            const messageText = btn.getAttribute('data-message-text');
+            await toggleBookmark(messageId, messageText, btn);
         }
 
         function subscribeToMessages() {
@@ -368,6 +401,7 @@
                                         <div class="text-sm">${escapeHtml(newMsg.text)}</div>
                                         <div class="text-xs text-gray-400 text-right">${new Date(newMsg.created_at).toLocaleTimeString()}</div>
                                         <div class="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                                            <button class="bookmark-btn text-gray-400 hover:text-yellow-500" data-message-id="${newMsg.id}" data-message-text="${escapeHtml(newMsg.text)}">⭐</button>
                                             <button class="reminder-btn text-gray-400 hover:text-yellow-600" data-message-id="${newMsg.id}" data-message-text="${escapeHtml(newMsg.text)}">🔔</button>
                                             <button class="task-convert-btn text-gray-400 hover:text-green-600" data-message-id="${newMsg.id}" data-message-text="${escapeHtml(newMsg.text)}">📋</button>
                                         </div>
@@ -377,9 +411,11 @@
                             container.insertAdjacentHTML('beforeend', msgHtml);
                             container.scrollTop = container.scrollHeight;
                             const newTaskBtn = container.querySelector('.task-convert-btn:last-child');
-                            if (newTaskBtn) newTaskBtn.addEventListener('click', (e) => openTaskModal(newTaskBtn.dataset.messageId, newTaskBtn.dataset.messageText));
+                            if (newTaskBtn) newTaskBtn.addEventListener('click', handleTaskConvert);
                             const newReminderBtn = container.querySelector('.reminder-btn:last-child');
-                            if (newReminderBtn) newReminderBtn.addEventListener('click', (e) => showReminderModal(newReminderBtn.dataset.messageId, newReminderBtn.dataset.messageText));
+                            if (newReminderBtn) newReminderBtn.addEventListener('click', handleReminder);
+                            const newBookmarkBtn = container.querySelector('.bookmark-btn:last-child');
+                            if (newBookmarkBtn) newBookmarkBtn.addEventListener('click', handleBookmark);
                         });
                     }
                 })
@@ -662,7 +698,6 @@
                 .subscribe();
         }
 
-        // -------------------- Real-time notifications (toast) --------------------
         function subscribeToNotifications() {
             if (notificationSubscription) notificationSubscription.unsubscribe();
             notificationSubscription = sb
@@ -678,6 +713,79 @@
                 .subscribe((status) => {
                     console.log('Notification subscription status:', status);
                 });
+        }
+
+        // -------------------- Bookmarks --------------------
+        async function toggleBookmark(messageId, messageText, btnElement) {
+            const { data: existing } = await sb
+                .from('bookmarks')
+                .select('id')
+                .eq('user_id', currentUser.id)
+                .eq('message_id', messageId)
+                .maybeSingle();
+            
+            if (existing) {
+                await sb.from('bookmarks').delete().eq('id', existing.id);
+                btnElement.classList.remove('text-yellow-500');
+                btnElement.classList.add('text-gray-400');
+            } else {
+                await sb.from('bookmarks').insert({
+                    user_id: currentUser.id,
+                    message_id: messageId
+                });
+                btnElement.classList.remove('text-gray-400');
+                btnElement.classList.add('text-yellow-500');
+            }
+            loadBookmarks();
+        }
+
+        async function loadBookmarks() {
+            const { data: bookmarks, error } = await sb
+                .from('bookmarks')
+                .select('*, messages(id, text, room_id, profiles(full_name, email))')
+                .eq('user_id', currentUser.id)
+                .order('created_at', { ascending: false });
+            
+            const container = document.getElementById('bookmarksList');
+            if (!container) return;
+            if (error || !bookmarks || bookmarks.length === 0) {
+                container.innerHTML = '<div class="text-xs text-gray-500">No saved messages</div>';
+                return;
+            }
+            container.innerHTML = bookmarks.map(bm => {
+                const msg = bm.messages;
+                const sender = msg?.profiles?.full_name || msg?.profiles?.email || 'Unknown';
+                return `
+                    <div class="border rounded p-2 text-xs bg-gray-50">
+                        <div class="font-semibold">${escapeHtml(sender)}</div>
+                        <div class="truncate">${escapeHtml(msg?.text || '')}</div>
+                        <button class="text-blue-500 text-xs mt-1 view-message-btn" data-message-id="${msg?.id}" data-room-id="${msg?.room_id}">View in chat →</button>
+                    </div>
+                `;
+            }).join('');
+            
+            document.querySelectorAll('.view-message-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const messageId = btn.getAttribute('data-message-id');
+                    const roomId = btn.getAttribute('data-room-id');
+                    if (roomId && messageId) {
+                        currentRoom = roomId;
+                        renderMainUI();
+                        // TODO: scroll to message after loading
+                    }
+                });
+            });
+        }
+
+        function subscribeToBookmarks() {
+            if (bookmarkSubscription) bookmarkSubscription.unsubscribe();
+            bookmarkSubscription = sb
+                .channel('bookmarks-changes')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'bookmarks', filter: `user_id=eq.${currentUser.id}` }, () => {
+                    loadBookmarks();
+                    // Also refresh bookmark button colors on existing messages (optional)
+                })
+                .subscribe();
         }
 
         // -------------------- Start the app --------------------

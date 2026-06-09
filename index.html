@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>MPGS TaskFlow - Multi-Assignee Tasks</title>
+    <title>MPGS TaskFlow - Complete</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -114,7 +114,7 @@
         function renderMainUI() {
             root.innerHTML = `
                 <div class="flex h-screen max-h-screen">
-                    <!-- Left: Task Sidebar -->
+                    <!-- Left: Task + Bookmark Sidebar -->
                     <div class="w-80 bg-white border-r flex flex-col overflow-y-auto">
                         <div class="p-4 border-b">
                             <h2 class="font-bold text-lg">My Tasks</h2>
@@ -155,13 +155,12 @@
                         </div>
                     </div>
                 </div>
-                <!-- Task Modal (Convert to Task - Multi-assignee) -->
+                <!-- Task Modal (Multi-assignee) -->
                 <div id="taskModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
                     <div class="bg-white rounded-lg p-6 w-96">
                         <h3 class="text-lg font-bold mb-4">Convert to Task</h3>
                         <input type="text" id="taskTitle" placeholder="Task title" class="border p-2 w-full mb-2 rounded">
                         <select id="taskAssignees" multiple size="4" class="border p-2 w-full mb-2 rounded">
-                            <option value="">Select assignees (Ctrl+Click for multiple)</option>
                         </select>
                         <input type="date" id="taskDeadline" class="border p-2 w-full mb-2 rounded">
                         <select id="taskPriority" class="border p-2 w-full mb-2 rounded">
@@ -242,7 +241,7 @@
             loadBookmarks();
         }
 
-        // -------------------- Chat functions (unchanged) --------------------
+        // -------------------- Chat functions --------------------
         async function sendMessage() {
             const input = document.getElementById('messageInput');
             const text = input.value.trim();
@@ -375,7 +374,7 @@
                 .subscribe();
         }
 
-        // -------------------- Reminder, Schedule, Bookmark (unchanged from previous full version) --------------------
+        // -------------------- Reminders --------------------
         let currentReminderMessageId = null;
         function showReminderModal(messageId, messageText) {
             currentReminderMessageId = messageId;
@@ -409,6 +408,7 @@
             else { alert('Reminder set!'); closeReminderModal(); }
         }
 
+        // -------------------- Scheduled Messages --------------------
         let currentScheduleMessageText = '';
         function showScheduleModal(messageText) {
             currentScheduleMessageText = messageText;
@@ -442,6 +442,7 @@
             else { alert('Message scheduled!'); closeScheduleModal(); }
         }
 
+        // -------------------- Bookmarks --------------------
         async function toggleBookmark(messageId, messageText, btnElement) {
             const { data: existing } = await sb
                 .from('bookmarks')
@@ -499,7 +500,7 @@
             });
         }
 
-        // -------------------- Task Modal (Multi-assignee) --------------------
+        // -------------------- Multi-assignee Task Creation --------------------
         let currentMessageId = null;
         async function openTaskModal(messageId, messageText) {
             currentMessageId = messageId;
@@ -541,7 +542,7 @@
                 deadline: deadline || null,
                 priority: priority,
                 require_proof: requireProof,
-                status: 'pending'  // overall task status will be computed from assignees
+                status: 'pending'
             }).select().single();
             if (taskError) {
                 alert('Failed to create task: ' + taskError.message);
@@ -556,7 +557,6 @@
             const { error: assigneeError } = await sb.from('task_assignees').insert(assigneeInserts);
             if (assigneeError) {
                 alert('Failed to assign users: ' + assigneeError.message);
-                // Optionally delete the task
                 await sb.from('tasks').delete().eq('id', task.id);
                 return;
             }
@@ -566,16 +566,6 @@
         }
 
         // -------------------- Task Actions (per assignee) --------------------
-        async function updateAssigneeStatus(taskId, assigneeId, newStatus, actionComment) {
-            const { error } = await sb.from('task_assignees').update({ status: newStatus }).eq('task_id', taskId).eq('assignee_id', assigneeId);
-            if (error) {
-                alert('Action failed: ' + error.message);
-                return false;
-            }
-            await addTaskTrail(taskId, actionComment, `User ${assigneeId} - ${actionComment}`);
-            return true;
-        }
-
         async function performAssigneeAction(taskId, assigneeId, action) {
             let newStatus = '';
             let comment = '';
@@ -598,8 +588,13 @@
                     break;
                 default: return;
             }
-            const success = await updateAssigneeStatus(taskId, assigneeId, newStatus, comment);
-            if (success) loadTasks();
+            const { error } = await sb.from('task_assignees').update({ status: newStatus }).eq('task_id', taskId).eq('assignee_id', assigneeId);
+            if (error) {
+                alert('Action failed: ' + error.message);
+                return;
+            }
+            await addTaskTrail(taskId, comment, `User ${assigneeId} - ${comment}`);
+            loadTasks();
         }
 
         // -------------------- Task Trail --------------------
@@ -631,43 +626,90 @@
             }
         }
 
-        // -------------------- Load and render tasks with assignees --------------------
+        // -------------------- Load and render tasks (fixed) --------------------
         async function loadTasks() {
-            // Fetch tasks where user is either creator or assignee
-            const { data: tasks, error } = await sb
+            // Fetch all tasks (with creator info)
+            const { data: tasks, error: tasksError } = await sb
                 .from('tasks')
                 .select(`
                     *,
-                    creator:profiles!assigned_by(full_name, email),
-                    assignees:task_assignees(
-                        assignee_id,
-                        status,
-                        profiles!assignee_id(full_name, email)
-                    )
+                    creator:profiles!assigned_by(full_name, email)
                 `)
-                .or(`assigned_by.eq.${currentUser.id},task_assignees.assignee_id.eq.${currentUser.id}`)
                 .order('created_at', { ascending: false });
-            if (error) {
-                console.error(error);
-                document.getElementById('tasksList').innerHTML = '<div class="text-red-500">Error loading tasks</div>';
+            
+            if (tasksError) {
+                console.error('Tasks error:', tasksError);
+                const container = document.getElementById('tasksList');
+                if (container) container.innerHTML = '<div class="text-red-500">Error loading tasks</div>';
                 return;
             }
-            renderTasks(tasks);
+            
+            if (!tasks || tasks.length === 0) {
+                renderTasks([]);
+                return;
+            }
+            
+            // Fetch all assignees for these tasks
+            const taskIds = tasks.map(t => t.id);
+            const { data: assignees, error: assigneesError } = await sb
+                .from('task_assignees')
+                .select(`
+                    task_id,
+                    assignee_id,
+                    status,
+                    profiles!assignee_id(full_name, email)
+                `)
+                .in('task_id', taskIds);
+            
+            if (assigneesError) {
+                console.error('Assignees error:', assigneesError);
+            }
+            
+            // Build assignees map
+            const assigneesMap = {};
+            if (assignees) {
+                assignees.forEach(ass => {
+                    if (!assigneesMap[ass.task_id]) assigneesMap[ass.task_id] = [];
+                    assigneesMap[ass.task_id].push({
+                        assignee_id: ass.assignee_id,
+                        status: ass.status,
+                        profiles: ass.profiles
+                    });
+                });
+            }
+            
+            // Filter tasks: user is creator OR assignee
+            const filteredTasks = tasks.filter(task => {
+                const isCreator = task.assigned_by === currentUser.id;
+                const isAssignee = assigneesMap[task.id]?.some(a => a.assignee_id === currentUser.id);
+                return isCreator || isAssignee;
+            });
+            
+            // Attach assignees to each task
+            const tasksWithAssignees = filteredTasks.map(task => ({
+                ...task,
+                assignees: assigneesMap[task.id] || []
+            }));
+            
+            renderTasks(tasksWithAssignees);
         }
 
         function renderTasks(tasks) {
             const container = document.getElementById('tasksList');
             if (!container) return;
+            
             if (!tasks || tasks.length === 0) {
                 container.innerHTML = '<div class="text-gray-500 text-center p-4">No tasks yet</div>';
                 return;
             }
+            
             container.innerHTML = tasks.map(task => {
                 const isCreator = task.assigned_by === currentUser.id;
                 const assignees = task.assignees || [];
-                const allAccepted = assignees.every(a => a.status === 'accepted');
+                const allAccepted = assignees.length > 0 && assignees.every(a => a.status === 'accepted');
                 const borderClass = allAccepted ? 'border-green-500 border-2' : 'border';
-                // Build assignee list with action buttons
+                
+                // Build assignee list HTML
                 const assigneeHtml = assignees.map(ass => {
                     const assigneeName = ass.profiles?.full_name || ass.profiles?.email || 'Unknown';
                     const status = ass.status;
@@ -681,14 +723,12 @@
                     const statusColor = statusColors[status] || 'bg-gray-100';
                     let actionButtons = '';
                     if (ass.assignee_id === currentUser.id) {
-                        // Assignee actions
                         if (status === 'pending_ack') {
                             actionButtons = `<button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="ack" class="task-assignee-action bg-green-500 text-white text-xs px-2 py-1 rounded mt-1">Acknowledge</button>`;
                         } else if (status === 'in_progress' || status === 'needs_review') {
                             actionButtons = `<button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="submit" class="task-assignee-action bg-blue-500 text-white text-xs px-2 py-1 rounded mt-1">Submit for Review</button>`;
                         }
-                    } else if (isCreator && (status === 'submitted')) {
-                        // Creator actions for submitted tasks
+                    } else if (isCreator && status === 'submitted') {
                         actionButtons = `
                             <button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="accept" class="task-assignee-action bg-green-500 text-white text-xs px-2 py-1 rounded mt-1">Accept</button>
                             <button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="review_again" class="task-assignee-action bg-red-500 text-white text-xs px-2 py-1 rounded mt-1">Review Again</button>
@@ -702,7 +742,8 @@
                         </div>
                     `;
                 }).join('');
-                // Update form for assignee (if task is in_progress or needs_review and current user is assignee)
+                
+                // Update form for current user if they are an assignee and status allows updates
                 let updateFormHtml = '';
                 const myAssignee = assignees.find(a => a.assignee_id === currentUser.id);
                 if (myAssignee && (myAssignee.status === 'in_progress' || myAssignee.status === 'needs_review')) {
@@ -716,18 +757,20 @@
                         </div>
                     `;
                 }
+                
                 return `
                     <div class="rounded-lg p-3 bg-white shadow-sm ${borderClass}" data-task-id="${task.id}">
                         <div class="font-semibold text-sm">${escapeHtml(task.title)}</div>
                         <div class="text-xs text-gray-500 mt-1">Creator: ${task.creator?.full_name || task.creator?.email || 'Unknown'}</div>
                         ${task.deadline ? `<div class="text-xs text-gray-500">Deadline: ${new Date(task.deadline).toLocaleDateString()}</div>` : ''}
                         <div class="mt-2 text-xs font-semibold">Assignees:</div>
-                        <div class="space-y-1">${assigneeHtml}</div>
+                        <div class="space-y-1">${assigneeHtml || '<div class="text-xs text-gray-400">No assignees</div>'}</div>
                         ${updateFormHtml}
                         <div id="trail-${task.id}" class="mt-2 text-xs text-gray-500 max-h-24 overflow-y-auto border-t pt-1 hidden"></div>
                     </div>
                 `;
             }).join('');
+            
             // Attach assignee action buttons
             document.querySelectorAll('.task-assignee-action').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
@@ -737,7 +780,8 @@
                     await performAssigneeAction(taskId, assigneeId, action);
                 });
             });
-            // Attach update buttons
+            
+            // Attach update buttons (comments/files)
             document.querySelectorAll('.task-update-btn').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
                     const taskId = btn.dataset.taskId;
@@ -757,7 +801,7 @@
                     }
                     if (comment || fileUrl) {
                         await addTaskTrail(taskId, 'update', comment, fileUrl);
-                        document.getElementById(`comment-${taskId}`).value = '';
+                        if (document.getElementById(`comment-${taskId}`)) document.getElementById(`comment-${taskId}`).value = '';
                         if (fileInput) fileInput.value = '';
                         loadTasks();
                     } else {
@@ -765,7 +809,8 @@
                     }
                 });
             });
-            // Load trails
+            
+            // Load trails for each task
             tasks.forEach(task => loadTaskTrail(task.id));
         }
 
@@ -806,6 +851,7 @@
                 .subscribe();
         }
 
+        // Start the app
         renderApp();
     </script>
 </body>

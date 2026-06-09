@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>MPGS TaskFlow - Glassmorphic Complete</title>
+    <title>MPGS TaskFlow - Glassmorphic with Inline Task Cards</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
@@ -86,6 +86,7 @@
         .received .message-meta { color: var(--text-secondary); }
         .menu-dots { cursor: pointer; opacity: 0.6; transition: opacity 0.2s; margin-top: 4px; text-align: right; }
         .menu-dots:hover { opacity: 1; }
+        /* Inline task card styling */
         .task-card-inline {
             margin-top: 8px;
             background: rgba(0,0,0,0.2);
@@ -177,7 +178,7 @@
                 <div id="scheduleModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50"><div class="glass-panel p-6 w-96"><h3>Schedule Message</h3><textarea id="scheduleMessageText" rows="3" class="w-full p-2 mb-2 rounded bg-white/20"></textarea><select id="scheduleChannel" class="w-full p-2 mb-2 rounded bg-white/20"><option>general</option><option>math</option><option>science</option></select><input type="datetime-local" id="scheduleDateTime" class="w-full p-2 mb-2 rounded bg-white/20"><div class="flex gap-2"><button id="cancelScheduleBtn" class="flex-1 p-2 rounded bg-gray-500">Cancel</button><button id="saveScheduleBtn" class="flex-1 p-2 rounded btn-primary">Schedule</button></div></div></div>
                 <div id="settingsModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50"><div class="glass-panel p-6 w-96"><h3>Settings</h3><div><label>Accent</label><select id="accentPicker" class="w-full p-2 mb-2 rounded bg-white/20"><option value="indigo">Indigo</option><option value="teal">Teal</option><option value="rose">Rose</option><option value="amber">Amber</option><option value="emerald">Emerald</option></select></div><div><label>Font Size</label><select id="fontSizePicker" class="w-full p-2 mb-2 rounded bg-white/20"><option value="compact">Compact</option><option value="normal">Normal</option><option value="comfortable">Comfortable</option><option value="large">Large</option></select></div><button id="closeSettingsBtn" class="mt-4 w-full p-2 rounded bg-gray-500">Close</button></div></div>
             `;
-            // Quill
+            // Quill editor
             quillEditor = new Quill('#richEditor', { theme: 'snow', placeholder: 'Type a message...', modules: { toolbar: [['bold','italic','underline'],[{'color':['maroon','darkblue','darkgreen']}],['superscript','subscript'],['list','bullet']] } });
             // Event listeners
             document.getElementById('toggleLeftSidebar')?.addEventListener('click',()=>document.getElementById('leftSidebar').classList.toggle('open'));
@@ -200,7 +201,7 @@
             document.getElementById('statsDateRange')?.addEventListener('change',()=>loadStatistics());
             attachModalButtons();
             if(localStorage.getItem(`scroll_${currentRoom}`)) document.getElementById('messagesContainer').scrollTop=parseInt(localStorage.getItem(`scroll_${currentRoom}`));
-            // Resize functionality (simple)
+            // Resize functionality
             let leftResizing=false, rightResizing=false;
             const leftBar=document.getElementById('leftSidebar'), rightBar=document.getElementById('rightSidebar');
             const leftHandle=leftBar?.querySelector('.resize-handle'), rightHandle=rightBar?.querySelector('.resize-handle');
@@ -210,42 +211,90 @@
             document.addEventListener('mouseup',()=>{ leftResizing=false; rightResizing=false; document.body.style.cursor='default'; });
         }
 
-
-                // ======================== Chat & Messages ========================
+                // ======================== Chat & Messages (with inline task cards) ========================
         async function sendMessage() { const text=quillEditor.root.innerText.trim(); if(!text) return; await sb.from('messages').insert({room_id:currentRoom,sender_id:currentUser.id,text,created_at:new Date().toISOString()}); quillEditor.root.innerHTML=''; loadMessages(); }
-        async function loadMessages() { const {data:messages}=await sb.from('messages').select('*, profiles(full_name, email)').eq('room_id',currentRoom).order('created_at',{ascending:true}); renderMessages(messages||[]); const c=document.getElementById('messagesContainer'); c.scrollTop=c.scrollHeight; localStorage.setItem(`scroll_${currentRoom}`,c.scrollTop); }
+        async function loadMessages() { 
+            const {data:messages}=await sb.from('messages').select('*, profiles(full_name, email)').eq('room_id',currentRoom).order('created_at',{ascending:true}); 
+            renderMessages(messages||[]); 
+            const c=document.getElementById('messagesContainer'); 
+            c.scrollTop=c.scrollHeight; 
+            localStorage.setItem(`scroll_${currentRoom}`,c.scrollTop); 
+        }
+        // Helper to fetch task details for a message (if it's a task)
+        async function fetchTaskForMessage(messageId) {
+            const {data:task}=await sb.from('tasks').select('*, assignees:task_assignees(assignee_id,status,profiles!assignee_id(full_name, email))').eq('original_message_id',messageId).single();
+            if(!task) return null;
+            // Also fetch creator profile
+            const {data:creator}=await sb.from('profiles').select('full_name, email').eq('id',task.assigned_by).single();
+            return {...task, creator};
+        }
         function renderMessages(messages) {
             const c=document.getElementById('messagesContainer'); if(!c) return; if(!messages.length){c.innerHTML='<div class="text-center text-gray-500">No messages</div>'; return;}
-            c.innerHTML=messages.map(msg=>{
+            // We'll render each message, and if it has a task, we'll inject task card HTML
+            Promise.all(messages.map(async (msg)=>{
                 const isOwn=msg.sender_id===currentUser.id;
                 const senderName=msg.profiles?.full_name||msg.profiles?.email||'Unknown';
                 const time=new Date(msg.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
                 let taskHtml='';
-                // Check if message has a task (fetch from tasks table by original_message_id)
-                // For performance, we'll lazy load later, but keep simple for now
+                // Check if message is linked to a task
+                const task=await fetchTaskForMessage(msg.id);
+                if(task) {
+                    // Build task card HTML (same as sidebar but inline)
+                    const isCreator=task.assigned_by===currentUser.id;
+                    const assignees=task.assignees||[];
+                    const allAccepted=assignees.length&&assignees.every(a=>a.status==='accepted');
+                    const borderClass=allAccepted?'border-green-500 border-2':'';
+                    const assigneeHtml=assignees.map(ass=>{
+                        const name=ass.profiles?.full_name||ass.profiles?.email||'Unknown';
+                        const status=ass.status;
+                        let actions='';
+                        if(ass.assignee_id===currentUser.id && status==='pending_ack') actions=`<button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="ack" class="task-action bg-green-500 text-white text-xs px-2 py-1 rounded">Acknowledge</button>`;
+                        if(ass.assignee_id===currentUser.id && (status==='in_progress'||status==='needs_review')) actions=`<button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="submit" class="task-action bg-blue-500 text-white text-xs px-2 py-1 rounded">Submit</button>`;
+                        if(isCreator && status==='submitted') actions=`<button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="accept" class="task-action bg-green-500 text-white text-xs px-2 py-1 rounded">Accept</button><button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="review_again" class="task-action bg-red-500 text-white text-xs px-2 py-1 rounded">Review Again</button>`;
+                        return `<div class="flex justify-between text-xs py-1"><span>${escapeHtml(name)}</span><span>${status}</span>${actions}</div>`;
+                    }).join('');
+                    taskHtml=`<div class="task-card-inline ${borderClass}"><div class="font-semibold">${escapeHtml(task.title)}</div><div>${assigneeHtml}</div><div id="trail-${task.id}" class="text-xs text-gray-500 mt-1 hidden"></div></div>`;
+                }
                 return `<div id="msg-${msg.id}" class="message-bubble ${isOwn?'sent':'received'}">
-                    <div class="bubble-content">
-                        <div class="message-meta"><span>${escapeHtml(senderName)}</span><span>${time}</span></div>
-                        <div>${escapeHtml(msg.text)}</div>
-                        <div class="menu-dots" data-msg-id="${msg.id}" data-msg-text="${escapeHtml(msg.text)}"><i class="fas fa-ellipsis-v"></i></div>
-                    </div>
-                </div>`;
-            }).join('');
-            document.querySelectorAll('.menu-dots').forEach(el=>{
-                el.addEventListener('click',(e)=>{
-                    e.stopPropagation();
-                    const mid=el.dataset.msgId, mtext=el.dataset.msgText;
-                    const menu=document.createElement('div');
-                    menu.className='glass-panel absolute p-2 z-50';
-                    menu.innerHTML=`<div class="cursor-pointer p-1" data-action="reminder">🔔 Reminder</div><div class="cursor-pointer p-1" data-action="task">📋 Task</div><div class="cursor-pointer p-1" data-action="schedule">📅 Schedule</div><div class="cursor-pointer p-1" data-action="bookmark">⭐ Bookmark</div>`;
-                    document.body.appendChild(menu);
-                    menu.style.top=e.clientY+'px';
-                    menu.style.left=e.clientX+'px';
-                    menu.querySelector('[data-action="reminder"]').onclick=()=>{ showReminderModal(mid,mtext); menu.remove(); };
-                    menu.querySelector('[data-action="task"]').onclick=()=>{ openTaskModal(mid,mtext); menu.remove(); };
-                    menu.querySelector('[data-action="schedule"]').onclick=()=>{ showScheduleModal(mtext); menu.remove(); };
-                    menu.querySelector('[data-action="bookmark"]').onclick=()=>{ toggleBookmark(mid,mtext,null); menu.remove(); };
-                    setTimeout(()=>menu.remove(),5000);
+                            <div class="bubble-content">
+                                <div class="message-meta"><span>${escapeHtml(senderName)}</span><span>${time}</span></div>
+                                <div>${escapeHtml(msg.text)}</div>
+                                ${taskHtml}
+                                <div class="menu-dots" data-msg-id="${msg.id}" data-msg-text="${escapeHtml(msg.text)}"><i class="fas fa-ellipsis-v"></i></div>
+                            </div>
+                        </div>`;
+            })).then(htmls=>{
+                c.innerHTML=htmls.join('');
+                // Attach three-dot menu and task action listeners
+                document.querySelectorAll('.menu-dots').forEach(el=>{
+                    el.addEventListener('click',(e)=>{
+                        e.stopPropagation();
+                        const mid=el.dataset.msgId, mtext=el.dataset.msgText;
+                        const menu=document.createElement('div');
+                        menu.className='glass-panel absolute p-2 z-50';
+                        menu.innerHTML=`<div class="cursor-pointer p-1" data-action="reminder">🔔 Reminder</div><div class="cursor-pointer p-1" data-action="task">📋 Task</div><div class="cursor-pointer p-1" data-action="schedule">📅 Schedule</div><div class="cursor-pointer p-1" data-action="bookmark">⭐ Bookmark</div>`;
+                        document.body.appendChild(menu);
+                        menu.style.top=e.clientY+'px';
+                        menu.style.left=e.clientX+'px';
+                        menu.querySelector('[data-action="reminder"]').onclick=()=>{ showReminderModal(mid,mtext); menu.remove(); };
+                        menu.querySelector('[data-action="task"]').onclick=()=>{ openTaskModal(mid,mtext); menu.remove(); };
+                        menu.querySelector('[data-action="schedule"]').onclick=()=>{ showScheduleModal(mtext); menu.remove(); };
+                        menu.querySelector('[data-action="bookmark"]').onclick=()=>{ toggleBookmark(mid,mtext,null); menu.remove(); };
+                        setTimeout(()=>menu.remove(),5000);
+                    });
+                });
+                // Attach task action listeners for buttons inside inline cards
+                document.querySelectorAll('.task-action').forEach(btn=>{
+                    btn.addEventListener('click',async(e)=>{
+                        const tid=btn.dataset.taskId, aid=btn.dataset.assigneeId, act=btn.dataset.action;
+                        await performAssigneeAction(tid,aid,act);
+                    });
+                });
+                // Load trails for each task
+                const taskCards=document.querySelectorAll('.task-card-inline');
+                taskCards.forEach(card=>{
+                    const taskId=card.querySelector('.task-action')?.dataset.taskId;
+                    if(taskId) loadTaskTrail(taskId);
                 });
             });
         }
@@ -256,10 +305,10 @@
         let currentMessageId=null;
         async function openTaskModal(mid,text){ currentMessageId=mid; document.getElementById('taskModal').classList.remove('hidden'); document.getElementById('taskTitle').value=text.substring(0,100); const {data:users}=await sb.from('profiles').select('id,email,full_name'); document.getElementById('taskAssignees').innerHTML=users.map(u=>`<option value="${u.id}">${u.full_name||u.email}</option>`).join(''); }
         function closeTaskModal(){ document.getElementById('taskModal').classList.add('hidden'); currentMessageId=null; }
-        async function saveTaskMultiAssignee(){ if(!currentMessageId) return; const title=document.getElementById('taskTitle').value; const aids=Array.from(document.getElementById('taskAssignees').selectedOptions).map(opt=>opt.value); if(!title||!aids.length){alert('Title and assignee required');return;} const {data:task}=await sb.from('tasks').insert({original_message_id:currentMessageId,title,assigned_by:currentUser.id,deadline:document.getElementById('taskDeadline').value||null,priority:document.getElementById('taskPriority').value,require_proof:document.getElementById('taskRequireProof').checked,status:'pending'}).select().single(); if(!task) return; await sb.from('task_assignees').insert(aids.map(aid=>({task_id:task.id,assignee_id:aid,status:'pending_ack'}))); alert('Task created'); closeTaskModal(); loadTasks(); }
+        async function saveTaskMultiAssignee(){ if(!currentMessageId) return; const title=document.getElementById('taskTitle').value; const aids=Array.from(document.getElementById('taskAssignees').selectedOptions).map(opt=>opt.value); if(!title||!aids.length){alert('Title and assignee required');return;} const {data:task}=await sb.from('tasks').insert({original_message_id:currentMessageId,title,assigned_by:currentUser.id,deadline:document.getElementById('taskDeadline').value||null,priority:document.getElementById('taskPriority').value,require_proof:document.getElementById('taskRequireProof').checked,status:'pending'}).select().single(); if(!task) return; await sb.from('task_assignees').insert(aids.map(aid=>({task_id:task.id,assignee_id:aid,status:'pending_ack'}))); alert('Task created'); closeTaskModal(); loadTasks(); loadMessages(); }
         async function addTaskTrail(taskId,action,comment,fileUrl=null){ await sb.from('task_trails').insert({task_id:taskId,user_id:currentUser.id,action,comment,file_url:fileUrl}); }
         async function loadTaskTrail(taskId){ const {data:trails}=await sb.from('task_trails').select('*').eq('task_id',taskId).order('created_at',{ascending:true}); if(!trails||!trails.length) return; const cont=document.getElementById(`trail-${taskId}`); if(cont) cont.innerHTML=trails.map(t=>`<div>${new Date(t.created_at).toLocaleString()} - ${t.action}: ${t.comment||''} ${t.file_url?`<a href="${t.file_url}" target="_blank">[file]</a>`:''}</div>`).join(''); }
-        async function performAssigneeAction(taskId,assigneeId,action){ let newStatus='',comment=''; if(action==='ack'){ newStatus='in_progress'; comment='acknowledged'; } else if(action==='submit'){ newStatus='submitted'; comment='submitted for review'; } else if(action==='accept'){ newStatus='accepted'; comment='accepted'; } else if(action==='review_again'){ newStatus='needs_review'; comment='needs rework'; } else return; await sb.from('task_assignees').update({status:newStatus}).eq('task_id',taskId).eq('assignee_id',assigneeId); await addTaskTrail(taskId,action,comment); loadTasks(); }
+        async function performAssigneeAction(taskId,assigneeId,action){ let newStatus='',comment=''; if(action==='ack'){ newStatus='in_progress'; comment='acknowledged'; } else if(action==='submit'){ newStatus='submitted'; comment='submitted for review'; } else if(action==='accept'){ newStatus='accepted'; comment='accepted'; } else if(action==='review_again'){ newStatus='needs_review'; comment='needs rework'; } else return; await sb.from('task_assignees').update({status:newStatus}).eq('task_id',taskId).eq('assignee_id',assigneeId); await addTaskTrail(taskId,action,comment); loadTasks(); loadMessages(); }
         async function loadTasks(){ const {data:tasks}=await sb.from('tasks').select('*, creator:profiles!assigned_by(full_name, email)').order('created_at',{ascending:false}); if(!tasks) return; const ids=tasks.map(t=>t.id); const {data:ass}=await sb.from('task_assignees').select('task_id,assignee_id,status,profiles!assignee_id(full_name, email)').in('task_id',ids); const map={}; if(ass) ass.forEach(a=>{ if(!map[a.task_id]) map[a.task_id]=[]; map[a.task_id].push({assignee_id:a.assignee_id,status:a.status,profiles:a.profiles}); }); const filtered=tasks.filter(t=>t.assigned_by===currentUser.id||(map[t.id]&&map[t.id].some(a=>a.assignee_id===currentUser.id))); const tasksWith=filtered.map(t=>({...t,assignees:map[t.id]||[]})); renderTasks(tasksWith); }
         function renderTasks(tasks){ const con=document.getElementById('tasksList'); if(!con) return; if(!tasks.length){con.innerHTML='<div class="text-center text-gray-500">No tasks</div>'; return;} con.innerHTML=tasks.map(task=>{ const isCreator=task.assigned_by===currentUser.id; const assignees=task.assignees; const allAccepted=assignees.length&&assignees.every(a=>a.status==='accepted'); const border=allAccepted?'border-green-500 border-2':''; const assigneeHtml=assignees.map(ass=>{ const name=ass.profiles?.full_name||ass.profiles?.email; let actions=''; if(ass.assignee_id===currentUser.id && ass.status==='pending_ack') actions=`<button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="ack" class="task-action bg-green-500 text-white text-xs px-2 py-1 rounded">Acknowledge</button>`; if(ass.assignee_id===currentUser.id && (ass.status==='in_progress'||ass.status==='needs_review')) actions=`<button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="submit" class="task-action bg-blue-500 text-white text-xs px-2 py-1 rounded">Submit</button>`; if(isCreator && ass.status==='submitted') actions=`<button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="accept" class="task-action bg-green-500 text-white text-xs px-2 py-1 rounded">Accept</button><button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="review_again" class="task-action bg-red-500 text-white text-xs px-2 py-1 rounded">Review Again</button>`; return `<div class="flex justify-between text-xs py-1"><span>${escapeHtml(name)}</span><span>${ass.status}</span>${actions}</div>`; }).join(''); return `<div class="glass-panel p-2 mb-2 ${border}"><div class="font-semibold">${escapeHtml(task.title)}</div><div>${assigneeHtml}</div><div id="trail-${task.id}" class="text-xs text-gray-500 mt-1 hidden"></div></div>`; }).join(''); document.querySelectorAll('.task-action').forEach(btn=>btn.addEventListener('click',async(e)=>{ const tid=btn.dataset.taskId, aid=btn.dataset.assigneeId, act=btn.dataset.action; await performAssigneeAction(tid,aid,act); })); tasks.forEach(task=>loadTaskTrail(task.id)); }
         function subscribeToTasks(){ if(taskSubscription) taskSubscription.unsubscribe(); taskSubscription=sb.channel('tasks-changes').on('postgres_changes',{event:'*',schema:'public',table:'tasks'},()=>loadTasks()).subscribe(); }
@@ -291,8 +340,6 @@
     </script>
 </body>
 </html>
-
-
 
 
 

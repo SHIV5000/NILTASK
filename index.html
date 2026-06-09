@@ -3,164 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>MPGS TaskFlow - Enterprise Chat</title>
-    
-    <!-- Tailwind CSS -->
+    <title>MPGS TaskFlow - WhatsApp Style Layout</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- FontAwesome & Fonts -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
-    <!-- Quill Rich Text Editor -->
     <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
     <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
-    
     <style>
+        /* WhatsApp-like theme */
         :root {
-            --bg-body: #f0f2f5;
-            --bg-sidebar: rgba(255, 255, 255, 0.95);
+            --bg-body: #111b21;
+            --bg-sidebar: #202c33;
+            --bg-chat: #0b141a;
+            --bg-message-own: #005c4b;
+            --bg-message-other: #202c33;
+            --text-primary: #e9edef;
+            --text-secondary: #aebac1;
+            --accent: #00a884;
+            --sent-bg: #005c4b;
+            --received-bg: #202c33;
+        }
+        [data-theme="light"] {
+            --bg-body: #e1e1e1;
+            --bg-sidebar: #f0f2f5;
             --bg-chat: #efeae2;
-            --bg-message-own: #f2e6e6;
+            --bg-message-own: #d9f0ec;
             --bg-message-other: #ffffff;
             --text-primary: #111b21;
             --text-secondary: #667781;
-            --accent: #800000; /* Maroon */
-            --accent-hover: #660000;
-            --sent-bg: #f2e6e6;
+            --accent: #00a884;
+            --sent-bg: #d9f0ec;
             --received-bg: #ffffff;
-            --border-color: rgba(134, 150, 160, 0.15);
-            --chat-pattern: url("https://www.transparenttextures.com/patterns/cubes.png");
         }
-        
-        [data-theme="dark"] {
-            --bg-body: #111b21;
-            --bg-sidebar: rgba(32, 44, 51, 0.98);
-            --bg-chat: #0b141a;
-            --bg-message-own: #4d0000;
-            --bg-message-other: #202c33;
-            --text-primary: #e9edef;
-            --text-secondary: #8696a0;
-            --accent: #b30000;
-            --accent-hover: #cc0000;
-            --sent-bg: #4d0000;
-            --received-bg: #202c33;
-            --border-color: rgba(134, 150, 160, 0.15);
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-primary);
+            transition: background-color 0.2s;
         }
-
-        body { font-family: 'Inter', sans-serif; background-color: var(--bg-body); color: var(--text-primary); transition: background-color 0.3s, color 0.3s; }
-
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(134, 150, 160, 0.3); border-radius: 10px; }
-
-        .sidebar-glass { background: var(--bg-sidebar); backdrop-filter: blur(10px); border-color: var(--border-color); }
-        .chat-area { background-color: var(--bg-chat); background-image: var(--chat-pattern); background-blend-mode: overlay; }
-
-        .message-bubble { 
-            max-width: 75%; /* Strict 75% max width */
-            margin-bottom: 0.75rem; 
-            display: flex; 
-            flex-direction: column; 
-            position: relative;
-        }
+        .glass-panel { background: transparent; backdrop-filter: none; border: none; box-shadow: none; }
+        .chat-area { background: var(--bg-chat); }
+        .message-bubble { max-width: 75%; margin-bottom: 0.5rem; display: flex; flex-direction: column; }
         .message-bubble.sent { align-self: flex-end; }
         .message-bubble.received { align-self: flex-start; }
-        
         .message-bubble .bubble-content {
-            padding: 10px 14px;
+            border-radius: 18px;
+            padding: 8px 12px;
             word-wrap: break-word;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-            position: relative;
         }
-        
-        .sent .bubble-content { background: var(--sent-bg); border-radius: 16px 0px 16px 16px; }
-        .received .bubble-content { background: var(--received-bg); border-radius: 0px 16px 16px 16px; }
-
-        /* Hover Controls (Top Right fixed) */
-        .bubble-controls {
-            position: absolute; top: 4px; right: 8px;
-            display: flex; gap: 8px; opacity: 0; transition: opacity 0.2s;
-            background: inherit; padding-left: 10px; border-radius: 8px;
-            z-index: 10;
-        }
-        .message-bubble:hover .bubble-controls { opacity: 1; }
-        .bubble-controls i { cursor: pointer; color: var(--text-secondary); transition: color 0.2s; font-size: 14px; }
-        .bubble-controls i:hover { color: var(--accent); }
-
-        .inline-reply-box { display: none; margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 8px; }
-        .inline-reply-box.active { display: flex; gap: 8px; align-items: center; }
-
-        /* 4-Second Highlight Animation */
-        @keyframes flashHighlight {
-            0% { background-color: rgba(128, 0, 0, 0.3); transform: scale(1.02); box-shadow: 0 0 15px rgba(128,0,0,0.5); }
-            100% { background-color: transparent; transform: scale(1); box-shadow: none; }
-        }
-        .highlight-active .bubble-content, .highlight-active.jira-card {
-            animation: flashHighlight 4s ease-out forwards;
-        }
-
-        .jira-card {
-            background: var(--bg-message-other);
-            border-radius: 6px;
-            margin-top: 8px;
-            margin-bottom: 12px;
-            padding: 16px;
-            box-shadow: rgba(9, 30, 66, 0.25) 0px 1px 2px 0px;
-            border-left: 4px solid var(--accent);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            transition: transform 0.2s, box-shadow 0.2s;
-            width: 100%;
-        }
-        .jira-card:hover { transform: translateY(-2px); box-shadow: rgba(9, 30, 66, 0.35) 0px 4px 8px 0px; }
-        
-        /* Task Status Colors */
-        .status-pending { color: #6b7280; border-left-color: #6b7280 !important; }
-        .status-in_progress { color: #2563eb; border-left-color: #2563eb !important; }
-        .status-submitted { color: #9333ea; border-left-color: #9333ea !important; }
-        .status-needs_review { color: #dc2626; border-left-color: #dc2626 !important; }
-        .status-accepted { color: #16a34a; border-left-color: #16a34a !important; }
-
-        .modal-overlay { background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); }
-        .modal-content { background: var(--bg-sidebar); border: 1px solid var(--border-color); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
-        
-        /* Center Screen Fading Toast */
-        .center-toast {
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(17, 27, 33, 0.95); color: white;
-            padding: 24px 40px; border-radius: 16px; z-index: 9999;
-            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
-            text-align: center; font-weight: 500; font-size: 1.1rem;
-            transition: opacity 0.5s ease; pointer-events: none;
-        }
-
-        /* Dropdown Menus */
-        .msg-menu-dropdown, .top-panel-dropdown {
-            position: absolute; background: var(--bg-sidebar); border: 1px solid var(--border-color);
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); border-radius: 12px; z-index: 100;
-        }
-
-        /* Input Area (Modern App Style) */
-        .input-container {
-            background: var(--bg-sidebar); border-top: 1px solid var(--border-color); padding: 12px 20px;
-        }
-        .quill-wrapper {
-            background: var(--bg-message-other); border: 1px solid var(--border-color);
-            border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;
-        }
-        .ql-toolbar.ql-snow { border: none !important; border-bottom: 1px solid var(--border-color) !important; background: rgba(0,0,0,0.02); padding: 6px 12px !important; }
-        .ql-container.ql-snow { border: none !important; font-size: 0.95rem; min-height: 40px; max-height: 120px; overflow-y: auto; }
-        
-        .btn-primary { background: var(--accent); color: white; border-radius: 20px; padding: 8px 20px; font-weight: 600; }
-        .btn-primary:hover { background: var(--accent-hover); }
-
-        .ui-input { background: var(--bg-body); color: var(--text-primary); border: 1px solid var(--border-color); }
-        .ui-input:focus { border-color: var(--accent); outline: none; }
+        .sent .bubble-content { background: var(--sent-bg); color: var(--text-primary); }
+        .received .bubble-content { background: var(--received-bg); color: var(--text-primary); }
+        .message-meta { font-size: 0.7rem; margin-bottom: 4px; display: flex; justify-content: space-between; gap: 8px; color: var(--text-secondary); }
+        .menu-dots, .reply-btn { cursor: pointer; opacity: 0.6; margin-left: 8px; }
+        .menu-dots:hover, .reply-btn:hover { opacity: 1; }
+        .inline-reply { margin-top: 8px; border-top: 1px solid var(--text-secondary); padding-top: 4px; display: none; }
+        .inline-reply.active { display: block; }
+        .task-panel-card { background: var(--bg-sidebar); border-radius: 12px; margin-bottom: 12px; padding: 12px; border-left: 4px solid var(--accent); }
+        .btn-primary { background: var(--accent); color: white; border-radius: 20px; padding: 6px 12px; }
+        .channel-item { padding: 8px; border-radius: 8px; cursor: pointer; }
+        .channel-item:hover { background: rgba(255,255,255,0.1); }
+        .active-channel { background: rgba(255,255,255,0.2); }
     </style>
 </head>
-<body class="antialiased overflow-hidden">
+<body class="antialiased">
     <div id="root" class="h-screen flex overflow-hidden"></div>
-    
     <script type="module">
         import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
         const SUPABASE_URL = 'https://apfymygzwkzjhhgmtkaj.supabase.co';
@@ -168,552 +72,168 @@
         const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let currentUser = null, currentRoom = 'general';
-        let messageSubscription, taskSubscription, assigneeSubscription;
+        let messageSubscription, taskSubscription, assigneeSubscription, notificationSubscription;
         let currentTheme = localStorage.getItem('theme') || 'light';
         let quillEditor = null;
-        let currSchedText = ''; 
-        let currentReminderId = null;
-        let currentMessageId = null; // for tasks
 
-        // Utilities
         function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m] || m)); }
-        
-        // Custom Center Toast - Fades away after 5s
-        window.showCenterToast = function(msg, icon = 'fa-check-circle', color = 'text-green-400') { 
-            const t = document.createElement('div'); 
-            t.className = 'center-toast opacity-0'; 
-            t.innerHTML = `<i class="fas ${icon} ${color} text-4xl block mb-3"></i> ${msg}`; 
-            document.body.appendChild(t); 
-            setTimeout(() => t.classList.remove('opacity-0'), 10);
-            setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 500); }, 5000); 
-        }
-
-        window.scrollToAndHighlight = function(id) {
-            const el = document.getElementById(id);
-            if(el) {
-                el.scrollIntoView({behavior: 'smooth', block: 'center'});
-                el.classList.add('highlight-active');
-                setTimeout(() => el.classList.remove('highlight-active'), 4000);
-            }
-        }
-
+        function showToast(msg) { const t=document.createElement('div'); t.className='fixed bottom-4 right-4 bg-black/50 text-white px-4 py-2 rounded z-50'; t.innerText=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),3000); }
         function applyTheme() { document.documentElement.setAttribute('data-theme', currentTheme); }
 
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('.menu-dots') && !e.target.closest('.msg-menu-dropdown')) {
-                document.querySelectorAll('.msg-menu-dropdown').forEach(m => m.remove());
-            }
-            if (!e.target.closest('.top-bar-icon') && !e.target.closest('.top-panel-dropdown')) {
-                document.querySelectorAll('.top-panel-dropdown').forEach(m => m.remove());
-            }
-        });
-
-        // Authentication Methods
+        // Auth & Profile
         async function ensureProfile() { if(!currentUser) return; const {data:ex}=await sb.from('profiles').select('id').eq('id',currentUser.id).maybeSingle(); if(!ex) await sb.from('profiles').insert({id:currentUser.id, email:currentUser.email, full_name:currentUser.email.split('@')[0], role:'teacher'}); }
         async function signIn(email,pwd) { const {data,error}=await sb.auth.signInWithPassword({email,password:pwd}); if(!error && data?.user) { currentUser=data.user; await ensureProfile(); renderMainApp(); startSubscriptions(); return true; } return false; }
-        async function signUp(email,pwd) { const {error}=await sb.auth.signUp({email,password:pwd}); if(error) throw error; window.showCenterToast('Check email for verification!', 'fa-envelope', 'text-blue-400'); }
-        window.logout = async function() { await sb.auth.signOut(); currentUser=null; renderAuthScreen(); }
-        
-        function renderAuthScreen() { 
-            applyTheme();
-            document.getElementById('root').innerHTML=`
-                <div class="min-h-screen w-full flex items-center justify-center" style="background-color: var(--bg-body);">
-                    <div class="modal-content p-10 rounded-3xl shadow-2xl w-full max-w-md relative overflow-hidden">
-                        <div class="text-center mb-8">
-                            <h1 class="text-3xl font-bold tracking-tight">MPGS TaskFlow</h1>
-                            <p class="text-sm mt-2" style="color: var(--text-secondary)">Enterprise Communication Portal</p>
-                        </div>
-                        <div class="space-y-4">
-                            <input id="email" placeholder="Email Address" class="ui-input w-full px-4 py-3 rounded-xl">
-                            <input id="password" type="password" placeholder="Password" class="ui-input w-full px-4 py-3 rounded-xl">
-                            <div class="flex gap-3 pt-2">
-                                <button id="loginBtn" class="flex-1 py-3 px-4 rounded-xl btn-primary text-white font-medium shadow-md">Login</button>
-                            </div>
-                            <div id="authMsg" class="mt-4 text-center text-red-500 text-sm font-medium h-5"></div>
-                        </div>
-                    </div>
-                </div>`; 
+        async function signUp(email,pwd) { const {error}=await sb.auth.signUp({email,password:pwd}); if(error) throw error; alert('Check email!'); }
+        async function logout() { await sb.auth.signOut(); currentUser=null; renderAuthScreen(); }
+        function renderAuthScreen() { document.getElementById('root').innerHTML=`<div class="min-h-screen flex items-center justify-center bg-gray-900"><div class="bg-gray-800 p-8 rounded shadow-md w-96"><h1 class="text-2xl font-bold text-center mb-6 text-white">MPGS TaskFlow</h1><input id="email" placeholder="Email" class="w-full p-2 mb-2 rounded bg-gray-700 text-white"><input id="password" type="password" placeholder="Password" class="w-full p-2 mb-4 rounded bg-gray-700 text-white"><div class="flex gap-2"><button id="loginBtn" class="flex-1 p-2 rounded bg-green-600 text-white">Login</button><button id="signupBtn" class="flex-1 p-2 rounded bg-gray-600 text-white">Sign Up</button></div><div id="authMsg" class="mt-4 text-red-500 text-sm"></div></div></div>`; 
             document.getElementById('loginBtn').onclick=async()=>{ const ok=await signIn(document.getElementById('email').value,document.getElementById('password').value); if(!ok) document.getElementById('authMsg').innerText='Invalid credentials'; };
-        }
+            document.getElementById('signupBtn').onclick=async()=>{ try{ await signUp(document.getElementById('email').value,document.getElementById('password').value); document.getElementById('authMsg').innerText='Check email!'; } catch(e){ document.getElementById('authMsg').innerText=e.message; } }; }
 
+        // Main App - WhatsApp style layout
         function renderMainApp() {
             applyTheme();
             document.getElementById('root').innerHTML = `
                 <div class="flex h-full w-full">
-                    <!-- Left Sidebar -->
-                    <div class="w-80 sidebar-glass flex flex-col border-r z-20 shadow-sm">
-                        <div class="p-4 flex justify-between items-center border-b" style="border-color: var(--border-color)">
-                            <h2 class="text-xl font-bold tracking-tight flex items-center gap-2">
-                                <i class="fas fa-comments" style="color: var(--accent)"></i> Chats
-                            </h2>
-                            <button onclick="logout()" class="w-8 h-8 rounded-full hover:bg-red-100 hover:text-red-500 flex items-center justify-center transition-colors"><i class="fas fa-sign-out-alt text-sm"></i></button>
-                        </div>
-                        <div class="p-3"><input type="text" id="globalSearch" placeholder="Search chats" class="ui-input w-full p-2 rounded-xl text-sm"></div>
-                        <div id="chatsList" class="flex-1 overflow-y-auto px-2 pb-4"></div>
-                    </div>
-
-                    <!-- Center Chat Area -->
-                    <div class="flex-1 flex flex-col chat-area relative">
-                        
-                        <!-- Top Bar (Filters & Icons) -->
-                        <div class="p-4 sidebar-glass border-b z-10 flex justify-between items-center shadow-sm" style="border-color: var(--border-color)">
-                            <div class="flex items-center gap-3">
-                                <span class="text-lg font-bold tracking-tight"># ${currentRoom}</span>
-                                <!-- Filter Dropdown -->
-                                <select id="viewFilter" class="ml-4 bg-transparent border-none text-sm font-semibold outline-none cursor-pointer" style="color: var(--text-secondary)">
-                                    <option value="all">All Content</option>
-                                    <option value="messages">Messages Only</option>
-                                    <option value="tasks">Tasks Only</option>
-                                    <option value="today">Today</option>
-                                </select>
-                            </div>
-                            
-                            <!-- Action Icons -->
-                            <div class="flex items-center gap-5 text-xl" style="color: var(--text-secondary)">
-                                <i class="far fa-clock cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="openTopPanel('scheduled')" title="Scheduled Messages"></i>
-                                <i class="far fa-bookmark cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="openTopPanel('bookmarks')" title="Bookmarks"></i>
-                                <i class="far fa-bell cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="openTopPanel('alerts')" title="Notifications"></i>
-                                <input type="text" id="messageSearchBar" placeholder="Search..." class="ui-input px-3 py-1 rounded-full text-sm w-48">
+                    <!-- Left Sidebar: Chats (Groups + Direct Messages) -->
+                    <div class="w-80 bg-[var(--bg-sidebar)] flex flex-col border-r border-gray-700">
+                        <div class="p-4 flex justify-between items-center">
+                            <h2 class="text-xl font-semibold">Chats</h2>
+                            <div class="flex gap-2">
+                                <button id="themeToggleBtn" class="p-2 rounded-full"><i class="fas fa-moon"></i></button>
+                                ${currentUser?.role === 'admin' ? '<button id="adminPanelBtn" class="p-2 rounded-full bg-green-600 text-white"><i class="fas fa-user-shield"></i></button>' : ''}
+                                <button id="logoutBtn" class="p-2 rounded-full"><i class="fas fa-sign-out-alt"></i></button>
                             </div>
                         </div>
-                        
-                        <!-- Messages Container -->
-                        <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col"></div>
-                        
-                        <!-- Input Area (Modern Chat Style) -->
-                        <div class="input-container">
-                            <div class="quill-wrapper">
-                                <div id="richEditor"></div>
-                            </div>
-                            <div class="flex justify-between items-center mt-2 px-2">
-                                <div class="flex gap-4 text-xl" style="color: var(--text-secondary)">
-                                    <i class="far fa-smile cursor-pointer hover:text-[var(--accent)]" title="Emoji" onclick="addEmoji()"></i>
-                                    <i class="fas fa-paperclip cursor-pointer hover:text-[var(--accent)]" title="Attach File" onclick="document.getElementById('fileAttachment').click()"></i>
-                                    <input type="file" id="fileAttachment" class="hidden">
-                                </div>
-                                <div class="flex gap-2">
-                                    <button id="scheduleMsgBtn" class="px-4 py-2 rounded-full font-medium text-sm border" style="color: var(--text-secondary); border-color: var(--border-color);">
-                                        <i class="far fa-clock"></i> Schedule
-                                    </button>
-                                    <button id="sendBtn" class="btn-primary flex items-center gap-2">
-                                        Send <i class="fas fa-paper-plane text-sm"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
+                        <div class="p-3"><input type="text" id="globalSearch" placeholder="Search chats..." class="w-full p-2 rounded-full bg-gray-700 text-white"></div>
+                        <div id="chatsList" class="flex-1 overflow-y-auto"></div>
                     </div>
-
-                    <!-- Right Sidebar -->
-                    <div class="w-80 sidebar-glass border-l flex flex-col z-20 shadow-sm hidden md:flex" style="border-color: var(--border-color)">
-                        <div class="p-4 border-b"><h3 class="font-bold">Task Overview</h3></div>
-                        <div id="tasksPanel" class="flex-1 overflow-y-auto p-4"></div>
+                    <!-- Center: Chat Area -->
+                    <div class="flex-1 flex flex-col bg-[var(--bg-chat)]">
+                        <div class="p-3 bg-[var(--bg-sidebar)] border-b border-gray-700 flex justify-between items-center">
+                            <span class="text-lg font-semibold" id="currentRoomTitle"># ${currentRoom}</span>
+                            <div><input type="text" id="messageSearchBar" placeholder="Search messages..." class="p-1 rounded-full bg-gray-700 text-white w-48"></div>
+                        </div>
+                        <div id="messagesContainer" class="flex-1 overflow-y-auto p-4 flex flex-col space-y-2"></div>
+                        <div class="p-3 bg-[var(--bg-sidebar)]"><div id="richEditor" style="height: 100px;"></div><div class="flex justify-between mt-2"><button id="scheduleMsgBtn" class="text-sm text-gray-400"><i class="far fa-calendar-alt"></i> Schedule</button><button id="sendBtn" class="btn-primary">Send</button></div></div>
+                    </div>
+                    <!-- Right Sidebar: Tasks Panel -->
+                    <div class="w-80 bg-[var(--bg-sidebar)] border-l border-gray-700 flex flex-col">
+                        <div class="p-4 border-b"><h3 class="font-bold">Tasks</h3></div>
+                        <div id="tasksPanel" class="flex-1 overflow-y-auto p-2 space-y-2"></div>
                     </div>
                 </div>
-
-                <!-- Modals Definition -->
-                <div id="scheduleModal" class="fixed inset-0 modal-overlay hidden items-center justify-center z-50">
-                    <div class="modal-content rounded-2xl p-6 w-full max-w-sm mx-4 text-center">
-                        <i class="far fa-clock text-4xl mb-4" style="color: var(--accent)"></i>
-                        <h3 class="text-xl font-bold mb-2">Schedule Message</h3>
-                        <p class="text-sm mb-6" style="color: var(--text-secondary)">Select when to send your composed message.</p>
-                        <input type="datetime-local" id="scheduleDateTime" class="ui-input w-full p-3 rounded-xl mb-6">
-                        <div class="flex gap-3">
-                            <button onclick="closeScheduleModal()" class="flex-1 py-2.5 rounded-xl font-medium ui-input">Cancel</button>
-                            <button onclick="saveScheduledMessage()" class="flex-1 py-2.5 rounded-xl font-medium btn-primary">Confirm</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="taskModal" class="fixed inset-0 modal-overlay hidden items-center justify-center z-50">
-                    <div class="modal-content rounded-2xl p-6 w-full max-w-md mx-4">
-                        <h3 class="text-xl font-bold mb-4">Create Jira Task</h3>
-                        <input id="taskTitle" class="ui-input w-full p-3 rounded-xl mb-3" placeholder="Task Title">
-                        <select id="taskAssignees" multiple size="4" class="ui-input w-full p-2 rounded-xl mb-3"></select>
-                        <div class="grid grid-cols-2 gap-3 mb-3">
-                            <input type="date" id="taskDeadline" class="ui-input w-full p-3 rounded-xl">
-                            <select id="taskPriority" class="ui-input w-full p-3 rounded-xl">
-                                <option value="Low">Low</option>
-                                <option value="Medium" selected>Medium</option>
-                                <option value="High">High</option>
-                            </select>
-                        </div>
-                        <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="taskRequireProof"> Require Proof</label>
-                        <div class="flex gap-3 mt-4">
-                            <button onclick="closeTaskModal()" class="flex-1 py-2.5 rounded-xl ui-input">Cancel</button>
-                            <button onclick="saveTaskMultiAssignee()" class="flex-1 py-2.5 rounded-xl btn-primary">Create Ticket</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="reminderModal" class="fixed inset-0 modal-overlay hidden items-center justify-center z-50">
-                    <div class="modal-content rounded-2xl p-6 w-full max-w-sm mx-4">
-                        <h3 class="text-xl font-bold mb-4">Set Reminder</h3>
-                        <p id="reminderMessagePreview" class="text-sm mb-4 truncate text-gray-500"></p>
-                        <input type="datetime-local" id="reminderDateTime" class="ui-input w-full p-3 rounded-xl mb-6">
-                        <div class="flex gap-3">
-                            <button onclick="closeReminderModal()" class="flex-1 py-2.5 rounded-xl ui-input">Cancel</button>
-                            <button onclick="saveReminder()" class="flex-1 py-2.5 rounded-xl btn-primary">Set</button>
-                        </div>
-                    </div>
-                </div>
+                <!-- Modals (same as before) -->
+                <div id="taskModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50"><div class="bg-gray-800 rounded p-6 w-96"><h3>Convert to Task</h3><input id="taskTitle" class="w-full p-2 mb-2 rounded"><select id="taskAssignees" multiple size="4" class="w-full p-2 mb-2 rounded"></select><input type="date" id="taskDeadline" class="w-full p-2 mb-2 rounded"><select id="taskPriority" class="w-full p-2 mb-2 rounded"><option>Low</option><option>Medium</option><option>High</option></select><label><input type="checkbox" id="taskRequireProof"> Require proof</label><div class="flex gap-2 mt-4"><button id="cancelTaskBtn" class="flex-1 p-2 rounded bg-gray-600">Cancel</button><button id="saveTaskBtn" class="flex-1 p-2 rounded bg-green-600">Create</button></div></div></div>
+                <div id="reminderModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50"><div class="bg-gray-800 rounded p-6 w-96"><h3>Set Reminder</h3><p id="reminderMessagePreview"></p><input type="datetime-local" id="reminderDateTime" class="w-full p-2 my-2 rounded"><div class="flex gap-2"><button id="cancelReminderBtn" class="flex-1 p-2 rounded bg-gray-600">Cancel</button><button id="saveReminderBtn" class="flex-1 p-2 rounded bg-green-600">Set</button></div></div></div>
+                <div id="scheduleModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50"><div class="bg-gray-800 rounded p-6 w-96"><h3>Schedule Message</h3><textarea id="scheduleMessageText" rows="3" class="w-full p-2 mb-2 rounded"></textarea><select id="scheduleChannel" class="w-full p-2 mb-2 rounded"><option>general</option><option>math</option><option>science</option></select><input type="datetime-local" id="scheduleDateTime" class="w-full p-2 mb-2 rounded"><div class="flex gap-2"><button id="cancelScheduleBtn" class="flex-1 p-2 rounded bg-gray-600">Cancel</button><button id="saveScheduleBtn" class="flex-1 p-2 rounded bg-green-600">Schedule</button></div></div></div>
+                <div id="adminModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50"><div class="bg-gray-800 rounded p-6 w-96"><h3>Admin Panel</h3><p>Coming soon: user management, statistics, etc.</p><button id="closeAdminBtn" class="mt-4 p-2 rounded bg-gray-600">Close</button></div></div>
             `;
-            
-            // Initialize Quill
-            quillEditor = new Quill('#richEditor', { 
-                theme: 'snow', 
-                placeholder: 'Type a message...', 
-                modules: { toolbar: [['bold','italic','underline','strike'], [{'list': 'ordered'}, {'list': 'bullet'}], ['clean']] } 
-            });
-
-            // Event Listeners
+            // Quill editor
+            quillEditor = new Quill('#richEditor', { theme: 'snow', placeholder: 'Type a message...', modules: { toolbar: [['bold','italic','underline']] } });
+            // Event listeners
             document.getElementById('sendBtn').onclick = sendMessage;
             quillEditor.root.addEventListener('keydown', (e) => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(); } });
-            
-            // File Attachment Logic (Simulated)
-            document.getElementById('fileAttachment').addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    const sizeKB = Math.round(file.size / 1024);
-                    quillEditor.root.innerHTML += `<div class="p-2 border rounded bg-black/5 mt-2 inline-block"><i class="fas fa-file-alt text-blue-500"></i> <b>${file.name}</b> (${sizeKB} KB)</div><br>`;
-                    window.showCenterToast('File attached!', 'fa-paperclip', 'text-blue-500');
-                }
-            });
-
-            document.getElementById('scheduleMsgBtn').onclick = showScheduleModal;
-            document.getElementById('viewFilter').addEventListener('change', applyFilters);
-            document.getElementById('messageSearchBar').addEventListener('input', applyFilters);
-            
-            loadChatsList(); loadMessages(); loadTasksForPanel(); 
+            document.getElementById('themeToggleBtn')?.addEventListener('click',()=>{ currentTheme=currentTheme==='light'?'dark':'light'; localStorage.setItem('theme',currentTheme); applyTheme(); });
+            document.getElementById('logoutBtn')?.addEventListener('click', logout);
+            document.getElementById('adminPanelBtn')?.addEventListener('click',()=>document.getElementById('adminModal').classList.remove('hidden'));
+            document.getElementById('closeAdminBtn')?.addEventListener('click',()=>document.getElementById('adminModal').classList.add('hidden'));
+            document.getElementById('scheduleMsgBtn')?.addEventListener('click',()=>showScheduleModal(quillEditor.root.innerText));
+            document.getElementById('messageSearchBar')?.addEventListener('input',(e)=>filterMessages(e.target.value));
+            document.getElementById('globalSearch')?.addEventListener('input',(e)=>filterChats(e.target.value));
+            loadChatsList(); loadMessages(); loadTasksForPanel(); attachModalButtons();
         }
 
-        function applyFilters() {
-            const filter = document.getElementById('viewFilter').value;
-            const search = document.getElementById('messageSearchBar').value.toLowerCase();
-            
-            document.querySelectorAll('#messagesContainer > div.message-bubble').forEach(el => {
-                let show = true;
-                const text = el.innerText.toLowerCase();
-                const hasTask = el.querySelector('.jira-card') !== null;
-                
-                if (search && !text.includes(search)) show = false;
-                if (filter === 'messages' && hasTask) show = false;
-                if (filter === 'tasks' && !hasTask) show = false;
-                
-                el.style.display = show ? 'flex' : 'none';
-            });
-        }
-
-        window.openTopPanel = async function(type) {
-            document.querySelectorAll('.top-panel-dropdown').forEach(m => m.remove());
-            const panel = document.createElement('div');
-            panel.className = 'top-panel-dropdown right-10 top-16 w-80 max-h-96 overflow-y-auto p-4';
-            
-            if (type === 'scheduled') {
-                panel.innerHTML = `<h4 class="font-bold border-b pb-2 mb-2"><i class="far fa-clock"></i> Scheduled Messages</h4>`;
-                const {data} = await sb.from('scheduled_messages').select('*').eq('sender_id', currentUser.id).eq('status', 'pending');
-                if(!data || data.length===0) panel.innerHTML += `<p class="text-xs text-gray-500">No scheduled messages.</p>`;
-                data?.forEach(d => {
-                    panel.innerHTML += `<div class="mb-2 p-2 bg-black/5 rounded text-sm flex justify-between items-center">
-                        <span class="truncate w-48">${escapeHtml(d.message_text)}</span>
-                        <i class="fas fa-times text-red-500 cursor-pointer" onclick="deleteScheduled('${d.id}')"></i>
-                    </div>`;
-                });
-            } else if (type === 'bookmarks') {
-                panel.innerHTML = `<h4 class="font-bold border-b pb-2 mb-2"><i class="far fa-bookmark"></i> Bookmarks</h4>`;
-                const {data} = await sb.from('bookmarks').select('*, messages(text)').eq('user_id', currentUser.id);
-                if(!data || data.length===0) panel.innerHTML += `<p class="text-xs text-gray-500">No bookmarks.</p>`;
-                data?.forEach(d => {
-                    panel.innerHTML += `<div class="mb-2 p-2 bg-black/5 rounded text-sm cursor-pointer hover:bg-black/10" onclick="scrollToAndHighlight('msg-${d.message_id}')">
-                        <span class="truncate block">${escapeHtml(d.messages?.text)}</span>
-                    </div>`;
-                });
-            } else if (type === 'alerts') {
-                panel.innerHTML = `<h4 class="font-bold border-b pb-2 mb-2"><i class="far fa-bell"></i> Alerts</h4>`;
-                const {data} = await sb.from('notifications').select('*').eq('user_id', currentUser.id).order('created_at', {ascending: false}).limit(10);
-                if(!data || data.length===0) panel.innerHTML += `<p class="text-xs text-gray-500">All caught up!</p>`;
-                data?.forEach(d => {
-                     panel.innerHTML += `<div class="mb-2 p-2 bg-black/5 rounded text-sm cursor-pointer hover:bg-black/10" onclick="scrollToAndHighlight('msg-${d.message_id}')">
-                        <span class="block">${escapeHtml(d.message)}</span>
-                    </div>`;
-                });
-            }
-            document.querySelector('.chat-area').appendChild(panel);
-        }
-
-        window.deleteScheduled = async function(id) {
-            await sb.from('scheduled_messages').delete().eq('id', id);
-            document.querySelectorAll('.top-panel-dropdown').forEach(m => m.remove());
-            window.showCenterToast('Scheduled message cancelled.', 'fa-info-circle', 'text-yellow-400');
-        }
-
-        window.showScheduleModal = function() {
-            currSchedText = quillEditor.root.innerHTML.trim();
-            if(!currSchedText || currSchedText === '<p><br></p>') { window.showCenterToast('Type a message first.', 'fa-exclamation-triangle', 'text-yellow-500'); return; }
-            document.getElementById('scheduleModal').classList.remove('hidden');
-            document.getElementById('scheduleModal').classList.add('flex');
-        }
-        window.closeScheduleModal = function() {
-            document.getElementById('scheduleModal').classList.add('hidden');
-            document.getElementById('scheduleModal').classList.remove('flex');
-        }
-        window.saveScheduledMessage = async function() {
-            const time = document.getElementById('scheduleDateTime').value;
-            if(!time) return;
-            await sb.from('scheduled_messages').insert({ sender_id: currentUser.id, room_id: currentRoom, message_text: currSchedText, scheduled_time: new Date(time).toISOString(), status: 'pending' });
-            window.closeScheduleModal();
-            quillEditor.root.innerHTML = '';
-            window.showCenterToast('Message Scheduled Successfully!');
-        }
-
-        window.addEmoji = function() {
-            quillEditor.root.innerHTML += '😀'; // Simple simulation
-            window.showCenterToast('Emoji menu opening...', 'fa-smile', 'text-yellow-400');
-        }
-
+        // Load chats list (groups + direct messages)
         async function loadChatsList() {
             const groups = ['general', 'math', 'science'];
             const {data: users} = await sb.from('profiles').select('id, email, full_name').neq('id', currentUser.id);
-            let html = `<div class="px-3 py-2 mt-2 text-[11px] font-bold tracking-wider uppercase" style="color: var(--text-secondary)">Groups</div>`;
-            groups.forEach(g => { html += `<div class="channel-item p-2 mx-2 mb-1 rounded-lg cursor-pointer hover:bg-black/5 flex items-center gap-3" data-room="${g}"><div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs bg-gray-400"><i class="fas fa-users"></i></div><span class="flex-1 truncate"># ${g}</span></div>`; });
-            html += `<div class="px-3 py-2 mt-4 text-[11px] font-bold tracking-wider uppercase" style="color: var(--text-secondary)">Direct Messages</div>`;
-            users?.forEach(u => { html += `<div class="channel-item p-2 mx-2 mb-1 rounded-lg cursor-pointer hover:bg-black/5 flex items-center gap-3" data-room="dm_${u.id}"><div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs" style="background: var(--accent)">${(u.full_name || u.email).charAt(0).toUpperCase()}</div><span class="flex-1 truncate">${u.full_name || u.email}</span></div>`; });
+            let html = `<div class="px-3 py-2 text-xs text-gray-400">GROUPS</div>`;
+            groups.forEach(g => { html += `<div class="channel-item" data-room="${g}"># ${g}</div>`; });
+            html += `<div class="px-3 py-2 text-xs text-gray-400">DIRECT MESSAGES</div>`;
+            users?.forEach(u => { html += `<div class="channel-item" data-room="dm_${u.id}">💬 ${u.full_name || u.email}</div>`; });
             document.getElementById('chatsList').innerHTML = html;
-            document.querySelectorAll('.channel-item').forEach(el => { el.addEventListener('click', () => { currentRoom = el.dataset.room; renderMainApp(); }); });
+            document.querySelectorAll('.channel-item').forEach(el => {
+                el.addEventListener('click', () => {
+                    currentRoom = el.dataset.room;
+                    renderMainApp(); // re-render to update chat header and messages
+                });
+            });
+        }
+        function filterChats(keyword) {
+            document.querySelectorAll('.channel-item').forEach(el => {
+                el.style.display = el.innerText.toLowerCase().includes(keyword.toLowerCase()) ? 'block' : 'none';
+            });
         }
 
+        // Chat & messages with inline replies
         async function sendMessage() {
-            const text = quillEditor.root.innerHTML.trim();
-            if (!text || text === '<p><br></p>') return;
+            const text = quillEditor.root.innerText.trim();
+            if (!text) return;
             await sb.from('messages').insert({ room_id: currentRoom, sender_id: currentUser.id, text, created_at: new Date().toISOString() });
             quillEditor.root.innerHTML = '';
             loadMessages();
         }
-
         async function loadMessages() {
-            // Fetch Messages
             const {data: msgs} = await sb.from('messages').select('*, profiles(full_name, email)').eq('room_id', currentRoom).order('created_at', {ascending: true});
-            // Fetch Tasks to render inline
-            const {data: tasks} = await sb.from('tasks').select('*, creator:profiles!assigned_by(full_name, email)').order('created_at', {ascending: false});
-            let assigneesMap = {};
-            if(tasks && tasks.length > 0) {
-                const {data: assignees} = await sb.from('task_assignees').select('task_id, assignee_id, status, profiles!assignee_id(full_name, email)').in('task_id', tasks.map(t=>t.id));
-                assignees?.forEach(a => { if (!assigneesMap[a.task_id]) assigneesMap[a.task_id] = []; assigneesMap[a.task_id].push(a); });
-            }
-
-            renderMessages(msgs || [], tasks || [], assigneesMap);
+            renderMessages(msgs || []);
             const c = document.getElementById('messagesContainer');
             c.scrollTop = c.scrollHeight;
         }
-
-        function renderMessages(messages, allTasks, assigneesMap) {
+        function renderMessages(messages) {
             const c = document.getElementById('messagesContainer');
             if (!c) return;
-            if (!messages.length) { c.innerHTML = '<div class="m-auto flex flex-col items-center opacity-50"><i class="far fa-comments text-5xl mb-3"></i><p>Say hello!</p></div>'; return; }
-            
-            // Slack-style Threading Map
-            const msgMap = new Map();
-            messages.forEach(m => msgMap.set(m.id, m));
-            const topLevel = [];
-            const replies = {};
-            
-            messages.forEach(msg => {
-                if (msg.parent_message_id) {
-                    let rootId = msg.parent_message_id;
-                    const visited = new Set();
-                    while (msgMap.has(rootId) && msgMap.get(rootId).parent_message_id) {
-                        if(visited.has(rootId)) break;
-                        visited.add(rootId);
-                        rootId = msgMap.get(rootId).parent_message_id;
-                    }
-                    if (!replies[rootId]) replies[rootId] = [];
-                    replies[rootId].push(msg);
-                } else {
-                    topLevel.push(msg);
-                }
-            });
-
-            function buildMsgHTML(msg) {
+            if (!messages.length) { c.innerHTML = '<div class="text-center text-gray-500">No messages</div>'; return; }
+            c.innerHTML = messages.map(msg => {
                 const isOwn = msg.sender_id === currentUser.id;
                 const senderName = msg.profiles?.full_name || msg.profiles?.email || 'Unknown';
                 const time = new Date(msg.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-                const alignClass = isOwn ? 'sent' : 'received';
-                
-                // Inline Jira Task Logic
-                const msgTasks = allTasks.filter(t => t.original_message_id === msg.id);
-                let taskHtml = '';
-                msgTasks.forEach(task => {
-                    const assignees = assigneesMap[task.id] || [];
-                    let statusClass = 'status-pending';
-                    if(assignees.length > 0) {
-                        const st = assignees[0].status;
-                        if(st==='in_progress') statusClass = 'status-in_progress';
-                        if(st==='submitted') statusClass = 'status-submitted';
-                        if(st==='needs_review') statusClass = 'status-needs_review';
-                        if(st==='accepted') statusClass = 'status-accepted';
-                    }
-
-                    const assigneeRows = assignees.map(ass => {
-                        const name = ass.profiles?.full_name || ass.profiles?.email || 'Unknown';
-                        const statusText = ass.status.replace('_', ' ').toUpperCase();
-                        let actions = '';
-                        // Task Lifecycle Buttons
-                        if (ass.assignee_id === currentUser.id && ass.status === 'pending_ack') actions = `<button onclick="window.performTaskAction('${task.id}', '${ass.assignee_id}', 'ack')" class="w-full mt-2 bg-yellow-500 text-white text-xs py-1.5 rounded font-semibold">Acknowledge</button>`;
-                        if (ass.assignee_id === currentUser.id && (ass.status === 'in_progress' || ass.status === 'needs_review')) {
-                            const proofHtml = task.require_proof ? `<input type="file" class="text-[10px] w-full mb-1">` : '';
-                            actions = `${proofHtml}<button onclick="window.performTaskAction('${task.id}', '${ass.assignee_id}', 'submit')" class="w-full mt-1 bg-blue-600 text-white text-xs py-1.5 rounded font-semibold">Submit for Review</button>`;
-                        }
-                        if (task.assigned_by === currentUser.id && ass.status === 'submitted') actions = `<div class="flex gap-2 mt-2"><button onclick="window.performTaskAction('${task.id}', '${ass.assignee_id}', 'accept')" class="flex-1 bg-green-600 text-white text-xs py-1.5 rounded font-semibold">Accept</button><button onclick="window.performTaskAction('${task.id}', '${ass.assignee_id}', 'review_again')" class="flex-1 bg-red-600 text-white text-xs py-1.5 rounded font-semibold">Review</button></div>`;
-                        
-                        return `<div class="mt-2 text-sm border-t pt-2 border-black/5">
-                                    <div class="flex justify-between items-center font-medium">
-                                        <span>${escapeHtml(name)}</span>
-                                        <span class="text-[10px] font-bold ${statusClass}">${statusText}</span>
-                                    </div>
-                                    ${actions}
-                                </div>`;
-                    }).join('');
-                    
-                    taskHtml += `<div class="jira-card ${statusClass}">
-                                    <div class="font-bold text-[14px] mb-1 flex items-center gap-2"><i class="fas fa-ticket-alt text-gray-400"></i> ${escapeHtml(task.title)}</div>
-                                    <div class="text-xs text-gray-500 mb-2 flex justify-between">
-                                        <span><i class="far fa-calendar-alt"></i> ${task.deadline || 'No Deadline'}</span>
-                                        <span class="uppercase font-bold">${task.priority || 'Medium'} PRIORITY</span>
-                                    </div>
-                                    ${assigneeRows}
-                                </div>`;
-                });
-
-                let html = `<div id="msg-${msg.id}" class="message-bubble ${alignClass}">
+                return `<div id="msg-${msg.id}" class="message-bubble ${isOwn ? 'sent' : 'received'}">
                             <div class="bubble-content">
-                                <!-- Top Right Fixed Controls -->
-                                <div class="bubble-controls top-bar-icon">
-                                    <i class="fas fa-reply" title="Reply" onclick="window.toggleReplyBox('${msg.id}')"></i>
-                                    <i class="fas fa-ellipsis-v menu-dots" data-msg-id="${msg.id}" data-msg-text="${escapeHtml(msg.text)}"></i>
+                                <div class="message-meta"><span>${escapeHtml(senderName)}</span><span>${time}</span></div>
+                                <div>${escapeHtml(msg.text)}</div>
+                                <div class="flex justify-end gap-2 mt-1">
+                                    <button class="reply-btn text-xs text-gray-400" data-msg-id="${msg.id}"><i class="fas fa-reply"></i> Reply</button>
+                                    <div class="menu-dots text-xs text-gray-400" data-msg-id="${msg.id}" data-msg-text="${escapeHtml(msg.text)}"><i class="fas fa-ellipsis-v"></i></div>
                                 </div>
-                                
-                                <div class="message-meta">
-                                    <span class="font-bold" style="${isOwn ? 'display:none;' : 'color: var(--accent)'}">${escapeHtml(senderName)}</span>
-                                    <span class="ml-auto opacity-60">${time} ${isOwn ? '<i class="fas fa-check-double text-blue-400"></i>' : ''}</span>
-                                </div>
-                                <div class="text-[15px] leading-relaxed pr-8">${msg.text}</div>
-                                ${taskHtml}
-                                
-                                <div id="reply-box-${msg.id}" class="inline-reply-box">
-                                    <input type="text" id="reply-input-${msg.id}" placeholder="Write a reply..." class="ui-input w-full px-2 py-1 rounded-md text-sm">
-                                    <button onclick="window.sendReply('${msg.id}')" class="px-3 py-1 rounded-md bg-[var(--accent)] text-white text-xs">Send</button>
-                                </div>
+                                <div id="reply-${msg.id}" class="inline-reply"><input type="text" placeholder="Write a reply..." class="w-full p-1 rounded bg-gray-700 text-white"></div>
                             </div>
                         </div>`;
-                
-                // Render Slack Style Replies
-                if (replies[msg.id] && replies[msg.id].length > 0) {
-                    html += `<div class="ml-12 pl-2 border-l-2 mb-4 flex flex-col gap-2" style="border-color: var(--accent)">`;
-                    replies[msg.id].forEach((child, idx) => { 
-                        const cIsOwn = child.sender_id === currentUser.id;
-                        const cName = child.profiles?.full_name || child.profiles?.email || 'Unknown';
-                        const cTime = new Date(child.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-                        html += `
-                        <div class="message-bubble received w-full max-w-[90%] mb-0">
-                            <div class="bubble-content" style="background: var(--received-bg);">
-                                <div class="message-meta text-[11px] mb-1">
-                                    <span class="font-bold" style="color: var(--accent)">${idx + 1}. ${escapeHtml(cName)}</span>
-                                    <span class="ml-auto opacity-60">${cTime}</span>
-                                </div>
-                                <div class="text-[14px] leading-snug">${child.text}</div>
-                            </div>
-                        </div>`;
-                    });
-                    html += `</div>`;
-                }
-                return html;
-            }
-
-            c.innerHTML = topLevel.map(msg => buildMsgHTML(msg)).join('');
-
+            }).join('');
+            // Attach reply toggles and menu
+            document.querySelectorAll('.reply-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const msgId = btn.dataset.msgId;
+                    const replyDiv = document.getElementById(`reply-${msgId}`);
+                    replyDiv.classList.toggle('active');
+                    if (replyDiv.classList.contains('active')) {
+                        const input = replyDiv.querySelector('input');
+                        input.focus();
+                        input.onkeypress = async (e) => { if(e.key === 'Enter') { const replyText = input.value.trim(); if(replyText) { await sb.from('messages').insert({ room_id: currentRoom, sender_id: currentUser.id, text: replyText, parent_message_id: msgId, created_at: new Date().toISOString() }); input.value = ''; replyDiv.classList.remove('active'); loadMessages(); } } };
+                    }
+                });
+            });
             document.querySelectorAll('.menu-dots').forEach(el => {
                 el.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    document.querySelectorAll('.msg-menu-dropdown').forEach(m => m.remove());
                     const mid = el.dataset.msgId, mtext = el.dataset.msgText;
                     const menu = document.createElement('div');
-                    menu.className = 'msg-menu-dropdown p-1';
-                    menu.style.minWidth = '160px';
-                    menu.innerHTML = `
-                        <div class="cursor-pointer px-3 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2" onclick="window.openTaskModal('${mid}', '${mtext}')"><i class="fas fa-tasks text-emerald-500 w-4"></i> Create Task</div>
-                        <div class="cursor-pointer px-3 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2" onclick="window.showReminderModal('${mid}', '${mtext}')"><i class="fas fa-bell text-yellow-500 w-4"></i> Reminder</div>
-                        <div class="cursor-pointer px-3 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2" onclick="window.toggleBookmark('${mid}')"><i class="fas fa-star text-orange-400 w-4"></i> Bookmark</div>
-                    `;
+                    menu.className = 'absolute bg-gray-800 rounded p-2 z-50';
+                    menu.innerHTML = `<div class="cursor-pointer p-1" data-action="reminder">🔔 Reminder</div><div class="cursor-pointer p-1" data-action="task">📋 Task</div><div class="cursor-pointer p-1" data-action="schedule">📅 Schedule</div><div class="cursor-pointer p-1" data-action="bookmark">⭐ Bookmark</div>`;
                     document.body.appendChild(menu);
-                    const rect = el.getBoundingClientRect();
-                    menu.style.top = (rect.bottom + window.scrollY) + 'px';
-                    menu.style.left = (rect.left - 120 + window.scrollX) + 'px';
+                    menu.style.top = e.clientY + 'px';
+                    menu.style.left = e.clientX + 'px';
+                    menu.querySelector('[data-action="reminder"]').onclick = () => { showReminderModal(mid, mtext); menu.remove(); };
+                    menu.querySelector('[data-action="task"]').onclick = () => { openTaskModal(mid, mtext); menu.remove(); };
+                    menu.querySelector('[data-action="schedule"]').onclick = () => { showScheduleModal(mtext); menu.remove(); };
+                    menu.querySelector('[data-action="bookmark"]').onclick = () => { toggleBookmark(mid, mtext, null); menu.remove(); };
+                    setTimeout(() => menu.remove(), 5000);
                 });
             });
         }
+        function filterMessages(kwd) { document.querySelectorAll('.message-bubble').forEach(m => { m.style.display = m.innerText.toLowerCase().includes(kwd.toLowerCase()) ? 'flex' : 'none'; }); }
+        function subscribeToMessages() { if(messageSubscription) messageSubscription.unsubscribe(); messageSubscription = sb.channel('public:messages').on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, (payload) => { if(payload.new.room_id === currentRoom) loadMessages(); }).subscribe(); }
 
-        window.toggleReplyBox = function(id) {
-            const box = document.getElementById(`reply-box-${id}`);
-            box.classList.toggle('active');
-            if(box.classList.contains('active')) document.getElementById(`reply-input-${id}`).focus();
-        }
-
-        window.sendReply = async function(parentId) {
-            const input = document.getElementById(`reply-input-${parentId}`);
-            const text = input.value.trim();
-            if(text) {
-                await sb.from('messages').insert({ room_id: currentRoom, sender_id: currentUser.id, text, parent_message_id: parentId, created_at: new Date().toISOString() });
-                input.value = '';
-                window.toggleReplyBox(parentId);
-                loadMessages();
-            }
-        }
-
-        window.openTaskModal = async function(mid, text) { 
-            currentMessageId = mid; 
-            document.querySelectorAll('.msg-menu-dropdown').forEach(m=>m.remove());
-            document.getElementById('taskModal').classList.remove('hidden'); 
-            document.getElementById('taskModal').classList.add('flex'); 
-            document.getElementById('taskTitle').value = text.substring(0,100); 
-            const {data: users} = await sb.from('profiles').select('id,email,full_name'); 
-            document.getElementById('taskAssignees').innerHTML = users.map(u => `<option value="${u.id}">${u.full_name || u.email}</option>`).join(''); 
-        }
-        window.closeTaskModal = function() { document.getElementById('taskModal').classList.add('hidden'); document.getElementById('taskModal').classList.remove('flex'); }
-        window.saveTaskMultiAssignee = async function() { 
-            const title = document.getElementById('taskTitle').value; 
-            const aids = Array.from(document.getElementById('taskAssignees').selectedOptions).map(opt => opt.value); 
-            if(!title || !aids.length) return window.showCenterToast('Need Title and Assignee', 'fa-times', 'text-red-500'); 
-            
-            const {data: task} = await sb.from('tasks').insert({ 
-                original_message_id: currentMessageId, 
-                title, 
-                assigned_by: currentUser.id, 
-                deadline: document.getElementById('taskDeadline').value || null, 
-                priority: document.getElementById('taskPriority').value,
-                require_proof: document.getElementById('taskRequireProof').checked,
-                status: 'pending' 
-            }).select().single(); 
-            
-            if(!task) return; 
-            await sb.from('task_assignees').insert(aids.map(aid => ({ task_id: task.id, assignee_id: aid, status: 'pending_ack' }))); 
-            window.showCenterToast('Ticket Created Successfully'); 
-            window.closeTaskModal(); 
-            loadTasksForPanel(); 
-            loadMessages(); // reload to show inline
-        }
-
-        window.performTaskAction = async function(taskId, assigneeId, action) {
-            let newStatus = '';
-            if (action === 'ack') newStatus = 'in_progress';
-            else if (action === 'submit') newStatus = 'submitted';
-            else if (action === 'accept') newStatus = 'accepted';
-            else if (action === 'review_again') newStatus = 'needs_review';
-            
-            await sb.from('task_assignees').update({ status: newStatus }).eq('task_id', taskId).eq('assignee_id', assigneeId);
-            await sb.from('task_trails').insert({ task_id: taskId, user_id: currentUser.id, action, comment: 'Task updated inline' }); 
-            loadTasksForPanel();
-            loadMessages(); // Update inline card
-        }
-
+        // Tasks Panel (right sidebar)
         async function loadTasksForPanel() {
             const {data: tasks} = await sb.from('tasks').select('*, creator:profiles!assigned_by(full_name, email)').order('created_at', {ascending: false});
             if (!tasks) return;
@@ -722,43 +242,73 @@
             const assigneesMap = {};
             if (assignees) assignees.forEach(a => { if (!assigneesMap[a.task_id]) assigneesMap[a.task_id] = []; assigneesMap[a.task_id].push({ assignee_id: a.assignee_id, status: a.status, profiles: a.profiles }); });
             const filtered = tasks.filter(t => t.assigned_by === currentUser.id || (assigneesMap[t.id] && assigneesMap[t.id].some(a => a.assignee_id === currentUser.id)));
-            
+            const tasksWith = filtered.map(t => ({ ...t, assignees: assigneesMap[t.id] || [] }));
+            renderTasksPanel(tasksWith);
+        }
+        function renderTasksPanel(tasks) {
             const container = document.getElementById('tasksPanel');
-            if(!container) return;
-            if(!filtered.length) { container.innerHTML = '<p class="text-xs opacity-50">No tasks active.</p>'; return; }
-            
-            container.innerHTML = filtered.map(t => `<div class="mb-2 p-2 rounded border border-black/10 text-sm"><b>${escapeHtml(t.title)}</b><br><span class="text-xs text-gray-500">Track in main chat</span></div>`).join('');
+            if (!container) return;
+            if (!tasks.length) { container.innerHTML = '<div class="text-center text-gray-500">No tasks</div>'; return; }
+            container.innerHTML = tasks.map(task => {
+                const isCreator = task.assigned_by === currentUser.id;
+                const assignees = task.assignees;
+                const allAccepted = assignees.length && assignees.every(a => a.status === 'accepted');
+                const borderClass = allAccepted ? 'border-green-500 border-2' : '';
+                const assigneeHtml = assignees.map(ass => {
+                    const name = ass.profiles?.full_name || ass.profiles?.email || 'Unknown';
+                    const status = ass.status;
+                    let actions = '';
+                    if (ass.assignee_id === currentUser.id && status === 'pending_ack') actions = `<button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="ack" class="task-action bg-green-600 text-white text-xs px-2 py-1 rounded">Acknowledge</button>`;
+                    if (ass.assignee_id === currentUser.id && (status === 'in_progress' || status === 'needs_review')) actions = `<button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="submit" class="task-action bg-blue-600 text-white text-xs px-2 py-1 rounded">Submit</button>`;
+                    if (isCreator && status === 'submitted') actions = `<button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="accept" class="task-action bg-green-600 text-white text-xs px-2 py-1 rounded">Accept</button><button data-task-id="${task.id}" data-assignee-id="${ass.assignee_id}" data-action="review_again" class="task-action bg-red-600 text-white text-xs px-2 py-1 rounded">Review Again</button>`;
+                    return `<div class="flex justify-between text-xs py-1"><span>${escapeHtml(name)}</span><span>${status}</span>${actions}</div>`;
+                }).join('');
+                return `<div class="task-panel-card ${borderClass}"><div class="font-semibold">${escapeHtml(task.title)}</div><div>${assigneeHtml}</div></div>`;
+            }).join('');
+            document.querySelectorAll('.task-action').forEach(btn => btn.addEventListener('click', async (e) => {
+                const tid = btn.dataset.taskId, aid = btn.dataset.assigneeId, act = btn.dataset.action;
+                await performTaskAction(tid, aid, act);
+            }));
         }
+        async function performTaskAction(taskId, assigneeId, action) {
+            let newStatus = '';
+            if (action === 'ack') newStatus = 'in_progress';
+            else if (action === 'submit') newStatus = 'submitted';
+            else if (action === 'accept') newStatus = 'accepted';
+            else if (action === 'review_again') newStatus = 'needs_review';
+            else return;
+            await sb.from('task_assignees').update({ status: newStatus }).eq('task_id', taskId).eq('assignee_id', assigneeId);
+            await addTaskTrail(taskId, action, 'Task action performed');
+            loadTasksForPanel();
+        }
+        async function addTaskTrail(taskId, action, comment) { await sb.from('task_trails').insert({ task_id: taskId, user_id: currentUser.id, action, comment }); }
 
-        window.showReminderModal = function(mid, text) { 
-            currentReminderId = mid; 
-            document.querySelectorAll('.msg-menu-dropdown').forEach(m=>m.remove());
-            document.getElementById('reminderMessagePreview').innerText = text; 
-            document.getElementById('reminderModal').classList.remove('hidden'); 
-            document.getElementById('reminderModal').classList.add('flex'); 
-        }
-        window.closeReminderModal = function() { document.getElementById('reminderModal').classList.add('hidden'); document.getElementById('reminderModal').classList.remove('flex'); }
-        window.saveReminder = async function() { 
-            const dt = document.getElementById('reminderDateTime').value; 
-            if(!dt) return; 
-            await sb.from('reminders').insert({ user_id: currentUser.id, message_id: currentReminderId, reminder_time: new Date(dt).toISOString(), triggered: false }); 
-            window.showCenterToast('Reminder Set Successfully'); 
-            window.closeReminderModal(); 
-        }
+        // Task creation (same as before)
+        let currentMessageId = null;
+        async function openTaskModal(mid, text) { currentMessageId = mid; document.getElementById('taskModal').classList.remove('hidden'); document.getElementById('taskTitle').value = text.substring(0,100); const {data: users} = await sb.from('profiles').select('id,email,full_name'); document.getElementById('taskAssignees').innerHTML = users.map(u => `<option value="${u.id}">${u.full_name || u.email}</option>`).join(''); }
+        function closeTaskModal() { document.getElementById('taskModal').classList.add('hidden'); currentMessageId = null; }
+        async function saveTaskMultiAssignee() { if(!currentMessageId) return; const title = document.getElementById('taskTitle').value; const aids = Array.from(document.getElementById('taskAssignees').selectedOptions).map(opt => opt.value); if(!title || !aids.length){ alert('Title and assignee required'); return; } const {data: task} = await sb.from('tasks').insert({ original_message_id: currentMessageId, title, assigned_by: currentUser.id, deadline: document.getElementById('taskDeadline').value || null, priority: document.getElementById('taskPriority').value, require_proof: document.getElementById('taskRequireProof').checked, status: 'pending' }).select().single(); if(!task) return; await sb.from('task_assignees').insert(aids.map(aid => ({ task_id: task.id, assignee_id: aid, status: 'pending_ack' }))); alert('Task created'); closeTaskModal(); loadTasksForPanel(); loadMessages(); }
 
-        window.toggleBookmark = async function(mid) { 
-            document.querySelectorAll('.msg-menu-dropdown').forEach(m=>m.remove());
-            const {data: ex} = await sb.from('bookmarks').select('id').eq('user_id',currentUser.id).eq('message_id',mid).maybeSingle(); 
-            if(ex) { await sb.from('bookmarks').delete().eq('id',ex.id); window.showCenterToast('Bookmark removed', 'fa-info-circle', 'text-yellow-400'); } 
-            else { await sb.from('bookmarks').insert({ user_id: currentUser.id, message_id: mid }); window.showCenterToast('Message Bookmarked'); } 
-        }
+        // Other features (reminders, scheduled, bookmarks, notifications) - simplified but functional
+        let currentReminderId = null;
+        function showReminderModal(mid,text) { currentReminderId = mid; document.getElementById('reminderMessagePreview').innerText = text; document.getElementById('reminderModal').classList.remove('hidden'); }
+        function closeReminderModal() { document.getElementById('reminderModal').classList.add('hidden'); }
+        async function saveReminder() { const dt = document.getElementById('reminderDateTime').value; if(!dt) return; await sb.from('reminders').insert({ user_id: currentUser.id, message_id: currentReminderId, reminder_time: new Date(dt).toISOString(), triggered: false }); alert('Reminder set'); closeReminderModal(); }
+        let currSchedText = '';
+        function showScheduleModal(text) { currSchedText = text; document.getElementById('scheduleMessageText').value = text; document.getElementById('scheduleModal').classList.remove('hidden'); }
+        function closeScheduleModal() { document.getElementById('scheduleModal').classList.add('hidden'); }
+        async function saveScheduledMessage() { const msg = document.getElementById('scheduleMessageText').value.trim(), room = document.getElementById('scheduleChannel').value, time = document.getElementById('scheduleDateTime').value; if(!msg||!time) return; await sb.from('scheduled_messages').insert({ sender_id: currentUser.id, room_id: room, message_text: msg, scheduled_time: new Date(time).toISOString(), status: 'pending' }); alert('Scheduled'); closeScheduleModal(); }
+        async function toggleBookmark(mid,text,btn) { const {data: ex} = await sb.from('bookmarks').select('id').eq('user_id',currentUser.id).eq('message_id',mid).maybeSingle(); if(ex) await sb.from('bookmarks').delete().eq('id',ex.id); else await sb.from('bookmarks').insert({ user_id: currentUser.id, message_id: mid }); }
 
-        function startSubscriptions() { 
-            if(messageSubscription) messageSubscription.unsubscribe();
-            messageSubscription = sb.channel('public:messages').on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, (p) => { if(p.new.room_id === currentRoom) loadMessages(); }).subscribe();
-            if(taskSubscription) taskSubscription.unsubscribe(); taskSubscription = sb.channel('tasks-changes').on('postgres_changes', {event:'*', schema:'public', table:'tasks'}, () => {loadTasksForPanel(); loadMessages();}).subscribe(); 
-            if(assigneeSubscription) assigneeSubscription.unsubscribe(); assigneeSubscription = sb.channel('assignees-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_assignees'}, () => {loadTasksForPanel(); loadMessages();}).subscribe(); 
+        function attachModalButtons() {
+            document.getElementById('cancelTaskBtn')?.addEventListener('click', closeTaskModal);
+            document.getElementById('saveTaskBtn')?.addEventListener('click', saveTaskMultiAssignee);
+            document.getElementById('cancelReminderBtn')?.addEventListener('click', closeReminderModal);
+            document.getElementById('saveReminderBtn')?.addEventListener('click', saveReminder);
+            document.getElementById('cancelScheduleBtn')?.addEventListener('click', closeScheduleModal);
+            document.getElementById('saveScheduleBtn')?.addEventListener('click', saveScheduledMessage);
         }
+        function startSubscriptions() { subscribeToMessages(); if(taskSubscription) taskSubscription.unsubscribe(); taskSubscription = sb.channel('tasks-changes').on('postgres_changes', {event:'*', schema:'public', table:'tasks'}, () => loadTasksForPanel()).subscribe(); if(assigneeSubscription) assigneeSubscription.unsubscribe(); assigneeSubscription = sb.channel('assignees-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_assignees'}, () => loadTasksForPanel()).subscribe(); }
 
         (async() => { const {data: {session}} = await sb.auth.getSession(); if(!session) renderAuthScreen(); else { currentUser = session.user; await ensureProfile(); renderMainApp(); startSubscriptions(); } })();
     </script>

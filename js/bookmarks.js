@@ -1,7 +1,6 @@
 import { sb } from './config.js';
 import { currentUser } from './state.js';
 import { escapeHtml } from './utils.js';
-import { setCurrentRoom, renderMainUI } from './main.js'; // forward reference
 
 export async function toggleBookmark(messageId, messageText, btnElement) {
     const { data: existing } = await sb
@@ -22,7 +21,7 @@ export async function toggleBookmark(messageId, messageText, btnElement) {
         btnElement.classList.remove('text-gray-400');
         btnElement.classList.add('text-yellow-500');
     }
-    loadBookmarks(); // defined below
+    loadBookmarks();
 }
 
 export async function loadBookmarks() {
@@ -50,12 +49,26 @@ export async function loadBookmarks() {
     }).join('');
     document.querySelectorAll('.view-message-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            const messageId = btn.getAttribute('data-message-id');
             const roomId = btn.getAttribute('data-room-id');
-            if (roomId && messageId) {
-                // import setCurrentRoom from main? We'll use a global function
-                window.setCurrentRoomAndRefresh(roomId);
+            if (roomId) {
+                // Use the global function defined in main.js
+                if (window.setCurrentRoomAndRefresh) {
+                    window.setCurrentRoomAndRefresh(roomId);
+                } else {
+                    console.warn('setCurrentRoomAndRefresh not available');
+                }
             }
         });
     });
+}
+
+export function subscribeToBookmarks() {
+    if (window.bookmarkSubscription) window.bookmarkSubscription.unsubscribe();
+    const sub = sb
+        .channel('bookmarks-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bookmarks', filter: `user_id=eq.${currentUser.id}` }, () => {
+            loadBookmarks();
+        })
+        .subscribe();
+    window.bookmarkSubscription = sub;
 }

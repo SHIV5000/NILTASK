@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>MPGS TaskFlow - Chat, Tasks & Reminders</title>
+    <title>MPGS TaskFlow - Chat, Tasks & Notifications</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -22,6 +22,7 @@
         let messageSubscription = null;
         let taskSubscription = null;
         let trailSubscription = null;
+        let notificationSubscription = null;
 
         const root = document.getElementById('root');
 
@@ -36,7 +37,16 @@
             });
         }
 
-        // -------------------- Helper: show a dropdown modal (for delegate) --------------------
+        // -------------------- Toast notification --------------------
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = 'fixed bottom-4 right-4 bg-yellow-500 text-white px-4 py-2 rounded shadow-lg z-50 animate-pulse';
+            toast.innerText = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 5000);
+        }
+
+        // -------------------- Delegate modal helper --------------------
         function showDelegateModal(taskId, currentAssigneeId, usersList) {
             const modalDiv = document.createElement('div');
             modalDiv.className = 'fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50';
@@ -77,7 +87,6 @@
             currentReminderMessageText = messageText;
             const modal = document.getElementById('reminderModal');
             document.getElementById('reminderMessagePreview').innerText = messageText.substring(0, 100);
-            // Default to 1 hour from now
             const defaultDateTime = new Date(Date.now() + 60*60*1000).toISOString().slice(0, 16);
             document.getElementById('reminderDateTime').value = defaultDateTime;
             modal.classList.remove('hidden');
@@ -141,6 +150,7 @@
             subscribeToMessages();
             subscribeToTasks();
             subscribeToTrails();
+            subscribeToNotifications();
         }
 
         function renderAuth() {
@@ -260,6 +270,7 @@
                 if (messageSubscription) messageSubscription.unsubscribe();
                 if (taskSubscription) taskSubscription.unsubscribe();
                 if (trailSubscription) trailSubscription.unsubscribe();
+                if (notificationSubscription) notificationSubscription.unsubscribe();
                 renderApp();
             };
             document.getElementById('sendBtn').onclick = sendMessage;
@@ -649,6 +660,24 @@
                 .channel('trails-changes')
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'task_trails' }, () => loadTasks())
                 .subscribe();
+        }
+
+        // -------------------- Real-time notifications (toast) --------------------
+        function subscribeToNotifications() {
+            if (notificationSubscription) notificationSubscription.unsubscribe();
+            notificationSubscription = sb
+                .channel('notifications-channel')
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'notifications',
+                    filter: `user_id=eq.${currentUser.id}`
+                }, (payload) => {
+                    showToast(payload.new.message);
+                })
+                .subscribe((status) => {
+                    console.log('Notification subscription status:', status);
+                });
         }
 
         // -------------------- Start the app --------------------

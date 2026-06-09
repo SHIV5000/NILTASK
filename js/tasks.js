@@ -3,7 +3,13 @@ import { currentUser } from './state.js';
 import { escapeHtml } from './utils.js';
 import { showToast } from './notifications.js';
 import { loadBookmarks } from './bookmarks.js'; // optional
-
+import { sb } from './config.js';
+import { currentUser, 
+         taskSubscription, assigneeSubscription, trailSubscription,
+         setTaskSubscription, setAssigneeSubscription, setTrailSubscription } from './state.js';
+import { escapeHtml } from './utils.js';
+import { showToast } from './notifications.js';
+// ... rest of your existing imports and code
 let currentMessageId = null;
 
 export async function ensureProfile() {

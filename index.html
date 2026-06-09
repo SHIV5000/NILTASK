@@ -58,7 +58,7 @@
         .chat-area { background-color: var(--bg-chat); background-image: var(--chat-pattern); background-blend-mode: overlay; }
 
         .message-bubble { 
-            max-width: 75%; 
+            max-width: 75%; /* Strict 75% max width */
             margin-bottom: 0.75rem; 
             display: flex; 
             flex-direction: column; 
@@ -103,12 +103,14 @@
         .jira-card {
             background: var(--bg-message-other);
             border-radius: 6px;
+            margin-top: 8px;
             margin-bottom: 12px;
             padding: 16px;
             box-shadow: rgba(9, 30, 66, 0.25) 0px 1px 2px 0px;
             border-left: 4px solid var(--accent);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
         }
         .jira-card:hover { transform: translateY(-2px); box-shadow: rgba(9, 30, 66, 0.35) 0px 4px 8px 0px; }
         
@@ -171,15 +173,18 @@
         let quillEditor = null;
         let currSchedText = ''; 
         let currentReminderId = null;
+        let currentMessageId = null; // for tasks
 
         // Utilities
         function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m] || m)); }
         
-        function showCenterToast(msg, icon = 'fa-check-circle', color = 'text-green-400') { 
+        // Custom Center Toast - Fades away after 5s
+        window.showCenterToast = function(msg, icon = 'fa-check-circle', color = 'text-green-400') { 
             const t = document.createElement('div'); 
-            t.className = 'center-toast'; 
+            t.className = 'center-toast opacity-0'; 
             t.innerHTML = `<i class="fas ${icon} ${color} text-4xl block mb-3"></i> ${msg}`; 
             document.body.appendChild(t); 
+            setTimeout(() => t.classList.remove('opacity-0'), 10);
             setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 500); }, 5000); 
         }
 
@@ -194,7 +199,6 @@
 
         function applyTheme() { document.documentElement.setAttribute('data-theme', currentTheme); }
 
-        // Global Click Listener to close Dropdowns
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.menu-dots') && !e.target.closest('.msg-menu-dropdown')) {
                 document.querySelectorAll('.msg-menu-dropdown').forEach(m => m.remove());
@@ -204,10 +208,11 @@
             }
         });
 
+        // Authentication Methods
         async function ensureProfile() { if(!currentUser) return; const {data:ex}=await sb.from('profiles').select('id').eq('id',currentUser.id).maybeSingle(); if(!ex) await sb.from('profiles').insert({id:currentUser.id, email:currentUser.email, full_name:currentUser.email.split('@')[0], role:'teacher'}); }
         async function signIn(email,pwd) { const {data,error}=await sb.auth.signInWithPassword({email,password:pwd}); if(!error && data?.user) { currentUser=data.user; await ensureProfile(); renderMainApp(); startSubscriptions(); return true; } return false; }
-        async function signUp(email,pwd) { const {error}=await sb.auth.signUp({email,password:pwd}); if(error) throw error; showCenterToast('Check email for verification!'); }
-        async function logout() { await sb.auth.signOut(); currentUser=null; renderAuthScreen(); }
+        async function signUp(email,pwd) { const {error}=await sb.auth.signUp({email,password:pwd}); if(error) throw error; window.showCenterToast('Check email for verification!', 'fa-envelope', 'text-blue-400'); }
+        window.logout = async function() { await sb.auth.signOut(); currentUser=null; renderAuthScreen(); }
         
         function renderAuthScreen() { 
             applyTheme();
@@ -216,7 +221,7 @@
                     <div class="modal-content p-10 rounded-3xl shadow-2xl w-full max-w-md relative overflow-hidden">
                         <div class="text-center mb-8">
                             <h1 class="text-3xl font-bold tracking-tight">MPGS TaskFlow</h1>
-                            <p class="text-sm mt-2" style="color: var(--text-secondary)">Login to continue</p>
+                            <p class="text-sm mt-2" style="color: var(--text-secondary)">Enterprise Communication Portal</p>
                         </div>
                         <div class="space-y-4">
                             <input id="email" placeholder="Email Address" class="ui-input w-full px-4 py-3 rounded-xl">
@@ -241,7 +246,7 @@
                             <h2 class="text-xl font-bold tracking-tight flex items-center gap-2">
                                 <i class="fas fa-comments" style="color: var(--accent)"></i> Chats
                             </h2>
-                            <button id="logoutBtn" class="w-8 h-8 rounded-full hover:bg-red-100 hover:text-red-500 flex items-center justify-center transition-colors"><i class="fas fa-sign-out-alt text-sm"></i></button>
+                            <button onclick="logout()" class="w-8 h-8 rounded-full hover:bg-red-100 hover:text-red-500 flex items-center justify-center transition-colors"><i class="fas fa-sign-out-alt text-sm"></i></button>
                         </div>
                         <div class="p-3"><input type="text" id="globalSearch" placeholder="Search chats" class="ui-input w-full p-2 rounded-xl text-sm"></div>
                         <div id="chatsList" class="flex-1 overflow-y-auto px-2 pb-4"></div>
@@ -282,8 +287,9 @@
                             </div>
                             <div class="flex justify-between items-center mt-2 px-2">
                                 <div class="flex gap-4 text-xl" style="color: var(--text-secondary)">
-                                    <i class="far fa-smile cursor-pointer hover:text-[var(--accent)]" title="Emoji" onclick="showCenterToast('Emoji picker opening...', 'fa-smile', 'text-yellow-400')"></i>
-                                    <i class="fas fa-paperclip cursor-pointer hover:text-[var(--accent)]" title="Attach"></i>
+                                    <i class="far fa-smile cursor-pointer hover:text-[var(--accent)]" title="Emoji" onclick="addEmoji()"></i>
+                                    <i class="fas fa-paperclip cursor-pointer hover:text-[var(--accent)]" title="Attach File" onclick="document.getElementById('fileAttachment').click()"></i>
+                                    <input type="file" id="fileAttachment" class="hidden">
                                 </div>
                                 <div class="flex gap-2">
                                     <button id="scheduleMsgBtn" class="px-4 py-2 rounded-full font-medium text-sm border" style="color: var(--text-secondary); border-color: var(--border-color);">
@@ -298,13 +304,13 @@
                     </div>
 
                     <!-- Right Sidebar -->
-                    <div class="w-80 sidebar-glass border-l flex flex-col z-20 shadow-sm" style="border-color: var(--border-color)">
-                        <div class="p-4 border-b"><h3 class="font-bold">Task Hub</h3></div>
+                    <div class="w-80 sidebar-glass border-l flex flex-col z-20 shadow-sm hidden md:flex" style="border-color: var(--border-color)">
+                        <div class="p-4 border-b"><h3 class="font-bold">Task Overview</h3></div>
                         <div id="tasksPanel" class="flex-1 overflow-y-auto p-4"></div>
                     </div>
                 </div>
 
-                <!-- Schedule Modal -->
+                <!-- Modals Definition -->
                 <div id="scheduleModal" class="fixed inset-0 modal-overlay hidden items-center justify-center z-50">
                     <div class="modal-content rounded-2xl p-6 w-full max-w-sm mx-4 text-center">
                         <i class="far fa-clock text-4xl mb-4" style="color: var(--accent)"></i>
@@ -318,7 +324,6 @@
                     </div>
                 </div>
 
-                <!-- Convert to Task Modal -->
                 <div id="taskModal" class="fixed inset-0 modal-overlay hidden items-center justify-center z-50">
                     <div class="modal-content rounded-2xl p-6 w-full max-w-md mx-4">
                         <h3 class="text-xl font-bold mb-4">Create Jira Task</h3>
@@ -340,7 +345,6 @@
                     </div>
                 </div>
 
-                <!-- Reminder Modal -->
                 <div id="reminderModal" class="fixed inset-0 modal-overlay hidden items-center justify-center z-50">
                     <div class="modal-content rounded-2xl p-6 w-full max-w-sm mx-4">
                         <h3 class="text-xl font-bold mb-4">Set Reminder</h3>
@@ -354,7 +358,7 @@
                 </div>
             `;
             
-            // Modernized Quill
+            // Initialize Quill
             quillEditor = new Quill('#richEditor', { 
                 theme: 'snow', 
                 placeholder: 'Type a message...', 
@@ -364,25 +368,36 @@
             // Event Listeners
             document.getElementById('sendBtn').onclick = sendMessage;
             quillEditor.root.addEventListener('keydown', (e) => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(); } });
-            document.getElementById('logoutBtn')?.addEventListener('click', logout);
-            document.getElementById('scheduleMsgBtn')?.addEventListener('click', showScheduleModal);
-            document.getElementById('viewFilter')?.addEventListener('change', applyFilters);
-            document.getElementById('messageSearchBar')?.addEventListener('input', applyFilters);
             
-            loadChatsList(); loadMessages(); loadTasksForPanel(); attachModalButtons();
+            // File Attachment Logic (Simulated)
+            document.getElementById('fileAttachment').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const sizeKB = Math.round(file.size / 1024);
+                    quillEditor.root.innerHTML += `<div class="p-2 border rounded bg-black/5 mt-2 inline-block"><i class="fas fa-file-alt text-blue-500"></i> <b>${file.name}</b> (${sizeKB} KB)</div><br>`;
+                    window.showCenterToast('File attached!', 'fa-paperclip', 'text-blue-500');
+                }
+            });
+
+            document.getElementById('scheduleMsgBtn').onclick = showScheduleModal;
+            document.getElementById('viewFilter').addEventListener('change', applyFilters);
+            document.getElementById('messageSearchBar').addEventListener('input', applyFilters);
+            
+            loadChatsList(); loadMessages(); loadTasksForPanel(); 
         }
 
         function applyFilters() {
             const filter = document.getElementById('viewFilter').value;
             const search = document.getElementById('messageSearchBar').value.toLowerCase();
             
-            document.querySelectorAll('#messagesContainer > div').forEach(el => {
+            document.querySelectorAll('#messagesContainer > div.message-bubble').forEach(el => {
                 let show = true;
                 const text = el.innerText.toLowerCase();
+                const hasTask = el.querySelector('.jira-card') !== null;
                 
                 if (search && !text.includes(search)) show = false;
-                if (filter === 'messages' && el.classList.contains('jira-card')) show = false;
-                if (filter === 'tasks' && !el.classList.contains('jira-card')) show = false;
+                if (filter === 'messages' && hasTask) show = false;
+                if (filter === 'tasks' && !hasTask) show = false;
                 
                 el.style.display = show ? 'flex' : 'none';
             });
@@ -428,12 +443,12 @@
         window.deleteScheduled = async function(id) {
             await sb.from('scheduled_messages').delete().eq('id', id);
             document.querySelectorAll('.top-panel-dropdown').forEach(m => m.remove());
-            showCenterToast('Scheduled message cancelled.', 'fa-info-circle', 'text-yellow-400');
+            window.showCenterToast('Scheduled message cancelled.', 'fa-info-circle', 'text-yellow-400');
         }
 
         window.showScheduleModal = function() {
-            currSchedText = quillEditor.root.innerText.trim();
-            if(!currSchedText) { showCenterToast('Type a message first.', 'fa-exclamation-triangle', 'text-yellow-500'); return; }
+            currSchedText = quillEditor.root.innerHTML.trim();
+            if(!currSchedText || currSchedText === '<p><br></p>') { window.showCenterToast('Type a message first.', 'fa-exclamation-triangle', 'text-yellow-500'); return; }
             document.getElementById('scheduleModal').classList.remove('hidden');
             document.getElementById('scheduleModal').classList.add('flex');
         }
@@ -445,9 +460,14 @@
             const time = document.getElementById('scheduleDateTime').value;
             if(!time) return;
             await sb.from('scheduled_messages').insert({ sender_id: currentUser.id, room_id: currentRoom, message_text: currSchedText, scheduled_time: new Date(time).toISOString(), status: 'pending' });
-            closeScheduleModal();
+            window.closeScheduleModal();
             quillEditor.root.innerHTML = '';
-            showCenterToast('Message Scheduled Successfully!'); // Fades in 5s automatically
+            window.showCenterToast('Message Scheduled Successfully!');
+        }
+
+        window.addEmoji = function() {
+            quillEditor.root.innerHTML += '😀'; // Simple simulation
+            window.showCenterToast('Emoji menu opening...', 'fa-smile', 'text-yellow-400');
         }
 
         async function loadChatsList() {
@@ -462,25 +482,30 @@
         }
 
         async function sendMessage() {
-            const text = quillEditor.root.innerText.trim();
-            if (!text) return;
+            const text = quillEditor.root.innerHTML.trim();
+            if (!text || text === '<p><br></p>') return;
             await sb.from('messages').insert({ room_id: currentRoom, sender_id: currentUser.id, text, created_at: new Date().toISOString() });
             quillEditor.root.innerHTML = '';
             loadMessages();
         }
 
         async function loadMessages() {
+            // Fetch Messages
             const {data: msgs} = await sb.from('messages').select('*, profiles(full_name, email)').eq('room_id', currentRoom).order('created_at', {ascending: true});
-            renderMessages(msgs || []);
+            // Fetch Tasks to render inline
+            const {data: tasks} = await sb.from('tasks').select('*, creator:profiles!assigned_by(full_name, email)').order('created_at', {ascending: false});
+            let assigneesMap = {};
+            if(tasks && tasks.length > 0) {
+                const {data: assignees} = await sb.from('task_assignees').select('task_id, assignee_id, status, profiles!assignee_id(full_name, email)').in('task_id', tasks.map(t=>t.id));
+                assignees?.forEach(a => { if (!assigneesMap[a.task_id]) assigneesMap[a.task_id] = []; assigneesMap[a.task_id].push(a); });
+            }
+
+            renderMessages(msgs || [], tasks || [], assigneesMap);
             const c = document.getElementById('messagesContainer');
             c.scrollTop = c.scrollHeight;
         }
 
-        window.addEmoji = function() {
-            showCenterToast('Emoji added!', 'fa-smile', 'text-yellow-400');
-        }
-
-        function renderMessages(messages) {
+        function renderMessages(messages, allTasks, assigneesMap) {
             const c = document.getElementById('messagesContainer');
             if (!c) return;
             if (!messages.length) { c.innerHTML = '<div class="m-auto flex flex-col items-center opacity-50"><i class="far fa-comments text-5xl mb-3"></i><p>Say hello!</p></div>'; return; }
@@ -492,9 +517,14 @@
             const replies = {};
             
             messages.forEach(msg => {
-                if (msg.parent_message_id && msgMap.has(msg.parent_message_id)) {
+                if (msg.parent_message_id) {
                     let rootId = msg.parent_message_id;
-                    while (msgMap.get(rootId)?.parent_message_id && msgMap.has(msgMap.get(rootId).parent_message_id)) rootId = msgMap.get(rootId).parent_message_id;
+                    const visited = new Set();
+                    while (msgMap.has(rootId) && msgMap.get(rootId).parent_message_id) {
+                        if(visited.has(rootId)) break;
+                        visited.add(rootId);
+                        rootId = msgMap.get(rootId).parent_message_id;
+                    }
                     if (!replies[rootId]) replies[rootId] = [];
                     replies[rootId].push(msg);
                 } else {
@@ -502,37 +532,97 @@
                 }
             });
 
-            function buildMsgHTML(msg, isReply = false) {
+            function buildMsgHTML(msg) {
                 const isOwn = msg.sender_id === currentUser.id;
                 const senderName = msg.profiles?.full_name || msg.profiles?.email || 'Unknown';
                 const time = new Date(msg.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-                const alignClass = isReply ? 'received mt-1 w-full' : (isOwn ? 'sent' : 'received');
+                const alignClass = isOwn ? 'sent' : 'received';
                 
+                // Inline Jira Task Logic
+                const msgTasks = allTasks.filter(t => t.original_message_id === msg.id);
+                let taskHtml = '';
+                msgTasks.forEach(task => {
+                    const assignees = assigneesMap[task.id] || [];
+                    let statusClass = 'status-pending';
+                    if(assignees.length > 0) {
+                        const st = assignees[0].status;
+                        if(st==='in_progress') statusClass = 'status-in_progress';
+                        if(st==='submitted') statusClass = 'status-submitted';
+                        if(st==='needs_review') statusClass = 'status-needs_review';
+                        if(st==='accepted') statusClass = 'status-accepted';
+                    }
+
+                    const assigneeRows = assignees.map(ass => {
+                        const name = ass.profiles?.full_name || ass.profiles?.email || 'Unknown';
+                        const statusText = ass.status.replace('_', ' ').toUpperCase();
+                        let actions = '';
+                        // Task Lifecycle Buttons
+                        if (ass.assignee_id === currentUser.id && ass.status === 'pending_ack') actions = `<button onclick="window.performTaskAction('${task.id}', '${ass.assignee_id}', 'ack')" class="w-full mt-2 bg-yellow-500 text-white text-xs py-1.5 rounded font-semibold">Acknowledge</button>`;
+                        if (ass.assignee_id === currentUser.id && (ass.status === 'in_progress' || ass.status === 'needs_review')) {
+                            const proofHtml = task.require_proof ? `<input type="file" class="text-[10px] w-full mb-1">` : '';
+                            actions = `${proofHtml}<button onclick="window.performTaskAction('${task.id}', '${ass.assignee_id}', 'submit')" class="w-full mt-1 bg-blue-600 text-white text-xs py-1.5 rounded font-semibold">Submit for Review</button>`;
+                        }
+                        if (task.assigned_by === currentUser.id && ass.status === 'submitted') actions = `<div class="flex gap-2 mt-2"><button onclick="window.performTaskAction('${task.id}', '${ass.assignee_id}', 'accept')" class="flex-1 bg-green-600 text-white text-xs py-1.5 rounded font-semibold">Accept</button><button onclick="window.performTaskAction('${task.id}', '${ass.assignee_id}', 'review_again')" class="flex-1 bg-red-600 text-white text-xs py-1.5 rounded font-semibold">Review</button></div>`;
+                        
+                        return `<div class="mt-2 text-sm border-t pt-2 border-black/5">
+                                    <div class="flex justify-between items-center font-medium">
+                                        <span>${escapeHtml(name)}</span>
+                                        <span class="text-[10px] font-bold ${statusClass}">${statusText}</span>
+                                    </div>
+                                    ${actions}
+                                </div>`;
+                    }).join('');
+                    
+                    taskHtml += `<div class="jira-card ${statusClass}">
+                                    <div class="font-bold text-[14px] mb-1 flex items-center gap-2"><i class="fas fa-ticket-alt text-gray-400"></i> ${escapeHtml(task.title)}</div>
+                                    <div class="text-xs text-gray-500 mb-2 flex justify-between">
+                                        <span><i class="far fa-calendar-alt"></i> ${task.deadline || 'No Deadline'}</span>
+                                        <span class="uppercase font-bold">${task.priority || 'Medium'} PRIORITY</span>
+                                    </div>
+                                    ${assigneeRows}
+                                </div>`;
+                });
+
                 let html = `<div id="msg-${msg.id}" class="message-bubble ${alignClass}">
                             <div class="bubble-content">
                                 <!-- Top Right Fixed Controls -->
                                 <div class="bubble-controls top-bar-icon">
-                                    <i class="fas fa-reply" title="Reply" onclick="toggleReplyBox('${msg.id}')"></i>
-                                    <i class="fas fa-plus" title="React" onclick="addEmoji()"></i>
+                                    <i class="fas fa-reply" title="Reply" onclick="window.toggleReplyBox('${msg.id}')"></i>
                                     <i class="fas fa-ellipsis-v menu-dots" data-msg-id="${msg.id}" data-msg-text="${escapeHtml(msg.text)}"></i>
                                 </div>
                                 
                                 <div class="message-meta">
-                                    <span class="font-bold" style="${isOwn && !isReply ? 'display:none;' : 'color: var(--accent)'}">${escapeHtml(senderName)}</span>
+                                    <span class="font-bold" style="${isOwn ? 'display:none;' : 'color: var(--accent)'}">${escapeHtml(senderName)}</span>
                                     <span class="ml-auto opacity-60">${time} ${isOwn ? '<i class="fas fa-check-double text-blue-400"></i>' : ''}</span>
                                 </div>
-                                <div class="text-[15px] leading-relaxed pr-10">${escapeHtml(msg.text)}</div>
+                                <div class="text-[15px] leading-relaxed pr-8">${msg.text}</div>
+                                ${taskHtml}
                                 
                                 <div id="reply-box-${msg.id}" class="inline-reply-box">
                                     <input type="text" id="reply-input-${msg.id}" placeholder="Write a reply..." class="ui-input w-full px-2 py-1 rounded-md text-sm">
-                                    <button onclick="sendReply('${msg.id}')" class="px-3 py-1 rounded-md bg-[var(--accent)] text-white text-xs">Send</button>
+                                    <button onclick="window.sendReply('${msg.id}')" class="px-3 py-1 rounded-md bg-[var(--accent)] text-white text-xs">Send</button>
                                 </div>
                             </div>
                         </div>`;
                 
-                if (!isReply && replies[msg.id] && replies[msg.id].length > 0) {
-                    html += `<div class="ml-4 md:ml-12 pl-4 border-l-2 mb-4 flex flex-col gap-1" style="border-color: var(--accent)">`;
-                    replies[msg.id].forEach(child => { html += buildMsgHTML(child, true); });
+                // Render Slack Style Replies
+                if (replies[msg.id] && replies[msg.id].length > 0) {
+                    html += `<div class="ml-12 pl-2 border-l-2 mb-4 flex flex-col gap-2" style="border-color: var(--accent)">`;
+                    replies[msg.id].forEach((child, idx) => { 
+                        const cIsOwn = child.sender_id === currentUser.id;
+                        const cName = child.profiles?.full_name || child.profiles?.email || 'Unknown';
+                        const cTime = new Date(child.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+                        html += `
+                        <div class="message-bubble received w-full max-w-[90%] mb-0">
+                            <div class="bubble-content" style="background: var(--received-bg);">
+                                <div class="message-meta text-[11px] mb-1">
+                                    <span class="font-bold" style="color: var(--accent)">${idx + 1}. ${escapeHtml(cName)}</span>
+                                    <span class="ml-auto opacity-60">${cTime}</span>
+                                </div>
+                                <div class="text-[14px] leading-snug">${child.text}</div>
+                            </div>
+                        </div>`;
+                    });
                     html += `</div>`;
                 }
                 return html;
@@ -540,7 +630,6 @@
 
             c.innerHTML = topLevel.map(msg => buildMsgHTML(msg)).join('');
 
-            // Dropdown Menu Logic
             document.querySelectorAll('.menu-dots').forEach(el => {
                 el.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -550,9 +639,9 @@
                     menu.className = 'msg-menu-dropdown p-1';
                     menu.style.minWidth = '160px';
                     menu.innerHTML = `
-                        <div class="cursor-pointer px-3 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2" onclick="openTaskModal('${mid}', '${mtext}')"><i class="fas fa-tasks text-emerald-500 w-4"></i> Create Task</div>
-                        <div class="cursor-pointer px-3 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2" onclick="showReminderModal('${mid}', '${mtext}')"><i class="fas fa-bell text-yellow-500 w-4"></i> Reminder</div>
-                        <div class="cursor-pointer px-3 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2" onclick="toggleBookmark('${mid}')"><i class="fas fa-star text-orange-400 w-4"></i> Bookmark</div>
+                        <div class="cursor-pointer px-3 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2" onclick="window.openTaskModal('${mid}', '${mtext}')"><i class="fas fa-tasks text-emerald-500 w-4"></i> Create Task</div>
+                        <div class="cursor-pointer px-3 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2" onclick="window.showReminderModal('${mid}', '${mtext}')"><i class="fas fa-bell text-yellow-500 w-4"></i> Reminder</div>
+                        <div class="cursor-pointer px-3 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2" onclick="window.toggleBookmark('${mid}')"><i class="fas fa-star text-orange-400 w-4"></i> Bookmark</div>
                     `;
                     document.body.appendChild(menu);
                     const rect = el.getBoundingClientRect();
@@ -574,82 +663,9 @@
             if(text) {
                 await sb.from('messages').insert({ room_id: currentRoom, sender_id: currentUser.id, text, parent_message_id: parentId, created_at: new Date().toISOString() });
                 input.value = '';
-                toggleReplyBox(parentId);
+                window.toggleReplyBox(parentId);
                 loadMessages();
             }
-        }
-
-        async function loadTasksForPanel() {
-            const {data: tasks} = await sb.from('tasks').select('*, creator:profiles!assigned_by(full_name, email)').order('created_at', {ascending: false});
-            if (!tasks) return;
-            const ids = tasks.map(t => t.id);
-            const {data: assignees} = await sb.from('task_assignees').select('task_id, assignee_id, status, profiles!assignee_id(full_name, email)').in('task_id', ids);
-            const assigneesMap = {};
-            if (assignees) assignees.forEach(a => { if (!assigneesMap[a.task_id]) assigneesMap[a.task_id] = []; assigneesMap[a.task_id].push({ assignee_id: a.assignee_id, status: a.status, profiles: a.profiles }); });
-            const filtered = tasks.filter(t => t.assigned_by === currentUser.id || (assigneesMap[t.id] && assigneesMap[t.id].some(a => a.assignee_id === currentUser.id)));
-            const tasksWith = filtered.map(t => ({ ...t, assignees: assigneesMap[t.id] || [] }));
-            renderTasksPanel(tasksWith);
-        }
-
-        function renderTasksPanel(tasks) {
-            const container = document.getElementById('tasksPanel');
-            if (!container) return;
-            if (!tasks.length) { container.innerHTML = '<div class="text-center mt-10 opacity-50"><p class="text-sm">No active tasks.</p></div>'; return; }
-            
-            container.innerHTML = tasks.map(task => {
-                const isCreator = task.assigned_by === currentUser.id;
-                const assignees = task.assignees;
-                
-                let statusClass = 'status-pending';
-                if(assignees.length > 0) {
-                    const st = assignees[0].status;
-                    if(st==='in_progress') statusClass = 'status-in_progress';
-                    if(st==='submitted') statusClass = 'status-submitted';
-                    if(st==='needs_review') statusClass = 'status-needs_review';
-                    if(st==='accepted') statusClass = 'status-accepted';
-                }
-
-                const assigneeHtml = assignees.map(ass => {
-                    const name = ass.profiles?.full_name || ass.profiles?.email || 'Unknown';
-                    const statusText = ass.status.replace('_', ' ').toUpperCase();
-                    let actions = '';
-                    if (ass.assignee_id === currentUser.id && ass.status === 'pending_ack') actions = `<button onclick="performTaskAction('${task.id}', '${ass.assignee_id}', 'ack')" class="w-full mt-2 bg-blue-600 text-white text-xs py-1.5 rounded font-semibold">Acknowledge</button>`;
-                    if (ass.assignee_id === currentUser.id && (ass.status === 'in_progress' || ass.status === 'needs_review')) actions = `<button onclick="performTaskAction('${task.id}', '${ass.assignee_id}', 'submit')" class="w-full mt-2 bg-purple-600 text-white text-xs py-1.5 rounded font-semibold">Submit for Review</button>`;
-                    if (isCreator && ass.status === 'submitted') actions = `<div class="flex gap-2 mt-2"><button onclick="performTaskAction('${task.id}', '${ass.assignee_id}', 'accept')" class="flex-1 bg-green-600 text-white text-xs py-1.5 rounded font-semibold">Accept</button><button onclick="performTaskAction('${task.id}', '${ass.assignee_id}', 'review_again')" class="flex-1 bg-red-600 text-white text-xs py-1.5 rounded font-semibold">Reject</button></div>`;
-                    
-                    return `<div class="mt-2 text-sm border-t pt-2">
-                                <div class="flex justify-between items-center font-medium">
-                                    <span>${escapeHtml(name)}</span>
-                                    <span class="text-[10px] font-bold ${statusClass}">${statusText}</span>
-                                </div>
-                                ${actions}
-                            </div>`;
-                }).join('');
-                
-                return `<div class="jira-card ${statusClass}">
-                            <div class="font-bold text-[15px] mb-1">${escapeHtml(task.title)}</div>
-                            <div class="text-xs text-gray-500 mb-2 flex justify-between">
-                                <span><i class="far fa-calendar-alt"></i> ${task.deadline || 'No Date'}</span>
-                                <span>${task.priority || 'Medium'}</span>
-                            </div>
-                            ${assigneeHtml}
-                        </div>`;
-            }).join('');
-        }
-
-        window.performTaskAction = async function(taskId, assigneeId, action) {
-            let newStatus = '';
-            if (action === 'ack') newStatus = 'in_progress';
-            else if (action === 'submit') newStatus = 'submitted';
-            else if (action === 'accept') newStatus = 'accepted';
-            else if (action === 'review_again') newStatus = 'needs_review';
-            await sb.from('task_assignees').update({ status: newStatus }).eq('task_id', taskId).eq('assignee_id', assigneeId);
-            await addTaskTrail(taskId, action, 'Task action performed');
-            loadTasksForPanel();
-        }
-
-        async function addTaskTrail(taskId, action, comment) { 
-            await sb.from('task_trails').insert({ task_id: taskId, user_id: currentUser.id, action, comment }); 
         }
 
         window.openTaskModal = async function(mid, text) { 
@@ -665,7 +681,7 @@
         window.saveTaskMultiAssignee = async function() { 
             const title = document.getElementById('taskTitle').value; 
             const aids = Array.from(document.getElementById('taskAssignees').selectedOptions).map(opt => opt.value); 
-            if(!title || !aids.length) return showCenterToast('Need Title and Assignee', 'fa-times', 'text-red-500'); 
+            if(!title || !aids.length) return window.showCenterToast('Need Title and Assignee', 'fa-times', 'text-red-500'); 
             
             const {data: task} = await sb.from('tasks').insert({ 
                 original_message_id: currentMessageId, 
@@ -679,8 +695,39 @@
             
             if(!task) return; 
             await sb.from('task_assignees').insert(aids.map(aid => ({ task_id: task.id, assignee_id: aid, status: 'pending_ack' }))); 
-            showCenterToast('Ticket Created Successfully'); 
-            closeTaskModal(); loadTasksForPanel(); 
+            window.showCenterToast('Ticket Created Successfully'); 
+            window.closeTaskModal(); 
+            loadTasksForPanel(); 
+            loadMessages(); // reload to show inline
+        }
+
+        window.performTaskAction = async function(taskId, assigneeId, action) {
+            let newStatus = '';
+            if (action === 'ack') newStatus = 'in_progress';
+            else if (action === 'submit') newStatus = 'submitted';
+            else if (action === 'accept') newStatus = 'accepted';
+            else if (action === 'review_again') newStatus = 'needs_review';
+            
+            await sb.from('task_assignees').update({ status: newStatus }).eq('task_id', taskId).eq('assignee_id', assigneeId);
+            await sb.from('task_trails').insert({ task_id: taskId, user_id: currentUser.id, action, comment: 'Task updated inline' }); 
+            loadTasksForPanel();
+            loadMessages(); // Update inline card
+        }
+
+        async function loadTasksForPanel() {
+            const {data: tasks} = await sb.from('tasks').select('*, creator:profiles!assigned_by(full_name, email)').order('created_at', {ascending: false});
+            if (!tasks) return;
+            const ids = tasks.map(t => t.id);
+            const {data: assignees} = await sb.from('task_assignees').select('task_id, assignee_id, status, profiles!assignee_id(full_name, email)').in('task_id', ids);
+            const assigneesMap = {};
+            if (assignees) assignees.forEach(a => { if (!assigneesMap[a.task_id]) assigneesMap[a.task_id] = []; assigneesMap[a.task_id].push({ assignee_id: a.assignee_id, status: a.status, profiles: a.profiles }); });
+            const filtered = tasks.filter(t => t.assigned_by === currentUser.id || (assigneesMap[t.id] && assigneesMap[t.id].some(a => a.assignee_id === currentUser.id)));
+            
+            const container = document.getElementById('tasksPanel');
+            if(!container) return;
+            if(!filtered.length) { container.innerHTML = '<p class="text-xs opacity-50">No tasks active.</p>'; return; }
+            
+            container.innerHTML = filtered.map(t => `<div class="mb-2 p-2 rounded border border-black/10 text-sm"><b>${escapeHtml(t.title)}</b><br><span class="text-xs text-gray-500">Track in main chat</span></div>`).join('');
         }
 
         window.showReminderModal = function(mid, text) { 
@@ -695,24 +742,22 @@
             const dt = document.getElementById('reminderDateTime').value; 
             if(!dt) return; 
             await sb.from('reminders').insert({ user_id: currentUser.id, message_id: currentReminderId, reminder_time: new Date(dt).toISOString(), triggered: false }); 
-            showCenterToast('Reminder Set Successfully'); 
-            closeReminderModal(); 
+            window.showCenterToast('Reminder Set Successfully'); 
+            window.closeReminderModal(); 
         }
 
         window.toggleBookmark = async function(mid) { 
             document.querySelectorAll('.msg-menu-dropdown').forEach(m=>m.remove());
             const {data: ex} = await sb.from('bookmarks').select('id').eq('user_id',currentUser.id).eq('message_id',mid).maybeSingle(); 
-            if(ex) { await sb.from('bookmarks').delete().eq('id',ex.id); showCenterToast('Bookmark removed', 'fa-info-circle', 'text-yellow-400'); } 
-            else { await sb.from('bookmarks').insert({ user_id: currentUser.id, message_id: mid }); showCenterToast('Message Bookmarked'); } 
+            if(ex) { await sb.from('bookmarks').delete().eq('id',ex.id); window.showCenterToast('Bookmark removed', 'fa-info-circle', 'text-yellow-400'); } 
+            else { await sb.from('bookmarks').insert({ user_id: currentUser.id, message_id: mid }); window.showCenterToast('Message Bookmarked'); } 
         }
-
-        function attachModalButtons() {} // Already attached via onclick in HTML
 
         function startSubscriptions() { 
             if(messageSubscription) messageSubscription.unsubscribe();
             messageSubscription = sb.channel('public:messages').on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, (p) => { if(p.new.room_id === currentRoom) loadMessages(); }).subscribe();
-            if(taskSubscription) taskSubscription.unsubscribe(); taskSubscription = sb.channel('tasks-changes').on('postgres_changes', {event:'*', schema:'public', table:'tasks'}, () => loadTasksForPanel()).subscribe(); 
-            if(assigneeSubscription) assigneeSubscription.unsubscribe(); assigneeSubscription = sb.channel('assignees-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_assignees'}, () => loadTasksForPanel()).subscribe(); 
+            if(taskSubscription) taskSubscription.unsubscribe(); taskSubscription = sb.channel('tasks-changes').on('postgres_changes', {event:'*', schema:'public', table:'tasks'}, () => {loadTasksForPanel(); loadMessages();}).subscribe(); 
+            if(assigneeSubscription) assigneeSubscription.unsubscribe(); assigneeSubscription = sb.channel('assignees-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_assignees'}, () => {loadTasksForPanel(); loadMessages();}).subscribe(); 
         }
 
         (async() => { const {data: {session}} = await sb.auth.getSession(); if(!session) renderAuthScreen(); else { currentUser = session.user; await ensureProfile(); renderMainApp(); startSubscriptions(); } })();

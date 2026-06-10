@@ -12,6 +12,8 @@
     
     <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
     <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     
     <link rel="icon" href="data:,">
 
@@ -24,7 +26,7 @@
             --bg-message-other: #ffffff;
             --text-primary: #111b21;
             --text-secondary: #667781;
-            --accent: #800000; /* Maroon */
+            --accent: #800000;
             --accent-hover: #660000;
             --sent-bg: #f2e6e6;
             --received-bg: #ffffff;
@@ -47,7 +49,6 @@
             --border-color: rgba(134, 150, 160, 0.15);
         }
 
-        /* Fixed CSS to prevent overriding FontAwesome Icons */
         body, input, select, textarea, button, .message-bubble, .jira-card { 
             font-family: 'Inter', sans-serif; 
         }
@@ -61,32 +62,14 @@
         .sidebar-glass { background: var(--bg-sidebar); backdrop-filter: blur(10px); border-color: var(--border-color); }
         .chat-area { background-color: var(--bg-chat); background-image: var(--chat-pattern); background-blend-mode: overlay; }
 
-        .message-bubble { 
-            max-width: 75%; 
-            margin-bottom: 0.75rem; 
-            display: flex; 
-            flex-direction: column; 
-            position: relative;
-        }
+        .message-bubble { max-width: 75%; margin-bottom: 0.75rem; display: flex; flex-direction: column; position: relative; }
         .message-bubble.sent { align-self: flex-end; }
         .message-bubble.received { align-self: flex-start; }
-        
-        .message-bubble .bubble-content {
-            padding: 10px 14px;
-            word-wrap: break-word;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-            position: relative;
-        }
-        
+        .message-bubble .bubble-content { padding: 10px 14px; word-wrap: break-word; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); position: relative; }
         .sent .bubble-content { background: var(--sent-bg); border-radius: 16px 0px 16px 16px; }
         .received .bubble-content { background: var(--received-bg); border-radius: 0px 16px 16px 16px; }
 
-        .bubble-controls {
-            position: absolute; top: 4px; right: 8px;
-            display: flex; gap: 8px; opacity: 0; transition: opacity 0.2s;
-            background: inherit; padding-left: 10px; border-radius: 8px;
-            z-index: 10;
-        }
+        .bubble-controls { position: absolute; top: 4px; right: 8px; display: flex; gap: 8px; opacity: 0; transition: opacity 0.2s; background: inherit; padding-left: 10px; border-radius: 8px; z-index: 10; }
         .message-bubble:hover .bubble-controls { opacity: 1; }
         .bubble-controls i { cursor: pointer; color: var(--text-secondary); transition: color 0.2s; font-size: 14px; }
         .bubble-controls i:hover { color: var(--accent); }
@@ -98,9 +81,7 @@
             0% { background-color: rgba(128, 0, 0, 0.3); transform: scale(1.02); box-shadow: 0 0 15px rgba(128,0,0,0.5); }
             100% { background-color: transparent; transform: scale(1); box-shadow: none; }
         }
-        .highlight-active .bubble-content, .highlight-active.jira-card {
-            animation: flashHighlight 4s ease-out forwards;
-        }
+        .highlight-active .bubble-content, .highlight-active.jira-card { animation: flashHighlight 4s ease-out forwards; }
 
         .badge { padding: 4px 10px; border-radius: 9999px; font-weight: 700; font-size: 11px; letter-spacing: 0.5px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid rgba(0,0,0,0.05); }
         .badge-pending { background-color: #fef9c3; color: #854d0e; }
@@ -148,6 +129,7 @@
 </head>
 <body class="antialiased overflow-hidden">
     <div id="root" class="h-screen flex overflow-hidden"></div>
+    <div id="pdf-generation-container" style="display: none;"></div>
     
     <script type="module">
         import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -165,27 +147,19 @@
         let globalUsersCache = [];
 
         function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m] || m)); }
-        
-        function toSentenceCase(str) {
-            if (!str) return '';
-            return str.toLowerCase().replace(/(^\w{1})|(\s+\w{1})/g, letter => letter.toUpperCase());
-        }
+        function toSentenceCase(str) { if (!str) return ''; return str.toLowerCase().replace(/(^\w{1})|(\s+\w{1})/g, letter => letter.toUpperCase()); }
 
         function getISTTime(dateStr) {
             if(!dateStr) return '';
             let d = new Date(dateStr);
-            if(dateStr.indexOf('Z') === -1 && dateStr.indexOf('+') === -1) {
-                d = new Date(dateStr + 'Z'); 
-            }
+            if(dateStr.indexOf('Z') === -1 && dateStr.indexOf('+') === -1) d = new Date(dateStr + 'Z'); 
             return d.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' });
         }
 
         function getISTDate(dateStr) {
             if(!dateStr) return '';
             let d = new Date(dateStr);
-            if(dateStr.indexOf('Z') === -1 && dateStr.indexOf('+') === -1) {
-                d = new Date(dateStr + 'Z'); 
-            }
+            if(dateStr.indexOf('Z') === -1 && dateStr.indexOf('+') === -1) d = new Date(dateStr + 'Z'); 
             const str = d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: '2-digit' });
             return str.replace(/\//g, '-').split(',')[0]; 
         }
@@ -208,6 +182,21 @@
             }
         }
 
+        window.openDummyFile = function(fileName) {
+            const w = window.open('about:blank','_blank');
+            w.document.write(`
+                <html><head><title>${fileName}</title></head>
+                <body style="font-family:'Inter',sans-serif; text-align:center; padding:50px; background:#f0f2f5;">
+                    <div style="background:white; padding:40px; border-radius:16px; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1); max-width:500px; margin:auto;">
+                        <i class="fa-solid fa-file-alt" style="font-size:48px; color:#3b82f6; margin-bottom:20px;"></i>
+                        <h2 style="margin-bottom:10px; color:#111b21;">${fileName}</h2>
+                        <p style="color:#667781;">Secure File Viewer Placeholder<br><br><i>Storage bucket integration pending.</i></p>
+                    </div>
+                </body></html>
+            `);
+            w.document.close();
+        }
+
         function applyTheme() { document.documentElement.setAttribute('data-theme', currentTheme); }
 
         document.addEventListener('click', (e) => {
@@ -220,12 +209,17 @@
         });
 
         async function ensureProfile() { if(!currentUser) return; const {data:ex}=await sb.from('profiles').select('id').eq('id',currentUser.id).maybeSingle(); if(!ex) await sb.from('profiles').insert({id:currentUser.id, email:currentUser.email, full_name:currentUser.email.split('@')[0], role:'teacher'}); }
-        async function signIn(email,pwd) { const {data,error}=await sb.auth.signInWithPassword({email,password:pwd}); if(!error && data?.user) { currentUser=data.user; await ensureProfile(); renderMainApp(); startSubscriptions(); return true; } return false; }
+        
+        async function signIn(email,pwd) { 
+            const {data,error}=await sb.auth.signInWithPassword({email,password:pwd}); 
+            if(!error && data?.user) { currentUser=data.user; await ensureProfile(); renderMainApp(); startSubscriptions(); return true; } 
+            return false; 
+        }
         
         async function signUp(email,pwd) { 
             const {data, error} = await sb.auth.signUp({email, password:pwd}); 
             if(error) throw error; 
-            window.showCenterToast('Sign up successful! Please wait for admin approval or verify email.', 'fa-solid fa-envelope', 'text-blue-400'); 
+            window.showCenterToast('Sign up successful! Please wait for admin approval or check email.', 'fa-solid fa-envelope', 'text-blue-400'); 
         }
 
         window.logout = async function() { await sb.auth.signOut(); currentUser=null; renderAuthScreen(); }
@@ -242,7 +236,7 @@
                         <div class="space-y-4">
                             <input id="email" placeholder="Email Address" class="ui-input w-full px-4 py-3 rounded-xl">
                             <div class="relative">
-                                <input id="password" type="password" placeholder="Password" class="ui-input w-full px-4 py-3 rounded-xl pr-10">
+                                <input id="password" type="password" placeholder="Password (Min 6 chars)" class="ui-input w-full px-4 py-3 rounded-xl pr-10">
                                 <i class="fa-solid fa-eye absolute right-4 top-4 text-gray-400 cursor-pointer hover:text-gray-600" id="togglePassword"></i>
                             </div>
                             <div class="flex gap-3 pt-2">
@@ -263,14 +257,19 @@
 
             document.getElementById('loginBtn').onclick=async()=>{ const ok=await signIn(document.getElementById('email').value,document.getElementById('password').value); if(!ok) document.getElementById('authMsg').innerText='Invalid credentials'; };
             document.getElementById('signupBtn').onclick=async()=>{ 
-                try { await signUp(document.getElementById('email').value, document.getElementById('password').value); } 
+                try { 
+                    const email = document.getElementById('email').value;
+                    const pwd = document.getElementById('password').value;
+                    if(pwd.length < 6) throw new Error("Password must be at least 6 characters.");
+                    if(!email) throw new Error("Email is required.");
+                    await signUp(email, pwd); 
+                } 
                 catch(e) { document.getElementById('authMsg').innerText = e.message; } 
             };
         }
 
         function renderMainApp() {
             applyTheme();
-            
             const userNameDisplay = currentUser?.user_metadata?.full_name || currentUser?.email?.split('@')[0] || 'User';
 
             document.getElementById('root').innerHTML = `
@@ -291,7 +290,7 @@
                                 ${escapeHtml(userNameDisplay.toUpperCase())}
                             </div>
                             <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                                v1.8.0 - Authentication & Icons Fixed
+                                v1.9.0 - PDF Export & Global Filters
                             </div>
                         </div>
                     </div>
@@ -441,7 +440,7 @@
             document.getElementById('scheduleMsgBtn').onclick = showScheduleModal;
             document.getElementById('messageSearchBar').addEventListener('input', applyFilters);
             
-            loadChatsList(); loadMessages(); loadTasksForPanel(); 
+            loadChatsList(); loadMessages(); window.loadTasksForPanel(); 
         }
 
         window.toggleDateFilter = function() {
@@ -752,7 +751,7 @@
 
             window.showCenterToast('Ticket Created Successfully'); 
             window.closeTaskModal(); 
-            loadTasksForPanel(); 
+            window.loadTasksForPanel(); 
         }
 
         window.taskAction = async function(taskId, assigneeId, action, requireProof = false) {
@@ -830,15 +829,101 @@
                 }
             }
             await sb.from('task_trails').insert({ task_id: taskId, user_id: currentUser.id, action: actionText, comment: comment }); 
-            loadTasksForPanel(); 
+            window.loadTasksForPanel(); 
         }
+
+        window.downloadTaskPDF = async function(taskId) {
+            window.showCenterToast('Generating PDF Report...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
+            
+            const {data: task} = await sb.from('tasks').select('*, creator:profiles!assigned_by(full_name, email)').eq('id', taskId).single();
+            const {data: trlList} = await sb.from('task_trails').select('*, profiles(full_name, email)').eq('task_id', taskId).order('created_at', {ascending: true});
+            
+            let ip = '127.0.0.1';
+            try { const res = await fetch('https://api.ipify.org?format=json'); const data = await res.json(); ip = data.ip; } catch(e){}
+            const dateStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+            const userNameDisplay = currentUser?.user_metadata?.full_name || currentUser?.email?.split('@')[0] || 'User';
+
+            const wrapper = document.createElement('div');
+            wrapper.style.padding = '30px';
+            wrapper.style.fontFamily = "'Inter', sans-serif";
+            wrapper.style.color = '#111b21';
+            wrapper.style.background = '#ffffff';
+            wrapper.style.position = 'relative';
+            wrapper.style.overflow = 'hidden';
+
+            wrapper.innerHTML = `
+                <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; display: flex; align-items: center; justify-content: center; opacity: 0.06; transform: rotate(-35deg); font-size: 45px; font-weight: 800; color: #000; text-align: center; white-space: nowrap;">
+                    DOWNLOADED BY: ${escapeHtml(userNameDisplay).toUpperCase()}<br>IP: ${ip}<br>${dateStr}
+                </div>
+                <div style="position: relative; z-index: 1;">
+                    <h2 style="color: #800000; border-bottom: 2px solid #800000; padding-bottom: 10px; margin-bottom: 20px;">MPGS TaskFlow - Audit Report</h2>
+                    <h3 style="margin-bottom: 15px;">Task: ${escapeHtml(task.title)}</h3>
+                    <p style="margin-bottom: 5px;"><b>Created By:</b> ${escapeHtml(task.creator?.full_name || task.creator?.email)}</p>
+                    <p style="margin-bottom: 5px;"><b>Deadline:</b> ${task.deadline ? getISTDate(task.deadline) : 'None'}</p>
+                    <p style="margin-bottom: 20px;"><b>Priority:</b> ${task.priority}</p>
+                    
+                    <h4 style="margin-bottom: 10px; color: #444;">Complete Audit Trail</h4>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                        <tr style="background-color: #f0f2f5;">
+                            <th style="padding: 10px; border: 1px solid #ccc; text-align: left;">Timestamp (IST)</th>
+                            <th style="padding: 10px; border: 1px solid #ccc; text-align: left;">User</th>
+                            <th style="padding: 10px; border: 1px solid #ccc; text-align: left;">Action / Comment</th>
+                        </tr>
+                        ${trlList.map(t => {
+                            const tName = toSentenceCase((t.profiles?.full_name || t.profiles?.email || 'System').split('@')[0]);
+                            const tTime = getISTTime(t.created_at);
+                            const tDate = getISTDate(t.created_at);
+                            return `
+                            <tr>
+                                <td style="padding: 10px; border: 1px solid #ccc; white-space: nowrap;">${tDate}<br>${tTime}</td>
+                                <td style="padding: 10px; border: 1px solid #ccc; font-weight: bold;">${escapeHtml(tName)}</td>
+                                <td style="padding: 10px; border: 1px solid #ccc;">
+                                    <b>${escapeHtml(t.action)}</b>${t.comment ? `<br><i>${escapeHtml(t.comment)}</i>` : ''}
+                                </td>
+                            </tr>`;
+                        }).join('')}
+                    </table>
+                </div>
+            `;
+            
+            html2pdf().from(wrapper).set({
+                margin: 10,
+                filename: `Task_Audit_${taskId}.pdf`,
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            }).save().then(() => {
+                window.showCenterToast('PDF Downloaded!', 'fa-solid fa-file-pdf', 'text-green-500');
+            });
+        };
+
+        // Event listener injection for the newly added PDF Download menu option on tasks
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.task-menu-dots')) {
+                e.stopPropagation();
+                document.querySelectorAll('.msg-menu-dropdown').forEach(m => m.remove());
+                const el = e.target.closest('.task-menu-dots');
+                const tid = el.dataset.taskId;
+                const menu = document.createElement('div');
+                menu.className = 'msg-menu-dropdown p-1';
+                menu.style.minWidth = '160px';
+                menu.innerHTML = `
+                    <div class="cursor-pointer px-3 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2" onclick="window.downloadTaskPDF('${tid}')">
+                        <i class="fa-solid fa-file-pdf text-red-500 w-4"></i> Download PDF
+                    </div>
+                `;
+                document.body.appendChild(menu);
+                const rect = el.getBoundingClientRect();
+                menu.style.top = (rect.bottom + window.scrollY) + 'px';
+                menu.style.left = (rect.left - 120 + window.scrollX) + 'px';
+            }
+        });
 
         window.toggleTrail = function(taskId) {
             const box = document.getElementById(`trail-${taskId}`);
             if(box) box.classList.toggle('active');
         }
 
-        async function loadTasksForPanel() {
+        window.loadTasksForPanel = async function() {
             const {data: tasks} = await sb.from('tasks').select('*, creator:profiles!assigned_by(full_name, email)').order('created_at', {ascending: false});
             if (!tasks) return;
             
@@ -999,7 +1084,7 @@
                     let content = '';
                     if (t.action === 'FILE') {
                         const safeFile = escapeHtml(t.comment);
-                        content = `FILE - <a href="javascript:void(0);" onclick="const w=window.open('about:blank','_blank'); w.document.write('<h2>File Placeholder</h2><p>${safeFile}</p>'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800">${safeFile}</a>`;
+                        content = `FILE - <a href="javascript:void(0);" onclick="window.openDummyFile('${safeFile}'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800">${safeFile}</a>`;
                     } else if (t.action === 'UPDATE') {
                         content = `UPDATE - <span class="text-gray-700">${escapeHtml(t.comment)}</span>`;
                     } else {
@@ -1019,7 +1104,7 @@
                             <div class="font-bold text-gray-800 text-[16px] flex items-start gap-2">
                                 <i class="fa-solid fa-thumbtack text-gray-400 mt-1"></i> ${escapeHtml(task.title)}
                             </div>
-                            <i class="fa-solid fa-ellipsis-vertical text-gray-400 cursor-pointer hover:text-gray-600 menu-dots px-2" data-msg-id="${task.original_message_id}" data-msg-text="${escapeHtml(task.title)}"></i>
+                            <i class="fa-solid fa-ellipsis-vertical text-gray-400 cursor-pointer hover:text-gray-600 task-menu-dots px-2" data-task-id="${task.id}"></i>
                         </div>
                         
                         <div class="text-[12px] text-gray-700 space-y-1.5 mb-4">
@@ -1073,13 +1158,13 @@
             messageSubscription = sb.channel('public:messages').on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, (p) => { if(p.new.room_id === currentRoom) loadMessages(); }).subscribe();
             
             if(taskSubscription) taskSubscription.unsubscribe(); 
-            taskSubscription = sb.channel('tasks-changes').on('postgres_changes', {event:'*', schema:'public', table:'tasks'}, () => { loadTasksForPanel(); }).subscribe(); 
+            taskSubscription = sb.channel('tasks-changes').on('postgres_changes', {event:'*', schema:'public', table:'tasks'}, () => { window.loadTasksForPanel(); }).subscribe(); 
             
             if(assigneeSubscription) assigneeSubscription.unsubscribe(); 
-            assigneeSubscription = sb.channel('assignees-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_assignees'}, () => { loadTasksForPanel(); }).subscribe(); 
+            assigneeSubscription = sb.channel('assignees-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_assignees'}, () => { window.loadTasksForPanel(); }).subscribe(); 
             
             if(trailSubscription) trailSubscription.unsubscribe(); 
-            trailSubscription = sb.channel('trails-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_trails'}, () => { loadTasksForPanel(); }).subscribe(); 
+            trailSubscription = sb.channel('trails-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_trails'}, () => { window.loadTasksForPanel(); }).subscribe(); 
         }
 
         (async() => { const {data: {session}} = await sb.auth.getSession(); if(!session) renderAuthScreen(); else { currentUser = session.user; await ensureProfile(); renderMainApp(); startSubscriptions(); } })();

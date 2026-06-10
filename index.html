@@ -5,14 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>MPGS TaskFlow - Enterprise Chat</title>
     
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- FontAwesome & Fonts -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- Quill Rich Text Editor -->
     <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
     <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
     
@@ -48,7 +45,6 @@
             --border-color: rgba(134, 150, 160, 0.15);
         }
 
-        /* Enforce Inter font globally, including task cards */
         body, .jira-card, .jira-card *, .message-bubble, input, select, textarea, button { 
             font-family: 'Inter', sans-serif !important; 
         }
@@ -63,7 +59,7 @@
         .chat-area { background-color: var(--bg-chat); background-image: var(--chat-pattern); background-blend-mode: overlay; }
 
         .message-bubble { 
-            max-width: 75%; /* Strict 75% max width */
+            max-width: 75%; 
             margin-bottom: 0.75rem; 
             display: flex; 
             flex-direction: column; 
@@ -82,7 +78,6 @@
         .sent .bubble-content { background: var(--sent-bg); border-radius: 16px 0px 16px 16px; }
         .received .bubble-content { background: var(--received-bg); border-radius: 0px 16px 16px 16px; }
 
-        /* Hover Controls (Top Right fixed) */
         .bubble-controls {
             position: absolute; top: 4px; right: 8px;
             display: flex; gap: 8px; opacity: 0; transition: opacity 0.2s;
@@ -96,7 +91,6 @@
         .inline-reply-box { display: none; margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 8px; }
         .inline-reply-box.active { display: flex; gap: 8px; align-items: center; }
 
-        /* 4-Second Highlight Animation */
         @keyframes flashHighlight {
             0% { background-color: rgba(128, 0, 0, 0.3); transform: scale(1.02); box-shadow: 0 0 15px rgba(128,0,0,0.5); }
             100% { background-color: transparent; transform: scale(1); box-shadow: none; }
@@ -105,30 +99,17 @@
             animation: flashHighlight 4s ease-out forwards;
         }
 
-        .jira-card {
-            background: var(--bg-message-other);
-            border-radius: 6px;
-            margin-top: 8px;
-            margin-bottom: 12px;
-            padding: 16px;
-            box-shadow: rgba(9, 30, 66, 0.25) 0px 1px 2px 0px;
-            border-left: 4px solid var(--accent);
-            transition: transform 0.2s, box-shadow 0.2s;
-            width: 100%;
-        }
-        .jira-card:hover { transform: translateY(-2px); box-shadow: rgba(9, 30, 66, 0.35) 0px 4px 8px 0px; }
-        
-        /* Task Status Colors */
-        .status-pending { color: #6b7280; border-left-color: #6b7280 !important; }
-        .status-in_progress { color: #2563eb; border-left-color: #2563eb !important; }
-        .status-submitted { color: #9333ea; border-left-color: #9333ea !important; }
-        .status-needs_review { color: #dc2626; border-left-color: #dc2626 !important; }
-        .status-accepted { color: #16a34a; border-left-color: #16a34a !important; }
+        /* Unified Status Badges */
+        .badge { padding: 4px 10px; border-radius: 9999px; font-weight: 700; font-size: 11px; letter-spacing: 0.5px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid rgba(0,0,0,0.05); }
+        .badge-pending { background-color: #fef9c3; color: #854d0e; }
+        .badge-progress { background-color: #dbeafe; color: #1e40af; }
+        .badge-review { background-color: #ffedd5; color: #9a3412; }
+        .badge-changes { background-color: #fee2e2; color: #991b1b; }
+        .badge-done { background-color: #dcfce7; color: #166534; }
 
         .modal-overlay { background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); }
         .modal-content { background: var(--bg-sidebar); border: 1px solid var(--border-color); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
         
-        /* Center Screen Fading Toast */
         .center-toast {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
             background: rgba(17, 27, 33, 0.95); color: white;
@@ -138,31 +119,26 @@
             transition: opacity 0.5s ease; pointer-events: none;
         }
 
-        /* Dropdown Menus */
         .msg-menu-dropdown, .top-panel-dropdown {
             position: absolute; background: var(--bg-sidebar); border: 1px solid var(--border-color);
             box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); border-radius: 12px; z-index: 100;
         }
 
-        /* Input Area (Modern App Style) */
-        .input-container {
-            background: var(--bg-sidebar); border-top: 1px solid var(--border-color); padding: 12px 20px;
-        }
-        .quill-wrapper {
-            background: var(--bg-message-other); border: 1px solid var(--border-color);
-            border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;
-        }
+        .input-container { background: var(--bg-sidebar); border-top: 1px solid var(--border-color); padding: 12px 20px; }
+        .quill-wrapper { background: var(--bg-message-other); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
         .ql-toolbar.ql-snow { border: none !important; border-bottom: 1px solid var(--border-color) !important; background: rgba(0,0,0,0.02); padding: 6px 12px !important; }
         .ql-container.ql-snow { border: none !important; font-size: 0.95rem; min-height: 40px; max-height: 120px; overflow-y: auto; }
         
-        .btn-primary { background: var(--accent); color: white; border-radius: 20px; padding: 8px 20px; font-weight: 600; cursor: pointer; border: none; }
+        .btn-primary { background: var(--accent); color: white; border-radius: 8px; padding: 6px 14px; font-weight: 600; cursor: pointer; border: none; font-size: 12px; transition: 0.2s;}
         .btn-primary:hover { background: var(--accent-hover); }
+
+        .btn-outline { background: transparent; color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 14px; font-weight: 600; cursor: pointer; font-size: 12px; transition: 0.2s;}
+        .btn-outline:hover { background: rgba(0,0,0,0.05); }
 
         .ui-input { background: var(--bg-body); color: var(--text-primary); border: 1px solid var(--border-color); }
         .ui-input:focus { border-color: var(--accent); outline: none; }
         
-        /* Trail Accordion */
-        .task-trail-box { display: none; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-color); }
+        .task-trail-box { display: none; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color); }
         .task-trail-box.active { display: block; animation: fadeIn 0.3s; }
         @keyframes fadeIn { from {opacity: 0;} to {opacity: 1;} }
     </style>
@@ -183,12 +159,11 @@
         let currSchedText = ''; 
         let currentReminderId = null;
         let currentMessageId = null; 
+        let currentMessageTextRaw = '';
         let globalUsersCache = [];
 
-        // Utilities
         function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m] || m)); }
         
-        // Custom Center Toast - Fades away after 5s
         window.showCenterToast = function(msg, icon = 'fa-check-circle', color = 'text-green-400') { 
             const t = document.createElement('div'); 
             t.className = 'center-toast opacity-0'; 
@@ -218,10 +193,8 @@
             }
         });
 
-        // Authentication Methods
         async function ensureProfile() { if(!currentUser) return; const {data:ex}=await sb.from('profiles').select('id').eq('id',currentUser.id).maybeSingle(); if(!ex) await sb.from('profiles').insert({id:currentUser.id, email:currentUser.email, full_name:currentUser.email.split('@')[0], role:'teacher'}); }
         async function signIn(email,pwd) { const {data,error}=await sb.auth.signInWithPassword({email,password:pwd}); if(!error && data?.user) { currentUser=data.user; await ensureProfile(); renderMainApp(); startSubscriptions(); return true; } return false; }
-        async function signUp(email,pwd) { const {error}=await sb.auth.signUp({email,password:pwd}); if(error) throw error; window.showCenterToast('Check email for verification!', 'fa-envelope', 'text-blue-400'); }
         window.logout = async function() { await sb.auth.signOut(); currentUser=null; renderAuthScreen(); }
         
         function renderAuthScreen() { 
@@ -237,7 +210,7 @@
                             <input id="email" placeholder="Email Address" class="ui-input w-full px-4 py-3 rounded-xl">
                             <input id="password" type="password" placeholder="Password" class="ui-input w-full px-4 py-3 rounded-xl">
                             <div class="flex gap-3 pt-2">
-                                <button id="loginBtn" class="flex-1 py-3 px-4 rounded-xl btn-primary text-white font-medium shadow-md">Login</button>
+                                <button id="loginBtn" class="flex-1 py-3 px-4 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-medium shadow-md transition-colors">Login</button>
                             </div>
                             <div id="authMsg" class="mt-4 text-center text-red-500 text-sm font-medium h-5"></div>
                         </div>
@@ -250,7 +223,6 @@
             applyTheme();
             document.getElementById('root').innerHTML = `
                 <div class="flex h-full w-full">
-                    <!-- Left Sidebar -->
                     <div class="w-80 sidebar-glass flex flex-col border-r z-20 shadow-sm">
                         <div class="p-4 flex justify-between items-center border-b" style="border-color: var(--border-color)">
                             <h2 class="text-xl font-bold tracking-tight flex items-center gap-2">
@@ -260,18 +232,16 @@
                         </div>
                         <div class="p-3"><input type="text" id="globalSearch" placeholder="Search chats" class="ui-input w-full p-2 rounded-xl text-sm"></div>
                         <div id="chatsList" class="flex-1 overflow-y-auto px-2 pb-4"></div>
+                        <div class="p-2 border-t text-center text-[10px] font-bold tracking-wider text-gray-400 uppercase" style="border-color: var(--border-color)">
+                            v1.2.0 - Advanced Task UI
+                        </div>
                     </div>
 
-                    <!-- Center Chat Area -->
                     <div class="flex-1 flex flex-col chat-area relative">
-                        
-                        <!-- Top Bar (Filters & Icons) -->
                         <div class="p-4 sidebar-glass border-b z-10 flex justify-between items-center shadow-sm" style="border-color: var(--border-color)">
                             <div class="flex items-center gap-3">
                                 <span id="roomTitleDisplay" class="text-lg font-bold tracking-tight"># ${currentRoom}</span>
                             </div>
-                            
-                            <!-- Action Icons -->
                             <div class="flex items-center gap-5 text-xl" style="color: var(--text-secondary)">
                                 <i class="far fa-clock cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="openTopPanel('scheduled')" title="Scheduled Messages"></i>
                                 <i class="far fa-bookmark cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="openTopPanel('bookmarks')" title="Bookmarks"></i>
@@ -280,10 +250,8 @@
                             </div>
                         </div>
                         
-                        <!-- Messages Container -->
                         <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col"></div>
                         
-                        <!-- Input Area -->
                         <div class="input-container">
                             <div class="quill-wrapper">
                                 <div id="richEditor"></div>
@@ -295,10 +263,10 @@
                                     <input type="file" id="fileAttachment" class="hidden">
                                 </div>
                                 <div class="flex gap-2">
-                                    <button id="scheduleMsgBtn" class="px-4 py-2 rounded-full font-medium text-sm border bg-transparent" style="color: var(--text-secondary); border-color: var(--border-color); cursor: pointer;">
+                                    <button id="scheduleMsgBtn" class="px-4 py-2 rounded-full font-medium text-sm border bg-transparent hover:bg-black/5" style="color: var(--text-secondary); border-color: var(--border-color); cursor: pointer;">
                                         <i class="far fa-clock"></i> Schedule
                                     </button>
-                                    <button id="sendBtn" class="btn-primary flex items-center gap-2">
+                                    <button id="sendBtn" class="bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white rounded-full px-5 py-2 font-medium flex items-center gap-2 transition-colors">
                                         Send <i class="fas fa-paper-plane text-sm"></i>
                                     </button>
                                 </div>
@@ -306,14 +274,14 @@
                         </div>
                     </div>
 
-                    <!-- Right Sidebar -->
-                    <div class="w-[400px] sidebar-glass border-l flex flex-col z-20 shadow-sm hidden md:flex" style="border-color: var(--border-color)">
-                        <div class="p-4 border-b"><h3 class="font-bold">Task Overview</h3></div>
+                    <div class="w-[450px] sidebar-glass border-l flex flex-col z-20 shadow-sm hidden md:flex" style="border-color: var(--border-color)">
+                        <div class="p-4 border-b flex justify-between items-center">
+                            <h3 class="font-bold text-lg"><i class="fas fa-tasks mr-2 text-[var(--accent)]"></i> Task Overview</h3>
+                        </div>
                         <div id="tasksPanel" class="flex-1 overflow-y-auto p-4 bg-gray-50/50"></div>
                     </div>
                 </div>
 
-                <!-- Modals Definition -->
                 <div id="scheduleModal" class="fixed inset-0 modal-overlay hidden items-center justify-center z-50">
                     <div class="modal-content rounded-2xl p-6 w-full max-w-sm mx-4 text-center">
                         <i class="far fa-clock text-4xl mb-4" style="color: var(--accent)"></i>
@@ -322,7 +290,7 @@
                         <input type="datetime-local" id="scheduleDateTime" class="ui-input w-full p-3 rounded-xl mb-6">
                         <div class="flex gap-3">
                             <button onclick="closeScheduleModal()" class="flex-1 py-2.5 rounded-xl font-medium ui-input border-none cursor-pointer">Cancel</button>
-                            <button onclick="saveScheduledMessage()" class="flex-1 py-2.5 rounded-xl font-medium btn-primary">Confirm</button>
+                            <button onclick="saveScheduledMessage()" class="flex-1 py-2.5 rounded-xl font-medium bg-[var(--accent)] text-white">Confirm</button>
                         </div>
                     </div>
                 </div>
@@ -331,19 +299,26 @@
                     <div class="modal-content rounded-2xl p-6 w-full max-w-md mx-4">
                         <h3 class="text-xl font-bold mb-4">Create Jira Task</h3>
                         <input id="taskTitle" class="ui-input w-full p-3 rounded-xl mb-3" placeholder="Task Title">
+                        <p class="text-xs font-bold text-gray-500 mb-1">Assign To:</p>
                         <select id="taskAssignees" multiple size="4" class="ui-input w-full p-2 rounded-xl mb-3"></select>
                         <div class="grid grid-cols-2 gap-3 mb-3">
-                            <input type="date" id="taskDeadline" class="ui-input w-full p-3 rounded-xl">
-                            <select id="taskPriority" class="ui-input w-full p-3 rounded-xl">
-                                <option value="Low">Low</option>
-                                <option value="Medium" selected>Medium</option>
-                                <option value="High">High</option>
-                            </select>
+                            <div>
+                                <p class="text-xs font-bold text-gray-500 mb-1">Deadline:</p>
+                                <input type="date" id="taskDeadline" class="ui-input w-full p-2.5 rounded-xl">
+                            </div>
+                            <div>
+                                <p class="text-xs font-bold text-gray-500 mb-1">Priority:</p>
+                                <select id="taskPriority" class="ui-input w-full p-2.5 rounded-xl">
+                                    <option value="Low">Low</option>
+                                    <option value="Medium" selected>Medium</option>
+                                    <option value="High">High</option>
+                                </select>
+                            </div>
                         </div>
-                        <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" id="taskRequireProof"> Require Proof to Complete</label>
+                        <label class="flex items-center gap-2 text-sm cursor-pointer mt-2 mb-4 p-2 bg-black/5 rounded-lg"><input type="checkbox" id="taskRequireProof"> Require Proof File to Complete</label>
                         <div class="flex gap-3 mt-4">
                             <button onclick="closeTaskModal()" class="flex-1 py-2.5 rounded-xl ui-input border-none cursor-pointer hover:bg-gray-100">Cancel</button>
-                            <button onclick="saveTaskMultiAssignee()" class="flex-1 py-2.5 rounded-xl btn-primary">Create Ticket</button>
+                            <button onclick="saveTaskMultiAssignee()" class="flex-1 py-2.5 rounded-xl bg-[var(--accent)] text-white font-bold">Create Ticket</button>
                         </div>
                     </div>
                 </div>
@@ -355,24 +330,21 @@
                         <input type="datetime-local" id="reminderDateTime" class="ui-input w-full p-3 rounded-xl mb-6">
                         <div class="flex gap-3">
                             <button onclick="closeReminderModal()" class="flex-1 py-2.5 rounded-xl ui-input border-none cursor-pointer">Cancel</button>
-                            <button onclick="saveReminder()" class="flex-1 py-2.5 rounded-xl btn-primary">Set</button>
+                            <button onclick="saveReminder()" class="flex-1 py-2.5 rounded-xl bg-[var(--accent)] text-white font-bold">Set</button>
                         </div>
                     </div>
                 </div>
             `;
             
-            // Initialize Quill
             quillEditor = new Quill('#richEditor', { 
                 theme: 'snow', 
                 placeholder: 'Type a message...', 
                 modules: { toolbar: [['bold','italic','underline','strike'], [{'list': 'ordered'}, {'list': 'bullet'}], ['clean']] } 
             });
 
-            // Event Listeners
             document.getElementById('sendBtn').onclick = sendMessage;
             quillEditor.root.addEventListener('keydown', (e) => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(); } });
             
-            // File Attachment Logic (Simulated)
             document.getElementById('fileAttachment').addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (file) {
@@ -461,38 +433,34 @@
         }
 
         window.addEmoji = function() {
-            quillEditor.root.innerHTML += '😀'; // Simple simulation
-            window.showCenterToast('Emoji menu opening...', 'fa-smile', 'text-yellow-400');
+            quillEditor.root.innerHTML += '😀'; 
+            window.showCenterToast('Emoji added!', 'fa-smile', 'text-yellow-400');
         }
 
         async function loadChatsList() {
-            const groups = ['general', 'math', 'science'];
+            const groups = ['general', 'math', 'science', 'leadership'];
             const {data: users} = await sb.from('profiles').select('id, email, full_name');
-            globalUsersCache = users; // Store globally for dropdowns
+            globalUsersCache = users; 
             
             let html = `<div class="px-3 py-2 mt-2 text-[11px] font-bold tracking-wider uppercase" style="color: var(--text-secondary)">Groups</div>`;
             groups.forEach(g => { 
-                html += `<div class="channel-item p-2 mx-2 mb-1 rounded-lg cursor-pointer hover:bg-black/5 flex items-center gap-3 ${currentRoom === g ? 'bg-black/5' : ''}" data-room="${g}" data-name="# ${g}"><div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs bg-gray-400"><i class="fas fa-users"></i></div><span class="flex-1 truncate"># ${g}</span></div>`; 
+                html += `<div class="channel-item p-2 mx-2 mb-1 rounded-lg cursor-pointer hover:bg-black/5 flex items-center gap-3 ${currentRoom === g ? 'bg-black/5' : ''}" data-room="${g}" data-name="# ${g}"><div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs bg-gray-400"><i class="fas fa-users"></i></div><span class="flex-1 truncate font-medium"># ${g}</span></div>`; 
             });
             html += `<div class="px-3 py-2 mt-4 text-[11px] font-bold tracking-wider uppercase" style="color: var(--text-secondary)">Direct Messages</div>`;
             users?.filter(u => u.id !== currentUser.id).forEach(u => { 
                 const name = u.full_name || u.email;
-                html += `<div class="channel-item p-2 mx-2 mb-1 rounded-lg cursor-pointer hover:bg-black/5 flex items-center gap-3 ${currentRoom === 'dm_' + u.id ? 'bg-black/5' : ''}" data-room="dm_${u.id}" data-name="${name}"><div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs" style="background: var(--accent)">${name.charAt(0).toUpperCase()}</div><span class="flex-1 truncate">${name}</span></div>`; 
+                html += `<div class="channel-item p-2 mx-2 mb-1 rounded-lg cursor-pointer hover:bg-black/5 flex items-center gap-3 ${currentRoom === 'dm_' + u.id ? 'bg-black/5' : ''}" data-room="dm_${u.id}" data-name="${name}"><div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs" style="background: var(--accent)">${name.charAt(0).toUpperCase()}</div><span class="flex-1 truncate font-medium">${name}</span></div>`; 
             });
             document.getElementById('chatsList').innerHTML = html;
             
             document.querySelectorAll('.channel-item').forEach(el => { 
                 el.addEventListener('click', () => { 
                     currentRoom = el.dataset.room; 
-                    
                     document.querySelectorAll('.channel-item').forEach(item => item.classList.remove('bg-black/5'));
                     el.classList.add('bg-black/5');
-
                     const titleSpan = document.getElementById('roomTitleDisplay');
                     if(titleSpan) titleSpan.innerText = el.dataset.name;
-
                     document.getElementById('messagesContainer').innerHTML = '<div class="m-auto flex flex-col items-center opacity-50"><i class="fas fa-circle-notch fa-spin text-3xl mb-3" style="color: var(--accent)"></i><p>Loading chat...</p></div>';
-                    
                     loadMessages(); 
                 }); 
             });
@@ -519,7 +487,6 @@
             if (!c) return;
             if (!messages.length) { c.innerHTML = '<div class="m-auto flex flex-col items-center opacity-50"><i class="far fa-comments text-5xl mb-3"></i><p>Say hello!</p></div>'; return; }
             
-            // Slack-style Threading Map
             const msgMap = new Map();
             messages.forEach(m => msgMap.set(m.id, m));
             const topLevel = [];
@@ -549,15 +516,13 @@
                 
                 let html = `<div id="msg-${msg.id}" class="message-bubble ${alignClass}">
                             <div class="bubble-content">
-                                <!-- Top Right Fixed Controls -->
                                 <div class="bubble-controls top-bar-icon">
                                     <i class="fas fa-reply" title="Reply" onclick="window.toggleReplyBox('${msg.id}')"></i>
                                     <i class="fas fa-ellipsis-v menu-dots" data-msg-id="${msg.id}" data-msg-text="${escapeHtml(msg.text)}"></i>
                                 </div>
-                                
                                 <div class="message-meta">
                                     <span class="font-bold" style="${isOwn ? 'display:none;' : 'color: var(--accent)'}">${escapeHtml(senderName)}</span>
-                                    <span class="ml-auto opacity-60">${time} ${isOwn ? '<i class="fas fa-check-double text-blue-400"></i>' : ''}</span>
+                                    <span class="ml-auto opacity-60 text-xs">${time} ${isOwn ? '<i class="fas fa-check-double text-blue-400"></i>' : ''}</span>
                                 </div>
                                 <div class="text-[15px] leading-relaxed pr-8">${msg.text}</div>
                                 
@@ -568,11 +533,9 @@
                             </div>
                         </div>`;
                 
-                // Render Slack Style Replies
                 if (replies[msg.id] && replies[msg.id].length > 0) {
                     html += `<div class="ml-12 pl-2 border-l-2 mb-4 flex flex-col gap-2" style="border-color: var(--accent)">`;
                     replies[msg.id].forEach((child, idx) => { 
-                        const cIsOwn = child.sender_id === currentUser.id;
                         const cName = child.profiles?.full_name || child.profiles?.email || 'Unknown';
                         const cTime = new Date(child.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
                         html += `
@@ -636,14 +599,15 @@
         // ==========================================
         window.openTaskModal = async function(mid, text) { 
             currentMessageId = mid; 
+            let tmp = document.createElement("DIV");
+            tmp.innerHTML = text;
+            currentMessageTextRaw = (tmp.textContent || tmp.innerText || "").substring(0,60) + "...";
+
             document.querySelectorAll('.msg-menu-dropdown').forEach(m=>m.remove());
             document.getElementById('taskModal').classList.remove('hidden'); 
             document.getElementById('taskModal').classList.add('flex'); 
-            let tmp = document.createElement("DIV");
-            tmp.innerHTML = text;
-            document.getElementById('taskTitle').value = (tmp.textContent || tmp.innerText || "").substring(0,100); 
+            document.getElementById('taskTitle').value = ''; 
             
-            // CAN NOT ASSIGN TO CREATOR
             const filteredUsers = globalUsersCache.filter(u => u.id !== currentUser.id);
             document.getElementById('taskAssignees').innerHTML = filteredUsers.map(u => `<option value="${u.id}">${u.full_name || u.email}</option>`).join(''); 
         }
@@ -665,6 +629,7 @@
             const {data: task} = await sb.from('tasks').insert({ 
                 original_message_id: currentMessageId, 
                 title, 
+                description: currentMessageTextRaw,
                 assigned_by: currentUser.id, 
                 deadline: document.getElementById('taskDeadline').value || null, 
                 priority: document.getElementById('taskPriority').value,
@@ -688,7 +653,6 @@
         window.taskAction = async function(taskId, assigneeId, action, requireProof = false) {
             let actionText = ''; let newStatus = ''; let comment = '';
             
-            // Get Task to identify Creator
             const {data: taskData} = await sb.from('tasks').select('*').eq('id', taskId).single();
             const creatorId = taskData.assigned_by;
 
@@ -719,6 +683,8 @@
                 newStatus = 'accepted'; actionText = 'Accepted completion';
                 await notifyUser(assigneeId, `Your task submission was Accepted`);
             } else if (action === 'review_again') {
+                comment = prompt("Enter mandatory feedback/reason for the assignee:");
+                if(!comment) return window.showCenterToast('Feedback is mandatory for rework!', 'fa-times', 'text-red-500');
                 newStatus = 'needs_review'; actionText = 'Requested rework';
                 await notifyUser(assigneeId, `Task needs review/rework`);
             } else if (action === 'delegate') {
@@ -735,7 +701,7 @@
 
             if (newStatus) { await sb.from('task_assignees').update({ status: newStatus }).eq('task_id', taskId).eq('assignee_id', assigneeId); }
             await sb.from('task_trails').insert({ task_id: taskId, user_id: currentUser.id, action: actionText, comment: comment }); 
-            loadTasksForPanel(); // Optimistic load
+            loadTasksForPanel(); 
         }
 
         window.toggleTrail = function(taskId) {
@@ -748,7 +714,7 @@
             if (!tasks) return;
             
             const ids = tasks.map(t => t.id);
-            if(ids.length === 0) { document.getElementById('tasksPanel').innerHTML = '<p class="text-xs opacity-50 text-center mt-4">No tasks active.</p>'; return; }
+            if(ids.length === 0) { document.getElementById('tasksPanel').innerHTML = '<p class="text-sm opacity-50 text-center mt-6"><i class="fas fa-inbox text-3xl mb-2 block"></i> No tasks active.</p>'; return; }
 
             const {data: assignees} = await sb.from('task_assignees').select('task_id, assignee_id, status, profiles!assignee_id(full_name, email)').in('task_id', ids);
             const {data: trails} = await sb.from('task_trails').select('*, profiles(full_name, email)').in('task_id', ids).order('created_at', {ascending: true});
@@ -762,7 +728,7 @@
             const filteredTasks = tasks.filter(t => t.assigned_by === currentUser.id || (assigneesMap[t.id] && assigneesMap[t.id].some(a => a.assignee_id === currentUser.id)));
             const container = document.getElementById('tasksPanel');
             if(!container) return;
-            if(!filteredTasks.length) { container.innerHTML = '<p class="text-xs opacity-50 text-center mt-4">No tasks active.</p>'; return; }
+            if(!filteredTasks.length) { container.innerHTML = '<p class="text-sm opacity-50 text-center mt-6"><i class="fas fa-inbox text-3xl mb-2 block"></i> No tasks active.</p>'; return; }
 
             container.innerHTML = filteredTasks.map(task => {
                 const asgList = assigneesMap[task.id] || [];
@@ -771,111 +737,123 @@
                 const activeAssignees = asgList.filter(a => a.status !== 'delegated' && a.status !== 'transferred');
                 const allAccepted = activeAssignees.length > 0 && activeAssignees.every(a => a.status === 'accepted');
                 
-                let overallStatusClass = 'status-pending';
-                if(asgList.length > 0) {
-                    const st = asgList[0].status;
-                    if(st==='in_progress') overallStatusClass = 'status-in_progress';
-                    if(st==='submitted') overallStatusClass = 'status-submitted';
-                    if(st==='needs_review') overallStatusClass = 'status-needs_review';
-                    if(allAccepted) overallStatusClass = 'status-accepted';
+                let globalState = 'pending_ack';
+                if (asgList.length > 0) globalState = asgList[0].status;
+                if (allAccepted) globalState = 'accepted';
+
+                let badgeClass = 'badge-pending'; let badgeText = '⏳ Needs Ack';
+                let borderClass = 'border-l-yellow-400';
+
+                if(globalState==='in_progress') { badgeClass = 'badge-progress'; badgeText = '⚙️ In Progress'; borderClass = 'border-l-blue-500'; }
+                if(globalState==='submitted') { badgeClass = 'badge-review'; badgeText = '📬 Pending Review'; borderClass = 'border-l-orange-500'; }
+                if(globalState==='needs_review') { badgeClass = 'badge-changes'; badgeText = '🔄 Changes Needed'; borderClass = 'border-l-red-500'; }
+                if(globalState==='accepted') { badgeClass = 'badge-done'; badgeText = '🎉 Done'; borderClass = 'border-l-green-600'; }
+
+                let deadlineHtml = task.deadline || 'None';
+                if (task.deadline && new Date(task.deadline) < new Date() && !allAccepted) {
+                    deadlineHtml = `<span class="text-red-600 font-bold bg-red-50 px-1 rounded">${task.deadline} ⚠️ Overdue</span>`;
                 }
 
-                const borderStyle = allAccepted ? 'border: 2px solid #16a34a; border-left-width: 6px;' : '';
-
-                // Delegate Dropdown options: exclude creator and current user
-                const delegateOptions = globalUsersCache.filter(u => u.id !== currentUser.id && u.id !== task.assigned_by).map(u => `<option value="${u.id}">${escapeHtml(u.full_name || u.email)}</option>`).join('');
+                const assigneesNames = asgList.map(a => `@${(a.profiles?.full_name || a.profiles?.email || 'Unknown').split('@')[0]}`).join(', ');
+                const reviewerName = `@${(task.creator?.full_name || task.creator?.email || 'Unknown').split('@')[0]}`;
+                const isCreator = task.assigned_by === currentUser.id;
 
                 const assigneeRows = asgList.map(ass => {
                     const name = ass.profiles?.full_name || ass.profiles?.email || 'Unknown';
-                    const isCreator = task.assigned_by === currentUser.id;
                     const isMe = ass.assignee_id === currentUser.id;
                     let actionsHtml = '';
 
-                    // Transfer Dropdown options: exclude current assignee and current user
+                    const delegateOptions = globalUsersCache.filter(u => u.id !== currentUser.id && u.id !== task.assigned_by).map(u => `<option value="${u.id}">${escapeHtml(u.full_name || u.email)}</option>`).join('');
                     const transferOptions = globalUsersCache.filter(u => u.id !== ass.assignee_id && u.id !== currentUser.id).map(u => `<option value="${u.id}">${escapeHtml(u.full_name || u.email)}</option>`).join('');
 
                     if (isMe && !allAccepted) {
                         if (ass.status === 'pending_ack') {
-                            actionsHtml = `<button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'ack')" class="w-full mt-2 bg-yellow-500 text-white text-xs py-2 rounded font-bold transition-colors shadow-sm cursor-pointer border-none">Acknowledge</button>`;
+                            actionsHtml = `<button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'ack')" class="btn-primary w-full mt-2">Acknowledge</button>`;
                         } else if (ass.status === 'in_progress' || ass.status === 'needs_review') {
-                            const proofHtml = task.require_proof ? `<input type="file" id="file-${task.id}-${ass.assignee_id}" class="text-[10px] flex-1 w-full bg-white border border-gray-300 rounded p-1">` : `<input type="file" id="file-${task.id}-${ass.assignee_id}" class="text-[10px] flex-1 w-full bg-white border border-gray-300 rounded p-1">`;
+                            const proofHtml = `<input type="file" id="file-${task.id}-${ass.assignee_id}" class="text-[10px] w-full bg-white border border-gray-300 rounded p-1 mb-2">`;
                             actionsHtml = `
-                                <div class="mt-2 space-y-2">
+                                <div class="mt-3 space-y-2 bg-black/5 p-2 rounded">
                                     <div class="flex gap-2">
-                                        <input type="text" id="update-txt-${task.id}-${ass.assignee_id}" placeholder="Type update..." class="ui-input flex-1 text-xs px-2 py-1.5 rounded outline-none border border-gray-300">
-                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'update')" class="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded font-bold hover:bg-indigo-700 shadow-sm cursor-pointer border-none">Send</button>
+                                        <input type="text" id="update-txt-${task.id}-${ass.assignee_id}" placeholder="Add Comment..." class="ui-input flex-1 text-xs px-2 py-1 rounded">
+                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'update')" class="btn-outline bg-white">Post</button>
                                     </div>
                                     <div class="flex gap-2 items-center">
                                         ${proofHtml}
-                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'upload')" class="bg-gray-200 text-gray-700 text-xs px-3 py-1.5 rounded font-bold hover:bg-gray-300 shadow-sm cursor-pointer border-none">Upload</button>
+                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'upload')" class="btn-outline bg-white whitespace-nowrap">Upload File</button>
                                     </div>
                                     <div class="flex gap-2 items-center">
-                                        <select id="delegate-${task.id}-${ass.assignee_id}" class="ui-input flex-1 text-[11px] px-1 py-1.5 rounded outline-none border border-gray-300">${delegateOptions}</select>
-                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'delegate')" class="bg-indigo-100 text-indigo-700 hover:bg-indigo-200 text-[11px] px-2 py-1.5 rounded font-bold shadow-sm cursor-pointer border-none">Delegate</button>
+                                        <select id="delegate-${task.id}-${ass.assignee_id}" class="ui-input flex-1 text-[11px] px-1 py-1 rounded">${delegateOptions}</select>
+                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'delegate')" class="btn-outline bg-white text-indigo-600 border-indigo-200">Delegate</button>
                                     </div>
-                                    <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'submit', ${task.require_proof})" class="w-full bg-blue-600 text-white text-xs py-2 rounded font-bold shadow-md hover:bg-blue-700 transition-colors cursor-pointer border-none">Submit for Review</button>
+                                    <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'submit', ${task.require_proof})" class="btn-primary w-full mt-1 ${ass.status === 'needs_review' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'} text-white">${ass.status === 'needs_review' ? 'Resubmit' : 'Submit for Review'}</button>
                                 </div>`;
                         } else if (ass.status === 'submitted') {
-                             actionsHtml = `<div class="mt-2 text-[10px] font-bold text-purple-600 italic border border-purple-100 bg-purple-50 p-1.5 rounded text-center">Waiting for Creator's Review</div>`;
+                             actionsHtml = `<div class="mt-2 text-[11px] font-bold text-orange-600 italic text-center py-1">Awaiting Reviewer Action</div>`;
                         }
                     } else if (isCreator && !allAccepted) {
                         if (ass.status === 'submitted') {
                             actionsHtml = `
-                                <div class="mt-2 space-y-2">
+                                <div class="mt-3 space-y-2 bg-black/5 p-2 rounded border border-gray-200">
                                     <div class="flex gap-2">
-                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'accept')" class="flex-1 bg-green-600 text-white text-xs py-2 rounded font-bold shadow-sm hover:bg-green-700 cursor-pointer border-none">Accept</button>
-                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'review_again')" class="flex-1 bg-red-600 text-white text-xs py-2 rounded font-bold shadow-sm hover:bg-red-700 cursor-pointer border-none">Review</button>
+                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'accept')" class="btn-primary flex-1 bg-green-600 hover:bg-green-700 text-white">Accept</button>
+                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'review_again')" class="btn-primary flex-1 bg-red-600 hover:bg-red-700 text-white">Review Again</button>
                                     </div>
-                                    <div class="flex gap-2 items-center">
-                                        <select id="transfer-${task.id}-${ass.assignee_id}" class="ui-input flex-1 text-[11px] px-1 py-1.5 rounded outline-none border border-gray-300">${transferOptions}</select>
-                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'transfer')" class="bg-orange-500 text-white hover:bg-orange-600 text-[11px] px-2 py-1.5 rounded font-bold shadow-sm cursor-pointer border-none">Transfer</button>
+                                    <div class="flex gap-2 items-center mt-1">
+                                        <select id="transfer-${task.id}-${ass.assignee_id}" class="ui-input flex-1 text-[11px] px-1 py-1 rounded">${transferOptions}</select>
+                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'transfer')" class="btn-outline bg-white border-orange-200 text-orange-600">Transfer</button>
                                     </div>
                                 </div>`;
-                        } else if (ass.status === 'pending_ack') {
-                            actionsHtml = `<div class="mt-2 text-[10px] font-bold text-gray-500 bg-gray-100 p-1.5 rounded text-center">ACK PENDING</div>`;
-                        } else if (ass.status === 'in_progress' || ass.status === 'needs_review') {
-                             actionsHtml = `<div class="mt-2 text-[10px] font-bold text-gray-500 bg-gray-100 p-1.5 rounded text-center">Working...</div>`;
                         }
                     }
-
-                    if (ass.status === 'accepted') actionsHtml = `<div class="mt-2 text-[10px] font-bold text-green-600 bg-green-50 p-1.5 rounded border border-green-100 text-center"><i class="fas fa-check-circle"></i> ACCEPTED</div>`;
-                    if (ass.status === 'delegated') actionsHtml = `<div class="mt-2 text-[10px] font-bold text-indigo-600 bg-indigo-50 p-1.5 rounded border border-indigo-100 text-center"><i class="fas fa-share"></i> DELEGATED</div>`;
-                    if (ass.status === 'transferred') actionsHtml = `<div class="mt-2 text-[10px] font-bold text-orange-600 bg-orange-50 p-1.5 rounded border border-orange-100 text-center"><i class="fas fa-exchange-alt"></i> TRANSFERRED</div>`;
                     
-                    let rowStatusColor = `status-text-${ass.status}`;
-                    return `<div class="mt-2 text-sm border-t pt-2 border-black/5 bg-gray-50 p-2 rounded-lg">
-                                <div class="flex justify-between items-center font-bold text-gray-800">
-                                    <span class="truncate pr-2">${escapeHtml(name)} ${isMe ? '(You)' : ''}</span>
-                                    <span class="text-[9px] font-black uppercase tracking-wider text-gray-500">${ass.status.replace('_',' ')}</span>
-                                </div>
+                    if (!actionsHtml) return ''; 
+                    return `<div class="mt-2 text-sm pt-2 border-t border-gray-100">
+                                <div class="font-semibold text-gray-800 text-xs">Action required for ${isMe ? 'You' : escapeHtml(name)}:</div>
                                 ${actionsHtml}
                             </div>`;
                 }).join('');
 
-                const trailRows = trlList.map(t => {
+                const trailRows = trlList.slice(-3).map(t => {
                     const tName = t.profiles?.full_name || t.profiles?.email || 'System';
                     const tTime = new Date(t.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-                    return `<div class="text-[11px] mb-2 border-l-2 border-indigo-300 pl-2 ml-1">
-                        <div class="font-bold text-indigo-700">${escapeHtml(tName)} <span class="text-[9px] font-normal text-gray-400 ml-1">${tTime}</span></div>
-                        <div class="text-gray-700 mt-0.5 font-medium">${escapeHtml(t.action)} ${t.comment ? `<br><span class="italic text-gray-500">"${escapeHtml(t.comment)}"</span>` : ''}</div>
+                    return `<div class="text-[11px] mb-1.5 flex gap-2">
+                        <span class="text-gray-400 w-10 text-right shrink-0">${tTime}</span>
+                        <div class="flex-1">
+                            <span class="font-bold text-gray-700">${escapeHtml(tName)}</span> ${escapeHtml(t.action)}
+                            ${t.comment ? `<br><span class="italic text-gray-500">"${escapeHtml(t.comment)}"</span>` : ''}
+                        </div>
                     </div>`;
                 }).join('');
 
                 return `
-                <div class="jira-card ${overallStatusClass}" style="${borderStyle}">
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="text-[10px] font-black uppercase tracking-wide text-gray-500 bg-white border border-gray-200 px-2 py-0.5 rounded shadow-sm">${task.priority} Priority</span>
-                        <span class="text-[10px] font-bold text-gray-500"><i class="far fa-calendar-alt"></i> ${task.deadline || 'No Deadline'}</span>
-                    </div>
-                    <div class="font-bold text-[14px] leading-snug mb-2 text-gray-800">${escapeHtml(task.title)}</div>
-                    
-                    ${assigneeRows}
-                    
-                    <button onclick="window.toggleTrail('${task.id}')" class="w-full mt-3 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-bold py-1.5 rounded uppercase tracking-wider cursor-pointer border border-gray-200 transition-colors shadow-sm">
-                        Task Trails (${trlList.length}) <i class="fas fa-chevron-down ml-1"></i>
-                    </button>
-                    <div id="trail-${task.id}" class="task-trail-box">
-                        ${trailRows || '<div class="text-xs text-gray-400 italic">No trails yet.</div>'}
+                <div class="jira-card bg-white rounded-xl shadow-sm border border-gray-200 mb-4 overflow-hidden relative" style="border-left-width: 4px; border-left-style: solid; border-left-color: ${borderClass.split('-')[2]};">
+                    <div class="p-4">
+                        <div class="flex justify-between items-start mb-3">
+                            <div class="font-bold text-gray-800 text-sm flex items-center gap-2"><i class="fas fa-thumbtack text-gray-400"></i> Task: ${escapeHtml(task.title)}</div>
+                            <i class="fas fa-ellipsis-v text-gray-400 cursor-pointer hover:text-gray-600 menu-dots px-2" data-msg-id="${task.original_message_id}" data-msg-text="${escapeHtml(task.title)}"></i>
+                        </div>
+                        
+                        ${task.description ? `<div class="text-[11px] text-gray-500 italic bg-gray-50 p-2 rounded mb-3 border border-gray-100">📝 Original: "${escapeHtml(task.description)}"</div>` : ''}
+                        
+                        <div class="text-[11px] text-gray-600 space-y-1 mb-3">
+                            <div>👥 <span class="font-semibold text-gray-800">Assignees:</span> ${assigneesNames || 'None'}</div>
+                            <div>👑 <span class="font-semibold text-gray-800">Reviewer:</span> ${reviewerName}</div>
+                            <div>📅 <span class="font-semibold text-gray-800">Deadline:</span> ${deadlineHtml}</div>
+                            <div>⚡ <span class="font-semibold text-gray-800">Priority:</span> ${task.priority}</div>
+                            <div class="mt-2">🏷️ <span class="font-semibold text-gray-800 mr-1">Status:</span> <span class="badge ${badgeClass}">${badgeText}</span></div>
+                        </div>
+
+                        ${assigneeRows}
+                        
+                        <div class="mt-3 pt-3 border-t border-gray-100">
+                            <button onclick="window.toggleTrail('${task.id}')" class="text-[11px] font-bold text-gray-500 hover:text-gray-800 flex items-center gap-1 transition-colors w-full text-left">
+                                <i class="fas fa-history"></i> Recent Trail (${trlList.length}) <i class="fas fa-chevron-down ml-auto"></i>
+                            </button>
+                            <div id="trail-${task.id}" class="task-trail-box bg-gray-50 p-2 rounded mt-2">
+                                ${trailRows || '<div class="text-xs text-gray-400 italic">No activity yet.</div>'}
+                                ${trlList.length > 3 ? `<div class="text-center text-[10px] text-indigo-600 mt-1 cursor-pointer">View full trail...</div>` : ''}
+                            </div>
+                        </div>
                     </div>
                 </div>`;
             }).join('');

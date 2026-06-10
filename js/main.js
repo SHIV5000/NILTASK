@@ -1,6 +1,284 @@
 import { sb } from './shared.js';
 import './tasks.js'; // Imports and binds tasks to window
 
+window.currentTheme = localStorage.getItem('theme') || 'light';
+
+window.applyTheme = function() { 
+    document.documentElement.setAttribute('data-theme', window.currentTheme); 
+};
+
+window.signIn = async function(email, pwd) { 
+    const {data, error} = await sb.auth.signInWithPassword({email, password: pwd}); 
+    if(!error && data?.user) { 
+        window.currentUser = data.user; 
+        await window.ensureProfile(); 
+        window.renderMainApp(); 
+        window.startSubscriptions(); 
+        return true; 
+    } 
+    return false; 
+};
+
+window.signUp = async function(email, pwd) { 
+    const {data, error} = await sb.auth.signUp({email, password: pwd}); 
+    if(error) throw error; 
+    window.showCenterToast('Sign up successful! Please wait for admin approval or check email.', 'fa-solid fa-envelope', 'text-blue-400'); 
+};
+
+window.logout = async function() { 
+    await sb.auth.signOut(); 
+    window.currentUser = null; 
+    window.renderAuthScreen(); 
+};
+
+window.renderAuthScreen = function() { 
+    window.applyTheme();
+    document.getElementById('root').innerHTML = `
+        <div class="min-h-screen w-full flex items-center justify-center" style="background-color: var(--bg-body);">
+            <div class="modal-content p-10 rounded-3xl shadow-2xl w-full max-w-md relative overflow-hidden">
+                <div class="text-center mb-8">
+                    <h1 class="text-3xl font-bold tracking-tight">MPGS TaskFlow</h1>
+                    <p class="text-sm mt-2" style="color: var(--text-secondary)">Enterprise Communication Portal</p>
+                </div>
+                <div class="space-y-4">
+                    <input id="email" placeholder="Email Address" class="ui-input w-full px-4 py-3 rounded-xl">
+                    <div class="relative">
+                        <input id="password" type="password" placeholder="Password (Min 6 chars)" class="ui-input w-full px-4 py-3 rounded-xl pr-10">
+                        <i class="fa-solid fa-eye absolute right-4 top-4 text-gray-400 cursor-pointer hover:text-gray-600" id="togglePassword"></i>
+                    </div>
+                    <div class="flex gap-3 pt-2">
+                        <button id="loginBtn" class="flex-1 py-3 px-4 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-medium shadow-md transition-colors">Login</button>
+                        <button id="signupBtn" class="flex-1 py-3 px-4 rounded-xl border border-[var(--accent)] text-[var(--accent)] hover:bg-black/5 font-medium shadow-sm transition-colors">Sign Up</button>
+                    </div>
+                    <div id="authMsg" class="mt-4 text-center text-red-500 text-sm font-medium h-5"></div>
+                </div>
+            </div>
+        </div>`; 
+    
+    document.getElementById('togglePassword').onclick = () => {
+        const pwd = document.getElementById('password');
+        const icon = document.getElementById('togglePassword');
+        if (pwd.type === 'password') { pwd.type = 'text'; icon.classList.replace('fa-eye', 'fa-eye-slash'); }
+        else { pwd.type = 'password'; icon.classList.replace('fa-eye-slash', 'fa-eye'); }
+    };
+
+    document.getElementById('loginBtn').onclick = async () => { 
+        const ok = await window.signIn(document.getElementById('email').value, document.getElementById('password').value); 
+        if(!ok) document.getElementById('authMsg').innerText = 'Invalid credentials'; 
+    };
+    
+    document.getElementById('signupBtn').onclick = async () => { 
+        try { 
+            const email = document.getElementById('email').value;
+            const pwd = document.getElementById('password').value;
+            if(pwd.length < 6) throw new Error("Password must be at least 6 characters.");
+            if(!email) throw new Error("Email is required.");
+            await window.signUp(email, pwd); 
+        } 
+        catch(e) { document.getElementById('authMsg').innerText = e.message; } 
+    };
+};
+
+window.renderMainApp = function() {
+    window.applyTheme();
+    const userNameDisplay = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
+
+    document.getElementById('root').innerHTML = `
+        <div class="flex h-full w-full">
+            <div class="w-80 sidebar-glass flex flex-col border-r z-20 shadow-sm">
+                <div class="p-4 flex justify-between items-center border-b" style="border-color: var(--border-color)">
+                    <h2 class="text-xl font-bold tracking-tight flex items-center gap-2">
+                        <i class="fa-solid fa-comments" style="color: var(--accent)"></i> Chats
+                    </h2>
+                    <button onclick="window.logout()" class="w-8 h-8 rounded-full hover:bg-red-100 hover:text-red-500 flex items-center justify-center transition-colors"><i class="fa-solid fa-sign-out-alt text-sm"></i></button>
+                </div>
+                <div class="p-3"><input type="text" id="globalSearch" placeholder="Search chats" class="ui-input w-full p-2 rounded-xl text-sm"></div>
+                <div id="chatsList" class="flex-1 overflow-y-auto px-2 pb-4"></div>
+                
+                <div class="p-3 border-t flex flex-col items-center justify-center gap-1.5" style="border-color: var(--border-color)">
+                    <div class="text-[13px] font-bold text-gray-700 flex items-center gap-2 bg-black/5 px-3 py-1.5 rounded-full w-full justify-center">
+                        <div class="w-5 h-5 rounded-full bg-[var(--accent)] text-white flex items-center justify-center text-[10px]">${userNameDisplay.charAt(0).toUpperCase()}</div>
+                        ${window.escapeHtml(userNameDisplay.toUpperCase())}
+                    </div>
+                    <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
+                        v1.13.3 - UI Rendering Restored
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex-1 flex flex-col chat-area relative">
+                <div class="p-4 sidebar-glass border-b z-10 flex justify-between items-center shadow-sm" style="border-color: var(--border-color)">
+                    <div class="flex items-center gap-3">
+                        <span id="roomTitleDisplay" class="text-lg font-bold tracking-tight"># ${window.currentRoom}</span>
+                    </div>
+                    <div class="flex items-center gap-5 text-xl" style="color: var(--text-secondary)">
+                        <i class="fa-regular fa-clock cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="window.openTopPanel('scheduled')" title="Scheduled Messages"></i>
+                        <i class="fa-regular fa-bookmark cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="window.openTopPanel('bookmarks')" title="Bookmarks"></i>
+                        <i class="fa-regular fa-bell cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="window.openTopPanel('alerts')" title="Notifications"></i>
+                        <input type="text" id="messageSearchBar" placeholder="Search..." class="ui-input px-3 py-1 rounded-full text-sm w-48">
+                    </div>
+                </div>
+                
+                <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col"></div>
+                
+                <div class="input-container flex flex-col relative">
+                    <div id="replyBanner" class="hidden mx-2 mt-2 px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-t-xl flex justify-between items-center z-0 relative shadow-sm text-xs border-b-0">
+                        <div class="text-indigo-700 flex items-center gap-2 overflow-hidden">
+                            <i class="fa-solid fa-reply"></i>
+                            <span class="font-bold whitespace-nowrap">Replying to:</span>
+                            <span id="replyBannerText" class="italic truncate text-indigo-500 max-w-[200px]"></span>
+                        </div>
+                        <i class="fa-solid fa-times text-indigo-400 hover:text-red-500 cursor-pointer p-1" onclick="window.cancelReply()"></i>
+                    </div>
+
+                    <div class="quill-wrapper z-10 bg-white shadow-sm">
+                        <div id="richEditor"></div>
+                    </div>
+                    <div class="flex justify-between items-center mt-2 px-2">
+                        <div class="flex gap-4 text-xl" style="color: var(--text-secondary)">
+                            <i class="fa-regular fa-face-smile cursor-pointer hover:text-[var(--accent)]" title="Emoji" onclick="window.addEmoji()"></i>
+                            <i class="fa-solid fa-paperclip cursor-pointer hover:text-[var(--accent)]" title="Attach File" onclick="document.getElementById('fileAttachment').click()"></i>
+                            <input type="file" id="fileAttachment" class="hidden">
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="scheduleMsgBtn" class="px-4 py-2 rounded-full font-medium text-sm border bg-transparent hover:bg-black/5" style="color: var(--text-secondary); border-color: var(--border-color); cursor: pointer;">
+                                <i class="fa-regular fa-clock"></i> Schedule
+                            </button>
+                            <button id="sendBtn" class="bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white rounded-full px-5 py-2 font-medium flex items-center gap-2 transition-colors">
+                                Send <i class="fa-solid fa-paper-plane text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="w-[450px] sidebar-glass border-l flex flex-col z-20 shadow-sm hidden md:flex" style="border-color: var(--border-color)">
+                <div class="p-3 border-b flex flex-col gap-2 bg-white">
+                    <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="fa-solid fa-filter text-[var(--accent)]"></i> Task Filters</h3>
+                    <select id="taskFilter" onchange="window.toggleDateFilter()" class="ui-input text-xs px-2 py-2 rounded-lg border-gray-200 font-medium text-gray-700 bg-gray-50 shadow-sm outline-none cursor-pointer w-full focus:ring-2 focus:ring-[var(--accent)] transition-all">
+                        <option value="all">All Tasks</option>
+                        <option value="today">Today</option>
+                        <option value="pending">Pending</option>
+                        <option value="completed">Completed</option>
+                        <option value="allotted_by_me">Allotted by Me</option>
+                        <option value="allotted_to_me">Allotted to Me</option>
+                        <option value="delegated">Delegated</option>
+                        <option value="transferred">Transferred</option>
+                        <option value="date_range">Date Range</option>
+                    </select>
+                </div>
+                <div id="dateRangeFilter" class="hidden px-3 pt-2 pb-3 bg-white border-b border-gray-100 flex gap-2 items-center">
+                    <input type="date" id="filterStartDate" onchange="window.loadTasksForPanel()" class="ui-input text-xs px-2 py-1.5 rounded w-full border-gray-300">
+                    <span class="text-[10px] font-bold text-gray-400">TO</span>
+                    <input type="date" id="filterEndDate" onchange="window.loadTasksForPanel()" class="ui-input text-xs px-2 py-1.5 rounded w-full border-gray-300">
+                </div>
+                <div id="tasksPanel" class="flex-1 overflow-y-auto p-4 bg-gray-50/50"></div>
+            </div>
+        </div>
+
+        <div id="scheduleModal" class="fixed inset-0 modal-overlay hidden items-center justify-center z-50">
+            <div class="modal-content rounded-2xl p-6 w-full max-w-sm mx-4 text-center">
+                <i class="fa-regular fa-clock text-4xl mb-4" style="color: var(--accent)"></i>
+                <h3 class="text-xl font-bold mb-2">Schedule Message</h3>
+                <p class="text-sm mb-6" style="color: var(--text-secondary)">Select when to send your composed message.</p>
+                <input type="datetime-local" id="scheduleDateTime" class="ui-input w-full p-3 rounded-xl mb-6">
+                <div class="flex gap-3">
+                    <button onclick="window.closeScheduleModal()" class="flex-1 py-2.5 rounded-xl font-medium ui-input border-none cursor-pointer">Cancel</button>
+                    <button onclick="window.saveScheduledMessage()" class="flex-1 py-2.5 rounded-xl font-medium bg-[var(--accent)] text-white">Confirm</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="taskModal" class="fixed inset-0 modal-overlay hidden items-center justify-center z-50">
+            <div class="modal-content rounded-2xl p-6 w-full max-w-md mx-4">
+                <h3 class="text-xl font-bold mb-4">Create Task</h3>
+                <input id="taskTitle" class="ui-input w-full p-3 rounded-xl mb-3" placeholder="Task Title">
+                
+                <p class="text-xs font-bold text-gray-500 mb-1">Assigned To:</p>
+                <div class="border rounded-xl mb-3 overflow-hidden border-gray-300">
+                    <input type="text" id="assigneeSearch" onkeyup="window.filterAssignees()" placeholder="Search users..." class="w-full p-2 text-xs border-b outline-none bg-gray-50 text-gray-700">
+                    <div id="assigneeCheckboxList" class="max-h-32 overflow-y-auto bg-white p-2 flex flex-col gap-1">
+                        </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                        <p class="text-xs font-bold text-gray-500 mb-1">Deadline:</p>
+                        <input type="date" id="taskDeadline" class="ui-input w-full p-2.5 rounded-xl">
+                    </div>
+                    <div>
+                        <p class="text-xs font-bold text-gray-500 mb-1">Priority:</p>
+                        <select id="taskPriority" class="ui-input w-full p-2.5 rounded-xl">
+                            <option value="Low">Low</option>
+                            <option value="Medium" selected>Medium</option>
+                            <option value="High">High</option>
+                        </select>
+                    </div>
+                </div>
+                <label class="flex items-start gap-2 text-xs cursor-pointer mt-2 mb-4 p-2.5 bg-black/5 rounded-lg text-gray-700">
+                    <input type="checkbox" id="taskRequireProof" class="mt-0.5"> 
+                    <span><b>Require proof File To Complete</b><br><span class="opacity-70">(Users Need To Upload File To Submit Task)</span></span>
+                </label>
+                <div class="flex gap-3 mt-4">
+                    <button onclick="window.closeTaskModal()" class="flex-1 py-2.5 rounded-xl ui-input border-none cursor-pointer hover:bg-gray-100 font-bold">Cancel</button>
+                    <button onclick="window.saveTaskMultiAssignee()" class="flex-1 py-2.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-bold transition-colors">Create</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="reminderModal" class="fixed inset-0 modal-overlay hidden items-center justify-center z-50">
+            <div class="modal-content rounded-2xl p-6 w-full max-w-sm mx-4">
+                <h3 class="text-xl font-bold mb-4">Set Reminder</h3>
+                <p id="reminderMessagePreview" class="text-sm mb-4 truncate text-gray-500"></p>
+                <input type="datetime-local" id="reminderDateTime" class="ui-input w-full p-3 rounded-xl mb-6">
+                <div class="flex gap-3">
+                    <button onclick="window.closeReminderModal()" class="flex-1 py-2.5 rounded-xl ui-input border-none cursor-pointer">Cancel</button>
+                    <button onclick="window.saveReminder()" class="flex-1 py-2.5 rounded-xl bg-[var(--accent)] text-white font-bold">Set</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    window.quillEditor = new Quill('#richEditor', { 
+        theme: 'snow', 
+        placeholder: 'Type a message...', 
+        modules: { toolbar: [['bold','italic','underline','strike'], [{'list': 'ordered'}, {'list': 'bullet'}], ['clean']] } 
+    });
+
+    document.getElementById('sendBtn').onclick = window.sendMessage;
+    window.quillEditor.root.addEventListener('keydown', (e) => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); window.sendMessage(); } });
+    
+    document.getElementById('fileAttachment').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            window.showCenterToast('Uploading secure file...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
+            const sizeKB = Math.round(file.size / 1024);
+            const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+            const filePath = `chat/${Date.now()}_${safeName}`;
+            
+            const { error } = await sb.storage.from('task-proofs').upload(filePath, file);
+            if(error) {
+                window.showCenterToast('Upload failed: ' + error.message, 'fa-solid fa-times', 'text-red-500');
+                return;
+            }
+            
+            window.quillEditor.focus();
+            const range = window.quillEditor.getSelection() || { index: window.quillEditor.getLength() };
+            window.quillEditor.insertText(range.index, `📁 Attached File: ${file.name} (${sizeKB} KB)\n`, 'link', `secure-file:${filePath}`);
+            
+            window.showCenterToast('File securely attached!', 'fa-solid fa-check-circle', 'text-green-500');
+            e.target.value = ''; 
+        }
+    });
+
+    document.getElementById('scheduleMsgBtn').onclick = window.showScheduleModal;
+    document.getElementById('messageSearchBar').addEventListener('input', window.applyFilters);
+    
+    window.loadChatsList(); 
+    window.loadMessages(); 
+    window.loadTasksForPanel(); 
+};
+
 window.openTaskModal = async function(mid, text) { 
     window.currentMessageId = mid; 
     let tmp = document.createElement("DIV");
@@ -341,15 +619,16 @@ window.startSubscriptions = function() {
 
 window.ensureProfile = async function() { 
     if(!window.currentUser) return; 
-    const {data:ex}=await sb.from('profiles').select('id').eq('id',window.currentUser.id).maybeSingle(); 
-    if(!ex) await sb.from('profiles').insert({id:window.currentUser.id, email:window.currentUser.email, full_name:window.currentUser.email.split('@')[0], role:'teacher'}); 
+    const {data:ex} = await sb.from('profiles').select('id').eq('id', window.currentUser.id).maybeSingle(); 
+    if(!ex) await sb.from('profiles').insert({id: window.currentUser.id, email: window.currentUser.email, full_name: window.currentUser.email.split('@')[0], role: 'teacher'}); 
 };
 
 // Boot Sequence
 ;(async() => { 
     const {data: {session}} = await sb.auth.getSession(); 
-    if(!session) window.renderAuthScreen(); 
-    else { 
+    if(!session) {
+        window.renderAuthScreen(); 
+    } else { 
         window.currentUser = session.user; 
         await window.ensureProfile(); 
         window.renderMainApp(); 

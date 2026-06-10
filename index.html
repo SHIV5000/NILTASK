@@ -5,21 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>MPGS TaskFlow - Enterprise Chat</title>
     
+    <!-- External Libraries -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
     <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
     <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     
     <link rel="icon" href="data:,">
 
+    <!-- Local CSS Import -->
     <link rel="stylesheet" href="./css/theme.css">
 </head>
 <body class="antialiased overflow-hidden">
+    <!-- App Container -->
     <div id="root" class="h-screen flex overflow-hidden"></div>
     <div id="pdf-generation-container" style="display: none;"></div>
     
+    <!-- Boot Sequence -->
     <script type="module" src="./js/main.js"></script>
 </body>
 </html>

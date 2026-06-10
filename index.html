@@ -270,6 +270,7 @@
 
         function renderMainApp() {
             applyTheme();
+            
             const userNameDisplay = currentUser?.user_metadata?.full_name || currentUser?.email?.split('@')[0] || 'User';
 
             document.getElementById('root').innerHTML = `
@@ -290,7 +291,7 @@
                                 ${escapeHtml(userNameDisplay.toUpperCase())}
                             </div>
                             <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                                v1.9.0 - PDF Export & Global Filters
+                                v1.10.0 - Locked Core & Inline Logic
                             </div>
                         </div>
                     </div>
@@ -754,84 +755,6 @@
             window.loadTasksForPanel(); 
         }
 
-        window.taskAction = async function(taskId, assigneeId, action, requireProof = false) {
-            let actionText = ''; let newStatus = ''; let comment = '';
-            
-            if (action === 'ack') {
-                const btn = document.getElementById(`ack-btn-${taskId}-${assigneeId}`);
-                if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Acknowledging...'; }
-            }
-
-            const {data: taskData} = await sb.from('tasks').select('*').eq('id', taskId).single();
-            const creatorId = taskData.assigned_by;
-
-            if (action === 'ack') {
-                newStatus = 'in_progress'; actionText = 'UPDATE'; comment = 'Acknowledged the task';
-                await notifyUser(creatorId, `Task Acknowledged by an Assignee`);
-            } else if (action === 'update') {
-                const el = document.getElementById(`update-txt-${taskId}-${assigneeId}`);
-                comment = el.value;
-                if(!comment) return window.showCenterToast('Comment cannot be empty', 'fa-solid fa-times', 'text-red-500');
-                actionText = 'UPDATE';
-                await notifyUser(creatorId, `Task Update Added`);
-                el.value = '';
-                document.getElementById(`comment-box-${taskId}-${assigneeId}`).classList.add('hidden');
-            } else if (action === 'upload') {
-                const el = document.getElementById(`upload-box-${taskId}-${assigneeId}`);
-                if(!el.files.length) return window.showCenterToast('Select a file', 'fa-solid fa-times', 'text-red-500');
-                actionText = 'FILE'; comment = el.files[0].name;
-                await notifyUser(creatorId, `File Uploaded on Task`);
-                el.value = '';
-            } else if (action === 'submit') {
-                if (requireProof) {
-                    const {data: trails} = await sb.from('task_trails').select('*').eq('task_id', taskId).eq('user_id', currentUser.id).eq('action', 'FILE');
-                    if(!trails || trails.length === 0) return window.showCenterToast('Proof required - please attach a file.', 'fa-solid fa-exclamation-triangle', 'text-red-500');
-                }
-                newStatus = 'submitted'; actionText = 'UPDATE'; comment = 'Submitted for Review';
-                await notifyUser(creatorId, `Task Submitted for Review`);
-            } else if (action === 'accept') {
-                newStatus = 'accepted'; actionText = 'UPDATE'; comment = 'Accepted completion';
-                await notifyUser(assigneeId, `Your task submission was Accepted`);
-            } else if (action === 'review_again') {
-                comment = prompt("Enter mandatory feedback/reason for the assignee:");
-                if(!comment) return window.showCenterToast('Feedback is mandatory for rework!', 'fa-solid fa-times', 'text-red-500');
-                newStatus = 'needs_review'; actionText = 'UPDATE';
-                await notifyUser(assigneeId, `Task needs review/rework`);
-            } else if (action === 'delegate') {
-                const newAssignee = document.getElementById(`delegate-sel-${taskId}-${assigneeId}`).value;
-                if(!newAssignee) return window.showCenterToast('Select user to delegate', 'fa-solid fa-times', 'text-red-500');
-                actionText = 'UPDATE'; comment = 'Delegated task';
-                await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack', state: 'pending' });
-                await notifyUser(newAssignee, `A task was delegated to you`); await notifyUser(creatorId, `Task was delegated`);
-                document.getElementById(`delegate-box-${taskId}-${assigneeId}`).classList.add('hidden');
-            } else if (action === 'transfer') {
-                const newAssignee = document.getElementById(`transfer-sel-${taskId}-${assigneeId}`).value;
-                if(!newAssignee) return window.showCenterToast('Select user to transfer', 'fa-solid fa-times', 'text-red-500');
-                actionText = 'UPDATE'; comment = 'Transferred task';
-                await sb.from('task_assignees').delete().eq('task_id', taskId).eq('assignee_id', assigneeId);
-                await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack', state: 'pending' });
-                await notifyUser(newAssignee, `A task was transferred to you`); await notifyUser(assigneeId, `Your task was transferred`);
-            }
-
-            if (newStatus) { 
-                let updatePayload = { status: newStatus, state: newStatus }; 
-                if (action === 'ack') updatePayload.acked = true;
-                
-                const {data: updatedData, error} = await sb.from('task_assignees').update(updatePayload).eq('task_id', taskId).eq('assignee_id', assigneeId).select(); 
-                
-                if (error || !updatedData || updatedData.length === 0) {
-                    window.showCenterToast('Database Blocked Status Update! Run RLS SQL Fix.', 'fa-solid fa-lock', 'text-red-500');
-                    if(action === 'ack') {
-                        const btn = document.getElementById(`ack-btn-${taskId}-${assigneeId}`);
-                        if(btn) { btn.disabled = false; btn.innerHTML = 'Acknowledge Task'; }
-                    }
-                    return;
-                }
-            }
-            await sb.from('task_trails').insert({ task_id: taskId, user_id: currentUser.id, action: actionText, comment: comment }); 
-            window.loadTasksForPanel(); 
-        }
-
         window.downloadTaskPDF = async function(taskId) {
             window.showCenterToast('Generating PDF Report...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
             
@@ -896,7 +819,6 @@
             });
         };
 
-        // Event listener injection for the newly added PDF Download menu option on tasks
         document.addEventListener('click', (e) => {
             if (e.target.closest('.task-menu-dots')) {
                 e.stopPropagation();
@@ -917,6 +839,107 @@
                 menu.style.left = (rect.left - 120 + window.scrollX) + 'px';
             }
         });
+
+        /* ========================================================================================= */
+        /* 🔒 LOCKED BLOCK START: TASK UI RENDERING & LOGIC 🔒                                       */
+        /* AI & USER INSTRUCTION: DO NOT TOUCH, MODIFY, OR TRUNCATE THIS BLOCK UNDER ANY CIRCUMSTANCES */
+        /* UNLESS EXPLICITLY INSTRUCTED BY THE USER TO DO SO.                                          */
+        /* ========================================================================================= */
+
+        window.taskAction = async function(taskId, assigneeId, action, requireProof = false) {
+            let actionText = ''; let newStatus = ''; let comment = '';
+            
+            const {data: taskData} = await sb.from('tasks').select('*').eq('id', taskId).single();
+            const creatorId = taskData.assigned_by;
+
+            if (action === 'ack') {
+                const btn = document.getElementById(`ack-btn-${taskId}-${assigneeId}`);
+                if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Acknowledging...'; }
+                newStatus = 'in_progress'; actionText = 'UPDATE'; comment = 'Acknowledged the task';
+                await notifyUser(creatorId, `Task Acknowledged by an Assignee`);
+            } else if (action === 'update') {
+                const el = document.getElementById(`update-txt-${taskId}-${assigneeId}`);
+                comment = el.value;
+                if(!comment) return window.showCenterToast('Comment cannot be empty', 'fa-solid fa-times', 'text-red-500');
+                actionText = 'UPDATE';
+                await notifyUser(creatorId, `Task Update Added`);
+                el.value = '';
+                document.getElementById(`comment-box-${taskId}-${assigneeId}`).classList.add('hidden');
+            } else if (action === 'upload') {
+                const el = document.getElementById(`upload-box-${taskId}-${assigneeId}`);
+                if(!el.files.length) return window.showCenterToast('Select a file', 'fa-solid fa-times', 'text-red-500');
+                
+                const progressContainer = document.getElementById(`upload-progress-container-${taskId}-${assigneeId}`);
+                const progressBar = document.getElementById(`upload-progress-bar-${taskId}-${assigneeId}`);
+                
+                if (progressContainer && progressBar) {
+                    progressContainer.classList.remove('hidden');
+                    for (let w = 0; w <= 100; w += 20) {
+                        progressBar.style.width = w + '%';
+                        await new Promise(r => setTimeout(r, 150));
+                    }
+                }
+                
+                actionText = 'FILE'; comment = el.files[0].name;
+                await notifyUser(creatorId, `File Uploaded on Task`);
+                el.value = '';
+                if(progressContainer) {
+                    setTimeout(() => { progressContainer.classList.add('hidden'); progressBar.style.width='0%'; }, 500);
+                }
+            } else if (action === 'submit') {
+                if (requireProof) {
+                    const {data: trails} = await sb.from('task_trails').select('*').eq('task_id', taskId).eq('user_id', currentUser.id).eq('action', 'FILE');
+                    if(!trails || trails.length === 0) return window.showCenterToast('Proof required - please attach a file.', 'fa-solid fa-exclamation-triangle', 'text-red-500');
+                }
+                newStatus = 'submitted'; actionText = 'UPDATE'; comment = 'Submitted for Review';
+                await notifyUser(creatorId, `Task Submitted for Review`);
+            } else if (action === 'accept') {
+                newStatus = 'accepted'; actionText = 'UPDATE'; comment = 'Accepted completion';
+                await notifyUser(assigneeId, `Your task submission was Accepted`);
+            } else if (action === 'review_again') {
+                const txtEl = document.getElementById(`review-txt-${taskId}-${assigneeId}`);
+                comment = txtEl ? txtEl.value : '';
+                if(!comment) return window.showCenterToast('Feedback is mandatory for rework!', 'fa-solid fa-times', 'text-red-500');
+                newStatus = 'needs_review'; actionText = 'UPDATE';
+                await notifyUser(assigneeId, `Task needs review/rework`);
+                document.getElementById(`review-box-${taskId}-${assigneeId}`).classList.add('hidden');
+            } else if (action === 'delegate') {
+                const newAssignee = document.getElementById(`delegate-sel-${taskId}-${assigneeId}`).value;
+                if(!newAssignee) return window.showCenterToast('Select user to delegate', 'fa-solid fa-times', 'text-red-500');
+                actionText = 'UPDATE'; comment = 'Delegated task';
+                await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack', state: 'pending' });
+                await notifyUser(newAssignee, `A task was delegated to you`); await notifyUser(creatorId, `Task was delegated`);
+                document.getElementById(`delegate-box-${taskId}-${assigneeId}`).classList.add('hidden');
+            } else if (action === 'transfer') {
+                const newAssignee = document.getElementById(`transfer-sel-${taskId}-${assigneeId}`).value;
+                const txtEl = document.getElementById(`transfer-txt-${taskId}-${assigneeId}`);
+                comment = txtEl ? txtEl.value : '';
+                if(!newAssignee) return window.showCenterToast('Select user to transfer', 'fa-solid fa-times', 'text-red-500');
+                if(!comment) return window.showCenterToast('Reason is mandatory for transfer!', 'fa-solid fa-times', 'text-red-500');
+                actionText = 'UPDATE';
+                await sb.from('task_assignees').delete().eq('task_id', taskId).eq('assignee_id', assigneeId);
+                await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack', state: 'pending' });
+                await notifyUser(newAssignee, `A task was transferred to you`); await notifyUser(assigneeId, `Your task was transferred`);
+            }
+
+            if (newStatus) { 
+                let updatePayload = { status: newStatus, state: newStatus }; 
+                if (action === 'ack') updatePayload.acked = true;
+                
+                const {data: updatedData, error} = await sb.from('task_assignees').update(updatePayload).eq('task_id', taskId).eq('assignee_id', assigneeId).select(); 
+                
+                if (error || !updatedData || updatedData.length === 0) {
+                    window.showCenterToast('Database Blocked Status Update! Run RLS SQL Fix.', 'fa-solid fa-lock', 'text-red-500');
+                    if(action === 'ack') {
+                        const btn = document.getElementById(`ack-btn-${taskId}-${assigneeId}`);
+                        if(btn) { btn.disabled = false; btn.innerHTML = 'Acknowledge Task'; }
+                    }
+                    return;
+                }
+            }
+            await sb.from('task_trails').insert({ task_id: taskId, user_id: currentUser.id, action: actionText, comment: comment }); 
+            window.loadTasksForPanel(); 
+        }
 
         window.toggleTrail = function(taskId) {
             const box = document.getElementById(`trail-${taskId}`);
@@ -1047,7 +1070,11 @@
                             </div>
                             
                             <input type="file" id="upload-box-${task.id}-${uId}" class="hidden" onchange="window.taskAction('${task.id}', '${uId}', 'upload')">
-                            
+                            <div id="upload-progress-container-${task.id}-${uId}" class="hidden w-full mt-2 bg-white p-2 rounded border border-gray-200">
+                                <div class="w-full bg-gray-200 rounded-full h-1.5"><div id="upload-progress-bar-${task.id}-${uId}" class="bg-blue-600 h-1.5 rounded-full transition-all" style="width: 0%"></div></div>
+                                <p class="text-[9px] text-gray-500 mt-1 text-center font-bold">Uploading File...</p>
+                            </div>
+
                             <div id="delegate-box-${task.id}-${uId}" class="hidden flex gap-2 mt-2">
                                 <select id="delegate-sel-${task.id}-${uId}" class="ui-input flex-1 text-xs px-2 py-1 rounded">${delegateOptions}</select>
                                 <button onclick="window.taskAction('${task.id}', '${uId}', 'delegate')" class="btn-primary">Confirm</button>
@@ -1065,12 +1092,19 @@
                                 <div class="text-xs font-bold text-orange-800 mb-2">Review required for: ${escapeHtml(sName)}</div>
                                 <div class="flex flex-wrap gap-2">
                                     <button onclick="window.taskAction('${task.id}', '${sa.assignee_id}', 'accept')" class="btn-primary bg-green-600 hover:bg-green-700 text-white">Accept</button>
-                                    <button onclick="window.taskAction('${task.id}', '${sa.assignee_id}', 'review_again')" class="btn-primary bg-red-600 hover:bg-red-700 text-white">Review Again</button>
+                                    <button onclick="document.getElementById('review-box-${task.id}-${sa.assignee_id}').classList.toggle('hidden')" class="btn-primary bg-red-600 hover:bg-red-700 text-white">Review Again</button>
                                     <button onclick="document.getElementById('transfer-box-${task.id}-${sa.assignee_id}').classList.toggle('hidden')" class="btn-outline bg-white border border-gray-300 hover:bg-gray-50">Transfer</button>
                                 </div>
-                                <div id="transfer-box-${task.id}-${sa.assignee_id}" class="hidden flex gap-2 mt-2">
-                                    <select id="transfer-sel-${task.id}-${sa.assignee_id}" class="ui-input flex-1 text-xs px-2 py-1 rounded">${transferOptions}</select>
-                                    <button onclick="window.taskAction('${task.id}', '${sa.assignee_id}', 'transfer')" class="btn-primary">Confirm</button>
+                                <div id="review-box-${task.id}-${sa.assignee_id}" class="hidden flex gap-2 mt-2">
+                                    <input type="text" id="review-txt-${task.id}-${sa.assignee_id}" placeholder="Mandatory feedback..." class="ui-input flex-1 text-xs px-2 py-1 rounded border border-red-300">
+                                    <button onclick="window.taskAction('${task.id}', '${sa.assignee_id}', 'review_again')" class="btn-primary bg-red-600 hover:bg-red-700">Submit</button>
+                                </div>
+                                <div id="transfer-box-${task.id}-${sa.assignee_id}" class="hidden flex flex-col gap-2 mt-2">
+                                    <select id="transfer-sel-${task.id}-${sa.assignee_id}" class="ui-input flex-1 text-xs px-2 py-1.5 rounded">${transferOptions}</select>
+                                    <div class="flex gap-2">
+                                        <input type="text" id="transfer-txt-${task.id}-${sa.assignee_id}" placeholder="Mandatory reason..." class="ui-input flex-1 text-xs px-2 py-1 rounded border border-orange-300">
+                                        <button onclick="window.taskAction('${task.id}', '${sa.assignee_id}', 'transfer')" class="btn-primary bg-orange-600 hover:bg-orange-700 text-white">Confirm</button>
+                                    </div>
                                 </div>
                             </div>
                         `;
@@ -1129,6 +1163,9 @@
                 </div>`;
             }).join('');
         }
+        /* ========================================================================================= */
+        /* 🔒 LOCKED BLOCK END 🔒                                                                    */
+        /* ========================================================================================= */
 
         window.showReminderModal = function(mid, text) { 
             currentReminderId = mid; 

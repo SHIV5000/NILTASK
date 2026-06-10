@@ -99,7 +99,7 @@
             animation: flashHighlight 4s ease-out forwards;
         }
 
-        /* Unified Status Badges */
+        /* Unified Status Badges based on Mockups */
         .badge { padding: 4px 10px; border-radius: 9999px; font-weight: 700; font-size: 11px; letter-spacing: 0.5px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid rgba(0,0,0,0.05); }
         .badge-pending { background-color: #fef9c3; color: #854d0e; }
         .badge-progress { background-color: #dbeafe; color: #1e40af; }
@@ -233,7 +233,7 @@
                         <div class="p-3"><input type="text" id="globalSearch" placeholder="Search chats" class="ui-input w-full p-2 rounded-xl text-sm"></div>
                         <div id="chatsList" class="flex-1 overflow-y-auto px-2 pb-4"></div>
                         <div class="p-2 border-t text-center text-[10px] font-bold tracking-wider text-gray-400 uppercase" style="border-color: var(--border-color)">
-                            v1.2.0 - Advanced Task UI
+                            v1.3.0 - Perfected Task Machine
                         </div>
                     </div>
 
@@ -638,7 +638,7 @@
             }).select().single(); 
             
             if(!task) return; 
-            await sb.from('task_assignees').insert(aids.map(aid => ({ task_id: task.id, assignee_id: aid, status: 'pending_ack' }))); 
+            await sb.from('task_assignees').insert(aids.map(aid => ({ task_id: task.id, assignee_id: aid, status: 'pending_ack', state: 'pending' }))); 
             await sb.from('task_trails').insert({ task_id: task.id, user_id: currentUser.id, action: 'Task Created' });
             
             for(let aid of aids) {
@@ -662,20 +662,21 @@
             } else if (action === 'update') {
                 const el = document.getElementById(`update-txt-${taskId}-${assigneeId}`);
                 comment = el.value;
-                if(!comment) return window.showCenterToast('Update cannot be empty', 'fa-times', 'text-red-500');
-                actionText = 'Added Update';
+                if(!comment) return window.showCenterToast('Comment cannot be empty', 'fa-times', 'text-red-500');
+                actionText = 'Added Comment';
                 await notifyUser(creatorId, `Task Update Added`);
                 el.value = '';
+                document.getElementById(`comment-box-${taskId}-${assigneeId}`).classList.add('hidden');
             } else if (action === 'upload') {
-                const el = document.getElementById(`file-${taskId}-${assigneeId}`);
+                const el = document.getElementById(`upload-box-${taskId}-${assigneeId}`);
                 if(!el.files.length) return window.showCenterToast('Select a file', 'fa-times', 'text-red-500');
                 comment = `Uploaded file: ${el.files[0].name}`; actionText = 'File Uploaded';
                 await notifyUser(creatorId, `File Uploaded on Task`);
                 el.value = '';
             } else if (action === 'submit') {
                 if (requireProof) {
-                    const {data: trails} = await sb.from('task_trails').select('*').eq('task_id', taskId).eq('user_id', currentUser.id).ilike('action', '%File%');
-                    if(!trails || trails.length === 0) return window.showCenterToast('Proof file upload is compulsory to submit!', 'fa-exclamation-triangle', 'text-red-500');
+                    const {data: trails} = await sb.from('task_trails').select('*').eq('task_id', taskId).eq('user_id', currentUser.id).ilike('action', '%File Uploaded%');
+                    if(!trails || trails.length === 0) return window.showCenterToast('Proof required - please attach a file.', 'fa-exclamation-triangle', 'text-red-500');
                 }
                 newStatus = 'submitted'; actionText = 'Submitted for Review';
                 await notifyUser(creatorId, `Task Submitted for Review`);
@@ -688,18 +689,31 @@
                 newStatus = 'needs_review'; actionText = 'Requested rework';
                 await notifyUser(assigneeId, `Task needs review/rework`);
             } else if (action === 'delegate') {
-                const newAssignee = document.getElementById(`delegate-${taskId}-${assigneeId}`).value;
-                newStatus = 'delegated'; actionText = 'Delegated task';
-                await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack' });
+                const newAssignee = document.getElementById(`delegate-sel-${taskId}-${assigneeId}`).value;
+                if(!newAssignee) return window.showCenterToast('Select user to delegate', 'fa-times', 'text-red-500');
+                actionText = 'Delegated task';
+                await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack', state: 'pending' });
                 await notifyUser(newAssignee, `A task was delegated to you`); await notifyUser(creatorId, `Task was delegated`);
+                document.getElementById(`delegate-box-${taskId}-${assigneeId}`).classList.add('hidden');
             } else if (action === 'transfer') {
-                const newAssignee = document.getElementById(`transfer-${taskId}-${assigneeId}`).value;
-                newStatus = 'transferred'; actionText = 'Transferred task';
-                await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack' });
+                const newAssignee = document.getElementById(`transfer-sel-${taskId}-${assigneeId}`).value;
+                if(!newAssignee) return window.showCenterToast('Select user to transfer', 'fa-times', 'text-red-500');
+                actionText = 'Transferred task';
+                await sb.from('task_assignees').delete().eq('task_id', taskId).eq('assignee_id', assigneeId);
+                await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack', state: 'pending' });
                 await notifyUser(newAssignee, `A task was transferred to you`); await notifyUser(assigneeId, `Your task was transferred`);
             }
 
-            if (newStatus) { await sb.from('task_assignees').update({ status: newStatus }).eq('task_id', taskId).eq('assignee_id', assigneeId); }
+            if (newStatus) { 
+                let updatePayload = { status: newStatus, state: newStatus };
+                if (action === 'ack') updatePayload.acked = true;
+                const {error} = await sb.from('task_assignees').update(updatePayload).eq('task_id', taskId).eq('assignee_id', assigneeId); 
+                if (error) {
+                    window.showCenterToast('DB Error: ' + error.message, 'fa-times', 'text-red-500');
+                    console.error('Update Failed:', error);
+                    return;
+                }
+            }
             await sb.from('task_trails').insert({ task_id: taskId, user_id: currentUser.id, action: actionText, comment: comment }); 
             loadTasksForPanel(); 
         }
@@ -738,120 +752,133 @@
                 const allAccepted = activeAssignees.length > 0 && activeAssignees.every(a => a.status === 'accepted');
                 
                 let globalState = 'pending_ack';
-                if (asgList.length > 0) globalState = asgList[0].status;
-                if (allAccepted) globalState = 'accepted';
+                if (asgList.length > 0) {
+                    const statuses = asgList.map(a => a.status);
+                    if (statuses.every(s => s === 'accepted' || s === 'transferred')) globalState = 'accepted';
+                    else if (statuses.includes('submitted')) globalState = 'submitted';
+                    else if (statuses.includes('needs_review')) globalState = 'needs_review';
+                    else if (statuses.includes('in_progress')) globalState = 'in_progress';
+                }
 
                 let badgeClass = 'badge-pending'; let badgeText = '⏳ Needs Ack';
-                let borderClass = 'border-l-yellow-400';
+                if(globalState==='in_progress') { badgeClass = 'badge-progress'; badgeText = '⚙️ In Progress'; }
+                if(globalState==='submitted') { badgeClass = 'badge-review'; badgeText = '📬 Pending Review'; }
+                if(globalState==='needs_review') { badgeClass = 'badge-changes'; badgeText = '🔄 Changes Needed'; }
+                if(globalState==='accepted') { badgeClass = 'badge-done'; badgeText = '🎉 Done'; }
 
-                if(globalState==='in_progress') { badgeClass = 'badge-progress'; badgeText = '⚙️ In Progress'; borderClass = 'border-l-blue-500'; }
-                if(globalState==='submitted') { badgeClass = 'badge-review'; badgeText = '📬 Pending Review'; borderClass = 'border-l-orange-500'; }
-                if(globalState==='needs_review') { badgeClass = 'badge-changes'; badgeText = '🔄 Changes Needed'; borderClass = 'border-l-red-500'; }
-                if(globalState==='accepted') { badgeClass = 'badge-done'; badgeText = '🎉 Done'; borderClass = 'border-l-green-600'; }
+                let priorityColor = '#3b82f6';
+                if (task.priority === 'Medium') priorityColor = '#f97316';
+                if (task.priority === 'High') priorityColor = '#ef4444';
+                if (globalState === 'accepted') priorityColor = '#22c55e';
 
                 let deadlineHtml = task.deadline || 'None';
-                if (task.deadline && new Date(task.deadline) < new Date() && !allAccepted) {
+                if (task.deadline && new Date(task.deadline) < new Date() && globalState !== 'accepted') {
                     deadlineHtml = `<span class="text-red-600 font-bold bg-red-50 px-1 rounded">${task.deadline} ⚠️ Overdue</span>`;
                 }
 
-                const assigneesNames = asgList.map(a => `@${(a.profiles?.full_name || a.profiles?.email || 'Unknown').split('@')[0]}`).join(', ');
+                const assigneesNames = asgList.map(a => {
+                    let suffix = '';
+                    if(a.status === 'submitted') suffix = ' (submitted)';
+                    else if(a.status === 'accepted') suffix = ' (completed)';
+                    return `@${(a.profiles?.full_name || a.profiles?.email || 'Unknown').split('@')[0]}${suffix}`;
+                }).join(', ');
                 const reviewerName = `@${(task.creator?.full_name || task.creator?.email || 'Unknown').split('@')[0]}`;
                 const isCreator = task.assigned_by === currentUser.id;
 
-                const assigneeRows = asgList.map(ass => {
-                    const name = ass.profiles?.full_name || ass.profiles?.email || 'Unknown';
-                    const isMe = ass.assignee_id === currentUser.id;
-                    let actionsHtml = '';
+                const delegateOptions = globalUsersCache.filter(u => u.id !== currentUser.id && u.id !== task.assigned_by).map(u => `<option value="${u.id}">${escapeHtml(u.full_name || u.email)}</option>`).join('');
+                const transferOptions = globalUsersCache.filter(u => u.id !== currentUser.id).map(u => `<option value="${u.id}">${escapeHtml(u.full_name || u.email)}</option>`).join('');
 
-                    const delegateOptions = globalUsersCache.filter(u => u.id !== currentUser.id && u.id !== task.assigned_by).map(u => `<option value="${u.id}">${escapeHtml(u.full_name || u.email)}</option>`).join('');
-                    const transferOptions = globalUsersCache.filter(u => u.id !== ass.assignee_id && u.id !== currentUser.id).map(u => `<option value="${u.id}">${escapeHtml(u.full_name || u.email)}</option>`).join('');
-
-                    if (isMe && !allAccepted) {
-                        if (ass.status === 'pending_ack') {
-                            actionsHtml = `<button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'ack')" class="btn-primary w-full mt-2">Acknowledge</button>`;
-                        } else if (ass.status === 'in_progress' || ass.status === 'needs_review') {
-                            const proofHtml = `<input type="file" id="file-${task.id}-${ass.assignee_id}" class="text-[10px] w-full bg-white border border-gray-300 rounded p-1 mb-2">`;
-                            actionsHtml = `
-                                <div class="mt-3 space-y-2 bg-black/5 p-2 rounded">
-                                    <div class="flex gap-2">
-                                        <input type="text" id="update-txt-${task.id}-${ass.assignee_id}" placeholder="Add Comment..." class="ui-input flex-1 text-xs px-2 py-1 rounded">
-                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'update')" class="btn-outline bg-white">Post</button>
-                                    </div>
-                                    <div class="flex gap-2 items-center">
-                                        ${proofHtml}
-                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'upload')" class="btn-outline bg-white whitespace-nowrap">Upload File</button>
-                                    </div>
-                                    <div class="flex gap-2 items-center">
-                                        <select id="delegate-${task.id}-${ass.assignee_id}" class="ui-input flex-1 text-[11px] px-1 py-1 rounded">${delegateOptions}</select>
-                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'delegate')" class="btn-outline bg-white text-indigo-600 border-indigo-200">Delegate</button>
-                                    </div>
-                                    <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'submit', ${task.require_proof})" class="btn-primary w-full mt-1 ${ass.status === 'needs_review' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'} text-white">${ass.status === 'needs_review' ? 'Resubmit' : 'Submit for Review'}</button>
-                                </div>`;
-                        } else if (ass.status === 'submitted') {
-                             actionsHtml = `<div class="mt-2 text-[11px] font-bold text-orange-600 italic text-center py-1">Awaiting Reviewer Action</div>`;
-                        }
-                    } else if (isCreator && !allAccepted) {
-                        if (ass.status === 'submitted') {
-                            actionsHtml = `
-                                <div class="mt-3 space-y-2 bg-black/5 p-2 rounded border border-gray-200">
-                                    <div class="flex gap-2">
-                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'accept')" class="btn-primary flex-1 bg-green-600 hover:bg-green-700 text-white">Accept</button>
-                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'review_again')" class="btn-primary flex-1 bg-red-600 hover:bg-red-700 text-white">Review Again</button>
-                                    </div>
-                                    <div class="flex gap-2 items-center mt-1">
-                                        <select id="transfer-${task.id}-${ass.assignee_id}" class="ui-input flex-1 text-[11px] px-1 py-1 rounded">${transferOptions}</select>
-                                        <button onclick="window.taskAction('${task.id}', '${ass.assignee_id}', 'transfer')" class="btn-outline bg-white border-orange-200 text-orange-600">Transfer</button>
-                                    </div>
-                                </div>`;
-                        }
+                let actionsHtml = '';
+                const myAss = asgList.find(a => a.assignee_id === currentUser.id);
+                
+                if (myAss && !allAccepted) {
+                    const st = myAss.status;
+                    const uId = currentUser.id;
+                    if (st === 'pending_ack') {
+                        actionsHtml += `<button onclick="window.taskAction('${task.id}', '${uId}', 'ack')" class="btn-primary w-full bg-yellow-500 hover:bg-yellow-600">Acknowledge</button>`;
+                    } else if (st === 'in_progress' || st === 'needs_review') {
+                        actionsHtml += `
+                            <div class="flex flex-wrap gap-2 mb-2">
+                                <button onclick="document.getElementById('comment-box-${task.id}-${uId}').classList.toggle('hidden')" class="btn-outline">Add Comment</button>
+                                <button onclick="document.getElementById('upload-box-${task.id}-${uId}').click()" class="btn-outline">Upload File</button>
+                                <button onclick="document.getElementById('delegate-box-${task.id}-${uId}').classList.toggle('hidden')" class="btn-outline">Delegate</button>
+                                <button onclick="window.taskAction('${task.id}', '${uId}', 'submit', ${task.require_proof})" class="btn-primary ${st==='needs_review'?'bg-orange-600':'bg-blue-600'} text-white ml-auto">${st==='needs_review'?'Resubmit':'Submit for Review'}</button>
+                            </div>
+                            
+                            <div id="comment-box-${task.id}-${uId}" class="hidden flex gap-2 mt-2">
+                                <input type="text" id="update-txt-${task.id}-${uId}" placeholder="Type comment..." class="ui-input flex-1 text-xs px-2 py-1 rounded">
+                                <button onclick="window.taskAction('${task.id}', '${uId}', 'update')" class="btn-primary">Post</button>
+                            </div>
+                            
+                            <input type="file" id="upload-box-${task.id}-${uId}" class="hidden" onchange="window.taskAction('${task.id}', '${uId}', 'upload')">
+                            
+                            <div id="delegate-box-${task.id}-${uId}" class="hidden flex gap-2 mt-2">
+                                <select id="delegate-sel-${task.id}-${uId}" class="ui-input flex-1 text-xs px-2 py-1 rounded">${delegateOptions}</select>
+                                <button onclick="window.taskAction('${task.id}', '${uId}', 'delegate')" class="btn-primary">Confirm</button>
+                            </div>
+                        `;
                     }
-                    
-                    if (!actionsHtml) return ''; 
-                    return `<div class="mt-2 text-sm pt-2 border-t border-gray-100">
-                                <div class="font-semibold text-gray-800 text-xs">Action required for ${isMe ? 'You' : escapeHtml(name)}:</div>
-                                ${actionsHtml}
-                            </div>`;
-                }).join('');
+                }
+
+                if (isCreator && !allAccepted) {
+                    const submittedAss = asgList.filter(a => a.status === 'submitted');
+                    submittedAss.forEach(sa => {
+                        const sName = sa.profiles?.full_name || sa.profiles?.email || 'Unknown';
+                        actionsHtml += `
+                            <div class="bg-orange-50 p-2 rounded border border-orange-100 mt-2">
+                                <div class="text-xs font-bold text-orange-800 mb-2">Review required for: @${sName.split('@')[0]}</div>
+                                <div class="flex flex-wrap gap-2">
+                                    <button onclick="window.taskAction('${task.id}', '${sa.assignee_id}', 'accept')" class="btn-primary bg-green-600 hover:bg-green-700">Accept</button>
+                                    <button onclick="window.taskAction('${task.id}', '${sa.assignee_id}', 'review_again')" class="btn-primary bg-red-600 hover:bg-red-700">Review Again</button>
+                                    <button onclick="document.getElementById('transfer-box-${task.id}-${sa.assignee_id}').classList.toggle('hidden')" class="btn-outline bg-white">Transfer</button>
+                                </div>
+                                <div id="transfer-box-${task.id}-${sa.assignee_id}" class="hidden flex gap-2 mt-2">
+                                    <select id="transfer-sel-${task.id}-${sa.assignee_id}" class="ui-input flex-1 text-xs px-2 py-1 rounded">${transferOptions}</select>
+                                    <button onclick="window.taskAction('${task.id}', '${sa.assignee_id}', 'transfer')" class="btn-primary">Confirm</button>
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
 
                 const trailRows = trlList.slice(-3).map(t => {
                     const tName = t.profiles?.full_name || t.profiles?.email || 'System';
                     const tTime = new Date(t.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-                    return `<div class="text-[11px] mb-1.5 flex gap-2">
-                        <span class="text-gray-400 w-10 text-right shrink-0">${tTime}</span>
-                        <div class="flex-1">
-                            <span class="font-bold text-gray-700">${escapeHtml(tName)}</span> ${escapeHtml(t.action)}
-                            ${t.comment ? `<br><span class="italic text-gray-500">"${escapeHtml(t.comment)}"</span>` : ''}
-                        </div>
+                    return `<div class="text-[12px] text-gray-700 leading-snug">
+                        • ${tTime} – <b>${escapeHtml(tName.split('@')[0])}</b> ${escapeHtml(t.action)}
+                        ${t.comment ? `<br><span class="italic text-gray-500">"${escapeHtml(t.comment)}"</span>` : ''}
                     </div>`;
                 }).join('');
 
                 return `
-                <div class="jira-card bg-white rounded-xl shadow-sm border border-gray-200 mb-4 overflow-hidden relative" style="border-left-width: 4px; border-left-style: solid; border-left-color: ${borderClass.split('-')[2]};">
+                <div class="jira-card bg-white rounded-2xl shadow-sm border border-gray-200 mb-4 overflow-hidden relative" style="border-left-width: 6px; border-left-style: solid; border-left-color: ${priorityColor};">
                     <div class="p-4">
                         <div class="flex justify-between items-start mb-3">
-                            <div class="font-bold text-gray-800 text-sm flex items-center gap-2"><i class="fas fa-thumbtack text-gray-400"></i> Task: ${escapeHtml(task.title)}</div>
+                            <div class="font-bold text-gray-800 text-[16px] flex items-start gap-2">
+                                <i class="fas fa-thumbtack text-gray-400 mt-1"></i> Task: ${escapeHtml(task.title)}
+                            </div>
                             <i class="fas fa-ellipsis-v text-gray-400 cursor-pointer hover:text-gray-600 menu-dots px-2" data-msg-id="${task.original_message_id}" data-msg-text="${escapeHtml(task.title)}"></i>
                         </div>
                         
-                        ${task.description ? `<div class="text-[11px] text-gray-500 italic bg-gray-50 p-2 rounded mb-3 border border-gray-100">📝 Original: "${escapeHtml(task.description)}"</div>` : ''}
+                        ${task.description ? `<div class="text-[12px] text-gray-600 bg-gray-50 p-2.5 rounded-lg mb-3 border border-gray-100">📝 Original message: "${escapeHtml(task.description)}"</div>` : ''}
                         
-                        <div class="text-[11px] text-gray-600 space-y-1 mb-3">
-                            <div>👥 <span class="font-semibold text-gray-800">Assignees:</span> ${assigneesNames || 'None'}</div>
-                            <div>👑 <span class="font-semibold text-gray-800">Reviewer:</span> ${reviewerName}</div>
-                            <div>📅 <span class="font-semibold text-gray-800">Deadline:</span> ${deadlineHtml}</div>
-                            <div>⚡ <span class="font-semibold text-gray-800">Priority:</span> ${task.priority}</div>
-                            <div class="mt-2">🏷️ <span class="font-semibold text-gray-800 mr-1">Status:</span> <span class="badge ${badgeClass}">${badgeText}</span></div>
+                        <div class="text-[12px] text-gray-700 space-y-1.5 mb-4">
+                            <div>👥 <span class="font-semibold text-gray-900">Assignees:</span> ${assigneesNames || 'None'}</div>
+                            <div>👑 <span class="font-semibold text-gray-900">Reviewer:</span> ${reviewerName}</div>
+                            <div>📅 <span class="font-semibold text-gray-900">Deadline:</span> ${deadlineHtml}</div>
+                            <div>⚡ <span class="font-semibold text-gray-900">Priority:</span> ${task.priority}</div>
+                            <div class="mt-2 flex items-center gap-2">🏷️ <span class="font-semibold text-gray-900">Status:</span> <span class="badge ${badgeClass}">${badgeText}</span></div>
                         </div>
 
-                        ${assigneeRows}
+                        ${actionsHtml ? `<div class="border-t border-gray-100 pt-3 pb-1">${actionsHtml}</div>` : ''}
                         
-                        <div class="mt-3 pt-3 border-t border-gray-100">
-                            <button onclick="window.toggleTrail('${task.id}')" class="text-[11px] font-bold text-gray-500 hover:text-gray-800 flex items-center gap-1 transition-colors w-full text-left">
-                                <i class="fas fa-history"></i> Recent Trail (${trlList.length}) <i class="fas fa-chevron-down ml-auto"></i>
+                        <div class="mt-2 pt-3 border-t border-gray-100">
+                            <button onclick="window.toggleTrail('${task.id}')" class="text-[12px] font-bold text-gray-500 hover:text-gray-800 flex items-center gap-1 transition-colors w-full text-left">
+                                📜 Recent Trail <span class="font-normal">(${trlList.length} entries)</span> <i class="fas fa-chevron-down ml-auto"></i>
                             </button>
-                            <div id="trail-${task.id}" class="task-trail-box bg-gray-50 p-2 rounded mt-2">
+                            <div id="trail-${task.id}" class="task-trail-box bg-gray-50 p-3 rounded-lg mt-2 space-y-2">
                                 ${trailRows || '<div class="text-xs text-gray-400 italic">No activity yet.</div>'}
-                                ${trlList.length > 3 ? `<div class="text-center text-[10px] text-indigo-600 mt-1 cursor-pointer">View full trail...</div>` : ''}
+                                ${trlList.length > 3 ? `<div class="text-center text-[10px] text-indigo-600 mt-2 cursor-pointer font-bold uppercase" onclick="window.showCenterToast('Full trail modal opening...', 'fa-history', 'text-blue-500')">See full trail</div>` : ''}
                             </div>
                         </div>
                     </div>

@@ -5,11 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>MPGS TaskFlow - Enterprise Chat</title>
     
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
+    <!-- FontAwesome & Fonts -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
+    <!-- Quill Rich Text Editor -->
     <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
     <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
     
@@ -130,7 +133,8 @@
         .ql-container.ql-snow { border: none !important; font-size: 0.95rem; min-height: 40px; max-height: 120px; overflow-y: auto; }
         
         .btn-primary { background: var(--accent); color: white; border-radius: 8px; padding: 6px 14px; font-weight: 600; cursor: pointer; border: none; font-size: 12px; transition: 0.2s;}
-        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+        .btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
 
         .btn-outline { background: transparent; color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 14px; font-weight: 600; cursor: pointer; font-size: 12px; transition: 0.2s;}
         .btn-outline:hover { background: rgba(0,0,0,0.05); }
@@ -221,6 +225,10 @@
 
         function renderMainApp() {
             applyTheme();
+            
+            // Derive user display name for sidebar
+            const userNameDisplay = currentUser?.user_metadata?.full_name || currentUser?.email?.split('@')[0] || 'User';
+
             document.getElementById('root').innerHTML = `
                 <div class="flex h-full w-full">
                     <div class="w-80 sidebar-glass flex flex-col border-r z-20 shadow-sm">
@@ -232,8 +240,16 @@
                         </div>
                         <div class="p-3"><input type="text" id="globalSearch" placeholder="Search chats" class="ui-input w-full p-2 rounded-xl text-sm"></div>
                         <div id="chatsList" class="flex-1 overflow-y-auto px-2 pb-4"></div>
-                        <div class="p-2 border-t text-center text-[10px] font-bold tracking-wider text-gray-400 uppercase" style="border-color: var(--border-color)">
-                            v1.3.0 - Perfected Task Machine
+                        
+                        <!-- User & Version Area -->
+                        <div class="p-3 border-t flex flex-col items-center justify-center gap-1" style="border-color: var(--border-color)">
+                            <div class="text-[12px] font-bold text-gray-700 flex items-center gap-1.5">
+                                <div class="w-5 h-5 rounded-full bg-[var(--accent)] text-white flex items-center justify-center text-[10px]">${userNameDisplay.charAt(0).toUpperCase()}</div>
+                                ${escapeHtml(userNameDisplay.toUpperCase())}
+                            </div>
+                            <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
+                                v1.4.0 - UI & Logic Aligned
+                            </div>
                         </div>
                     </div>
 
@@ -282,6 +298,7 @@
                     </div>
                 </div>
 
+                <!-- Modals -->
                 <div id="scheduleModal" class="fixed inset-0 modal-overlay hidden items-center justify-center z-50">
                     <div class="modal-content rounded-2xl p-6 w-full max-w-sm mx-4 text-center">
                         <i class="far fa-clock text-4xl mb-4" style="color: var(--accent)"></i>
@@ -440,14 +457,14 @@
         async function loadChatsList() {
             const groups = ['general', 'math', 'science', 'leadership'];
             const {data: users} = await sb.from('profiles').select('id, email, full_name');
-            globalUsersCache = users; 
+            globalUsersCache = users || []; 
             
             let html = `<div class="px-3 py-2 mt-2 text-[11px] font-bold tracking-wider uppercase" style="color: var(--text-secondary)">Groups</div>`;
             groups.forEach(g => { 
                 html += `<div class="channel-item p-2 mx-2 mb-1 rounded-lg cursor-pointer hover:bg-black/5 flex items-center gap-3 ${currentRoom === g ? 'bg-black/5' : ''}" data-room="${g}" data-name="# ${g}"><div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs bg-gray-400"><i class="fas fa-users"></i></div><span class="flex-1 truncate font-medium"># ${g}</span></div>`; 
             });
             html += `<div class="px-3 py-2 mt-4 text-[11px] font-bold tracking-wider uppercase" style="color: var(--text-secondary)">Direct Messages</div>`;
-            users?.filter(u => u.id !== currentUser.id).forEach(u => { 
+            globalUsersCache.filter(u => u.id !== currentUser.id).forEach(u => { 
                 const name = u.full_name || u.email;
                 html += `<div class="channel-item p-2 mx-2 mb-1 rounded-lg cursor-pointer hover:bg-black/5 flex items-center gap-3 ${currentRoom === 'dm_' + u.id ? 'bg-black/5' : ''}" data-room="dm_${u.id}" data-name="${name}"><div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs" style="background: var(--accent)">${name.charAt(0).toUpperCase()}</div><span class="flex-1 truncate font-medium">${name}</span></div>`; 
             });
@@ -626,7 +643,7 @@
             const aids = Array.from(document.getElementById('taskAssignees').selectedOptions).map(opt => opt.value); 
             if(!title || !aids.length) return window.showCenterToast('Need Title and Assignee', 'fa-times', 'text-red-500'); 
             
-            const {data: task} = await sb.from('tasks').insert({ 
+            const {data: task, error: tErr} = await sb.from('tasks').insert({ 
                 original_message_id: currentMessageId, 
                 title, 
                 description: currentMessageTextRaw,
@@ -637,8 +654,11 @@
                 status: 'pending' 
             }).select().single(); 
             
-            if(!task) return; 
-            await sb.from('task_assignees').insert(aids.map(aid => ({ task_id: task.id, assignee_id: aid, status: 'pending_ack', state: 'pending' }))); 
+            if(tErr || !task) {
+                console.error(tErr); return window.showCenterToast('Failed to create task.', 'fa-times', 'text-red-500');
+            }
+            
+            await sb.from('task_assignees').insert(aids.map(aid => ({ task_id: task.id, assignee_id: aid, status: 'pending_ack' }))); 
             await sb.from('task_trails').insert({ task_id: task.id, user_id: currentUser.id, action: 'Task Created' });
             
             for(let aid of aids) {
@@ -653,6 +673,12 @@
         window.taskAction = async function(taskId, assigneeId, action, requireProof = false) {
             let actionText = ''; let newStatus = ''; let comment = '';
             
+            // Immediate Optimistic UI Feedback for Acknowledge
+            if (action === 'ack') {
+                const btn = document.getElementById(`ack-btn-${taskId}-${assigneeId}`);
+                if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Acknowledging...'; }
+            }
+
             const {data: taskData} = await sb.from('tasks').select('*').eq('id', taskId).single();
             const creatorId = taskData.assigned_by;
 
@@ -692,7 +718,7 @@
                 const newAssignee = document.getElementById(`delegate-sel-${taskId}-${assigneeId}`).value;
                 if(!newAssignee) return window.showCenterToast('Select user to delegate', 'fa-times', 'text-red-500');
                 actionText = 'Delegated task';
-                await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack', state: 'pending' });
+                await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack' });
                 await notifyUser(newAssignee, `A task was delegated to you`); await notifyUser(creatorId, `Task was delegated`);
                 document.getElementById(`delegate-box-${taskId}-${assigneeId}`).classList.add('hidden');
             } else if (action === 'transfer') {
@@ -700,17 +726,22 @@
                 if(!newAssignee) return window.showCenterToast('Select user to transfer', 'fa-times', 'text-red-500');
                 actionText = 'Transferred task';
                 await sb.from('task_assignees').delete().eq('task_id', taskId).eq('assignee_id', assigneeId);
-                await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack', state: 'pending' });
+                await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack' });
                 await notifyUser(newAssignee, `A task was transferred to you`); await notifyUser(assigneeId, `Your task was transferred`);
             }
 
             if (newStatus) { 
-                let updatePayload = { status: newStatus, state: newStatus };
+                let updatePayload = { status: newStatus };
                 if (action === 'ack') updatePayload.acked = true;
                 const {error} = await sb.from('task_assignees').update(updatePayload).eq('task_id', taskId).eq('assignee_id', assigneeId); 
                 if (error) {
-                    window.showCenterToast('DB Error: ' + error.message, 'fa-times', 'text-red-500');
+                    window.showCenterToast('DB Update Failed: ' + error.message, 'fa-times', 'text-red-500');
                     console.error('Update Failed:', error);
+                    // Revert optimism if failed
+                    if(action === 'ack') {
+                        const btn = document.getElementById(`ack-btn-${taskId}-${assigneeId}`);
+                        if(btn) { btn.disabled = false; btn.innerText = 'Acknowledge'; }
+                    }
                     return;
                 }
             }
@@ -795,7 +826,7 @@
                     const st = myAss.status;
                     const uId = currentUser.id;
                     if (st === 'pending_ack') {
-                        actionsHtml += `<button onclick="window.taskAction('${task.id}', '${uId}', 'ack')" class="btn-primary w-full bg-yellow-500 hover:bg-yellow-600">Acknowledge</button>`;
+                        actionsHtml += `<button id="ack-btn-${task.id}-${uId}" onclick="window.taskAction('${task.id}', '${uId}', 'ack')" class="btn-primary w-full bg-yellow-500 hover:bg-yellow-600 transition-colors">Acknowledge Task</button>`;
                     } else if (st === 'in_progress' || st === 'needs_review') {
                         actionsHtml += `
                             <div class="flex flex-wrap gap-2 mb-2">

@@ -43,7 +43,12 @@ window.showReminderModal = function(mid, text) {
     document.getElementById('reminderModal').classList.remove('hidden'); 
     document.getElementById('reminderModal').classList.add('flex'); 
 }
-window.closeReminderModal = function() { document.getElementById('reminderModal').classList.add('hidden'); document.getElementById('reminderModal').classList.remove('flex'); }
+
+window.closeReminderModal = function() { 
+    document.getElementById('reminderModal').classList.add('hidden'); 
+    document.getElementById('reminderModal').classList.remove('flex'); 
+}
+
 window.saveReminder = async function() { 
     const dt = document.getElementById('reminderDateTime').value; 
     if(!dt) return; 
@@ -332,16 +337,16 @@ window.startSubscriptions = function() {
     
     if(trailSubscription) trailSubscription.unsubscribe(); 
     trailSubscription = sb.channel('trails-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_trails'}, () => { window.loadTasksForPanel(); }).subscribe(); 
-}; // Added tracking semicolon here to end function declaration statement cleanly
+};
 
 window.ensureProfile = async function() { 
     if(!window.currentUser) return; 
     const {data:ex}=await sb.from('profiles').select('id').eq('id',window.currentUser.id).maybeSingle(); 
     if(!ex) await sb.from('profiles').insert({id:window.currentUser.id, email:window.currentUser.email, full_name:window.currentUser.email.split('@')[0], role:'teacher'}); 
-}
+};
 
 // Boot Sequence
-(async() => { 
+;(async() => { 
     const {data: {session}} = await sb.auth.getSession(); 
     if(!session) window.renderAuthScreen(); 
     else { 

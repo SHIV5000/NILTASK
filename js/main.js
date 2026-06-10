@@ -1,41 +1,5 @@
-// js/main.js
 import { sb } from './shared.js';
-// We import tasks.js just to ensure it executes and binds to window, but we don't need to name it.
-import './tasks.js';
-
-window.openTaskModal = async function(mid, text) { 
-    window.currentMessageId = mid; 
-    let tmp = document.createElement("DIV");
-    tmp.innerHTML = text;
-    
-    document.querySelectorAll('.msg-menu-dropdown').forEach(m=>m.remove());
-    document.getElementById('taskModal').classList.remove('hidden'); 
-    document.getElementById('taskModal').classList.add('flex'); 
-    document.getElementById('taskTitle').value = (tmp.textContent || tmp.innerText || "").trim(); 
-    
-    const filteredUsers = window.globalUsersCache.filter(u => u.id !== window.currentUser.id);
-    const list = document.getElementById('assigneeCheckboxList');
-    list.innerHTML = filteredUsers.map(u => `
-        <label class="assignee-item flex items-center gap-2 text-[13px] p-1.5 hover:bg-gray-100 rounded cursor-pointer transition-colors">
-            <input type="checkbox" value="${u.id}" class="assignee-cb w-4 h-4 accent-[var(--accent)]">
-            <span class="assignee-name font-medium text-gray-700">${window.escapeHtml(window.toSentenceCase(u.full_name || u.email.split('@')[0]))}</span>
-        </label>
-    `).join('');
-    document.getElementById('assigneeSearch').value = '';
-}
-
-window.filterAssignees = function() {
-    const term = document.getElementById('assigneeSearch').value.toLowerCase();
-    document.querySelectorAll('.assignee-item').forEach(el => {
-        const name = el.querySelector('.assignee-name').innerText.toLowerCase();
-        el.style.display = name.includes(term) ? 'flex' : 'none';
-    });
-}
-
-window.closeTaskModal = function() { 
-    document.getElementById('taskModal').classList.add('hidden'); 
-    document.getElementById('taskModal').classList.remove('flex'); 
-}
+import './tasks.js'; // Imports and binds tasks to window
 
 window.showReminderModal = function(mid, text) { 
     window.currentReminderId = mid; 
@@ -44,7 +8,12 @@ window.showReminderModal = function(mid, text) {
     document.getElementById('reminderModal').classList.remove('hidden'); 
     document.getElementById('reminderModal').classList.add('flex'); 
 }
-window.closeReminderModal = function() { document.getElementById('reminderModal').classList.add('hidden'); document.getElementById('reminderModal').classList.remove('flex'); }
+
+window.closeReminderModal = function() { 
+    document.getElementById('reminderModal').classList.add('hidden'); 
+    document.getElementById('reminderModal').classList.remove('flex'); 
+}
+
 window.saveReminder = async function() { 
     const dt = document.getElementById('reminderDateTime').value; 
     if(!dt) return; 
@@ -71,8 +40,27 @@ window.initiateReply = function(parentId, text) {
 
 window.cancelReply = function() {
     window.currentlyReplyingTo = null;
-    document.getElementById('replyBanner').classList.add('hidden');
+    const banner = document.getElementById('replyBanner');
+    if(banner) banner.classList.add('hidden');
 };
+
+window.toggleDateFilter = function() {
+    const val = document.getElementById('taskFilter').value;
+    const dr = document.getElementById('dateRangeFilter');
+    if (val === 'date_range') dr.classList.remove('hidden');
+    else dr.classList.add('hidden');
+    window.loadTasksForPanel();
+}
+
+window.applyFilters = function() {
+    const search = document.getElementById('messageSearchBar').value.toLowerCase();
+    document.querySelectorAll('#messagesContainer > div.message-bubble').forEach(el => {
+        let show = true;
+        const text = el.innerText.toLowerCase();
+        if (search && !text.includes(search)) show = false;
+        el.style.display = show ? 'flex' : 'none';
+    });
+}
 
 window.openTopPanel = async function(type) {
     document.querySelectorAll('.top-panel-dropdown').forEach(m => m.remove());
@@ -86,7 +74,7 @@ window.openTopPanel = async function(type) {
         data?.forEach(d => {
             panel.innerHTML += `<div class="mb-2 p-2 bg-black/5 rounded text-sm flex justify-between items-center">
                 <span class="truncate w-48">${window.escapeHtml(d.message_text)}</span>
-                <i class="fa-solid fa-times text-red-500 cursor-pointer" onclick="deleteScheduled('${d.id}')"></i>
+                <i class="fa-solid fa-times text-red-500 cursor-pointer" onclick="window.deleteScheduled('${d.id}')"></i>
             </div>`;
         });
     } else if (type === 'bookmarks') {
@@ -94,7 +82,7 @@ window.openTopPanel = async function(type) {
         const {data} = await sb.from('bookmarks').select('*, messages(text)').eq('user_id', window.currentUser.id);
         if(!data || data.length===0) panel.innerHTML += `<p class="text-xs text-gray-500">No bookmarks.</p>`;
         data?.forEach(d => {
-            panel.innerHTML += `<div class="mb-2 p-2 bg-black/5 rounded text-sm cursor-pointer hover:bg-black/10" onclick="scrollToAndHighlight('msg-${d.message_id}')">
+            panel.innerHTML += `<div class="mb-2 p-2 bg-black/5 rounded text-sm cursor-pointer hover:bg-black/10" onclick="window.scrollToAndHighlight('msg-${d.message_id}')">
                 <span class="truncate block">${window.escapeHtml(d.messages?.text)}</span>
             </div>`;
         });
@@ -103,7 +91,7 @@ window.openTopPanel = async function(type) {
         const {data} = await sb.from('notifications').select('*').eq('user_id', window.currentUser.id).order('created_at', {ascending: false}).limit(10);
         if(!data || data.length===0) panel.innerHTML += `<p class="text-xs text-gray-500">All caught up!</p>`;
         data?.forEach(d => {
-             panel.innerHTML += `<div class="mb-2 p-2 bg-black/5 rounded text-sm cursor-pointer hover:bg-black/10" onclick="scrollToAndHighlight('msg-${d.message_id}')">
+             panel.innerHTML += `<div class="mb-2 p-2 bg-black/5 rounded text-sm cursor-pointer hover:bg-black/10" onclick="window.scrollToAndHighlight('msg-${d.message_id}')">
                 <span class="block">${window.escapeHtml(d.message)}</span>
             </div>`;
         });
@@ -118,20 +106,22 @@ window.deleteScheduled = async function(id) {
 }
 
 window.showScheduleModal = function() {
-    let currSchedText = window.quillEditor.root.innerHTML.trim();
-    if(!currSchedText || currSchedText === '<p><br></p>') { window.showCenterToast('Type a message first.', 'fa-solid fa-exclamation-triangle', 'text-yellow-500'); return; }
+    const txt = window.quillEditor.root.innerHTML.trim();
+    if(!txt || txt === '<p><br></p>') { window.showCenterToast('Type a message first.', 'fa-solid fa-exclamation-triangle', 'text-yellow-500'); return; }
     document.getElementById('scheduleModal').classList.remove('hidden');
     document.getElementById('scheduleModal').classList.add('flex');
 }
+
 window.closeScheduleModal = function() {
     document.getElementById('scheduleModal').classList.add('hidden');
     document.getElementById('scheduleModal').classList.remove('flex');
 }
+
 window.saveScheduledMessage = async function() {
     const time = document.getElementById('scheduleDateTime').value;
     if(!time) return;
-    let currSchedText = window.quillEditor.root.innerHTML.trim();
-    await sb.from('scheduled_messages').insert({ sender_id: window.currentUser.id, room_id: window.currentRoom, message_text: currSchedText, scheduled_time: new Date(time).toISOString(), status: 'pending' });
+    const txt = window.quillEditor.root.innerHTML.trim();
+    await sb.from('scheduled_messages').insert({ sender_id: window.currentUser.id, room_id: window.currentRoom, message_text: txt, scheduled_time: new Date(time).toISOString(), status: 'pending' });
     window.closeScheduleModal();
     window.quillEditor.root.innerHTML = '';
     window.showCenterToast('Message Scheduled Successfully!');
@@ -142,7 +132,7 @@ window.addEmoji = function() {
     window.showCenterToast('Emoji added!', 'fa-regular fa-face-smile', 'text-yellow-400');
 }
 
-async function loadChatsList() {
+window.loadChatsList = async function() {
     const groups = ['general', 'math', 'science', 'leadership'];
     const {data: users} = await sb.from('profiles').select('id, email, full_name');
     window.globalUsersCache = users || []; 
@@ -166,12 +156,12 @@ async function loadChatsList() {
             const titleSpan = document.getElementById('roomTitleDisplay');
             if(titleSpan) titleSpan.innerText = el.dataset.name;
             document.getElementById('messagesContainer').innerHTML = '<div class="m-auto flex flex-col items-center opacity-50"><i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3" style="color: var(--accent)"></i><p>Loading chat...</p></div>';
-            loadMessages(); 
+            window.loadMessages(); 
         }); 
     });
 }
 
-async function sendMessage() {
+window.sendMessage = async function() {
     const text = window.quillEditor.root.innerHTML.trim();
     if (!text || text === '<p><br></p>') return;
     
@@ -183,18 +173,18 @@ async function sendMessage() {
     await sb.from('messages').insert(payload);
     window.quillEditor.root.innerHTML = '';
     window.cancelReply();
-    loadMessages();
+    window.loadMessages();
 }
 
-async function loadMessages() {
+window.loadMessages = async function() {
     const {data: msgs} = await sb.from('messages').select('*, profiles(full_name, email)').eq('room_id', window.currentRoom).order('created_at', {ascending: true});
-    renderMessages(msgs || []);
-    applyFilters();
+    window.renderMessages(msgs || []);
+    window.applyFilters();
     const c = document.getElementById('messagesContainer');
-    c.scrollTop = c.scrollHeight;
+    if(c) c.scrollTop = c.scrollHeight;
 }
 
-function renderMessages(messages) {
+window.renderMessages = function(messages) {
     const c = document.getElementById('messagesContainer');
     if (!c) return;
     if (!messages.length) { c.innerHTML = '<div class="m-auto flex flex-col items-center opacity-50"><i class="fa-regular fa-comments text-5xl mb-3"></i><p>Say hello!</p></div>'; return; }
@@ -300,19 +290,9 @@ function renderMessages(messages) {
     });
 }
 
-function applyFilters() {
-    const search = document.getElementById('messageSearchBar').value.toLowerCase();
-    document.querySelectorAll('#messagesContainer > div.message-bubble').forEach(el => {
-        let show = true;
-        const text = el.innerText.toLowerCase();
-        if (search && !text.includes(search)) show = false;
-        el.style.display = show ? 'flex' : 'none';
-    });
-}
-
-function startSubscriptions() { 
+window.startSubscriptions = function() { 
     if(messageSubscription) messageSubscription.unsubscribe();
-    messageSubscription = sb.channel('public:messages').on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, (p) => { if(p.new.room_id === window.currentRoom) loadMessages(); }).subscribe();
+    messageSubscription = sb.channel('public:messages').on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, (p) => { if(p.new.room_id === window.currentRoom) window.loadMessages(); }).subscribe();
     
     if(taskSubscription) taskSubscription.unsubscribe(); 
     taskSubscription = sb.channel('tasks-changes').on('postgres_changes', {event:'*', schema:'public', table:'tasks'}, () => { window.loadTasksForPanel(); }).subscribe(); 
@@ -324,9 +304,21 @@ function startSubscriptions() {
     trailSubscription = sb.channel('trails-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_trails'}, () => { window.loadTasksForPanel(); }).subscribe(); 
 }
 
+// Ensure ensureProfile exists globally
+window.ensureProfile = async function() { 
+    if(!window.currentUser) return; 
+    const {data:ex}=await sb.from('profiles').select('id').eq('id',window.currentUser.id).maybeSingle(); 
+    if(!ex) await sb.from('profiles').insert({id:window.currentUser.id, email:window.currentUser.email, full_name:window.currentUser.email.split('@')[0], role:'teacher'}); 
+}
+
 // Boot Sequence
 (async() => { 
     const {data: {session}} = await sb.auth.getSession(); 
-    if(!session) window.renderAuthScreen(); // Need to call the actual global if we had it, or run directly.
-    else { window.currentUser = session.user; await window.ensureProfile(); window.renderMainApp(); window.startSubscriptions(); } 
+    if(!session) window.renderAuthScreen(); 
+    else { 
+        window.currentUser = session.user; 
+        await window.ensureProfile(); 
+        window.renderMainApp(); 
+        window.startSubscriptions(); 
+    } 
 })();

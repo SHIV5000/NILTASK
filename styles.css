@@ -1,4 +1,0 @@
-/* Additional custom styles beyond Tailwind */
-.toast {
-    transition: opacity 0.3s ease;
-}

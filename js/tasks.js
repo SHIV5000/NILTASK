@@ -1,10 +1,83 @@
-// js/tasks.js
 import { sb } from './shared.js';
+
+window.openTaskModal = async function(mid, text) { 
+    window.currentMessageId = mid; 
+    let tmp = document.createElement("DIV");
+    tmp.innerHTML = text;
+    window.currentMessageTextRaw = (tmp.textContent || tmp.innerText || "").substring(0,60) + "...";
+
+    document.querySelectorAll('.msg-menu-dropdown').forEach(m=>m.remove());
+    document.getElementById('taskModal').classList.remove('hidden'); 
+    document.getElementById('taskModal').classList.add('flex'); 
+    document.getElementById('taskTitle').value = (tmp.textContent || tmp.innerText || "").trim(); 
+    
+    const filteredUsers = window.globalUsersCache.filter(u => u.id !== window.currentUser.id);
+    const list = document.getElementById('assigneeCheckboxList');
+    list.innerHTML = filteredUsers.map(u => `
+        <label class="assignee-item flex items-center gap-2 text-[13px] p-1.5 hover:bg-gray-100 rounded cursor-pointer transition-colors">
+            <input type="checkbox" value="${u.id}" class="assignee-cb w-4 h-4 accent-[var(--accent)]">
+            <span class="assignee-name font-medium text-gray-700">${window.escapeHtml(window.toSentenceCase(u.full_name || u.email.split('@')[0]))}</span>
+        </label>
+    `).join('');
+    document.getElementById('assigneeSearch').value = '';
+}
+
+window.filterAssignees = function() {
+    const term = document.getElementById('assigneeSearch').value.toLowerCase();
+    document.querySelectorAll('.assignee-item').forEach(el => {
+        const name = el.querySelector('.assignee-name').innerText.toLowerCase();
+        el.style.display = name.includes(term) ? 'flex' : 'none';
+    });
+}
+
+window.closeTaskModal = function() { 
+    document.getElementById('taskModal').classList.add('hidden'); 
+    document.getElementById('taskModal').classList.remove('flex'); 
+}
+
+window.downloadTaskPDF = async function(taskId) {
+    window.showCenterToast('Generating PDF Report...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
+    const {data: task} = await sb.from('tasks').select('*, creator:profiles!assigned_by(full_name, email)').eq('id', taskId).single();
+    const {data: trlList} = await sb.from('task_trails').select('*, profiles(full_name, email)').eq('task_id', taskId).order('created_at', {ascending: true});
+    let ip = '127.0.0.1';
+    try { const res = await fetch('https://api.ipify.org?format=json'); const data = await res.json(); ip = data.ip; } catch(e){}
+    const dateStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const userNameDisplay = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
+
+    const wrapper = document.createElement('div');
+    wrapper.style.padding = '30px'; wrapper.style.fontFamily = "'Inter', sans-serif"; wrapper.style.color = '#111b21'; wrapper.style.background = '#ffffff'; wrapper.style.position = 'relative'; wrapper.style.overflow = 'hidden';
+
+    wrapper.innerHTML = `
+        <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; display: flex; align-items: center; justify-content: center; opacity: 0.06; transform: rotate(-35deg); font-size: 45px; font-weight: 800; color: #000; text-align: center; white-space: nowrap;">
+            DOWNLOADED BY: ${window.escapeHtml(userNameDisplay).toUpperCase()}<br>IP: ${ip}<br>${dateStr}
+        </div>
+        <div style="position: relative; z-index: 1;">
+            <h2 style="color: #800000; border-bottom: 2px solid #800000; padding-bottom: 10px; margin-bottom: 20px;">MPGS TaskFlow - Audit Report</h2>
+            <h3 style="margin-bottom: 15px;">Task: ${window.escapeHtml(task.title)}</h3>
+            <p style="margin-bottom: 5px;"><b>Created By:</b> ${window.escapeHtml(task.creator?.full_name || task.creator?.email)}</p>
+            <p style="margin-bottom: 5px;"><b>Deadline:</b> ${task.deadline ? window.getISTDate(task.deadline) : 'None'}</p>
+            <p style="margin-bottom: 20px;"><b>Priority:</b> ${task.priority}</p>
+            <h4 style="margin-bottom: 10px; color: #444;">Complete Audit Trail</h4>
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                <tr style="background-color: #f0f2f5;">
+                    <th style="padding: 10px; border: 1px solid #ccc; text-align: left;">Timestamp (IST)</th>
+                    <th style="padding: 10px; border: 1px solid #ccc; text-align: left;">User</th>
+                    <th style="padding: 10px; border: 1px solid #ccc; text-align: left;">Action / Comment</th>
+                </tr>
+                ${trlList.map(t => {
+                    const tName = window.toSentenceCase((t.profiles?.full_name || t.profiles?.email || 'System').split('@')[0]);
+                    const tTime = window.getISTTime(t.created_at); const tDate = window.getISTDate(t.created_at);
+                    let cmt = t.comment || ''; if(t.action === 'FILE' && cmt.includes('|')) cmt = cmt.split('|')[0];
+                    return `<tr><td style="padding: 10px; border: 1px solid #ccc; white-space: nowrap;">${tDate}<br>${tTime}</td><td style="padding: 10px; border: 1px solid #ccc; font-weight: bold;">${window.escapeHtml(tName)}</td><td style="padding: 10px; border: 1px solid #ccc;"><b>${window.escapeHtml(t.action)}</b>${cmt ? `<br><i>${window.escapeHtml(cmt)}</i>` : ''}</td></tr>`;
+                }).join('')}
+            </table>
+        </div>
+    `;
+    html2pdf().from(wrapper).set({ margin: 10, filename: `Task_Audit_${taskId}.pdf`, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).save().then(() => { window.showCenterToast('PDF Downloaded!', 'fa-solid fa-file-pdf', 'text-green-500'); });
+};
 
 /* ========================================================================================= */
 /* 🔒 LOCKED BLOCK START: TASK UI RENDERING & LOGIC 🔒                                       */
-/* AI & USER INSTRUCTION: DO NOT TOUCH, MODIFY, OR TRUNCATE THIS BLOCK UNDER ANY CIRCUMSTANCES */
-/* UNLESS EXPLICITLY INSTRUCTED BY THE USER TO DO SO.                                          */
 /* ========================================================================================= */
 
 window.saveTaskMultiAssignee = async function() { 
@@ -22,16 +95,12 @@ window.saveTaskMultiAssignee = async function() {
         status: 'pending' 
     }).select().single(); 
     
-    if(tErr || !task) {
-        console.error(tErr); return window.showCenterToast('Failed to create task.', 'fa-solid fa-times', 'text-red-500');
-    }
+    if(tErr || !task) { console.error(tErr); return window.showCenterToast('Failed to create task.', 'fa-solid fa-times', 'text-red-500'); }
     
     await sb.from('task_assignees').insert(aids.map(aid => ({ task_id: task.id, assignee_id: aid, status: 'pending_ack', state: 'pending' }))); 
     await sb.from('task_trails').insert({ task_id: task.id, user_id: window.currentUser.id, action: 'UPDATE', comment: 'Task Created' });
     
-    for(let aid of aids) {
-        await sb.from('notifications').insert({ user_id: aid, message: `New Task Allotted: ${title}`, created_at: new Date().toISOString() });
-    }
+    for(let aid of aids) { await window.notifyUser(aid, `New Task Allotted: ${title}`); }
 
     window.showCenterToast('Ticket Created Successfully'); 
     window.closeTaskModal(); 
@@ -49,17 +118,15 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
     const {data: taskData} = await sb.from('tasks').select('*').eq('id', taskId).single();
     const creatorId = taskData.assigned_by;
 
-    const notifyUser = async (userId, message) => { await sb.from('notifications').insert({ user_id: userId, message: message, created_at: new Date().toISOString() }); };
-
     if (action === 'ack') {
         newStatus = 'in_progress'; actionText = 'UPDATE'; comment = 'Acknowledged the task';
-        await notifyUser(creatorId, `Task Acknowledged by an Assignee`);
+        await window.notifyUser(creatorId, `Task Acknowledged by an Assignee`);
     } else if (action === 'update') {
         const el = document.getElementById(`update-txt-${taskId}-${assigneeId}`);
         comment = el.value;
         if(!comment) return window.showCenterToast('Comment cannot be empty', 'fa-solid fa-times', 'text-red-500');
         actionText = 'UPDATE';
-        await notifyUser(creatorId, `Task Update Added`);
+        await window.notifyUser(creatorId, `Task Update Added`);
         el.value = '';
         document.getElementById(`comment-box-${taskId}-${assigneeId}`).classList.add('hidden');
     } else if (action === 'upload') {
@@ -73,10 +140,7 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
         const progressContainer = document.getElementById(`upload-progress-container-${taskId}-${assigneeId}`);
         const progressBar = document.getElementById(`upload-progress-bar-${taskId}-${assigneeId}`);
         
-        if (progressContainer && progressBar) {
-            progressContainer.classList.remove('hidden');
-            progressBar.style.width = '30%';
-        }
+        if (progressContainer && progressBar) { progressContainer.classList.remove('hidden'); progressBar.style.width = '30%'; }
         
         const { error: uploadErr } = await sb.storage.from('task-proofs').upload(filePath, file);
         
@@ -89,34 +153,32 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
         
         actionText = 'FILE'; 
         comment = `${file.name}|${filePath}`; 
-        await notifyUser(creatorId, `File Uploaded on Task`);
+        await window.notifyUser(creatorId, `File Uploaded on Task`);
         el.value = '';
-        if(progressContainer) {
-            setTimeout(() => { progressContainer.classList.add('hidden'); progressBar.style.width='0%'; }, 500);
-        }
+        if(progressContainer) { setTimeout(() => { progressContainer.classList.add('hidden'); progressBar.style.width='0%'; }, 500); }
     } else if (action === 'submit') {
         if (requireProof) {
             const {data: trails} = await sb.from('task_trails').select('*').eq('task_id', taskId).eq('user_id', window.currentUser.id).eq('action', 'FILE');
             if(!trails || trails.length === 0) return window.showCenterToast('Proof required - please attach a file.', 'fa-solid fa-exclamation-triangle', 'text-red-500');
         }
         newStatus = 'submitted'; actionText = 'UPDATE'; comment = 'Submitted for Review';
-        await notifyUser(creatorId, `Task Submitted for Review`);
+        await window.notifyUser(creatorId, `Task Submitted for Review`);
     } else if (action === 'accept') {
         newStatus = 'accepted'; actionText = 'UPDATE'; comment = 'Accepted completion';
-        await notifyUser(assigneeId, `Your task submission was Accepted`);
+        await window.notifyUser(assigneeId, `Your task submission was Accepted`);
     } else if (action === 'review_again') {
         const txtEl = document.getElementById(`review-txt-${taskId}-${assigneeId}`);
         comment = txtEl ? txtEl.value : '';
         if(!comment) return window.showCenterToast('Feedback is mandatory for rework!', 'fa-solid fa-times', 'text-red-500');
         newStatus = 'needs_review'; actionText = 'UPDATE';
-        await notifyUser(assigneeId, `Task needs review/rework`);
+        await window.notifyUser(assigneeId, `Task needs review/rework`);
         document.getElementById(`review-box-${taskId}-${assigneeId}`).classList.add('hidden');
     } else if (action === 'delegate') {
         const newAssignee = document.getElementById(`delegate-sel-${taskId}-${assigneeId}`).value;
         if(!newAssignee) return window.showCenterToast('Select user to delegate', 'fa-solid fa-times', 'text-red-500');
         actionText = 'UPDATE'; comment = 'Delegated task';
         await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack', state: 'pending' });
-        await notifyUser(newAssignee, `A task was delegated to you`); await notifyUser(creatorId, `Task was delegated`);
+        await window.notifyUser(newAssignee, `A task was delegated to you`); await window.notifyUser(creatorId, `Task was delegated`);
         document.getElementById(`delegate-box-${taskId}-${assigneeId}`).classList.add('hidden');
     } else if (action === 'transfer') {
         const newAssignee = document.getElementById(`transfer-sel-${taskId}-${assigneeId}`).value;
@@ -127,7 +189,7 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
         actionText = 'UPDATE';
         await sb.from('task_assignees').delete().eq('task_id', taskId).eq('assignee_id', assigneeId);
         await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack', state: 'pending' });
-        await notifyUser(newAssignee, `A task was transferred to you`); await notifyUser(assigneeId, `Your task was transferred`);
+        await window.notifyUser(newAssignee, `A task was transferred to you`); await window.notifyUser(assigneeId, `Your task was transferred`);
     }
 
     if (newStatus) { 
@@ -378,47 +440,6 @@ window.loadTasksForPanel = async function() {
         </div>`;
     }).join('');
 }
-
-window.downloadTaskPDF = async function(taskId) {
-    window.showCenterToast('Generating PDF Report...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
-    const {data: task} = await sb.from('tasks').select('*, creator:profiles!assigned_by(full_name, email)').eq('id', taskId).single();
-    const {data: trlList} = await sb.from('task_trails').select('*, profiles(full_name, email)').eq('task_id', taskId).order('created_at', {ascending: true});
-    let ip = '127.0.0.1';
-    try { const res = await fetch('https://api.ipify.org?format=json'); const data = await res.json(); ip = data.ip; } catch(e){}
-    const dateStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-    const userNameDisplay = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
-
-    const wrapper = document.createElement('div');
-    wrapper.style.padding = '30px'; wrapper.style.fontFamily = "'Inter', sans-serif"; wrapper.style.color = '#111b21'; wrapper.style.background = '#ffffff'; wrapper.style.position = 'relative'; wrapper.style.overflow = 'hidden';
-
-    wrapper.innerHTML = `
-        <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; display: flex; align-items: center; justify-content: center; opacity: 0.06; transform: rotate(-35deg); font-size: 45px; font-weight: 800; color: #000; text-align: center; white-space: nowrap;">
-            DOWNLOADED BY: ${window.escapeHtml(userNameDisplay).toUpperCase()}<br>IP: ${ip}<br>${dateStr}
-        </div>
-        <div style="position: relative; z-index: 1;">
-            <h2 style="color: #800000; border-bottom: 2px solid #800000; padding-bottom: 10px; margin-bottom: 20px;">MPGS TaskFlow - Audit Report</h2>
-            <h3 style="margin-bottom: 15px;">Task: ${window.escapeHtml(task.title)}</h3>
-            <p style="margin-bottom: 5px;"><b>Created By:</b> ${window.escapeHtml(task.creator?.full_name || task.creator?.email)}</p>
-            <p style="margin-bottom: 5px;"><b>Deadline:</b> ${task.deadline ? window.getISTDate(task.deadline) : 'None'}</p>
-            <p style="margin-bottom: 20px;"><b>Priority:</b> ${task.priority}</p>
-            <h4 style="margin-bottom: 10px; color: #444;">Complete Audit Trail</h4>
-            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                <tr style="background-color: #f0f2f5;">
-                    <th style="padding: 10px; border: 1px solid #ccc; text-align: left;">Timestamp (IST)</th>
-                    <th style="padding: 10px; border: 1px solid #ccc; text-align: left;">User</th>
-                    <th style="padding: 10px; border: 1px solid #ccc; text-align: left;">Action / Comment</th>
-                </tr>
-                ${trlList.map(t => {
-                    const tName = window.toSentenceCase((t.profiles?.full_name || t.profiles?.email || 'System').split('@')[0]);
-                    const tTime = window.getISTTime(t.created_at); const tDate = window.getISTDate(t.created_at);
-                    let cmt = t.comment || ''; if(t.action === 'FILE' && cmt.includes('|')) cmt = cmt.split('|')[0];
-                    return `<tr><td style="padding: 10px; border: 1px solid #ccc; white-space: nowrap;">${tDate}<br>${tTime}</td><td style="padding: 10px; border: 1px solid #ccc; font-weight: bold;">${window.escapeHtml(tName)}</td><td style="padding: 10px; border: 1px solid #ccc;"><b>${window.escapeHtml(t.action)}</b>${cmt ? `<br><i>${window.escapeHtml(cmt)}</i>` : ''}</td></tr>`;
-                }).join('')}
-            </table>
-        </div>
-    `;
-    html2pdf().from(wrapper).set({ margin: 10, filename: `Task_Audit_${taskId}.pdf`, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).save().then(() => { window.showCenterToast('PDF Downloaded!', 'fa-solid fa-file-pdf', 'text-green-500'); });
-};
 /* ========================================================================================= */
 /* 🔒 LOCKED BLOCK END 🔒                                                                    */
 /* ========================================================================================= */

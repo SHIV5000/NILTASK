@@ -1,6 +1,41 @@
 import { sb } from './shared.js';
 import './tasks.js'; // Imports and binds tasks to window
 
+window.openTaskModal = async function(mid, text) { 
+    window.currentMessageId = mid; 
+    let tmp = document.createElement("DIV");
+    tmp.innerHTML = text;
+    window.currentMessageTextRaw = (tmp.textContent || tmp.innerText || "").substring(0,60) + "...";
+
+    document.querySelectorAll('.msg-menu-dropdown').forEach(m=>m.remove());
+    document.getElementById('taskModal').classList.remove('hidden'); 
+    document.getElementById('taskModal').classList.add('flex'); 
+    document.getElementById('taskTitle').value = (tmp.textContent || tmp.innerText || "").trim(); 
+    
+    const filteredUsers = window.globalUsersCache.filter(u => u.id !== window.currentUser.id);
+    const list = document.getElementById('assigneeCheckboxList');
+    list.innerHTML = filteredUsers.map(u => `
+        <label class="assignee-item flex items-center gap-2 text-[13px] p-1.5 hover:bg-gray-100 rounded cursor-pointer transition-colors">
+            <input type="checkbox" value="${u.id}" class="assignee-cb w-4 h-4 accent-[var(--accent)]">
+            <span class="assignee-name font-medium text-gray-700">${window.escapeHtml(window.toSentenceCase(u.full_name || u.email.split('@')[0]))}</span>
+        </label>
+    `).join('');
+    document.getElementById('assigneeSearch').value = '';
+}
+
+window.filterAssignees = function() {
+    const term = document.getElementById('assigneeSearch').value.toLowerCase();
+    document.querySelectorAll('.assignee-item').forEach(el => {
+        const name = el.querySelector('.assignee-name').innerText.toLowerCase();
+        el.style.display = name.includes(term) ? 'flex' : 'none';
+    });
+}
+
+window.closeTaskModal = function() { 
+    document.getElementById('taskModal').classList.add('hidden'); 
+    document.getElementById('taskModal').classList.remove('flex'); 
+}
+
 window.showReminderModal = function(mid, text) { 
     window.currentReminderId = mid; 
     document.querySelectorAll('.msg-menu-dropdown').forEach(m=>m.remove());
@@ -8,12 +43,7 @@ window.showReminderModal = function(mid, text) {
     document.getElementById('reminderModal').classList.remove('hidden'); 
     document.getElementById('reminderModal').classList.add('flex'); 
 }
-
-window.closeReminderModal = function() { 
-    document.getElementById('reminderModal').classList.add('hidden'); 
-    document.getElementById('reminderModal').classList.remove('flex'); 
-}
-
+window.closeReminderModal = function() { document.getElementById('reminderModal').classList.add('hidden'); document.getElementById('reminderModal').classList.remove('flex'); }
 window.saveReminder = async function() { 
     const dt = document.getElementById('reminderDateTime').value; 
     if(!dt) return; 
@@ -302,9 +332,8 @@ window.startSubscriptions = function() {
     
     if(trailSubscription) trailSubscription.unsubscribe(); 
     trailSubscription = sb.channel('trails-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_trails'}, () => { window.loadTasksForPanel(); }).subscribe(); 
-}
+}; // Added tracking semicolon here to end function declaration statement cleanly
 
-// Ensure ensureProfile exists globally
 window.ensureProfile = async function() { 
     if(!window.currentUser) return; 
     const {data:ex}=await sb.from('profiles').select('id').eq('id',window.currentUser.id).maybeSingle(); 

@@ -47,8 +47,9 @@
             --border-color: rgba(134, 150, 160, 0.15);
         }
 
-        body, .jira-card, .jira-card *, .message-bubble, input, select, textarea, button { 
-            font-family: 'Inter', sans-serif !important; 
+        /* Fixed CSS to prevent overriding FontAwesome Icons */
+        body, input, select, textarea, button, .message-bubble, .jira-card { 
+            font-family: 'Inter', sans-serif; 
         }
         
         body { background-color: var(--bg-body); color: var(--text-primary); transition: background-color 0.3s, color 0.3s; }
@@ -220,6 +221,13 @@
 
         async function ensureProfile() { if(!currentUser) return; const {data:ex}=await sb.from('profiles').select('id').eq('id',currentUser.id).maybeSingle(); if(!ex) await sb.from('profiles').insert({id:currentUser.id, email:currentUser.email, full_name:currentUser.email.split('@')[0], role:'teacher'}); }
         async function signIn(email,pwd) { const {data,error}=await sb.auth.signInWithPassword({email,password:pwd}); if(!error && data?.user) { currentUser=data.user; await ensureProfile(); renderMainApp(); startSubscriptions(); return true; } return false; }
+        
+        async function signUp(email,pwd) { 
+            const {data, error} = await sb.auth.signUp({email, password:pwd}); 
+            if(error) throw error; 
+            window.showCenterToast('Sign up successful! Please wait for admin approval or verify email.', 'fa-solid fa-envelope', 'text-blue-400'); 
+        }
+
         window.logout = async function() { await sb.auth.signOut(); currentUser=null; renderAuthScreen(); }
         
         function renderAuthScreen() { 
@@ -233,15 +241,31 @@
                         </div>
                         <div class="space-y-4">
                             <input id="email" placeholder="Email Address" class="ui-input w-full px-4 py-3 rounded-xl">
-                            <input id="password" type="password" placeholder="Password" class="ui-input w-full px-4 py-3 rounded-xl">
+                            <div class="relative">
+                                <input id="password" type="password" placeholder="Password" class="ui-input w-full px-4 py-3 rounded-xl pr-10">
+                                <i class="fa-solid fa-eye absolute right-4 top-4 text-gray-400 cursor-pointer hover:text-gray-600" id="togglePassword"></i>
+                            </div>
                             <div class="flex gap-3 pt-2">
                                 <button id="loginBtn" class="flex-1 py-3 px-4 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-medium shadow-md transition-colors">Login</button>
+                                <button id="signupBtn" class="flex-1 py-3 px-4 rounded-xl border border-[var(--accent)] text-[var(--accent)] hover:bg-black/5 font-medium shadow-sm transition-colors">Sign Up</button>
                             </div>
                             <div id="authMsg" class="mt-4 text-center text-red-500 text-sm font-medium h-5"></div>
                         </div>
                     </div>
                 </div>`; 
+            
+            document.getElementById('togglePassword').onclick = () => {
+                const pwd = document.getElementById('password');
+                const icon = document.getElementById('togglePassword');
+                if (pwd.type === 'password') { pwd.type = 'text'; icon.classList.replace('fa-eye', 'fa-eye-slash'); }
+                else { pwd.type = 'password'; icon.classList.replace('fa-eye-slash', 'fa-eye'); }
+            };
+
             document.getElementById('loginBtn').onclick=async()=>{ const ok=await signIn(document.getElementById('email').value,document.getElementById('password').value); if(!ok) document.getElementById('authMsg').innerText='Invalid credentials'; };
+            document.getElementById('signupBtn').onclick=async()=>{ 
+                try { await signUp(document.getElementById('email').value, document.getElementById('password').value); } 
+                catch(e) { document.getElementById('authMsg').innerText = e.message; } 
+            };
         }
 
         function renderMainApp() {
@@ -267,7 +291,7 @@
                                 ${escapeHtml(userNameDisplay.toUpperCase())}
                             </div>
                             <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                                v1.7.1 - Syntax Hotfix
+                                v1.8.0 - Authentication & Icons Fixed
                             </div>
                         </div>
                     </div>
@@ -974,7 +998,8 @@
                     
                     let content = '';
                     if (t.action === 'FILE') {
-                        content = `FILE - <a href="#" target="_blank" class="text-blue-600 underline font-medium hover:text-blue-800">${escapeHtml(t.comment)}</a>`;
+                        const safeFile = escapeHtml(t.comment);
+                        content = `FILE - <a href="javascript:void(0);" onclick="const w=window.open('about:blank','_blank'); w.document.write('<h2>File Placeholder</h2><p>${safeFile}</p>'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800">${safeFile}</a>`;
                     } else if (t.action === 'UPDATE') {
                         content = `UPDATE - <span class="text-gray-700">${escapeHtml(t.comment)}</span>`;
                     } else {

@@ -1,6 +1,12 @@
 import { sb } from './shared.js';
 import './tasks.js'; // Imports and binds tasks to window
 
+// STRICT MODE FIX: Explicitly declare subscription trackers
+let messageSubscription = null;
+let taskSubscription = null;
+let assigneeSubscription = null;
+let trailSubscription = null;
+
 window.currentTheme = localStorage.getItem('theme') || 'light';
 
 window.applyTheme = function() { 
@@ -101,7 +107,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.13.3 - UI Rendering Restored
+                        v1.13.4 - Strict Mode Fix
                     </div>
                 </div>
             </div>

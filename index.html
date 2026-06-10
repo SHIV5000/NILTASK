@@ -182,19 +182,18 @@
             }
         }
 
-        window.openDummyFile = function(fileName) {
-            const w = window.open('about:blank','_blank');
-            w.document.write(`
-                <html><head><title>${fileName}</title></head>
-                <body style="font-family:'Inter',sans-serif; text-align:center; padding:50px; background:#f0f2f5;">
-                    <div style="background:white; padding:40px; border-radius:16px; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1); max-width:500px; margin:auto;">
-                        <i class="fa-solid fa-file-alt" style="font-size:48px; color:#3b82f6; margin-bottom:20px;"></i>
-                        <h2 style="margin-bottom:10px; color:#111b21;">${fileName}</h2>
-                        <p style="color:#667781;">Secure File Viewer Placeholder<br><br><i>Storage bucket integration pending.</i></p>
-                    </div>
-                </body></html>
-            `);
-            w.document.close();
+        // SECURE FILE VIEWER LOGIC 
+        window.openSecureFile = async function(filePath) {
+            window.showCenterToast('Requesting secure access...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
+            // Request 1 hour signed URL from the private bucket
+            const { data, error } = await sb.storage.from('task-proofs').createSignedUrl(filePath, 3600);
+            if (error || !data) {
+                console.error(error);
+                window.showCenterToast('Failed to retrieve file securely.', 'fa-solid fa-times', 'text-red-500');
+                return;
+            }
+            // Open the securely signed URL in a new tab
+            window.open(data.signedUrl, '_blank');
         }
 
         function applyTheme() { document.documentElement.setAttribute('data-theme', currentTheme); }
@@ -291,7 +290,7 @@
                                 ${escapeHtml(userNameDisplay.toUpperCase())}
                             </div>
                             <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                                v1.10.0 - Locked Core & Inline Logic
+                                v1.11.0 - Secure Storage Integration
                             </div>
                         </div>
                     </div>
@@ -429,12 +428,28 @@
             document.getElementById('sendBtn').onclick = sendMessage;
             quillEditor.root.addEventListener('keydown', (e) => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(); } });
             
-            document.getElementById('fileAttachment').addEventListener('change', (e) => {
+            // MAIN CHAT SECURE UPLOAD
+            document.getElementById('fileAttachment').addEventListener('change', async (e) => {
                 const file = e.target.files[0];
                 if (file) {
+                    window.showCenterToast('Uploading secure file...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
                     const sizeKB = Math.round(file.size / 1024);
-                    quillEditor.root.innerHTML += `<div class="p-2 border rounded bg-black/5 mt-2 inline-block"><i class="fa-solid fa-file-alt text-blue-500"></i> <b>${file.name}</b> (${sizeKB} KB)</div><br>`;
-                    window.showCenterToast('File attached!', 'fa-solid fa-paperclip', 'text-blue-500');
+                    const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+                    const filePath = `chat/${Date.now()}_${safeName}`;
+                    
+                    const { error } = await sb.storage.from('task-proofs').upload(filePath, file);
+                    if(error) {
+                        window.showCenterToast('Upload failed: ' + error.message, 'fa-solid fa-times', 'text-red-500');
+                        return;
+                    }
+                    
+                    quillEditor.focus();
+                    const range = quillEditor.getSelection() || { index: quillEditor.getLength() };
+                    // Insert the secure file link into Quill. The renderer will convert secure-file: to an onclick action.
+                    quillEditor.insertText(range.index, `📁 Attached File: ${file.name} (${sizeKB} KB)\n`, 'link', `secure-file:${filePath}`);
+                    
+                    window.showCenterToast('File securely attached!', 'fa-solid fa-check-circle', 'text-green-500');
+                    e.target.value = ''; 
                 }
             });
 
@@ -606,6 +621,9 @@
                 const time = getISTTime(msg.created_at);
                 const alignClass = isOwn ? 'sent' : 'received';
                 
+                // Parse secure-file tags injected by chat file upload
+                let displayHtml = msg.text.replace(/href="secure-file:([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium"`);
+
                 let html = `<div id="msg-${msg.id}" class="message-bubble ${alignClass}">
                             <div class="bubble-content">
                                 <div class="bubble-controls top-bar-icon">
@@ -616,7 +634,7 @@
                                     <span class="font-bold" style="${isOwn ? 'display:none;' : 'color: var(--accent)'}">${escapeHtml(senderName)}</span>
                                     <span class="ml-auto opacity-60 text-xs">${time} ${isOwn ? '<i class="fa-solid fa-check-double text-blue-400"></i>' : ''}</span>
                                 </div>
-                                <div class="text-[15px] leading-relaxed pr-8">${msg.text}</div>
+                                <div class="text-[15px] leading-relaxed pr-8">${displayHtml}</div>
                                 
                                 <div id="reply-box-${msg.id}" class="inline-reply-box">
                                     <input type="text" id="reply-input-${msg.id}" placeholder="Write a reply..." class="ui-input w-full px-2 py-1 rounded-md text-sm">
@@ -630,6 +648,7 @@
                     replies[msg.id].forEach((child, idx) => { 
                         const cName = toSentenceCase(child.profiles?.full_name || child.profiles?.email.split('@')[0] || 'Unknown');
                         const cTime = getISTTime(child.created_at);
+                        let cDisplayHtml = child.text.replace(/href="secure-file:([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium"`);
                         html += `
                         <div class="message-bubble received w-full max-w-[90%] mb-0">
                             <div class="bubble-content" style="background: var(--received-bg);">
@@ -637,7 +656,7 @@
                                     <span class="font-bold" style="color: var(--accent)">${idx + 1}. ${escapeHtml(cName)}</span>
                                     <span class="ml-auto opacity-60">${cTime}</span>
                                 </div>
-                                <div class="text-[14px] leading-snug">${child.text}</div>
+                                <div class="text-[14px] leading-snug">${cDisplayHtml}</div>
                             </div>
                         </div>`;
                     });
@@ -796,12 +815,15 @@
                             const tName = toSentenceCase((t.profiles?.full_name || t.profiles?.email || 'System').split('@')[0]);
                             const tTime = getISTTime(t.created_at);
                             const tDate = getISTDate(t.created_at);
+                            // Process comment if it is a file upload
+                            let cmt = t.comment || '';
+                            if(t.action === 'FILE' && cmt.includes('|')) cmt = cmt.split('|')[0];
                             return `
                             <tr>
                                 <td style="padding: 10px; border: 1px solid #ccc; white-space: nowrap;">${tDate}<br>${tTime}</td>
                                 <td style="padding: 10px; border: 1px solid #ccc; font-weight: bold;">${escapeHtml(tName)}</td>
                                 <td style="padding: 10px; border: 1px solid #ccc;">
-                                    <b>${escapeHtml(t.action)}</b>${t.comment ? `<br><i>${escapeHtml(t.comment)}</i>` : ''}
+                                    <b>${escapeHtml(t.action)}</b>${cmt ? `<br><i>${escapeHtml(cmt)}</i>` : ''}
                                 </td>
                             </tr>`;
                         }).join('')}
@@ -849,12 +871,15 @@
         window.taskAction = async function(taskId, assigneeId, action, requireProof = false) {
             let actionText = ''; let newStatus = ''; let comment = '';
             
+            if (action === 'ack') {
+                const btn = document.getElementById(`ack-btn-${taskId}-${assigneeId}`);
+                if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Acknowledging...'; }
+            }
+
             const {data: taskData} = await sb.from('tasks').select('*').eq('id', taskId).single();
             const creatorId = taskData.assigned_by;
 
             if (action === 'ack') {
-                const btn = document.getElementById(`ack-btn-${taskId}-${assigneeId}`);
-                if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Acknowledging...'; }
                 newStatus = 'in_progress'; actionText = 'UPDATE'; comment = 'Acknowledged the task';
                 await notifyUser(creatorId, `Task Acknowledged by an Assignee`);
             } else if (action === 'update') {
@@ -869,18 +894,33 @@
                 const el = document.getElementById(`upload-box-${taskId}-${assigneeId}`);
                 if(!el.files.length) return window.showCenterToast('Select a file', 'fa-solid fa-times', 'text-red-500');
                 
+                const file = el.files[0];
+                const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+                const filePath = `tasks/${taskId}/${Date.now()}_${safeName}`;
+
                 const progressContainer = document.getElementById(`upload-progress-container-${taskId}-${assigneeId}`);
                 const progressBar = document.getElementById(`upload-progress-bar-${taskId}-${assigneeId}`);
                 
                 if (progressContainer && progressBar) {
                     progressContainer.classList.remove('hidden');
-                    for (let w = 0; w <= 100; w += 20) {
-                        progressBar.style.width = w + '%';
-                        await new Promise(r => setTimeout(r, 150));
-                    }
+                    progressBar.style.width = '30%';
                 }
                 
-                actionText = 'FILE'; comment = el.files[0].name;
+                // Upload to Supabase bucket
+                const { error: uploadErr } = await sb.storage.from('task-proofs').upload(filePath, file);
+                
+                if (uploadErr) {
+                    if(progressContainer) progressContainer.classList.add('hidden');
+                    return window.showCenterToast('Upload Failed: ' + uploadErr.message, 'fa-solid fa-times', 'text-red-500');
+                }
+
+                if (progressContainer && progressBar) {
+                    progressBar.style.width = '100%';
+                }
+                
+                actionText = 'FILE'; 
+                // Store BOTH name and path delimited by pipe
+                comment = `${file.name}|${filePath}`; 
                 await notifyUser(creatorId, `File Uploaded on Task`);
                 el.value = '';
                 if(progressContainer) {
@@ -1070,9 +1110,10 @@
                             </div>
                             
                             <input type="file" id="upload-box-${task.id}-${uId}" class="hidden" onchange="window.taskAction('${task.id}', '${uId}', 'upload')">
+                            
                             <div id="upload-progress-container-${task.id}-${uId}" class="hidden w-full mt-2 bg-white p-2 rounded border border-gray-200">
-                                <div class="w-full bg-gray-200 rounded-full h-1.5"><div id="upload-progress-bar-${task.id}-${uId}" class="bg-blue-600 h-1.5 rounded-full transition-all" style="width: 0%"></div></div>
-                                <p class="text-[9px] text-gray-500 mt-1 text-center font-bold">Uploading File...</p>
+                                <div class="w-full bg-gray-200 rounded-full h-1.5"><div id="upload-progress-bar-${task.id}-${uId}" class="bg-blue-600 h-1.5 rounded-full transition-all duration-300" style="width: 0%"></div></div>
+                                <p class="text-[9px] text-gray-500 mt-1 text-center font-bold">Uploading Secure File...</p>
                             </div>
 
                             <div id="delegate-box-${task.id}-${uId}" class="hidden flex gap-2 mt-2">
@@ -1117,8 +1158,15 @@
                     
                     let content = '';
                     if (t.action === 'FILE') {
-                        const safeFile = escapeHtml(t.comment);
-                        content = `FILE - <a href="javascript:void(0);" onclick="window.openDummyFile('${safeFile}'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800">${safeFile}</a>`;
+                        // Extract filename and filepath if delimited by pipe
+                        let fName = escapeHtml(t.comment);
+                        let fPath = escapeHtml(t.comment);
+                        if (t.comment && t.comment.includes('|')) {
+                            const parts = t.comment.split('|');
+                            fName = escapeHtml(parts[0]);
+                            fPath = escapeHtml(parts[1]);
+                        }
+                        content = `FILE - <a href="javascript:void(0);" onclick="window.openSecureFile('${fPath}'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800">${fName}</a>`;
                     } else if (t.action === 'UPDATE') {
                         content = `UPDATE - <span class="text-gray-700">${escapeHtml(t.comment)}</span>`;
                     } else {

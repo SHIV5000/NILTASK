@@ -74,9 +74,6 @@
         .bubble-controls i { cursor: pointer; color: var(--text-secondary); transition: color 0.2s; font-size: 14px; }
         .bubble-controls i:hover { color: var(--accent); }
 
-        .inline-reply-box { display: none; margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 8px; }
-        .inline-reply-box.active { display: flex; gap: 8px; align-items: center; }
-
         @keyframes flashHighlight {
             0% { background-color: rgba(128, 0, 0, 0.3); transform: scale(1.02); box-shadow: 0 0 15px rgba(128,0,0,0.5); }
             100% { background-color: transparent; transform: scale(1); box-shadow: none; }
@@ -108,7 +105,7 @@
         }
 
         .input-container { background: var(--bg-sidebar); border-top: 1px solid var(--border-color); padding: 12px 20px; }
-        .quill-wrapper { background: var(--bg-message-other); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+        .quill-wrapper { background: var(--bg-message-other); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; position: relative; z-index: 10; }
         .ql-toolbar.ql-snow { border: none !important; border-bottom: 1px solid var(--border-color) !important; background: rgba(0,0,0,0.02); padding: 6px 12px !important; }
         .ql-container.ql-snow { border: none !important; font-size: 0.95rem; min-height: 40px; max-height: 120px; overflow-y: auto; }
         
@@ -145,9 +142,20 @@
         let currentReminderId = null;
         let currentMessageId = null; 
         let globalUsersCache = [];
+        
+        // Global Reply State Tracking
+        window.currentlyReplyingTo = null;
 
+        // Global Utility Functions
         function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m] || m)); }
         function toSentenceCase(str) { if (!str) return ''; return str.toLowerCase().replace(/(^\w{1})|(\s+\w{1})/g, letter => letter.toUpperCase()); }
+        
+        function getSnippet(htmlStr) {
+            let tmp = document.createElement("DIV");
+            tmp.innerHTML = htmlStr;
+            let text = (tmp.textContent || tmp.innerText || "").replace(/['"\\]/g, "");
+            return escapeHtml(text).substring(0, 60) + "...";
+        }
 
         function getISTTime(dateStr) {
             if(!dateStr) return '';
@@ -182,17 +190,14 @@
             }
         }
 
-        // SECURE FILE VIEWER LOGIC 
         window.openSecureFile = async function(filePath) {
             window.showCenterToast('Requesting secure access...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
-            // Request 1 hour signed URL from the private bucket
             const { data, error } = await sb.storage.from('task-proofs').createSignedUrl(filePath, 3600);
             if (error || !data) {
                 console.error(error);
                 window.showCenterToast('Failed to retrieve file securely.', 'fa-solid fa-times', 'text-red-500');
                 return;
             }
-            // Open the securely signed URL in a new tab
             window.open(data.signedUrl, '_blank');
         }
 
@@ -290,7 +295,7 @@
                                 ${escapeHtml(userNameDisplay.toUpperCase())}
                             </div>
                             <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                                v1.11.0 - Secure Storage Integration
+                                v1.12.0 - Global Reply Threading
                             </div>
                         </div>
                     </div>
@@ -310,8 +315,17 @@
                         
                         <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col"></div>
                         
-                        <div class="input-container">
-                            <div class="quill-wrapper">
+                        <div class="input-container flex flex-col relative">
+                            <div id="replyBanner" class="hidden mx-2 mt-2 px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-t-xl flex justify-between items-center z-0 relative shadow-sm text-xs border-b-0">
+                                <div class="text-indigo-700 flex items-center gap-2 overflow-hidden">
+                                    <i class="fa-solid fa-reply"></i>
+                                    <span class="font-bold whitespace-nowrap">Replying to:</span>
+                                    <span id="replyBannerText" class="italic truncate text-indigo-500 max-w-[200px]"></span>
+                                </div>
+                                <i class="fa-solid fa-times text-indigo-400 hover:text-red-500 cursor-pointer p-1" onclick="window.cancelReply()"></i>
+                            </div>
+
+                            <div class="quill-wrapper z-10 bg-white shadow-sm">
                                 <div id="richEditor"></div>
                             </div>
                             <div class="flex justify-between items-center mt-2 px-2">
@@ -445,7 +459,6 @@
                     
                     quillEditor.focus();
                     const range = quillEditor.getSelection() || { index: quillEditor.getLength() };
-                    // Insert the secure file link into Quill. The renderer will convert secure-file: to an onclick action.
                     quillEditor.insertText(range.index, `📁 Attached File: ${file.name} (${sizeKB} KB)\n`, 'link', `secure-file:${filePath}`);
                     
                     window.showCenterToast('File securely attached!', 'fa-solid fa-check-circle', 'text-green-500');
@@ -458,6 +471,20 @@
             
             loadChatsList(); loadMessages(); window.loadTasksForPanel(); 
         }
+
+        window.initiateReply = function(parentId, text) {
+            window.currentlyReplyingTo = parentId;
+            const banner = document.getElementById('replyBanner');
+            const bannerText = document.getElementById('replyBannerText');
+            banner.classList.remove('hidden');
+            bannerText.innerText = text;
+            quillEditor.focus();
+        };
+
+        window.cancelReply = function() {
+            window.currentlyReplyingTo = null;
+            document.getElementById('replyBanner').classList.add('hidden');
+        };
 
         window.toggleDateFilter = function() {
             const val = document.getElementById('taskFilter').value;
@@ -576,8 +603,15 @@
         async function sendMessage() {
             const text = quillEditor.root.innerHTML.trim();
             if (!text || text === '<p><br></p>') return;
-            await sb.from('messages').insert({ room_id: currentRoom, sender_id: currentUser.id, text, created_at: new Date().toISOString() });
+            
+            let payload = { room_id: currentRoom, sender_id: currentUser.id, text, created_at: new Date().toISOString() };
+            if (window.currentlyReplyingTo) {
+                payload.parent_message_id = window.currentlyReplyingTo;
+            }
+            
+            await sb.from('messages').insert(payload);
             quillEditor.root.innerHTML = '';
+            window.cancelReply();
             loadMessages();
         }
 
@@ -620,43 +654,50 @@
                 const senderName = toSentenceCase(msg.profiles?.full_name || msg.profiles?.email.split('@')[0] || 'Unknown');
                 const time = getISTTime(msg.created_at);
                 const alignClass = isOwn ? 'sent' : 'received';
+                const snippetText = getSnippet(msg.text);
                 
-                // Parse secure-file tags injected by chat file upload
                 let displayHtml = msg.text.replace(/href="secure-file:([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium"`);
 
                 let html = `<div id="msg-${msg.id}" class="message-bubble ${alignClass}">
                             <div class="bubble-content">
                                 <div class="bubble-controls top-bar-icon">
-                                    <i class="fa-solid fa-reply" title="Reply" onclick="window.toggleReplyBox('${msg.id}')"></i>
+                                    <i class="fa-solid fa-reply" title="Reply" onclick="window.initiateReply('${msg.id}', '${snippetText}')"></i>
                                     <i class="fa-solid fa-ellipsis-vertical menu-dots" data-msg-id="${msg.id}" data-msg-text="${escapeHtml(msg.text)}"></i>
                                 </div>
                                 <div class="message-meta">
                                     <span class="font-bold" style="${isOwn ? 'display:none;' : 'color: var(--accent)'}">${escapeHtml(senderName)}</span>
                                     <span class="ml-auto opacity-60 text-xs">${time} ${isOwn ? '<i class="fa-solid fa-check-double text-blue-400"></i>' : ''}</span>
                                 </div>
-                                <div class="text-[15px] leading-relaxed pr-8">${displayHtml}</div>
-                                
-                                <div id="reply-box-${msg.id}" class="inline-reply-box">
-                                    <input type="text" id="reply-input-${msg.id}" placeholder="Write a reply..." class="ui-input w-full px-2 py-1 rounded-md text-sm">
-                                    <button onclick="window.sendReply('${msg.id}')" class="px-3 py-1 rounded-md bg-[var(--accent)] text-white text-xs border-none cursor-pointer">Send</button>
-                                </div>
+                                <div class="text-[15px] leading-relaxed pr-8 msg-text-content">${displayHtml}</div>
                             </div>
                         </div>`;
                 
                 if (replies[msg.id] && replies[msg.id].length > 0) {
-                    html += `<div class="ml-12 pl-2 border-l-2 mb-4 flex flex-col gap-2" style="border-color: var(--accent)">`;
+                    html += `<div class="ml-12 border-l border-gray-300 pl-4 mb-4 flex flex-col gap-3">`;
                     replies[msg.id].forEach((child, idx) => { 
                         const cName = toSentenceCase(child.profiles?.full_name || child.profiles?.email.split('@')[0] || 'Unknown');
                         const cTime = getISTTime(child.created_at);
                         let cDisplayHtml = child.text.replace(/href="secure-file:([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium"`);
+                        const cSnippet = getSnippet(child.text);
+                        
                         html += `
-                        <div class="message-bubble received w-full max-w-[90%] mb-0">
-                            <div class="bubble-content" style="background: var(--received-bg);">
-                                <div class="message-meta text-[11px] mb-1">
-                                    <span class="font-bold" style="color: var(--accent)">${idx + 1}. ${escapeHtml(cName)}</span>
-                                    <span class="ml-auto opacity-60">${cTime}</span>
+                        <div class="message-bubble received w-full max-w-full mb-0 relative group">
+                            <div class="absolute -left-4 top-4 w-4 h-px bg-gray-300"></div>
+                            <div class="bubble-content shadow-sm" style="background: var(--received-bg); border-radius: 8px;">
+                                <div class="flex justify-between items-start mb-1">
+                                    <div class="text-[11px] flex items-center gap-2">
+                                        <span class="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded text-[9px] font-bold">#${idx + 1}</span>
+                                        <span class="font-bold text-gray-700">${escapeHtml(cName)}</span>
+                                        <span class="opacity-60">${cTime}</span>
+                                    </div>
+                                    <i class="fa-solid fa-reply text-gray-400 hover:text-[var(--accent)] cursor-pointer text-xs opacity-0 group-hover:opacity-100 transition-opacity" title="Reply" onclick="window.initiateReply('${msg.id}', '${cSnippet}')"></i>
                                 </div>
-                                <div class="text-[14px] leading-snug">${cDisplayHtml}</div>
+                                <div class="text-[13px] leading-snug text-gray-800 mt-1">${cDisplayHtml}</div>
+                                <div class="mt-2 pt-2 border-t border-gray-100 flex gap-1.5">
+                                    <button class="px-2 py-0.5 bg-gray-50 hover:bg-gray-100 rounded text-[10px] text-gray-500 border border-gray-200 transition-colors">👍</button>
+                                    <button class="px-2 py-0.5 bg-gray-50 hover:bg-gray-100 rounded text-[10px] text-gray-500 border border-gray-200 transition-colors">❤️</button>
+                                    <button class="px-2 py-0.5 bg-gray-50 hover:bg-gray-100 rounded text-[10px] text-gray-500 border border-gray-200 transition-colors">✅</button>
+                                </div>
                             </div>
                         </div>`;
                     });
@@ -686,23 +727,6 @@
                     menu.style.left = (rect.left - 120 + window.scrollX) + 'px';
                 });
             });
-        }
-
-        window.toggleReplyBox = function(id) {
-            const box = document.getElementById(`reply-box-${id}`);
-            box.classList.toggle('active');
-            if(box.classList.contains('active')) document.getElementById(`reply-input-${id}`).focus();
-        }
-
-        window.sendReply = async function(parentId) {
-            const input = document.getElementById(`reply-input-${parentId}`);
-            const text = input.value.trim();
-            if(text) {
-                await sb.from('messages').insert({ room_id: currentRoom, sender_id: currentUser.id, text, parent_message_id: parentId, created_at: new Date().toISOString() });
-                input.value = '';
-                window.toggleReplyBox(parentId);
-                loadMessages();
-            }
         }
 
         window.openTaskModal = async function(mid, text) { 
@@ -741,37 +765,6 @@
         
         async function notifyUser(userId, message) {
             await sb.from('notifications').insert({ user_id: userId, message: message, created_at: new Date().toISOString() });
-        }
-
-        window.saveTaskMultiAssignee = async function() { 
-            const title = document.getElementById('taskTitle').value; 
-            const aids = Array.from(document.querySelectorAll('.assignee-cb:checked')).map(cb => cb.value);
-            if(!title || !aids.length) return window.showCenterToast('Need Title and Assignee', 'fa-solid fa-times', 'text-red-500'); 
-            
-            const {data: task, error: tErr} = await sb.from('tasks').insert({ 
-                original_message_id: currentMessageId, 
-                title, 
-                assigned_by: currentUser.id, 
-                deadline: document.getElementById('taskDeadline').value || null, 
-                priority: document.getElementById('taskPriority').value,
-                require_proof: document.getElementById('taskRequireProof').checked,
-                status: 'pending' 
-            }).select().single(); 
-            
-            if(tErr || !task) {
-                console.error(tErr); return window.showCenterToast('Failed to create task.', 'fa-solid fa-times', 'text-red-500');
-            }
-            
-            await sb.from('task_assignees').insert(aids.map(aid => ({ task_id: task.id, assignee_id: aid, status: 'pending_ack', state: 'pending' }))); 
-            await sb.from('task_trails').insert({ task_id: task.id, user_id: currentUser.id, action: 'UPDATE', comment: 'Task Created' });
-            
-            for(let aid of aids) {
-                await notifyUser(aid, `New Task Allotted: ${title}`);
-            }
-
-            window.showCenterToast('Ticket Created Successfully'); 
-            window.closeTaskModal(); 
-            window.loadTasksForPanel(); 
         }
 
         window.downloadTaskPDF = async function(taskId) {
@@ -815,7 +808,6 @@
                             const tName = toSentenceCase((t.profiles?.full_name || t.profiles?.email || 'System').split('@')[0]);
                             const tTime = getISTTime(t.created_at);
                             const tDate = getISTDate(t.created_at);
-                            // Process comment if it is a file upload
                             let cmt = t.comment || '';
                             if(t.action === 'FILE' && cmt.includes('|')) cmt = cmt.split('|')[0];
                             return `
@@ -868,6 +860,37 @@
         /* UNLESS EXPLICITLY INSTRUCTED BY THE USER TO DO SO.                                          */
         /* ========================================================================================= */
 
+        window.saveTaskMultiAssignee = async function() { 
+            const title = document.getElementById('taskTitle').value; 
+            const aids = Array.from(document.querySelectorAll('.assignee-cb:checked')).map(cb => cb.value);
+            if(!title || !aids.length) return window.showCenterToast('Need Title and Assignee', 'fa-solid fa-times', 'text-red-500'); 
+            
+            const {data: task, error: tErr} = await sb.from('tasks').insert({ 
+                original_message_id: currentMessageId, 
+                title, 
+                assigned_by: currentUser.id, 
+                deadline: document.getElementById('taskDeadline').value || null, 
+                priority: document.getElementById('taskPriority').value,
+                require_proof: document.getElementById('taskRequireProof').checked,
+                status: 'pending' 
+            }).select().single(); 
+            
+            if(tErr || !task) {
+                console.error(tErr); return window.showCenterToast('Failed to create task.', 'fa-solid fa-times', 'text-red-500');
+            }
+            
+            await sb.from('task_assignees').insert(aids.map(aid => ({ task_id: task.id, assignee_id: aid, status: 'pending_ack', state: 'pending' }))); 
+            await sb.from('task_trails').insert({ task_id: task.id, user_id: currentUser.id, action: 'UPDATE', comment: 'Task Created' });
+            
+            for(let aid of aids) {
+                await notifyUser(aid, `New Task Allotted: ${title}`);
+            }
+
+            window.showCenterToast('Ticket Created Successfully'); 
+            window.closeTaskModal(); 
+            window.loadTasksForPanel(); 
+        }
+
         window.taskAction = async function(taskId, assigneeId, action, requireProof = false) {
             let actionText = ''; let newStatus = ''; let comment = '';
             
@@ -906,7 +929,6 @@
                     progressBar.style.width = '30%';
                 }
                 
-                // Upload to Supabase bucket
                 const { error: uploadErr } = await sb.storage.from('task-proofs').upload(filePath, file);
                 
                 if (uploadErr) {
@@ -919,7 +941,6 @@
                 }
                 
                 actionText = 'FILE'; 
-                // Store BOTH name and path delimited by pipe
                 comment = `${file.name}|${filePath}`; 
                 await notifyUser(creatorId, `File Uploaded on Task`);
                 el.value = '';
@@ -1158,7 +1179,6 @@
                     
                     let content = '';
                     if (t.action === 'FILE') {
-                        // Extract filename and filepath if delimited by pipe
                         let fName = escapeHtml(t.comment);
                         let fPath = escapeHtml(t.comment);
                         if (t.comment && t.comment.includes('|')) {

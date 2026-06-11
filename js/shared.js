@@ -6,7 +6,7 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Define Global State
 window.currentUser = null;
-window.currentRoom = 'general';
+window.currentRoom = 'general'; 
 window.globalUsersCache = [];
 window.quillEditor = null;
 window.currentlyReplyingTo = null;

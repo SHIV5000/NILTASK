@@ -21,26 +21,32 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(134, 150, 160, 0.3); border-radius: 10px; }
 
-/* FIXED DRAGGABLE SIDEBAR ENGINE: Locked Flex & Enforced Overflow */
+/* ADVANCED DRAGGABLE SIDEBAR ENGINE (Full Height) */
 .left-sidebar {
-    resize: horizontal;
     overflow: hidden; 
-    width: 320px;
-    min-width: 260px;
+    width: var(--saved-left-width, 320px);
+    min-width: 200px;
     max-width: 50vw;
     flex: 0 0 auto !important;
 }
 .right-sidebar {
-    resize: horizontal;
-    direction: rtl; 
     overflow: hidden; 
-    width: 450px;
-    min-width: 320px;
+    width: var(--saved-right-width, 450px);
+    min-width: 250px;
     max-width: 50vw;
     flex: 0 0 auto !important;
 }
-.right-sidebar > * {
-    direction: ltr; 
+.drag-resizer {
+    width: 6px;
+    cursor: col-resize;
+    background: transparent;
+    transition: background 0.2s;
+    z-index: 50;
+    flex-shrink: 0;
+}
+.drag-resizer:hover, .drag-resizer:active {
+    background: var(--accent);
+    opacity: 0.5;
 }
 
 .sidebar-glass { background: var(--bg-sidebar); backdrop-filter: blur(10px); border-color: var(--border-color); }
@@ -100,7 +106,7 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 .row-sent  { display: flex; flex-direction: column; align-items: flex-end; margin-bottom: 12px; width: 100%; }
 .row-rcvd  { display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 12px; width: 100%; }
 
-.bubble { max-width: 95%; width: fit-content; min-width: 250px; position: relative; overflow: visible; }
+.bubble { max-width: 95%; width: fit-content; min-width: 250px; position: relative; overflow: visible; z-index: 2;}
 .bubble.sent { background: var(--sent-bg); border: 1px solid var(--accent); border-radius: 14px 2px 14px 14px; }
 .bubble.rcvd { background: var(--received-bg); border: 1px solid var(--accent); border-radius: 2px 14px 14px 14px; }
 
@@ -179,3 +185,32 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 .reply-time  { font-size: 9px; color: #aaa; margin-left: auto; }
 .reply-text  { font-size: 11.5px; color: #333; line-height: 1.5; }
 .reply-text a { color: #0d6efd; text-decoration: none; font-weight: 500; }
+
+/* ========================================================================== */
+/* ADVANCED CONIC-GRADIENT TARGET HIGHLIGHTER                                 */
+/* ========================================================================== */
+@property --angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.glow-target::before {
+    content: '';
+    position: absolute;
+    inset: -3px; 
+    border-radius: inherit; 
+    background: conic-gradient(from var(--angle), transparent 0deg, transparent 345deg, var(--accent) 360deg);
+    z-index: -1;
+    animation: rotate-glow 3s linear forwards;
+    opacity: 0;
+}
+
+.glow-target.active-glow::before {
+    opacity: 1;
+}
+
+@keyframes rotate-glow {
+    0% { --angle: 0deg; }
+    100% { --angle: 360deg; }
+}

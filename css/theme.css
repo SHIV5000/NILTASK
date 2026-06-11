@@ -40,7 +40,6 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 .sidebar-glass { background: var(--bg-sidebar); backdrop-filter: blur(10px); border-color: var(--border-color); }
 .chat-area { background-color: var(--bg-chat); background-blend-mode: overlay; position: relative; z-index: 1;}
 
-/* REPEATING SMALL WATERMARK ENGINE */
 .chat-area::before {
     content: '';
     position: absolute;

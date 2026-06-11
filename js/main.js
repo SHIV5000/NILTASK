@@ -6,7 +6,7 @@ let taskSubscription = null;
 let assigneeSubscription = null;
 let trailSubscription = null;
 
-// STATE PERSISTENCE ENGINE
+// STATE PERSISTENCE ENGFINE
 window.currentTheme = localStorage.getItem('theme') || 'light';
 window.currentRoom = localStorage.getItem('mpgs_current_room') || 'general';
 window.pendingScrollId = null; 

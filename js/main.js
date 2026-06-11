@@ -105,7 +105,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.17.0 - Handoff UI Integration
+                        v1.17.1 - Full-Width Layout Update
                     </div>
                 </div>
             </div>
@@ -123,8 +123,8 @@ window.renderMainApp = function() {
                     </div>
                 </div>
                 
-                <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col items-center">
-                    <div class="chat-shell w-full max-w-2xl bg-transparent border-none" id="chatShellContainer"></div>
+                <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col">
+                    <div class="w-full bg-transparent border-none" id="chatShellContainer"></div>
                 </div>
                 
                 <div class="flex flex-col relative bg-white border-t border-gray-200 p-3 px-5">
@@ -432,7 +432,10 @@ window.showScheduleModal = function() {
     document.getElementById('scheduleModal').classList.add('flex');
 }
 
-window.closeScheduleModal = function() { document.getElementById('scheduleModal').classList.add('hidden'); document.getElementById('scheduleModal').classList.remove('flex'); }
+window.closeScheduleModal = function() {
+    document.getElementById('scheduleModal').classList.add('hidden');
+    document.getElementById('scheduleModal').classList.remove('flex');
+}
 
 window.saveScheduledMessage = async function() {
     const time = document.getElementById('scheduleDateTime').value;
@@ -567,7 +570,7 @@ window.renderMessages = function(messages) {
         const bubbleClass = isSent ? 'bubble sent' : 'bubble rcvd';
         const avClass = isSent ? 'b-avatar sent-av' : 'b-avatar rcvd-av';
         const avatarInitial = senderName.charAt(0).toUpperCase();
-        const roleStr = isSent ? 'Teacher' : 'Teacher'; // Defaulting role as it's not in profiles yet
+        const roleStr = isSent ? 'Teacher' : 'Teacher'; 
         const tickHTML = isSent ? `<span class="b-tick">✓✓</span>` : '';
         const replyCount = replies[msg.id] ? replies[msg.id].length : 0;
 
@@ -636,7 +639,6 @@ window.renderMessages = function(messages) {
         </div>`;
     }
 
-    // Add a day label at the top
     const dateLabel = `<div class="day-label">Today — ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric'})}</div>`;
     c.innerHTML = dateLabel + topLevel.map(msg => buildMsgHTML(msg)).join('');
 }

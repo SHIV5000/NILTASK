@@ -1,7 +1,6 @@
 import { sb } from './shared.js';
-import './tasks.js'; // Imports and binds tasks to window
+import './tasks.js';
 
-// Explicitly declare subscription trackers
 let messageSubscription = null;
 let taskSubscription = null;
 let assigneeSubscription = null;
@@ -28,7 +27,7 @@ window.signIn = async function(email, pwd) {
 window.signUp = async function(email, pwd) { 
     const {data, error} = await sb.auth.signUp({email, password: pwd}); 
     if(error) throw error; 
-    window.showCenterToast('Sign up successful! Please wait for admin approval or check email.', 'fa-solid fa-envelope', 'text-blue-400'); 
+    window.showCenterToast('Sign up successful! Please wait for admin approval.', 'fa-solid fa-envelope', 'text-blue-400'); 
 };
 
 window.logout = async function() { 
@@ -80,8 +79,7 @@ window.renderAuthScreen = function() {
             if(pwd.length < 6) throw new Error("Password must be at least 6 characters.");
             if(!email) throw new Error("Email is required.");
             await window.signUp(email, pwd); 
-        } 
-        catch(e) { document.getElementById('authMsg').innerText = e.message; } 
+        } catch(e) { document.getElementById('authMsg').innerText = e.message; } 
     };
 };
 
@@ -107,7 +105,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.14.0 - Premium UI Upgrade
+                        v1.15.0 - Custom Thread Component
                     </div>
                 </div>
             </div>
@@ -203,8 +201,7 @@ window.renderMainApp = function() {
                 <p class="text-xs font-bold text-gray-500 mb-1 ml-1">Assigned To:</p>
                 <div class="border rounded-xl mb-3 overflow-hidden border-gray-300">
                     <input type="text" id="assigneeSearch" onkeyup="window.filterAssignees()" placeholder="Search users..." class="w-full p-2.5 text-xs border-b border-gray-200 outline-none bg-gray-50 text-gray-700 font-medium">
-                    <div id="assigneeCheckboxList" class="max-h-32 overflow-y-auto bg-white p-2 flex flex-col gap-1">
-                        </div>
+                    <div id="assigneeCheckboxList" class="max-h-32 overflow-y-auto bg-white p-2 flex flex-col gap-1"></div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-3 mb-3">
@@ -317,10 +314,7 @@ window.filterAssignees = function() {
     });
 }
 
-window.closeTaskModal = function() { 
-    document.getElementById('taskModal').classList.add('hidden'); 
-    document.getElementById('taskModal').classList.remove('flex'); 
-}
+window.closeTaskModal = function() { document.getElementById('taskModal').classList.add('hidden'); document.getElementById('taskModal').classList.remove('flex'); }
 
 window.showReminderModal = function(mid, text) { 
     window.currentReminderId = mid; 
@@ -330,10 +324,7 @@ window.showReminderModal = function(mid, text) {
     document.getElementById('reminderModal').classList.add('flex'); 
 }
 
-window.closeReminderModal = function() { 
-    document.getElementById('reminderModal').classList.add('hidden'); 
-    document.getElementById('reminderModal').classList.remove('flex'); 
-}
+window.closeReminderModal = function() { document.getElementById('reminderModal').classList.add('hidden'); document.getElementById('reminderModal').classList.remove('flex'); }
 
 window.saveReminder = async function() { 
     const dt = document.getElementById('reminderDateTime').value; 
@@ -434,10 +425,7 @@ window.showScheduleModal = function() {
     document.getElementById('scheduleModal').classList.add('flex');
 }
 
-window.closeScheduleModal = function() {
-    document.getElementById('scheduleModal').classList.add('hidden');
-    document.getElementById('scheduleModal').classList.remove('flex');
-}
+window.closeScheduleModal = function() { document.getElementById('scheduleModal').classList.add('hidden'); document.getElementById('scheduleModal').classList.remove('flex'); }
 
 window.saveScheduledMessage = async function() {
     const time = document.getElementById('scheduleDateTime').value;
@@ -511,7 +499,7 @@ window.loadMessages = async function() {
     window.applyFilters();
     const c = document.getElementById('messagesContainer');
     if(c) {
-        setTimeout(() => { c.scrollTop = c.scrollHeight; }, 50); // Slight delay ensures images/layout calculate before scrolling
+        setTimeout(() => { c.scrollTop = c.scrollHeight; }, 50); 
     }
 }
 
@@ -546,105 +534,74 @@ window.renderMessages = function(messages) {
 
     function buildMsgHTML(msg) {
         const isOwn = msg.sender_id === window.currentUser.id;
-        const senderName = window.toSentenceCase(msg.profiles?.full_name || msg.profiles?.email.split('@')[0] || 'Unknown');
+        const senderName = isOwn ? 'You' : window.toSentenceCase(msg.profiles?.full_name || msg.profiles?.email.split('@')[0] || 'Unknown');
         const time = window.getISTTime(msg.created_at);
+        const alignClass = isOwn ? 'sent' : 'received';
+        const checkIcon = isOwn ? ' <i class="fa-solid fa-check-double text-blue-500"></i>' : '';
         const snippetText = window.getSnippet(msg.text);
+        
         let displayHtml = msg.text.replace(/href="secure-file:([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800 transition-colors"`);
 
-        const avatarInitial = senderName.charAt(0).toUpperCase();
-
-        const bubbleBg = isOwn ? 'bg-[var(--sent-bg)] border-[var(--border-color)] text-gray-900' : 'bg-white border-gray-200 text-gray-800';
-        const avatarBg = isOwn ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'bg-indigo-50 text-indigo-700 border-indigo-200';
-        
-        // --- PARENT MESSAGE LAYOUT ---
         let html = `
-        <div id="msg-${msg.id}" class="flex flex-col items-start mb-6 w-full group/thread">
-            
-            <div class="${isOwn ? 'self-end flex-row-reverse' : 'self-start flex-row'} flex items-end gap-3 max-w-[85%] relative z-10 w-full">
-                
-                <div class="w-9 h-9 rounded-full ${avatarBg} flex items-center justify-center text-[13px] font-black shrink-0 mb-1 shadow-sm relative z-10 border">
-                    ${avatarInitial}
-                </div>
-                
-                <div class="relative group/parent pb-1 flex flex-col ${isOwn ? 'items-end' : 'items-start'} max-w-full">
-                    <span class="text-[11px] font-bold text-gray-500 mb-1 mx-1 block tracking-wide">${window.escapeHtml(senderName)}</span>
-                    
-                    <div class="${bubbleBg} p-3.5 rounded-2xl ${isOwn ? 'rounded-br-none' : 'rounded-bl-none'} shadow-sm border relative w-full">
-                        
-                        <div class="absolute -top-3 ${isOwn ? '-left-2' : '-right-2'} bg-white border border-gray-200 shadow-md rounded-xl p-1 flex gap-1 opacity-0 group-hover/parent:opacity-100 transition-opacity z-20">
-                            <i class="fa-solid fa-reply text-[11px] p-2 text-gray-400 hover:text-[var(--accent)] hover:bg-gray-50 rounded-lg cursor-pointer transition-colors" title="Reply" onclick="window.initiateReply('${msg.id}', '${snippetText}')"></i>
-                            <i class="fa-solid fa-ellipsis-vertical text-[11px] p-2 text-gray-400 hover:text-[var(--accent)] hover:bg-gray-50 rounded-lg cursor-pointer menu-dots transition-colors" data-msg-id="${msg.id}" data-msg-text="${window.escapeHtml(msg.text)}"></i>
-                        </div>
-                        
-                        <div class="text-[14.5px] leading-relaxed msg-text-content break-words font-medium">${displayHtml}</div>
-                        <div class="text-[10px] text-gray-400 ${isOwn ? 'text-right' : 'text-right'} mt-2 font-bold tracking-wide">${time} ${isOwn ? '<i class="fa-solid fa-check-double text-blue-500 ml-1"></i>' : ''}</div>
+        <div id="msg-${msg.id}" class="msg-row ${alignClass} group/thread">
+            <div class="msg-sender">${window.escapeHtml(senderName)}</div>
+            <div class="msg-bubble shadow-sm">
+                <div class="bubble-inner">
+                    <div class="bubble-top-row">
+                        <span class="msg-time">${time}${checkIcon}</span>
+                        <button class="menu-dots" data-msg-id="${msg.id}" data-msg-text="${window.escapeHtml(msg.text)}">⋮</button>
                     </div>
-                    
-                    <div class="flex justify-start items-center gap-1.5 mt-1.5 px-1 opacity-0 group-hover/parent:opacity-100 transition-opacity duration-300">
+                    <div class="msg-text">${displayHtml}</div>
+                    <div class="bubble-footer">
+                        <button class="tag font-medium" onclick="window.initiateReply('${msg.id}', '${snippetText}')"><i class="fa-solid fa-reply"></i> Reply</button>
                         <div class="relative inline-block group/tagbtn">
-                            <button class="w-6 h-6 bg-white border border-gray-200 rounded-full text-[10px] text-gray-500 hover:bg-gray-50 flex items-center justify-center shadow-sm transition-colors">
-                                <i class="fa-solid fa-plus"></i>
-                            </button>
-                            <div class="absolute bottom-full ${isOwn ? 'right-0' : 'left-0'} mb-2 hidden group-hover/tagbtn:flex bg-white border border-gray-200 shadow-xl rounded-xl p-2 gap-2 z-50 items-center">
-                                <span class="cursor-pointer bg-green-50 hover:bg-green-100 text-green-700 px-3 py-1.5 rounded-lg text-[11px] font-bold border border-green-200 transition-colors shadow-sm" onclick="window.showCenterToast('Tag Applied: Thanks', 'fa-solid fa-check', 'text-green-500')">Thanks</span>
-                                <span class="cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg text-[11px] font-bold border border-blue-200 transition-colors shadow-sm" onclick="window.showCenterToast('Tag Applied: Good', 'fa-solid fa-check', 'text-blue-500')">Good</span>
-                                <span class="cursor-pointer bg-orange-50 hover:bg-orange-100 text-orange-700 px-3 py-1.5 rounded-lg text-[11px] font-bold border border-orange-200 transition-colors shadow-sm" onclick="window.showCenterToast('Tag Applied: Noted', 'fa-solid fa-check', 'text-orange-500')">Noted</span>
+                            <button class="emoji-btn hover:bg-gray-100"><i class="fa-solid fa-plus"></i></button>
+                            <div class="absolute bottom-full ${isOwn ? 'right-0' : 'left-0'} mb-1 hidden group-hover/tagbtn:flex bg-white border border-gray-200 shadow-xl rounded-xl p-1.5 gap-1.5 z-50 items-center">
+                                <span class="cursor-pointer hover:bg-gray-100 p-1 rounded-lg text-sm" onclick="window.showCenterToast('👍 Applied', 'fa-regular fa-face-smile', 'text-yellow-500')">👍</span>
+                                <span class="cursor-pointer hover:bg-gray-100 p-1 rounded-lg text-sm" onclick="window.showCenterToast('❤️ Applied', 'fa-solid fa-heart', 'text-red-500')">❤️</span>
+                                <div class="w-px h-4 bg-gray-200 mx-1"></div>
+                                <span class="cursor-pointer bg-green-50 hover:bg-green-100 text-green-700 px-2 py-1 rounded-md text-[10px] font-bold border border-green-200" onclick="window.showCenterToast('Tag Applied: Thanks', 'fa-solid fa-tag', 'text-green-500')">Thanks</span>
+                                <span class="cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-1 rounded-md text-[10px] font-bold border border-blue-200" onclick="window.showCenterToast('Tag Applied: Noted', 'fa-solid fa-tag', 'text-blue-500')">Noted</span>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>`;
-
-        // --- REPLIES (TREE VIEW STRUCTURE) ---
+            </div>
+        </div>`;
+        
         if (replies[msg.id] && replies[msg.id].length > 0) {
-            
-            // Layout spine orientation based on who sent the parent
-            const spineAlign = isOwn ? 'mr-[17px] pr-6 border-r-2 items-end border-gray-200' : 'ml-[17px] pl-6 border-l-2 items-start border-gray-200';
-            const connectorClass = isOwn ? '-right-6' : '-left-6';
-
-            html += `<div class="mt-2 ${spineAlign} flex flex-col gap-5 relative w-full max-w-[85%] pb-3 ${isOwn ? 'self-end' : 'self-start'}">`;
-            
+            html += `<div class="thread-container">`;
             replies[msg.id].forEach((child, idx) => { 
                 const cIsOwn = child.sender_id === window.currentUser.id;
-                const cName = window.toSentenceCase(child.profiles?.full_name || child.profiles?.email.split('@')[0] || 'Unknown');
+                const cName = cIsOwn ? 'You' : window.toSentenceCase(child.profiles?.full_name || child.profiles?.email.split('@')[0] || 'Unknown');
                 const cTime = window.getISTTime(child.created_at);
-                let cDisplayHtml = child.text.replace(/href="secure-file:([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800 transition-colors"`);
+                const cAlignClass = cIsOwn ? 'sent' : 'received';
+                const cCheckIcon = cIsOwn ? ' <i class="fa-solid fa-check-double text-blue-500"></i>' : '';
+                let cDisplayHtml = child.text.replace(/href="secure-file:([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium"`);
                 const cSnippet = window.getSnippet(child.text);
                 
-                const cBubbleBg = cIsOwn ? 'bg-[var(--sent-bg)] border-[var(--border-color)] text-gray-900' : 'bg-gray-50 border-gray-200 text-gray-800';
-                
                 html += `
-                <div class="flex items-end ${cIsOwn ? 'justify-end' : 'justify-start'} gap-2 w-full relative group/child">
-                    <div class="absolute top-1/2 ${connectorClass} w-6 h-px bg-gray-300"></div>
-                    
-                    <div class="relative w-auto max-w-[95%] pb-1 flex flex-col ${cIsOwn ? 'items-end' : 'items-start'}">
-                        
-                        <div class="${cBubbleBg} p-3 rounded-2xl ${cIsOwn ? 'rounded-br-none' : 'rounded-bl-none'} shadow-sm border relative">
-                            
-                            <div class="absolute -top-3 ${cIsOwn ? '-left-2' : '-right-2'} bg-white border border-gray-200 shadow-md rounded-xl p-1 flex gap-1 opacity-0 group-hover/child:opacity-100 transition-opacity z-20">
-                                <i class="fa-solid fa-reply text-[11px] p-2 text-gray-400 hover:text-[var(--accent)] hover:bg-gray-50 rounded-lg cursor-pointer transition-colors" title="Reply" onclick="window.initiateReply('${msg.id}', '${cSnippet}')"></i>
-                            </div>
-                            
-                            <div class="flex justify-between items-start mb-1.5 gap-4">
-                                <div class="text-[10px] font-bold ${cIsOwn ? 'text-[var(--accent)]' : 'text-gray-600'} flex items-center gap-2 tracking-wide">
-                                    <span class="${cIsOwn ? 'bg-white/60' : 'bg-white'} ${cIsOwn ? 'text-[var(--accent)]' : 'text-gray-500'} px-2 py-0.5 rounded-md shadow-sm text-[9px] border ${cIsOwn ? 'border-[var(--accent)]/20' : 'border-gray-200'}">#${idx + 1}</span>
-                                    ${window.escapeHtml(cName)}
+                <div class="thread-item" data-serial="${idx + 1}.">
+                    <hr class="connector-line">
+                    <div id="msg-${child.id}" class="msg-row ${cAlignClass}">
+                        <div class="msg-sender">${window.escapeHtml(cName)}</div>
+                        <div class="msg-bubble shadow-sm">
+                            <div class="bubble-inner">
+                                <div class="bubble-top-row">
+                                    <span class="msg-time">${cTime}${cCheckIcon}</span>
+                                    <button class="menu-dots" data-msg-id="${child.id}" data-msg-text="${window.escapeHtml(child.text)}">⋮</button>
                                 </div>
-                            </div>
-                            
-                            <div class="text-[13.5px] leading-snug break-words font-medium">${cDisplayHtml}</div>
-                            <div class="text-[9px] text-gray-400 text-right mt-1.5 font-bold tracking-wide">${cTime} ${cIsOwn ? '<i class="fa-solid fa-check-double text-blue-500 ml-1"></i>' : ''}</div>
-                        </div>
-                        
-                        <div class="flex ${cIsOwn ? 'justify-end' : 'justify-start'} items-center gap-1.5 mt-1.5 px-1 opacity-0 group-hover/child:opacity-100 transition-opacity">
-                            <div class="relative inline-block group/tagbtn">
-                                <button class="w-6 h-6 bg-white border border-gray-200 rounded-full text-[10px] text-gray-500 hover:bg-gray-50 flex items-center justify-center shadow-sm transition-colors">
-                                    <i class="fa-solid fa-plus"></i>
-                                </button>
-                                <div class="absolute bottom-full ${cIsOwn ? 'right-0' : 'left-0'} mb-2 hidden group-hover/tagbtn:flex bg-white border border-gray-200 shadow-xl rounded-xl p-2 gap-2 z-50 items-center">
-                                    <span class="cursor-pointer bg-green-50 hover:bg-green-100 text-green-700 px-3 py-1.5 rounded-lg text-[11px] font-bold border border-green-200 transition-colors shadow-sm" onclick="window.showCenterToast('Tag Applied: Thanks', 'fa-solid fa-check', 'text-green-500')">Thanks</span>
-                                    <span class="cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg text-[11px] font-bold border border-blue-200 transition-colors shadow-sm" onclick="window.showCenterToast('Tag Applied: Good', 'fa-solid fa-check', 'text-blue-500')">Good</span>
-                                    <span class="cursor-pointer bg-orange-50 hover:bg-orange-100 text-orange-700 px-3 py-1.5 rounded-lg text-[11px] font-bold border border-orange-200 transition-colors shadow-sm" onclick="window.showCenterToast('Tag Applied: Noted', 'fa-solid fa-check', 'text-orange-500')">Noted</span>
+                                <div class="msg-text">${cDisplayHtml}</div>
+                                <div class="bubble-footer">
+                                    <button class="tag font-medium" onclick="window.initiateReply('${msg.id}', '${cSnippet}')"><i class="fa-solid fa-reply"></i> Reply</button>
+                                    <div class="relative inline-block group/tagbtn">
+                                        <button class="emoji-btn hover:bg-gray-100"><i class="fa-solid fa-plus"></i></button>
+                                        <div class="absolute bottom-full ${cIsOwn ? 'right-0' : 'left-0'} mb-1 hidden group-hover/tagbtn:flex bg-white border border-gray-200 shadow-xl rounded-xl p-1.5 gap-1.5 z-50 items-center">
+                                            <span class="cursor-pointer hover:bg-gray-100 p-1 rounded-lg text-sm" onclick="window.showCenterToast('👍 Applied', 'fa-regular fa-face-smile', 'text-yellow-500')">👍</span>
+                                            <div class="w-px h-4 bg-gray-200 mx-1"></div>
+                                            <span class="cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-1 rounded-md text-[10px] font-bold border border-blue-200" onclick="window.showCenterToast('Tag Applied: Noted', 'fa-solid fa-tag', 'text-blue-500')">Noted</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -653,7 +610,6 @@ window.renderMessages = function(messages) {
             });
             html += `</div>`;
         }
-        html += `</div>`;
         return html;
     }
 
@@ -665,7 +621,7 @@ window.renderMessages = function(messages) {
             document.querySelectorAll('.msg-menu-dropdown').forEach(m => m.remove());
             const mid = el.dataset.msgId, mtext = el.dataset.msgText;
             const menu = document.createElement('div');
-            menu.className = 'msg-menu-dropdown p-1.5 shadow-xl border-gray-200';
+            menu.className = 'msg-menu-dropdown p-1.5 shadow-xl border-gray-200 bg-white';
             menu.style.minWidth = '180px';
             menu.innerHTML = `
                 <div class="cursor-pointer px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 rounded-lg transition-colors flex items-center gap-3" onclick="window.openTaskModal('${mid}', '${mtext.replace(/'/g, "\\'")}')"><i class="fa-solid fa-tasks text-emerald-500 w-4"></i> Create Task</div>

@@ -32,7 +32,7 @@ window.loadMessages = async function() {
     const isNearBottom = c ? (c.scrollHeight - c.scrollTop - c.clientHeight < 150) : false;
 
     window.renderMessages(msgs || []);
-    window.applyFilters();
+    if (typeof window.applyFilters === 'function') window.applyFilters();
     
     if(c) {
         setTimeout(() => { 
@@ -247,7 +247,7 @@ window.cancelReply = function() {
 };
 
 window.toggleBookmark = async function(mid) { 
-    window.closeDropdowns();
+    if (typeof window.closeDropdowns === 'function') window.closeDropdowns();
     const btn = document.querySelector(`#row-${mid} .act-btn[onclick*="toggleBookmark"]`);
     let isCurrentlyBookmarked = window.bookmarkedSet && window.bookmarkedSet.has(mid);
     
@@ -263,4 +263,86 @@ window.toggleBookmark = async function(mid) {
         window.showCenterToast('Message Bookmarked');
         await sb.from('bookmarks').insert({ user_id: window.currentUser.id, message_id: mid });
     } 
+};
+
+window.applyFilters = function() {
+    const searchBar = document.getElementById('messageSearchBar');
+    if (!searchBar) return;
+    const search = searchBar.value.toLowerCase();
+    document.querySelectorAll('.row-sent, .row-rcvd').forEach(el => {
+        let show = true;
+        const text = el.innerText.toLowerCase();
+        if (search && !text.includes(search)) show = false;
+        el.style.display = show ? 'flex' : 'none';
+    });
+};
+
+window.insertEmoji = function(char) {
+    if (!window.quillEditor) return;
+    window.quillEditor.focus();
+    const range = window.quillEditor.getSelection();
+    const index = range ? range.index : window.quillEditor.getLength();
+    window.quillEditor.insertText(index, char);
+    window.quillEditor.setSelection(index + char.length); 
+    const ep = document.getElementById('inputEmojiPicker');
+    if(ep) ep.classList.add('hidden');
+};
+
+window.toggleInputEmojiPicker = function() {
+    const ep = document.getElementById('inputEmojiPicker');
+    if(ep) ep.classList.toggle('hidden');
+};
+
+window.cancelFileRename = function() {
+    window.pendingFileUpload = null;
+    const fileInput = document.getElementById('fileAttachment');
+    if (fileInput) fileInput.value = '';
+    const modal = document.getElementById('fileRenameModal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+};
+
+window.confirmFileRename = async function() {
+    if (!window.pendingFileUpload) return;
+    const file = window.pendingFileUpload;
+    window.pendingFileUpload = null;
+    
+    const modal = document.getElementById('fileRenameModal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+
+    const lastDot = file.name.lastIndexOf('.');
+    const ext = lastDot !== -1 ? file.name.substring(lastDot) : '';
+    
+    let newNameInput = document.getElementById('newFileNameInput');
+    let newName = newNameInput ? newNameInput.value.trim() : '';
+    if (!newName) newName = lastDot !== -1 ? file.name.substring(0, lastDot) : file.name;
+    const finalName = newName + ext;
+    
+    if (typeof window.showCenterToast === 'function') window.showCenterToast('Uploading secure file...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
+    
+    const sizeKB = Math.round(file.size / 1024);
+    const safeName = finalName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const filePath = `chat/${Date.now()}_${safeName}`;
+    
+    const { error } = await sb.storage.from('task-proofs').upload(filePath, file);
+    if(error) { 
+        if (typeof window.showCenterToast === 'function') window.showCenterToast('Upload failed: ' + error.message, 'fa-solid fa-times', 'text-red-500'); 
+        return; 
+    }
+    
+    if (window.quillEditor) {
+        window.quillEditor.focus();
+        const range = window.quillEditor.getSelection();
+        const index = range ? range.index : window.quillEditor.getLength();
+        window.quillEditor.insertText(index, `📁 Attached File: ${finalName} (${sizeKB} KB)\n`, 'link', `https://secure-file.local/${filePath}`);
+    }
+    
+    if (typeof window.showCenterToast === 'function') window.showCenterToast('File securely attached!', 'fa-solid fa-check-circle', 'text-green-500');
+    const fileInput = document.getElementById('fileAttachment');
+    if (fileInput) fileInput.value = ''; 
 };

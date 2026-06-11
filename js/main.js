@@ -104,7 +104,6 @@ window.renderMainApp = function() {
 
     document.getElementById('root').innerHTML = `
         <div class="flex h-full w-full bg-gray-50">
-            <!-- Draggable Left Sidebar -->
             <div class="left-sidebar w-80 flex flex-col border-r z-20 shadow-sm bg-white border-gray-200">
                 <div class="p-4 flex justify-between items-center border-b border-gray-200">
                     <h2 class="text-xl font-bold tracking-tight flex items-center gap-2 text-gray-800">
@@ -121,12 +120,11 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.23.0 - Resizing & Inline Input
+                        v1.23.1 - Stability & Scroll Fix
                     </div>
                 </div>
             </div>
 
-            <!-- Chat Area -->
             <div class="flex-1 flex flex-col relative min-w-0" style="background-color: var(--bg-chat); background-image: var(--chat-pattern); background-blend-mode: overlay;">
                 <div class="p-4 border-b z-10 flex justify-between items-center shadow-sm bg-white/95 backdrop-blur border-gray-200">
                     <div class="flex items-center gap-3">
@@ -145,7 +143,6 @@ window.renderMainApp = function() {
                     <div class="chat-shell w-full max-w-full bg-transparent border-none" id="chatShellContainer"></div>
                 </div>
                 
-                <!-- REDESIGNED: Single Line Input Strip -->
                 <div class="flex flex-col relative bg-white border-t border-gray-200 p-3 px-5 z-20">
                     <div id="replyBanner" class="hidden mx-0 mt-0 mb-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl flex justify-between items-center z-0 relative shadow-sm text-xs">
                         <div class="text-indigo-700 flex items-center gap-2 overflow-hidden">
@@ -158,8 +155,7 @@ window.renderMainApp = function() {
 
                     <div class="w-full bg-white border border-gray-300 rounded-xl flex flex-col shadow-sm focus-within:border-[var(--accent)] transition-colors">
                         <div id="toolbar-container" class="border-b border-gray-200 bg-gray-50 rounded-t-xl">
-                           <!-- Quill Toolbar Injects Here -->
-                        </div>
+                           </div>
                         <div class="flex items-end gap-2 p-1.5 px-2">
                             <button onclick="window.addEmoji()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Quick Emoji"><i class="ti ti-mood-smile text-xl"></i></button>
                             <button onclick="document.getElementById('fileAttachment').click()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Attach File"><i class="ti ti-paperclip text-xl"></i></button>
@@ -176,10 +172,8 @@ window.renderMainApp = function() {
                 </div>
             </div>
 
-            <!-- Draggable Right Sidebar: Tasks -->
             <div id="rightSidebar" class="right-sidebar w-[450px] border-l flex flex-col z-20 shadow-sm hidden md:flex bg-gray-50 border-gray-200">
-                <div class="w-full h-full flex flex-col min-w-0"> <!-- Direction Reset Wrapper -->
-                    <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
+                <div class="w-full h-full flex flex-col min-w-0"> <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
                         <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="fa-solid fa-filter text-[var(--accent)]"></i> Task Filters</h3>
                         <select id="taskFilter" onchange="window.toggleDateFilter()" class="text-xs px-2 py-2 rounded-lg border border-gray-200 font-medium text-gray-700 bg-gray-50 shadow-sm outline-none cursor-pointer w-full focus:ring-2 focus:ring-[var(--accent)] transition-all">
                             <option value="all">All Tasks</option>
@@ -314,8 +308,13 @@ window.renderMainApp = function() {
     });
 
     document.getElementById('scheduleMsgBtn').onclick = window.showScheduleModal;
-    document.getElementById('messageSearchBar').addEventListener('input', window.applyFilters);
+    // CRASH FIX: Added null check because search bar is not available inside some panels
+    const searchBar = document.getElementById('messageSearchBar');
+    if(searchBar) {
+        searchBar.addEventListener('input', window.applyFilters);
+    }
     
+    // Bind click outside for dropdowns globally
     document.addEventListener('click', e => {
         if (!e.target.closest('.menu-wrap')) window.closeDropdowns();
     });
@@ -576,7 +575,6 @@ window.loadChatsList = async function() {
     });
 }
 
-// FIXED: Optimistic UI lock to prevent scroll jumping on new message
 window.sendMessage = async function() {
     let text = window.quillEditor.root.innerHTML.trim();
     text = text.replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
@@ -625,7 +623,6 @@ window.loadMessages = async function() {
                 c.scrollTop = c.scrollHeight;
                 window.pendingScrollId = null;
             } else if (isNearBottom) {
-                // Only auto-scroll to bottom if user is already there
                 c.scrollTop = c.scrollHeight; 
             }
         }, 100); 
@@ -633,7 +630,7 @@ window.loadMessages = async function() {
 }
 
 // -----------------------------------------------------------------------------
-// CHAT BUBBLE COMPONENT RENDERER (HANDOFF SPEC)
+// CHAT BUBBLE COMPONENT RENDERER
 // -----------------------------------------------------------------------------
 
 window.toggleDropdown = function(id) {

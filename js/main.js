@@ -6,8 +6,10 @@ let taskSubscription = null;
 let assigneeSubscription = null;
 let trailSubscription = null;
 
+// STATE PERSISTENCE ENGINE
 window.currentTheme = localStorage.getItem('theme') || 'light';
-window.pendingScrollId = null;
+window.currentRoom = localStorage.getItem('mpgs_current_room') || 'general';
+window.pendingScrollId = null; 
 
 window.applyTheme = function() { 
     document.documentElement.setAttribute('data-theme', window.currentTheme); 
@@ -22,13 +24,16 @@ window.showCenterToast = function(msg, icon = 'fa-solid fa-check-circle', color 
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 500); }, 3000); 
 };
 
-window.openSecureFile = function(path) {
-    window.showCenterToast('Opening file...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
-    const { data } = sb.storage.from('task-proofs').getPublicUrl(path);
-    if(data && data.publicUrl) {
-        window.open(data.publicUrl, '_blank');
-    } else {
-        window.showCenterToast('Error finding file', 'fa-solid fa-times', 'text-red-500');
+// FIXED: Generates a temporary Signed URL for the private "task-proofs" bucket
+window.openSecureFile = async function(path) {
+    window.showCenterToast('Authenticating secure file...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
+    const { data, error } = await sb.storage.from('task-proofs').createSignedUrl(path, 86400);
+    if (error) {
+        window.showCenterToast('Access Denied: ' + error.message, 'fa-solid fa-times', 'text-red-500');
+        return;
+    }
+    if (data && data.signedUrl) {
+        window.open(data.signedUrl, '_blank');
     }
 };
 
@@ -103,12 +108,12 @@ window.renderAuthScreen = function() {
     };
 };
 
-// FIXED: Absolute truth toggle using getComputedStyle
 window.toggleRightSidebar = function() {
     const sb = document.getElementById('rightSidebar');
     if (!sb) return;
     const isHidden = window.getComputedStyle(sb).display === 'none';
     sb.style.setProperty('display', isHidden ? 'flex' : 'none', 'important');
+    localStorage.setItem('mpgs_right_sidebar_state', isHidden ? 'flex' : 'none');
 };
 
 window.toggleLeftSidebar = function() {
@@ -116,15 +121,56 @@ window.toggleLeftSidebar = function() {
     if (!sb) return;
     const isHidden = window.getComputedStyle(sb).display === 'none';
     sb.style.setProperty('display', isHidden ? 'flex' : 'none', 'important');
+    localStorage.setItem('mpgs_left_sidebar_state', isHidden ? 'flex' : 'none');
 };
+
+// FULL HEIGHT DRAG RESIZER ENGINE
+window.initResizers = function() {
+    let isResizingLeft = false;
+    let isResizingRight = false;
+    const leftSidebar = document.getElementById('leftSidebar');
+    const rightSidebar = document.getElementById('rightSidebar');
+    
+    document.getElementById('leftResizer')?.addEventListener('mousedown', () => { isResizingLeft = true; document.body.style.cursor = 'col-resize'; });
+    document.getElementById('rightResizer')?.addEventListener('mousedown', () => { isResizingRight = true; document.body.style.cursor = 'col-resize'; });
+    
+    document.addEventListener('mousemove', (e) => {
+        if(isResizingLeft && leftSidebar) {
+            const newWidth = e.clientX;
+            if(newWidth > 200 && newWidth < window.innerWidth * 0.5) {
+                leftSidebar.style.width = newWidth + 'px';
+                localStorage.setItem('mpgs_left_width', newWidth + 'px');
+            }
+        }
+        if(isResizingRight && rightSidebar) {
+            const newWidth = window.innerWidth - e.clientX;
+            if(newWidth > 250 && newWidth < window.innerWidth * 0.5) {
+                rightSidebar.style.width = newWidth + 'px';
+                localStorage.setItem('mpgs_right_width', newWidth + 'px');
+            }
+        }
+    });
+    
+    document.addEventListener('mouseup', () => {
+        isResizingLeft = false;
+        isResizingRight = false;
+        document.body.style.cursor = 'default';
+    });
+}
 
 window.renderMainApp = function() {
     window.applyTheme();
     const userNameDisplay = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
+    
+    // Read Persistent States
+    const leftWidth = localStorage.getItem('mpgs_left_width') || '320px';
+    const rightWidth = localStorage.getItem('mpgs_right_width') || '450px';
+    const leftDisplay = localStorage.getItem('mpgs_left_sidebar_state') || 'flex';
+    const rightDisplay = localStorage.getItem('mpgs_right_sidebar_state') || 'flex';
 
     document.getElementById('root').innerHTML = `
         <div class="flex h-full w-full bg-gray-50">
-            <div id="leftSidebar" class="left-sidebar flex flex-col border-r z-20 shadow-sm bg-white border-gray-200">
+            <div id="leftSidebar" class="left-sidebar flex-col border-r z-20 shadow-sm bg-white border-gray-200" style="display: ${leftDisplay}; width: ${leftWidth};">
                 <div class="p-4 flex justify-between items-center border-b border-gray-200">
                     <h2 class="text-xl font-bold tracking-tight flex items-center gap-2 text-gray-800">
                         <i class="fa-solid fa-comments text-[var(--accent)]"></i> Chats
@@ -140,22 +186,27 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.24.1 - Critical Fixes
+                        v1.26.0 - Advanced Layout
                     </div>
                 </div>
             </div>
+            
+            <div id="leftResizer" class="drag-resizer"></div>
 
             <div class="flex-1 flex flex-col relative min-w-0" style="background-color: var(--bg-chat); background-image: var(--chat-pattern); background-blend-mode: overlay;">
                 <div class="p-4 border-b z-10 flex justify-between items-center shadow-sm bg-white/95 backdrop-blur border-gray-200">
                     <div class="flex items-center gap-3">
-                        <i class="ti ti-layout-sidebar-left cursor-pointer hover:text-[var(--accent)] text-xl text-gray-500 pr-3 border-r border-gray-300" onclick="window.toggleLeftSidebar()" title="Toggle Channels"></i>
                         <span id="roomTitleDisplay" class="text-lg font-bold tracking-tight text-gray-800"># ${window.currentRoom}</span>
                     </div>
                     <div class="flex items-center gap-4 text-xl text-gray-500">
                         <i class="ti ti-clock cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="window.openTopPanel('scheduled')" title="Scheduled Messages"></i>
                         <i class="ti ti-bookmark cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="window.openTopPanel('bookmarks')" title="Bookmarks"></i>
                         <i class="ti ti-bell cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="window.openTopPanel('alerts')" title="Notifications"></i>
-                        <i class="ti ti-layout-sidebar-right cursor-pointer hover:text-[var(--accent)] top-bar-icon border-l border-gray-300 pl-4 ml-1" onclick="window.toggleRightSidebar()" title="Toggle Task Panel"></i>
+                        
+                        <div class="border-l border-gray-300 pl-4 ml-1 flex gap-3">
+                            <i class="ti ti-layout-sidebar-left cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="window.toggleLeftSidebar()" title="Toggle Channels"></i>
+                            <i class="ti ti-layout-sidebar-right cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="window.toggleRightSidebar()" title="Toggle Task Panel"></i>
+                        </div>
                         <input type="text" id="messageSearchBar" placeholder="Search..." class="px-3 py-1 rounded-full text-sm w-48 border border-gray-200 bg-gray-50 focus:outline-none focus:border-[var(--accent)] ml-2">
                     </div>
                 </div>
@@ -174,10 +225,27 @@ window.renderMainApp = function() {
                         <i class="fa-solid fa-times text-indigo-400 hover:text-red-500 cursor-pointer p-1" onclick="window.cancelReply()"></i>
                     </div>
 
-                    <div class="w-full bg-white border border-gray-300 rounded-xl flex flex-col shadow-sm focus-within:border-[var(--accent)] transition-colors">
+                    <div class="w-full bg-white border border-gray-300 rounded-xl flex flex-col shadow-sm focus-within:border-[var(--accent)] transition-colors relative">
+                        
+                        <div id="inputEmojiPicker" class="absolute bottom-full left-0 mb-2 hidden bg-white border border-gray-200 shadow-2xl rounded-xl p-3 min-w-[240px] z-50">
+                            <div class="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Insert Emoji</div>
+                            <div class="flex flex-wrap gap-1">
+                                <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-xl" onclick="window.insertEmoji('👍')">👍</span>
+                                <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-xl" onclick="window.insertEmoji('❤️')">❤️</span>
+                                <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-xl" onclick="window.insertEmoji('😂')">😂</span>
+                                <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-xl" onclick="window.insertEmoji('😮')">😮</span>
+                                <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-xl" onclick="window.insertEmoji('😢')">😢</span>
+                                <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-xl" onclick="window.insertEmoji('🙏')">🙏</span>
+                                <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-xl" onclick="window.insertEmoji('🎉')">🎉</span>
+                                <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-xl" onclick="window.insertEmoji('🔥')">🔥</span>
+                                <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-xl" onclick="window.insertEmoji('✅')">✅</span>
+                                <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-xl" onclick="window.insertEmoji('👀')">👀</span>
+                            </div>
+                        </div>
+
                         <div id="toolbar-container" class="border-b border-gray-200 bg-gray-50 rounded-t-xl"></div>
                         <div class="flex items-end gap-2 p-1.5 px-2">
-                            <button onclick="window.addEmoji()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Quick Emoji"><i class="ti ti-mood-smile text-xl"></i></button>
+                            <button onclick="window.toggleInputEmojiPicker()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Quick Emoji"><i class="ti ti-mood-smile text-xl"></i></button>
                             <button onclick="document.getElementById('fileAttachment').click()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Attach File"><i class="ti ti-paperclip text-xl"></i></button>
                             <input type="file" id="fileAttachment" class="hidden">
 
@@ -192,8 +260,11 @@ window.renderMainApp = function() {
                 </div>
             </div>
 
-            <div id="rightSidebar" class="right-sidebar border-l flex flex-col z-20 shadow-sm bg-gray-50 border-gray-200">
-                <div class="w-full h-full flex flex-col min-w-0"> <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
+            <div id="rightResizer" class="drag-resizer"></div>
+
+            <div id="rightSidebar" class="right-sidebar border-l flex-col z-20 shadow-sm bg-gray-50 border-gray-200" style="display: ${rightDisplay}; width: ${rightWidth};">
+                <div class="w-full h-full flex flex-col min-w-0">
+                    <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
                         <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="fa-solid fa-filter text-[var(--accent)]"></i> Task Filters</h3>
                         <select id="taskFilter" onchange="window.toggleDateFilter()" class="text-xs px-2 py-2 rounded-lg border border-gray-200 font-medium text-gray-700 bg-gray-50 shadow-sm outline-none cursor-pointer w-full focus:ring-2 focus:ring-[var(--accent)] transition-all">
                             <option value="all">All Tasks</option>
@@ -303,7 +374,6 @@ window.renderMainApp = function() {
     window.quillEditor.root.addEventListener('keydown', (e) => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); window.sendMessage(); } });
     document.getElementById('sendBtn').onclick = window.sendMessage;
     
-    // FIXED: Real public URL extraction to bypass Quill's link sanitizer
     document.getElementById('fileAttachment').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (file) {
@@ -318,8 +388,8 @@ window.renderMainApp = function() {
                 return;
             }
             
-            const { data: urlData } = sb.storage.from('task-proofs').getPublicUrl(filePath);
-            const fileUrl = urlData.publicUrl;
+            const { data: urlData } = sb.storage.from('task-proofs').createSignedUrl(filePath, 86400);
+            const fileUrl = urlData ? urlData.signedUrl : '';
             
             window.quillEditor.focus();
             const range = window.quillEditor.getSelection();
@@ -338,21 +408,33 @@ window.renderMainApp = function() {
     
     document.addEventListener('click', e => {
         if (!e.target.closest('.menu-wrap')) window.closeDropdowns();
+        
+        // Auto-close emoji picker if clicked outside
+        const ep = document.getElementById('inputEmojiPicker');
+        if (ep && !e.target.closest('#inputEmojiPicker') && !e.target.closest('[onclick="window.toggleInputEmojiPicker()"]')) {
+            ep.classList.add('hidden');
+        }
     });
     
+    window.initResizers();
     window.loadChatsList(); 
     window.loadMessages(); 
     window.loadTasksForPanel(); 
 };
 
-// FIXED: Exact cursor target calculation
-window.addEmoji = function() {
+// FIXED: Emoji Picker Toggling and Precise Injection
+window.toggleInputEmojiPicker = function() {
+    const ep = document.getElementById('inputEmojiPicker');
+    if(ep) ep.classList.toggle('hidden');
+}
+
+window.insertEmoji = function(char) {
     window.quillEditor.focus();
     const range = window.quillEditor.getSelection();
     const index = range ? range.index : window.quillEditor.getLength();
-    window.quillEditor.insertText(index, '😀');
-    window.quillEditor.setSelection(index + 2); // Push cursor past the emoji
-    window.showCenterToast('Emoji added!', 'fa-regular fa-face-smile', 'text-yellow-400');
+    window.quillEditor.insertText(index, char);
+    window.quillEditor.setSelection(index + char.length); 
+    document.getElementById('inputEmojiPicker').classList.add('hidden');
 }
 
 window.applyReaction = async function(msgId, value, type) {
@@ -393,12 +475,12 @@ window.scrollToAndHighlight = function(rowId) {
         const rw = document.getElementById(`rw-${msgId}`);
         if (rw) rw.style.display = 'flex';
         
+        // FIXED: Apply Hacker Style Conic Glow to the Bubble
         const bubble = row.querySelector('.bubble');
         if(bubble) {
-            const oldBg = bubble.style.backgroundColor;
-            bubble.style.transition = 'background-color 0.5s';
-            bubble.style.backgroundColor = '#fef08a'; 
-            setTimeout(() => { bubble.style.backgroundColor = oldBg || ''; }, 1500);
+            bubble.classList.add('glow-target');
+            setTimeout(() => { bubble.classList.add('active-glow'); }, 50);
+            setTimeout(() => { bubble.classList.remove('glow-target', 'active-glow'); }, 3500);
         }
     }
 }
@@ -595,6 +677,7 @@ window.loadChatsList = async function() {
     document.querySelectorAll('.channel-item').forEach(el => { 
         el.addEventListener('click', () => { 
             window.currentRoom = el.dataset.room; 
+            localStorage.setItem('mpgs_current_room', el.dataset.room); 
             document.querySelectorAll('.channel-item').forEach(item => { item.classList.remove('bg-gray-100', 'border-gray-200', 'font-bold', 'shadow-sm'); item.classList.add('border-transparent'); });
             el.classList.remove('border-transparent');
             el.classList.add('bg-gray-100', 'border-gray-200', 'font-bold', 'shadow-sm');
@@ -617,9 +700,9 @@ window.sendMessage = async function() {
     let payload = { room_id: window.currentRoom, sender_id: window.currentUser.id, text, created_at: new Date().toISOString() };
     if (window.currentlyReplyingTo) {
         payload.parent_message_id = window.currentlyReplyingTo;
-        window.pendingScrollId = window.currentlyReplyingTo; // Lock scroll to parent
+        window.pendingScrollId = window.currentlyReplyingTo; 
     } else {
-        window.pendingScrollId = 'BOTTOM'; // Lock scroll to bottom
+        window.pendingScrollId = 'BOTTOM'; 
     }
     
     await sb.from('messages').insert(payload);
@@ -646,8 +729,12 @@ window.loadMessages = async function() {
                 const row = document.getElementById(`row-${window.pendingScrollId}`);
                 if (row) {
                     row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    row.classList.add('bg-yellow-50', 'transition-colors', 'duration-500');
-                    setTimeout(() => row.classList.remove('bg-yellow-50', 'transition-colors', 'duration-500'), 1500);
+                    const bubble = row.querySelector('.bubble');
+                    if(bubble) {
+                        bubble.classList.add('glow-target');
+                        setTimeout(() => { bubble.classList.add('active-glow'); }, 50);
+                        setTimeout(() => { bubble.classList.remove('glow-target', 'active-glow'); }, 3500);
+                    }
                 }
                 window.pendingScrollId = null;
             } else if (window.pendingScrollId === 'BOTTOM') {

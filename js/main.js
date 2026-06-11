@@ -26,6 +26,7 @@ window.renderMainApp = function() {
 
     document.getElementById('root').innerHTML = `
         <div class="flex h-full w-full bg-white" style="background-color: var(--bg-body);">
+            <!-- Left Sidebar -->
             <div id="leftSidebar" class="left-sidebar flex-col border-r z-20 shadow-sm bg-white" style="display: ${leftDisplay}; width: ${leftWidth}; background-color: var(--bg-sidebar); border-color: var(--border-color);">
                 <div class="p-4 flex justify-between items-center border-b" style="border-color: var(--border-color);">
                     <h2 class="text-xl font-bold tracking-tight flex items-center gap-2" style="color: var(--text-primary);">
@@ -45,13 +46,14 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color: var(--text-secondary);">
-                        v1.45.0 - The Wise Toggle Fix
+                        v1.46.0 - Direct Toggle Engine
                     </div>
                 </div>
             </div>
 
             <div id="leftResizer" class="drag-resizer"></div>
 
+            <!-- Chat Area -->
             <div class="flex-1 flex flex-col relative min-w-0 chat-area">
                 <div class="p-4 border-b z-10 flex justify-between items-center shadow-sm backdrop-blur" style="background-color: var(--bg-sidebar); border-color: var(--border-color);">
                     <div class="flex items-center gap-3">
@@ -71,6 +73,7 @@ window.renderMainApp = function() {
                     <div class="chat-shell w-full max-w-full bg-transparent border-none" id="chatShellContainer"></div>
                 </div>
                 
+                <!-- Input Strip -->
                 <div class="flex flex-col relative border-t p-3 px-5 z-20" style="background-color: var(--bg-sidebar); border-color: var(--border-color);">
                     <div id="replyBanner" class="hidden mx-0 mt-0 mb-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl flex justify-between items-center z-0 relative shadow-sm text-xs">
                         <div class="text-indigo-700 flex items-center gap-2 overflow-hidden">
@@ -108,6 +111,7 @@ window.renderMainApp = function() {
 
             <div id="rightResizer" class="drag-resizer"></div>
 
+            <!-- Right Sidebar: Tasks -->
             <div id="rightSidebar" class="right-sidebar border-l flex-col z-20 shadow-sm" style="display: ${rightDisplay}; width: ${rightWidth}; background-color: var(--bg-sidebar); border-color: var(--border-color);">
                 <div class="w-full h-full flex flex-col min-w-0"> 
                     <div class="p-3 border-b flex flex-col gap-2" style="background-color: var(--bg-sidebar); border-color: var(--border-color);">
@@ -134,6 +138,7 @@ window.renderMainApp = function() {
             </div>
         </div>
 
+        <!-- Modals -->
         <div id="fileRenameModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
             <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color: var(--bg-sidebar); border-color: var(--border-color);">
                 <h3 class="text-xl font-bold mb-4" style="color: var(--text-primary);">Rename Attachment</h3>
@@ -254,22 +259,6 @@ window.renderMainApp = function() {
     if (typeof window.loadChatsList === 'function') window.loadChatsList(); 
     if (typeof window.loadMessages === 'function') window.loadMessages(); 
     if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel(); 
-
-    // PASSIVE DOM OBSERVER (v1.45.0)
-    // Instantly restores the .show-trail class if the DOM is repainted by tasks.js
-    const tasksPanel = document.getElementById('tasksPanel');
-    if (tasksPanel) {
-        new MutationObserver(() => {
-            document.querySelectorAll('[id^="trail-"], [id^="task-trail-"]').forEach(el => {
-                let baseId = String(el.id).replace('task-trail-', '').replace('trail-', '');
-                if (window.expandedTrails && window.expandedTrails.has(baseId)) {
-                    el.classList.add('show-trail');
-                } else {
-                    el.classList.remove('show-trail');
-                }
-            });
-        }).observe(tasksPanel, { childList: true, subtree: true });
-    }
 };
 
 window.loadChatsList = async function() {

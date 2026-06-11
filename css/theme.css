@@ -12,16 +12,18 @@
     --received-bg: #ffffff;
 }
 
-/* GitHub Native Dark Theme Palette */
+/* GitHub "Dark Default" Color Palette */
 [data-theme="dark"] {
     --bg-body: #0d1117;
     --bg-sidebar: #161b22;
     --bg-chat: #0d1117;
-    --text-primary: #c9d1d9;
-    --text-secondary: #8b949e;
+    --text-primary: #e6edf3;
+    --text-secondary: #8d96a0;
     --border-color: #30363d;
-    --sent-bg: #3b0717; 
-    --received-bg: #21262d;
+    --accent: #2f81f7;
+    --accent-hover: #1f6feb;
+    --sent-bg: #161b22; 
+    --received-bg: #0d1117;
     --chat-pattern: none;
 }
 
@@ -179,18 +181,55 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
     100% { opacity: 0; box-shadow: 0 0 0 0 var(--accent); }
 }
 
+/* =========================================
+   PURE GITHUB DARK MODE OVERRIDES
+========================================= */
+
+/* Base Tailwaind overrides from previous iteration */
 [data-theme="dark"] .bg-white { background-color: var(--bg-sidebar) !important; color: var(--text-primary) !important; }
 [data-theme="dark"] .bg-gray-50 { background-color: var(--bg-body) !important; color: var(--text-primary) !important; }
-[data-theme="dark"] .text-gray-800 { color: #c9d1d9 !important; }
-[data-theme="dark"] .text-gray-700 { color: #c9d1d9 !important; }
-[data-theme="dark"] .text-gray-500 { color: #8b949e !important; }
+[data-theme="dark"] .text-gray-800, [data-theme="dark"] .text-gray-700 { color: var(--text-primary) !important; }
+[data-theme="dark"] .text-gray-500 { color: var(--text-secondary) !important; }
 [data-theme="dark"] .border-gray-200, [data-theme="dark"] .border-gray-300 { border-color: var(--border-color) !important; }
-[data-theme="dark"] .bubble.sent { color: #fff; }
-[data-theme="dark"] .bubble.rcvd { color: #c9d1d9; }
-[data-theme="dark"] .bubble.sent .b-name { color: #ffccd5; }
-[data-theme="dark"] .bubble.rcvd .b-name { color: #58a6ff; }
-[data-theme="dark"] .b-footer { border-top-color: #30363d; }
-[data-theme="dark"] .b-header { border-bottom-color: #30363d; }
-[data-theme="dark"] .e-chip { background: #21262d; border-color: #30363d; color: #c9d1d9; }
-[data-theme="dark"] .bubble.sent .e-chip { background: rgba(0,0,0,0.2); border-color: rgba(255,255,255,0.1); color: #cbd5e1; }
+
+/* Structural Chat Elements */
+[data-theme="dark"] .bubble.sent { color: var(--text-primary); border-color: var(--border-color); }
+[data-theme="dark"] .bubble.rcvd { color: var(--text-primary); border-color: var(--border-color); }
+[data-theme="dark"] .b-footer { border-top-color: var(--border-color); }
+[data-theme="dark"] .b-header { border-bottom-color: var(--border-color); }
 [data-theme="dark"] .chat-shell { background: transparent; }
+
+/* Purge Maroon: Avatars */
+[data-theme="dark"] .b-avatar.sent-av { background: var(--accent); color: #ffffff; }
+[data-theme="dark"] .b-avatar.rcvd-av { background: var(--border-color); color: var(--text-primary); }
+
+/* Purge Maroon: Typography */
+[data-theme="dark"] .bubble.sent .b-name,
+[data-theme="dark"] .bubble.sent .b-subject,
+[data-theme="dark"] .bubble.rcvd .b-name,
+[data-theme="dark"] .b-tick,
+[data-theme="dark"] .reply-name,
+[data-theme="dark"] .reply-badge { color: var(--accent); }
+
+/* Purge Maroon: Buttons & Interactions */
+[data-theme="dark"] .dot-btn:hover,
+[data-theme="dark"] .dd-item:hover,
+[data-theme="dark"] .act-btn:hover { background: rgba(47, 129, 247, 0.1); color: var(--accent); }
+[data-theme="dark"] .e-add:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Purge Maroon: Bookmarks */
+[data-theme="dark"] .act-btn.bookmarked {
+    background: var(--accent); color: #ffffff !important;
+    box-shadow: none; border: 1px solid var(--accent-hover); transform: translateY(-1px);
+}
+
+/* Purge Maroon: Reactions */
+[data-theme="dark"] .e-chip { background: var(--bg-sidebar); border-color: var(--border-color); color: var(--text-primary); }
+[data-theme="dark"] .bubble.sent .e-chip { background: var(--bg-body); border-color: var(--border-color); color: var(--text-secondary); }
+
+/* Purge Maroon: Reply Trails */
+[data-theme="dark"] .reply-badge { background: rgba(47, 129, 247, 0.15); }
+[data-theme="dark"] .b-divider { background: var(--border-color); }
+[data-theme="dark"] .replies-label { color: var(--text-secondary); }
+[data-theme="dark"] .reply-item { border-left: 2px solid var(--border-color); }
+[data-theme="dark"] .reply-num { background: var(--border-color); color: var(--text-primary); }

@@ -168,7 +168,6 @@ window.renderMainApp = function() {
 
     document.getElementById('root').innerHTML = `
         <div class="flex h-full w-full bg-gray-50">
-            <!-- Draggable Left Sidebar -->
             <div id="leftSidebar" class="left-sidebar flex-col border-r z-20 shadow-sm bg-white border-gray-200" style="display: ${leftDisplay}; width: ${leftWidth};">
                 <div class="p-4 flex justify-between items-center border-b border-gray-200">
                     <h2 class="text-xl font-bold tracking-tight flex items-center gap-2 text-gray-800">
@@ -188,14 +187,13 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.28.2 - Task Trail Active
+                        v1.28.2 - Full Code Restored
                     </div>
                 </div>
             </div>
 
             <div id="leftResizer" class="drag-resizer"></div>
 
-            <!-- Chat Area -->
             <div class="flex-1 flex flex-col relative min-w-0 chat-area">
                 <div class="p-4 border-b z-10 flex justify-between items-center shadow-sm bg-white/95 backdrop-blur border-gray-200">
                     <div class="flex items-center gap-3">
@@ -215,7 +213,6 @@ window.renderMainApp = function() {
                     <div class="chat-shell w-full max-w-full bg-transparent border-none" id="chatShellContainer"></div>
                 </div>
                 
-                <!-- Single Line Input Strip -->
                 <div class="flex flex-col relative bg-white border-t border-gray-200 p-3 px-5 z-20">
                     <div id="replyBanner" class="hidden mx-0 mt-0 mb-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl flex justify-between items-center z-0 relative shadow-sm text-xs">
                         <div class="text-indigo-700 flex items-center gap-2 overflow-hidden">
@@ -227,7 +224,6 @@ window.renderMainApp = function() {
                     </div>
 
                     <div class="w-full bg-white border border-gray-300 rounded-xl flex flex-col shadow-sm focus-within:border-[var(--accent)] transition-colors relative">
-                        <!-- Floating Input Emoji Picker -->
                         <div id="inputEmojiPicker" class="absolute bottom-full left-0 mb-2 hidden bg-white border border-gray-200 shadow-2xl rounded-xl p-3 min-w-[240px] z-50">
                            <div class="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Insert Emoji</div>
                            <div class="flex flex-wrap gap-1">
@@ -245,8 +241,7 @@ window.renderMainApp = function() {
                         </div>
 
                         <div id="toolbar-container" class="border-b border-gray-200 bg-gray-50 rounded-t-xl">
-                           <!-- Quill Toolbar Injects Here -->
-                        </div>
+                           </div>
                         <div class="flex items-end gap-2 p-1.5 px-2">
                             <button onclick="window.toggleInputEmojiPicker()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Quick Emoji"><i class="ti ti-mood-smile text-xl"></i></button>
                             <button onclick="document.getElementById('fileAttachment').click()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Attach File"><i class="ti ti-paperclip text-xl"></i></button>
@@ -265,10 +260,8 @@ window.renderMainApp = function() {
 
             <div id="rightResizer" class="drag-resizer"></div>
 
-            <!-- Draggable Right Sidebar: Tasks -->
             <div id="rightSidebar" class="right-sidebar border-l flex-col z-20 shadow-sm bg-gray-50 border-gray-200" style="display: ${rightDisplay}; width: ${rightWidth};">
-                <div class="w-full h-full flex flex-col min-w-0"> <!-- Direction Reset Wrapper -->
-                    <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
+                <div class="w-full h-full flex flex-col min-w-0"> <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
                         <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="fa-solid fa-filter text-[var(--accent)]"></i> Task Filters</h3>
                         <select id="taskFilter" onchange="window.toggleDateFilter()" class="text-xs px-2 py-2 rounded-lg border border-gray-200 font-medium text-gray-700 bg-gray-50 shadow-sm outline-none cursor-pointer w-full focus:ring-2 focus:ring-[var(--accent)] transition-all">
                             <option value="all">All Tasks</option>
@@ -426,9 +419,15 @@ window.renderMainApp = function() {
     });
 
     window.initResizers();
-    window.loadChatsList(); 
+    
+    // THE RESTORED BOOT CALLS
+    if (typeof window.loadChatsList === 'function') {
+        window.loadChatsList(); 
+    }
     window.loadMessages(); 
-    window.loadTasksForPanel(); 
+    if (typeof window.loadTasksForPanel === 'function') {
+        window.loadTasksForPanel(); 
+    }
 };
 
 window.insertEmoji = function(char) {
@@ -519,7 +518,6 @@ window.toggleReplies = function(id) {
     if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
 }
 
-// RESTORED UI TOGGLE UTILITIES FOR TASK TRAILS
 window.toggleTaskTrail = function(id) {
     const el = document.getElementById(id);
     if (el) el.classList.toggle('active');
@@ -799,6 +797,7 @@ window.applyFilters = function() {
     });
 }
 
+// RESTORED: Top Panel Functions (Scheduled, Bookmarks, Alerts)
 window.openTopPanel = async function(type) {
     document.querySelectorAll('.top-panel-dropdown').forEach(m => m.remove());
     const panel = document.createElement('div');
@@ -837,6 +836,7 @@ window.openTopPanel = async function(type) {
     document.querySelector('.chat-area').appendChild(panel);
 }
 
+// RESTORED: Schedule Control Functions
 window.deleteScheduled = async function(id) {
     await sb.from('scheduled_messages').delete().eq('id', id);
     document.querySelectorAll('.top-panel-dropdown').forEach(m => m.remove());
@@ -862,6 +862,44 @@ window.saveScheduledMessage = async function() {
     window.closeScheduleModal();
     window.quillEditor.root.innerHTML = '';
     window.showCenterToast('Message Scheduled Successfully!');
+}
+
+// RESTORED: Chat List Generator
+window.loadChatsList = async function() {
+    const groups = ['general', 'math', 'science', 'leadership'];
+    const {data: users} = await sb.from('profiles').select('id, email, full_name');
+    window.globalUsersCache = users || []; 
+    
+    let html = `<div class="px-4 py-2 mt-2 text-[10px] font-black tracking-widest text-gray-400 uppercase">Channels</div>`;
+    groups.forEach(g => { 
+        html += `<div class="channel-item p-2.5 mx-2 mb-1 rounded-xl cursor-pointer hover:bg-gray-100 flex items-center gap-3 transition-colors ${window.currentRoom === g ? 'bg-gray-100 border border-gray-200 font-bold shadow-sm' : 'border border-transparent'}" data-room="${g}" data-name="# ${g}">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 text-xs bg-gray-50 border border-gray-200"><i class="ti ti-hash"></i></div>
+            <span class="flex-1 truncate text-gray-700 tracking-wide text-sm"># ${g}</span>
+        </div>`; 
+    });
+    html += `<div class="px-4 py-2 mt-4 text-[10px] font-black tracking-widest text-gray-400 uppercase">Direct Messages</div>`;
+    window.globalUsersCache.filter(u => u.id !== window.currentUser.id).forEach(u => { 
+        const name = window.toSentenceCase(u.full_name || u.email.split('@')[0]);
+        html += `<div class="channel-item p-2.5 mx-2 mb-1 rounded-xl cursor-pointer hover:bg-gray-100 flex items-center gap-3 transition-colors ${window.currentRoom === 'dm_' + u.id ? 'bg-gray-100 border border-gray-200 font-bold shadow-sm' : 'border border-transparent'}" data-room="dm_${u.id}" data-name="${name}">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm" style="background: var(--accent)">${name.charAt(0).toUpperCase()}</div>
+            <span class="flex-1 truncate text-gray-700 tracking-wide text-sm">${name}</span>
+        </div>`; 
+    });
+    document.getElementById('chatsList').innerHTML = html;
+    
+    document.querySelectorAll('.channel-item').forEach(el => { 
+        el.addEventListener('click', () => { 
+            window.currentRoom = el.dataset.room; 
+            localStorage.setItem('mpgs_current_room', el.dataset.room); 
+            document.querySelectorAll('.channel-item').forEach(item => { item.classList.remove('bg-gray-100', 'border-gray-200', 'font-bold', 'shadow-sm'); item.classList.add('border-transparent'); });
+            el.classList.remove('border-transparent');
+            el.classList.add('bg-gray-100', 'border-gray-200', 'font-bold', 'shadow-sm');
+            const titleSpan = document.getElementById('roomTitleDisplay');
+            if(titleSpan) titleSpan.innerText = el.dataset.name;
+            document.getElementById('chatShellContainer').innerHTML = '<div class="m-auto flex flex-col items-center opacity-50 pt-10"><i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3 text-gray-400"></i><p class="text-sm font-medium text-gray-500">Loading chat...</p></div>';
+            window.loadMessages(); 
+        }); 
+    });
 }
 
 window.startSubscriptions = function() { 

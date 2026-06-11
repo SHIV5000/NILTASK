@@ -1,5 +1,5 @@
 import { sb } from './shared.js';
-import './tasks.js'; // Imports and binds tasks to window
+import './tasks.js';
 
 let messageSubscription = null;
 let taskSubscription = null;
@@ -89,7 +89,6 @@ window.renderMainApp = function() {
 
     document.getElementById('root').innerHTML = `
         <div class="flex h-full w-full bg-gray-50">
-            <!-- Left Sidebar -->
             <div class="w-80 flex flex-col border-r z-20 shadow-sm bg-white border-gray-200">
                 <div class="p-4 flex justify-between items-center border-b border-gray-200">
                     <h2 class="text-xl font-bold tracking-tight flex items-center gap-2 text-gray-800">
@@ -106,12 +105,11 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.16.0 - High Density Text Threads
+                        v1.17.0 - Handoff UI Integration
                     </div>
                 </div>
             </div>
 
-            <!-- Chat Area -->
             <div class="flex-1 flex flex-col relative" style="background-color: var(--bg-chat); background-image: var(--chat-pattern); background-blend-mode: overlay;">
                 <div class="p-4 border-b z-10 flex justify-between items-center shadow-sm bg-white/95 backdrop-blur border-gray-200">
                     <div class="flex items-center gap-3">
@@ -125,7 +123,9 @@ window.renderMainApp = function() {
                     </div>
                 </div>
                 
-                <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col"></div>
+                <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col items-center">
+                    <div class="chat-shell w-full max-w-2xl bg-transparent border-none" id="chatShellContainer"></div>
+                </div>
                 
                 <div class="flex flex-col relative bg-white border-t border-gray-200 p-3 px-5">
                     <div id="replyBanner" class="hidden mx-2 mt-0 mb-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl flex justify-between items-center z-0 relative shadow-sm text-xs">
@@ -158,7 +158,6 @@ window.renderMainApp = function() {
                 </div>
             </div>
 
-            <!-- Right Sidebar: Tasks -->
             <div class="w-[450px] border-l flex flex-col z-20 shadow-sm hidden md:flex bg-gray-50 border-gray-200">
                 <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
                     <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="fa-solid fa-filter text-[var(--accent)]"></i> Task Filters</h3>
@@ -282,6 +281,11 @@ window.renderMainApp = function() {
     document.getElementById('scheduleMsgBtn').onclick = window.showScheduleModal;
     document.getElementById('messageSearchBar').addEventListener('input', window.applyFilters);
     
+    // Bind click outside for dropdowns globally
+    document.addEventListener('click', e => {
+        if (!e.target.closest('.menu-wrap')) window.closeDropdowns();
+    });
+    
     window.loadChatsList(); 
     window.loadMessages(); 
     window.loadTasksForPanel(); 
@@ -293,7 +297,7 @@ window.openTaskModal = async function(mid, text) {
     tmp.innerHTML = text;
     window.currentMessageTextRaw = (tmp.textContent || tmp.innerText || "").substring(0,60) + "...";
 
-    document.querySelectorAll('.msg-menu-dropdown').forEach(m=>m.remove());
+    window.closeDropdowns();
     document.getElementById('taskModal').classList.remove('hidden'); 
     document.getElementById('taskModal').classList.add('flex'); 
     document.getElementById('taskTitle').value = (tmp.textContent || tmp.innerText || "").trim(); 
@@ -321,7 +325,7 @@ window.closeTaskModal = function() { document.getElementById('taskModal').classL
 
 window.showReminderModal = function(mid, text) { 
     window.currentReminderId = mid; 
-    document.querySelectorAll('.msg-menu-dropdown').forEach(m=>m.remove());
+    window.closeDropdowns();
     document.getElementById('reminderMessagePreview').innerText = text; 
     document.getElementById('reminderModal').classList.remove('hidden'); 
     document.getElementById('reminderModal').classList.add('flex'); 
@@ -338,7 +342,7 @@ window.saveReminder = async function() {
 }
 
 window.toggleBookmark = async function(mid) { 
-    document.querySelectorAll('.msg-menu-dropdown').forEach(m=>m.remove());
+    window.closeDropdowns();
     const {data: ex} = await sb.from('bookmarks').select('id').eq('user_id', window.currentUser.id).eq('message_id',mid).maybeSingle(); 
     if(ex) { await sb.from('bookmarks').delete().eq('id',ex.id); window.showCenterToast('Bookmark removed', 'fa-solid fa-info-circle', 'text-yellow-400'); } 
     else { await sb.from('bookmarks').insert({ user_id: window.currentUser.id, message_id: mid }); window.showCenterToast('Message Bookmarked'); } 
@@ -369,7 +373,7 @@ window.toggleDateFilter = function() {
 
 window.applyFilters = function() {
     const search = document.getElementById('messageSearchBar').value.toLowerCase();
-    document.querySelectorAll('.group\\/thread').forEach(el => {
+    document.querySelectorAll('.row-sent, .row-rcvd').forEach(el => {
         let show = true;
         const text = el.innerText.toLowerCase();
         if (search && !text.includes(search)) show = false;
@@ -397,7 +401,7 @@ window.openTopPanel = async function(type) {
         const {data} = await sb.from('bookmarks').select('*, messages(text)').eq('user_id', window.currentUser.id);
         if(!data || data.length===0) panel.innerHTML += `<p class="text-xs text-gray-500 italic text-center py-4">No bookmarks found.</p>`;
         data?.forEach(d => {
-            panel.innerHTML += `<div class="mb-2 p-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm cursor-pointer hover:bg-gray-100 transition-colors group/item" onclick="window.scrollToAndHighlight('msg-${d.message_id}')">
+            panel.innerHTML += `<div class="mb-2 p-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm cursor-pointer hover:bg-gray-100 transition-colors group/item" onclick="window.scrollToAndHighlight('row-${d.message_id}')">
                 <span class="truncate block text-gray-700">${window.escapeHtml(d.messages?.text)}</span>
             </div>`;
         });
@@ -406,7 +410,7 @@ window.openTopPanel = async function(type) {
         const {data} = await sb.from('notifications').select('*').eq('user_id', window.currentUser.id).order('created_at', {ascending: false}).limit(10);
         if(!data || data.length===0) panel.innerHTML += `<p class="text-xs text-gray-500 italic text-center py-4">All caught up!</p>`;
         data?.forEach(d => {
-             panel.innerHTML += `<div class="mb-2 p-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm cursor-pointer hover:bg-gray-100 transition-colors group/item" onclick="window.scrollToAndHighlight('msg-${d.message_id}')">
+             panel.innerHTML += `<div class="mb-2 p-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm cursor-pointer hover:bg-gray-100 transition-colors group/item" onclick="window.scrollToAndHighlight('row-${d.message_id}')">
                 <span class="block text-gray-700 font-medium">${window.escapeHtml(d.message)}</span>
                 <div class="text-[9px] text-gray-400 mt-1">${window.getISTTime(d.created_at)}</div>
             </div>`;
@@ -453,7 +457,7 @@ window.loadChatsList = async function() {
     let html = `<div class="px-4 py-2 mt-2 text-[10px] font-black tracking-widest text-gray-400 uppercase">Channels</div>`;
     groups.forEach(g => { 
         html += `<div class="channel-item p-2.5 mx-2 mb-1 rounded-xl cursor-pointer hover:bg-gray-100 flex items-center gap-3 transition-colors ${window.currentRoom === g ? 'bg-gray-100 border border-gray-200 font-bold shadow-sm' : 'border border-transparent'}" data-room="${g}" data-name="# ${g}">
-            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 text-xs bg-gray-50 border border-gray-200"><i class="fa-solid fa-hashtag"></i></div>
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 text-xs bg-gray-50 border border-gray-200"><i class="ti ti-hash"></i></div>
             <span class="flex-1 truncate text-gray-700 tracking-wide text-sm"># ${g}</span>
         </div>`; 
     });
@@ -475,7 +479,7 @@ window.loadChatsList = async function() {
             el.classList.add('bg-gray-100', 'border-gray-200', 'font-bold', 'shadow-sm');
             const titleSpan = document.getElementById('roomTitleDisplay');
             if(titleSpan) titleSpan.innerText = el.dataset.name;
-            document.getElementById('messagesContainer').innerHTML = '<div class="m-auto flex flex-col items-center opacity-50"><i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3 text-gray-400"></i><p class="text-sm font-medium text-gray-500">Loading chat...</p></div>';
+            document.getElementById('chatShellContainer').innerHTML = '<div class="m-auto flex flex-col items-center opacity-50 pt-10"><i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3 text-gray-400"></i><p class="text-sm font-medium text-gray-500">Loading chat...</p></div>';
             window.loadMessages(); 
         }); 
     });
@@ -507,12 +511,29 @@ window.loadMessages = async function() {
 }
 
 // -----------------------------------------------------------------------------
-// HIGH DENSITY UI RENDERING CORE (BUBBLES & NO-BUBBLE THREADS)
+// CHAT BUBBLE COMPONENT RENDERER (HANDOFF SPEC)
 // -----------------------------------------------------------------------------
+
+window.toggleDropdown = function(id) {
+    document.querySelectorAll('.bubble-dropdown').forEach(d => {
+        if (d.id !== id) d.classList.remove('open');
+    });
+    document.getElementById(id).classList.toggle('open');
+}
+
+window.closeDropdowns = function() {
+    document.querySelectorAll('.bubble-dropdown').forEach(d => d.classList.remove('open'));
+}
+
+window.toggleReplies = function(id) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+}
+
 window.renderMessages = function(messages) {
-    const c = document.getElementById('messagesContainer');
+    const c = document.getElementById('chatShellContainer');
     if (!c) return;
-    if (!messages.length) { c.innerHTML = '<div class="m-auto flex flex-col items-center opacity-50"><i class="fa-regular fa-comments text-5xl mb-3 text-gray-300"></i><p class="font-medium text-gray-500">Say hello!</p></div>'; return; }
+    if (!messages.length) { c.innerHTML = '<div class="m-auto flex flex-col items-center opacity-50 pt-10"><i class="ti ti-messages text-5xl mb-3 text-gray-300"></i><p class="font-medium text-gray-500">Say hello!</p></div>'; return; }
     
     const msgMap = new Map();
     messages.forEach(m => msgMap.set(m.id, m));
@@ -536,117 +557,88 @@ window.renderMessages = function(messages) {
     });
 
     function buildMsgHTML(msg) {
-        const isOwn = msg.sender_id === window.currentUser.id;
-        const senderName = isOwn ? 'You' : window.toSentenceCase(msg.profiles?.full_name || msg.profiles?.email.split('@')[0] || 'Unknown');
+        const isSent = msg.sender_id === window.currentUser.id;
+        const senderName = isSent ? 'You' : window.toSentenceCase(msg.profiles?.full_name || msg.profiles?.email.split('@')[0] || 'Unknown');
         const time = window.getISTTime(msg.created_at);
-        const alignClass = isOwn ? 'sent' : 'received';
-        const checkIcon = isOwn ? ' <i class="fa-solid fa-check-double text-blue-500 text-[10px]"></i>' : '';
         const snippetText = window.getSnippet(msg.text);
-        
-        let displayHtml = msg.text.replace(/href="secure-file:([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800"`);
+        let displayHtml = msg.text.replace(/href="secure-file:([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800 transition-colors"`);
 
-        let html = `
-        <div id="msg-${msg.id}" class="msg-row ${alignClass} group/thread w-full">
-            <div class="msg-sender">${window.escapeHtml(senderName)}</div>
-            <div class="msg-bubble">
-                <div class="bubble-inner relative">
-                    <div class="bubble-top-row">
-                        <span class="msg-time">${time}${checkIcon}</span>
-                        <button class="menu-dots" data-msg-id="${msg.id}" data-msg-text="${window.escapeHtml(msg.text)}">⋮</button>
+        const rowClass = isSent ? 'row-sent' : 'row-rcvd';
+        const bubbleClass = isSent ? 'bubble sent' : 'bubble rcvd';
+        const avClass = isSent ? 'b-avatar sent-av' : 'b-avatar rcvd-av';
+        const avatarInitial = senderName.charAt(0).toUpperCase();
+        const roleStr = isSent ? 'Teacher' : 'Teacher'; // Defaulting role as it's not in profiles yet
+        const tickHTML = isSent ? `<span class="b-tick">✓✓</span>` : '';
+        const replyCount = replies[msg.id] ? replies[msg.id].length : 0;
+
+        const ddItems = isSent
+            ? `<button class="dd-item" onclick="window.closeDropdowns(); window.openTaskModal('${msg.id}', '${window.escapeHtml(msg.text)}')"><i class="ti ti-clipboard-check"></i>Create Task</button>
+               <button class="dd-item" onclick="window.closeDropdowns(); window.showReminderModal('${msg.id}', '${snippetText}')"><i class="ti ti-bell"></i>Reminder</button>
+               <button class="dd-item" onclick="window.closeDropdowns(); window.toggleBookmark('${msg.id}')"><i class="ti ti-bookmark"></i>Bookmark</button>
+               <button class="dd-item danger" onclick="window.closeDropdowns()"><i class="ti ti-trash"></i>Delete</button>`
+            : `<button class="dd-item" onclick="window.closeDropdowns(); window.openTaskModal('${msg.id}', '${window.escapeHtml(msg.text)}')"><i class="ti ti-clipboard-check"></i>Create Task</button>
+               <button class="dd-item" onclick="window.closeDropdowns(); window.showReminderModal('${msg.id}', '${snippetText}')"><i class="ti ti-bell"></i>Reminder</button>
+               <button class="dd-item" onclick="window.closeDropdowns(); window.toggleBookmark('${msg.id}')"><i class="ti ti-bookmark"></i>Bookmark</button>`;
+
+        let repliesHTML = '';
+        if (replyCount > 0) {
+            repliesHTML = `
+            <div class="b-divider"></div>
+            <div class="replies-wrap" id="rw-${msg.id}" style="display:flex;flex-direction:column;gap:2px;">
+              <div class="replies-label"><i class="ti ti-git-branch"></i>Replies</div>
+              ${replies[msg.id].map((r, idx) => {
+                  const rName = window.toSentenceCase(r.profiles?.full_name || r.profiles?.email.split('@')[0] || 'Unknown');
+                  const rTime = window.getISTTime(r.created_at);
+                  const rDisplayHtml = r.text.replace(/href="secure-file:([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium"`);
+                  return `
+                  <div class="reply-item">
+                    <div class="reply-num">${idx + 1}</div>
+                    <div class="reply-body">
+                      <div class="reply-meta">
+                        <span class="reply-name">${window.escapeHtml(rName)}</span>
+                        <span class="reply-role">Teacher</span>
+                        <span class="reply-time">${rTime}</span>
+                      </div>
+                      <div class="reply-text">${rDisplayHtml}</div>
                     </div>
-                    <div class="msg-text">${displayHtml}</div>
-                    <div class="bubble-footer">
-                        <button class="tag font-medium" onclick="window.initiateReply('${msg.id}', '${snippetText}')"><i class="fa-solid fa-reply"></i> Reply</button>
-                        <div class="relative inline-block group/tagbtn">
-                            <button class="emoji-btn hover:bg-gray-100"><i class="fa-solid fa-plus text-[10px]"></i></button>
-                            <div class="absolute bottom-full ${isOwn ? 'right-0' : 'left-0'} mb-1 hidden group-hover/tagbtn:flex bg-white border border-gray-200 shadow-xl rounded-xl p-1 gap-1 z-50 items-center">
-                                <span class="cursor-pointer hover:bg-gray-100 p-1 rounded-lg text-sm" onclick="window.showCenterToast('👍 Applied', 'fa-regular fa-face-smile', 'text-yellow-500')">👍</span>
-                                <span class="cursor-pointer hover:bg-gray-100 p-1 rounded-lg text-sm" onclick="window.showCenterToast('❤️ Applied', 'fa-solid fa-heart', 'text-red-500')">❤️</span>
-                                <div class="w-px h-3 bg-gray-200 mx-0.5"></div>
-                                <span class="cursor-pointer bg-green-50 hover:bg-green-100 text-green-700 px-2 py-0.5 rounded text-[9px] font-bold border border-green-200" onclick="window.showCenterToast('Tag Applied: Thanks', 'fa-solid fa-tag', 'text-green-500')">Thanks</span>
-                                <span class="cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[9px] font-bold border border-blue-200" onclick="window.showCenterToast('Tag Applied: Noted', 'fa-solid fa-tag', 'text-blue-500')">Noted</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                  </div>`;
+              }).join('')}
             </div>`;
-        
-        // NO-BUBBLE TEXT REPLIES WITH PRECISE CONNECTORS
-        if (replies[msg.id] && replies[msg.id].length > 0) {
-            
-            // Container for all replies attached to this parent
-            html += `<div class="w-full flex flex-col ${isOwn ? 'items-end pr-4' : 'items-start pl-4'} mt-1 relative">`;
-            
-            // The Vertical Spine drops from the bottom of the parent bubble
-            const spineSide = isOwn ? 'right-6' : 'left-6';
-            html += `<div class="absolute top-0 bottom-2 ${spineSide} w-[2px] bg-gray-300 z-0"></div>`;
-
-            replies[msg.id].forEach((child, idx) => { 
-                const cIsOwn = child.sender_id === window.currentUser.id;
-                const cName = cIsOwn ? 'You' : window.toSentenceCase(child.profiles?.full_name || child.profiles?.email.split('@')[0] || 'Unknown');
-                const cTime = window.getISTTime(child.created_at);
-                let cDisplayHtml = child.text.replace(/href="secure-file:([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium"`);
-                const cSnippet = window.getSnippet(child.text);
-                
-                // The Horizontal Branch touching the serial number
-                const branchClass = isOwn ? `absolute top-[10px] right-6 w-4 h-[2px] bg-gray-300` : `absolute top-[10px] left-6 w-4 h-[2px] bg-gray-300`;
-
-                html += `
-                <div class="relative w-full max-w-[85%] flex flex-col group/child mb-2 z-10 ${isOwn ? 'items-end' : 'items-start'}">
-                    ${branchClass}
-                    
-                    <div class="flex flex-col ${isOwn ? 'mr-10 items-end text-right' : 'ml-10 items-start text-left'} w-full">
-                        <div class="flex items-center gap-1.5 mb-0.5">
-                            <span class="text-[10px] font-black text-[var(--accent)]">${idx + 1}.</span>
-                            <span class="text-[10px] font-bold text-gray-700">${window.escapeHtml(cName)}</span>
-                            <span class="text-[8px] text-gray-400 ml-1">${cTime}</span>
-                        </div>
-                        <div class="text-[13px] text-gray-900 leading-tight w-full">${cDisplayHtml}</div>
-                        
-                        <!-- Child Reactions (Hover) -->
-                        <div class="flex items-center gap-2 mt-1 opacity-0 group-hover/child:opacity-100 transition-opacity">
-                            <button class="text-[9px] font-bold text-gray-500 hover:text-[var(--accent)]" onclick="window.initiateReply('${msg.id}', '${cSnippet}')"><i class="fa-solid fa-reply"></i> Reply</button>
-                            <div class="relative inline-block group/tagbtn">
-                                <button class="text-[9px] text-gray-500 hover:text-[var(--accent)]"><i class="fa-solid fa-plus"></i> Add Tag</button>
-                                <div class="absolute bottom-full ${isOwn ? 'right-0' : 'left-0'} mb-1 hidden group-hover/tagbtn:flex bg-white border border-gray-200 shadow-xl rounded-xl p-1 gap-1 z-50 items-center">
-                                    <span class="cursor-pointer hover:bg-gray-100 p-1 rounded-lg text-sm" onclick="window.showCenterToast('👍 Applied', 'fa-regular fa-face-smile', 'text-yellow-500')">👍</span>
-                                    <span class="cursor-pointer hover:bg-gray-100 p-1 rounded-lg text-sm" onclick="window.showCenterToast('❤️ Applied', 'fa-solid fa-heart', 'text-red-500')">❤️</span>
-                                    <div class="w-px h-3 bg-gray-200 mx-0.5"></div>
-                                    <span class="cursor-pointer bg-green-50 hover:bg-green-100 text-green-700 px-2 py-0.5 rounded text-[9px] font-bold border border-green-200" onclick="window.showCenterToast('Tag Applied: Thanks', 'fa-solid fa-tag', 'text-green-500')">Thanks</span>
-                                    <span class="cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[9px] font-bold border border-blue-200" onclick="window.showCenterToast('Tag Applied: Noted', 'fa-solid fa-tag', 'text-blue-500')">Noted</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>`;
-            });
-            html += `</div>`;
         }
-        html += `</div>`;
-        return html;
+
+        return `
+        <div class="${rowClass}" id="row-${msg.id}">
+          <div class="${bubbleClass}">
+            <div class="b-header">
+              <div class="${avClass}">${avatarInitial}</div>
+              <div class="b-name">${window.escapeHtml(senderName)} <span class="b-role">· ${roleStr}</span></div>
+              <span class="b-time">${time} ${tickHTML}</span>
+              <div class="menu-wrap">
+                <button class="dot-btn" onclick="window.toggleDropdown('dd-${msg.id}')" aria-label="Options"><i class="ti ti-dots-vertical"></i></button>
+                <div class="bubble-dropdown" id="dd-${msg.id}">${ddItems}</div>
+              </div>
+            </div>
+            
+            <div class="b-text">${displayHtml}</div>
+            
+            <div class="b-footer">
+              <button class="e-add" title="Add reaction"><i class="ti ti-mood-smile"></i></button>
+            </div>
+            
+            <div class="b-actions">
+              ${replyCount > 0 ? `<button class="act-btn" onclick="window.toggleReplies('rw-${msg.id}')"><i class="ti ti-message-2"></i> Replies <span class="reply-badge">${replyCount}</span></button>` : ''}
+              <button class="act-btn" onclick="window.initiateReply('${msg.id}', '${snippetText}')"><i class="ti ti-corner-up-left"></i> Reply</button>
+              <button class="act-btn" onclick="window.toggleBookmark('${msg.id}')"><i class="ti ti-bookmark"></i> Save</button>
+            </div>
+            
+            ${repliesHTML}
+          </div>
+        </div>`;
     }
 
-    c.innerHTML = topLevel.map(msg => buildMsgHTML(msg)).join('');
-
-    document.querySelectorAll('.menu-dots').forEach(el => {
-        el.addEventListener('click', (e) => {
-            e.stopPropagation();
-            document.querySelectorAll('.msg-menu-dropdown').forEach(m => m.remove());
-            const mid = el.dataset.msgId, mtext = el.dataset.msgText;
-            const menu = document.createElement('div');
-            menu.className = 'msg-menu-dropdown p-1.5 shadow-xl border-gray-200 bg-white';
-            menu.style.minWidth = '180px';
-            menu.innerHTML = `
-                <div class="cursor-pointer px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 rounded-lg transition-colors flex items-center gap-3" onclick="window.openTaskModal('${mid}', '${mtext.replace(/'/g, "\\'")}')"><i class="fa-solid fa-tasks text-emerald-500 w-4"></i> Create Task</div>
-                <div class="cursor-pointer px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-yellow-50 hover:text-yellow-700 rounded-lg transition-colors flex items-center gap-3 mt-1" onclick="window.showReminderModal('${mid}', '${mtext.replace(/'/g, "\\'")}')"><i class="fa-regular fa-bell text-yellow-500 w-4"></i> Reminder</div>
-                <div class="cursor-pointer px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-orange-50 hover:text-orange-700 rounded-lg transition-colors flex items-center gap-3 mt-1" onclick="window.toggleBookmark('${mid}')"><i class="fa-solid fa-star text-orange-400 w-4"></i> Bookmark</div>
-            `;
-            document.body.appendChild(menu);
-            const rect = el.getBoundingClientRect();
-            menu.style.top = (rect.bottom + window.scrollY) + 'px';
-            menu.style.left = (rect.left - 150 + window.scrollX) + 'px';
-        });
-    });
+    // Add a day label at the top
+    const dateLabel = `<div class="day-label">Today — ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric'})}</div>`;
+    c.innerHTML = dateLabel + topLevel.map(msg => buildMsgHTML(msg)).join('');
 }
 
 window.startSubscriptions = function() { 

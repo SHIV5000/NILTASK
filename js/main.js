@@ -154,6 +154,7 @@ window.initResizers = function() {
 window.renderMainApp = function() {
     window.applyTheme();
     const userNameDisplay = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
+    
     const leftWidth = localStorage.getItem('mpgs_left_width') || '320px';
     const rightWidth = localStorage.getItem('mpgs_right_width') || '450px';
     const leftDisplay = localStorage.getItem('mpgs_left_sidebar_state') || 'flex';
@@ -186,11 +187,11 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.28.0 - Full Code Lock
+                        v1.28.1 - Final Correction
                     </div>
                 </div>
             </div>
-            
+
             <div id="leftResizer" class="drag-resizer"></div>
 
             <div class="flex-1 flex flex-col relative min-w-0 chat-area">
@@ -208,11 +209,17 @@ window.renderMainApp = function() {
                     </div>
                 </div>
                 
-                <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col items-center min-w-0"><div class="chat-shell w-full max-w-full bg-transparent border-none" id="chatShellContainer"></div></div>
+                <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col items-center min-w-0">
+                    <div class="chat-shell w-full max-w-full bg-transparent border-none" id="chatShellContainer"></div>
+                </div>
                 
                 <div class="flex flex-col relative bg-white border-t border-gray-200 p-3 px-5 z-20">
                     <div id="replyBanner" class="hidden mx-0 mt-0 mb-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl flex justify-between items-center z-0 relative shadow-sm text-xs">
-                        <div class="text-indigo-700 flex items-center gap-2 overflow-hidden"><i class="fa-solid fa-reply"></i><span class="font-bold whitespace-nowrap">Replying to:</span><span id="replyBannerText" class="italic truncate text-indigo-500 max-w-[200px]"></span></div>
+                        <div class="text-indigo-700 flex items-center gap-2 overflow-hidden">
+                            <i class="fa-solid fa-reply"></i>
+                            <span class="font-bold whitespace-nowrap">Replying to:</span>
+                            <span id="replyBannerText" class="italic truncate text-indigo-500 max-w-[200px]"></span>
+                        </div>
                         <i class="fa-solid fa-times text-indigo-400 hover:text-red-500 cursor-pointer p-1" onclick="window.cancelReply()"></i>
                     </div>
 
@@ -228,30 +235,50 @@ window.renderMainApp = function() {
                                <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-xl" onclick="window.insertEmoji('🙏')">🙏</span>
                                <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-xl" onclick="window.insertEmoji('🎉')">🎉</span>
                                <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-xl" onclick="window.insertEmoji('🔥')">🔥</span>
+                               <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-xl" onclick="window.insertEmoji('✅')">✅</span>
+                               <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-xl" onclick="window.insertEmoji('👀')">👀</span>
                            </div>
                         </div>
-                        <div id="toolbar-container" class="border-b border-gray-200 bg-gray-50 rounded-t-xl"></div>
+
+                        <div id="toolbar-container" class="border-b border-gray-200 bg-gray-50 rounded-t-xl">
+                           </div>
                         <div class="flex items-end gap-2 p-1.5 px-2">
-                            <button onclick="window.toggleInputEmojiPicker()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors"><i class="ti ti-mood-smile text-xl"></i></button>
-                            <button onclick="document.getElementById('fileAttachment').click()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors"><i class="ti ti-paperclip text-xl"></i></button>
+                            <button onclick="window.toggleInputEmojiPicker()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Quick Emoji"><i class="ti ti-mood-smile text-xl"></i></button>
+                            <button onclick="document.getElementById('fileAttachment').click()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Attach File"><i class="ti ti-paperclip text-xl"></i></button>
                             <input type="file" id="fileAttachment" class="hidden">
-                            <div class="flex-1 min-w-0 bg-transparent py-1"><div id="richEditor" class="w-full"></div></div>
-                            <button onclick="window.showScheduleModal()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors"><i class="ti ti-clock text-xl"></i></button>
+
+                            <div class="flex-1 min-w-0 bg-transparent py-1">
+                                <div id="richEditor" class="w-full"></div>
+                            </div>
+
+                            <button onclick="window.showScheduleModal()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Schedule"><i class="ti ti-clock text-xl"></i></button>
                             <button id="sendBtn" class="bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent-hover)] shadow-md transition-colors h-[38px] w-[46px] flex items-center justify-center mb-0.5"><i class="ti ti-send text-lg"></i></button>
                         </div>
                     </div>
                 </div>
             </div>
-            
+
             <div id="rightResizer" class="drag-resizer"></div>
 
             <div id="rightSidebar" class="right-sidebar border-l flex-col z-20 shadow-sm bg-gray-50 border-gray-200" style="display: ${rightDisplay}; width: ${rightWidth};">
-                <div class="w-full h-full flex flex-col min-w-0">
-                    <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
+                <div class="w-full h-full flex flex-col min-w-0"> <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
                         <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="fa-solid fa-filter text-[var(--accent)]"></i> Task Filters</h3>
                         <select id="taskFilter" onchange="window.toggleDateFilter()" class="text-xs px-2 py-2 rounded-lg border border-gray-200 font-medium text-gray-700 bg-gray-50 shadow-sm outline-none cursor-pointer w-full focus:ring-2 focus:ring-[var(--accent)] transition-all">
-                            <option value="all">All Tasks</option><option value="today">Today</option><option value="pending">Pending</option><option value="completed">Completed</option>
+                            <option value="all">All Tasks</option>
+                            <option value="today">Today</option>
+                            <option value="pending">Pending</option>
+                            <option value="completed">Completed</option>
+                            <option value="allotted_by_me">Allotted by Me</option>
+                            <option value="allotted_to_me">Allotted to Me</option>
+                            <option value="delegated">Delegated</option>
+                            <option value="transferred">Transferred</option>
+                            <option value="date_range">Date Range</option>
                         </select>
+                    </div>
+                    <div id="dateRangeFilter" class="hidden px-3 pt-2 pb-3 bg-white border-b border-gray-200 flex gap-2 items-center">
+                        <input type="date" id="filterStartDate" onchange="window.loadTasksForPanel()" class="text-xs px-2 py-1.5 rounded w-full border border-gray-300 bg-gray-50 outline-none focus:border-[var(--accent)]">
+                        <span class="text-[10px] font-bold text-gray-400">TO</span>
+                        <input type="date" id="filterEndDate" onchange="window.loadTasksForPanel()" class="text-xs px-2 py-1.5 rounded w-full border border-gray-300 bg-gray-50 outline-none focus:border-[var(--accent)]">
                     </div>
                     <div id="tasksPanel" class="flex-1 overflow-y-auto p-4 bg-gray-50"></div>
                 </div>
@@ -275,11 +302,13 @@ window.renderMainApp = function() {
             <div class="bg-white rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl border border-gray-200">
                 <h3 class="text-xl font-bold mb-4 text-gray-800">Create Task</h3>
                 <input id="taskTitle" class="w-full p-3 rounded-xl mb-3 border border-gray-300 bg-gray-50 outline-none focus:border-[var(--accent)] text-sm font-medium" placeholder="Task Title">
+                
                 <p class="text-xs font-bold text-gray-500 mb-1 ml-1">Assigned To:</p>
                 <div class="border rounded-xl mb-3 overflow-hidden border-gray-300">
                     <input type="text" id="assigneeSearch" onkeyup="window.filterAssignees()" placeholder="Search users..." class="w-full p-2.5 text-xs border-b border-gray-200 outline-none bg-gray-50 text-gray-700 font-medium">
                     <div id="assigneeCheckboxList" class="max-h-32 overflow-y-auto bg-white p-2 flex flex-col gap-1"></div>
                 </div>
+
                 <div class="grid grid-cols-2 gap-3 mb-3">
                     <div>
                         <p class="text-xs font-bold text-gray-500 mb-1 ml-1">Deadline:</p>
@@ -288,7 +317,9 @@ window.renderMainApp = function() {
                     <div>
                         <p class="text-xs font-bold text-gray-500 mb-1 ml-1">Priority:</p>
                         <select id="taskPriority" class="w-full p-2.5 rounded-xl border border-gray-300 bg-gray-50 outline-none focus:border-[var(--accent)] text-sm font-medium">
-                            <option value="Low">Low</option><option value="Medium" selected>Medium</option><option value="High">High</option>
+                            <option value="Low">Low</option>
+                            <option value="Medium" selected>Medium</option>
+                            <option value="High">High</option>
                         </select>
                     </div>
                 </div>
@@ -318,8 +349,26 @@ window.renderMainApp = function() {
         </div>
     `;
     
-    window.quillEditor = new Quill('#richEditor', { theme: 'snow', modules: { toolbar: { container: [['bold','italic','underline','strike'], [{ 'color': ['#800000', '#006400', '#00008b'] }], [{'list': 'ordered'}, {'list': 'bullet'}], ['clean']] } } });
-    document.getElementById('toolbar-container').appendChild(document.querySelector('.ql-toolbar'));
+    // CUSTOM QUILL INITIALIZATION WITH COLORS
+    window.quillEditor = new Quill('#richEditor', { 
+        theme: 'snow', 
+        placeholder: 'Type a message...', 
+        modules: { 
+            toolbar: {
+                container: [
+                    ['bold','italic','underline','strike'], 
+                    [{ 'color': ['#800000', '#006400', '#00008b'] }], // Maroon, Green, Blue
+                    [{'list': 'ordered'}, {'list': 'bullet'}], 
+                    ['clean']
+                ]
+            }
+        } 
+    });
+    
+    // Append the auto-generated toolbar into our styled wrapper
+    const toolbar = document.querySelector('.ql-toolbar');
+    document.getElementById('toolbar-container').appendChild(toolbar);
+
     window.quillEditor.root.addEventListener('keydown', (e) => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); window.sendMessage(); } });
     document.getElementById('sendBtn').onclick = window.sendMessage;
     
@@ -359,8 +408,10 @@ window.renderMainApp = function() {
         searchBar.addEventListener('input', window.applyFilters);
     }
     
+    // Bind click outside for dropdowns globally
     document.addEventListener('click', e => {
         if (!e.target.closest('.menu-wrap')) window.closeDropdowns();
+        
         const ep = document.getElementById('inputEmojiPicker');
         if (ep && !e.target.closest('#inputEmojiPicker') && !e.target.closest('[onclick="window.toggleInputEmojiPicker()"]')) {
             ep.classList.add('hidden');
@@ -402,6 +453,7 @@ window.sendMessage = async function() {
     } else {
         window.pendingScrollId = 'BOTTOM';
     }
+    
     await sb.from('messages').insert(payload);
     window.quillEditor.root.innerHTML = '';
     window.cancelReply();
@@ -410,14 +462,16 @@ window.sendMessage = async function() {
 
 window.loadMessages = async function() {
     const {data: msgs} = await sb.from('messages').select('*, profiles(full_name, email)').eq('room_id', window.currentRoom).order('created_at', {ascending: true});
+    
     const {data: bms} = await sb.from('bookmarks').select('message_id').eq('user_id', window.currentUser.id);
     window.bookmarkedSet = new Set(bms?.map(b => b.message_id) || []);
 
-    window.renderMessages(msgs || []);
-    
     const c = document.getElementById('messagesContainer');
     const isNearBottom = c ? (c.scrollHeight - c.scrollTop - c.clientHeight < 150) : false;
 
+    window.renderMessages(msgs || []);
+    window.applyFilters();
+    
     if(c) {
         setTimeout(() => { 
             if (window.pendingScrollId && window.pendingScrollId !== 'BOTTOM') {
@@ -442,9 +496,21 @@ window.loadMessages = async function() {
     }
 }
 
-window.toggleDropdown = function(id) { document.querySelectorAll('.bubble-dropdown').forEach(d => { if (d.id !== id) d.classList.remove('open'); }); document.getElementById(id).classList.toggle('open'); }
-window.closeDropdowns = function() { document.querySelectorAll('.bubble-dropdown').forEach(d => d.classList.remove('open')); }
-window.toggleReplies = function(id) { const el = document.getElementById(id); if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none'; }
+window.toggleDropdown = function(id) {
+    document.querySelectorAll('.bubble-dropdown').forEach(d => {
+        if (d.id !== id) d.classList.remove('open');
+    });
+    document.getElementById(id).classList.toggle('open');
+}
+
+window.closeDropdowns = function() {
+    document.querySelectorAll('.bubble-dropdown').forEach(d => d.classList.remove('open'));
+}
+
+window.toggleReplies = function(id) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+}
 
 window.renderMessages = function(messages) {
     const c = document.getElementById('chatShellContainer');
@@ -536,12 +602,15 @@ window.renderMessages = function(messages) {
                 <div class="bubble-dropdown" id="dd-${msg.id}">${ddItems}</div>
               </div>
             </div>
+            
             <div class="b-text">${displayHtml}</div>
+            
             <div class="b-footer">
               <div class="relative inline-block group/reaction z-50">
                   <button class="e-add" title="Add reaction"><i class="ti ti-mood-smile"></i></button>
                   <div class="absolute bottom-full ${isSent ? 'right-0' : 'left-0'} pb-1.5 hidden group-hover/reaction:block cursor-default z-[100]">
                       <div class="bg-white border border-gray-200 shadow-2xl rounded-xl p-3 min-w-[280px] flex flex-col">
+                          
                           <div class="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Reactions</div>
                           <div class="flex flex-wrap gap-1 border-b border-gray-100 pb-2 mb-2">
                               <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.applyReaction('${msg.id}', '👍', 'emoji')">👍</span>
@@ -553,6 +622,7 @@ window.renderMessages = function(messages) {
                               <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.applyReaction('${msg.id}', '🎉', 'emoji')">🎉</span>
                               <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.applyReaction('${msg.id}', '🔥', 'emoji')">🔥</span>
                           </div>
+                          
                           <div class="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Quick Tags</div>
                           <div class="flex flex-wrap gap-2">
                               <span class="cursor-pointer bg-green-50 hover:bg-green-100 text-green-700 px-3 py-1 rounded-md text-[11px] font-bold border border-green-200 shadow-sm" onclick="window.applyReaction('${msg.id}', 'Thank You', 'tag')">Thank You</span>
@@ -565,11 +635,13 @@ window.renderMessages = function(messages) {
                   </div>
               </div>
             </div>
+            
             <div class="b-actions">
               ${replyCount > 0 ? `<button class="act-btn" onclick="window.toggleReplies('rw-${msg.id}')"><i class="ti ti-message-2"></i> Replies <span class="reply-badge">${replyCount}</span></button>` : ''}
               <button class="act-btn" onclick="window.initiateReply('${msg.id}', '${snippetText}')"><i class="ti ti-corner-up-left"></i> Reply</button>
               <button class="act-btn ${isBookmarked ? 'bookmarked' : ''}" onclick="window.toggleBookmark('${msg.id}')"><i class="ti ${isBookmarked ? 'ti-bookmark-filled' : 'ti-bookmark'}"></i> ${isBookmarked ? 'Bookmarked' : 'Bookmark'}</button>
             </div>
+            
             ${repliesHTML}
           </div>
         </div>`;
@@ -602,13 +674,36 @@ window.applyReaction = async function(msgId, value, type) {
     }
 
     const hoverMenu = row.querySelector('.group\\/reaction .absolute');
-    if (hoverMenu) { hoverMenu.style.display = 'none'; setTimeout(() => { hoverMenu.style.display = ''; }, 300); }
+    if (hoverMenu) {
+        hoverMenu.style.display = 'none';
+        setTimeout(() => { hoverMenu.style.display = ''; }, 300);
+    }
 };
+
+window.scrollToAndHighlight = function(rowId) {
+    document.querySelectorAll('.top-panel-dropdown').forEach(m => m.remove());
+    const row = document.getElementById(rowId);
+    if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const msgId = rowId.replace('row-', '');
+        const rw = document.getElementById(`rw-${msgId}`);
+        if (rw) rw.style.display = 'flex';
+        
+        const bubble = row.querySelector('.bubble');
+        if(bubble) {
+            bubble.classList.add('glow-target');
+            setTimeout(() => { bubble.classList.add('active-glow'); }, 50);
+            setTimeout(() => { bubble.classList.remove('glow-target', 'active-glow'); }, 3500);
+        }
+    }
+}
 
 window.openTaskModal = async function(mid, text) { 
     window.currentMessageId = mid; 
-    let tmp = document.createElement("DIV"); tmp.innerHTML = text;
+    let tmp = document.createElement("DIV");
+    tmp.innerHTML = text;
     window.currentMessageTextRaw = (tmp.textContent || tmp.innerText || "").substring(0,60) + "...";
+
     window.closeDropdowns();
     document.getElementById('taskModal').classList.remove('hidden'); 
     document.getElementById('taskModal').classList.add('flex'); 
@@ -657,12 +752,14 @@ window.toggleBookmark = async function(mid) {
     window.closeDropdowns();
     const btn = document.querySelector(`#row-${mid} .act-btn[onclick*="toggleBookmark"]`);
     let isCurrentlyBookmarked = window.bookmarkedSet && window.bookmarkedSet.has(mid);
+    
     if (isCurrentlyBookmarked) {
         window.bookmarkedSet.delete(mid);
         if (btn) { btn.classList.remove('bookmarked'); btn.innerHTML = '<i class="ti ti-bookmark"></i> Bookmark'; }
         window.showCenterToast('Bookmark removed', 'fa-solid fa-info-circle', 'text-yellow-400');
         await sb.from('bookmarks').delete().eq('user_id', window.currentUser.id).eq('message_id', mid);
     } else {
+        window.bookmarkedSet = window.bookmarkedSet || new Set();
         window.bookmarkedSet.add(mid);
         if (btn) { btn.classList.add('bookmarked'); btn.innerHTML = '<i class="ti ti-bookmark-filled"></i> Bookmarked'; }
         window.showCenterToast('Message Bookmarked');
@@ -768,6 +865,43 @@ window.saveScheduledMessage = async function() {
     window.showCenterToast('Message Scheduled Successfully!');
 }
 
+window.loadChatsList = async function() {
+    const groups = ['general', 'math', 'science', 'leadership'];
+    const {data: users} = await sb.from('profiles').select('id, email, full_name');
+    window.globalUsersCache = users || []; 
+    
+    let html = `<div class="px-4 py-2 mt-2 text-[10px] font-black tracking-widest text-gray-400 uppercase">Channels</div>`;
+    groups.forEach(g => { 
+        html += `<div class="channel-item p-2.5 mx-2 mb-1 rounded-xl cursor-pointer hover:bg-gray-100 flex items-center gap-3 transition-colors ${window.currentRoom === g ? 'bg-gray-100 border border-gray-200 font-bold shadow-sm' : 'border border-transparent'}" data-room="${g}" data-name="# ${g}">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 text-xs bg-gray-50 border border-gray-200"><i class="ti ti-hash"></i></div>
+            <span class="flex-1 truncate text-gray-700 tracking-wide text-sm"># ${g}</span>
+        </div>`; 
+    });
+    html += `<div class="px-4 py-2 mt-4 text-[10px] font-black tracking-widest text-gray-400 uppercase">Direct Messages</div>`;
+    window.globalUsersCache.filter(u => u.id !== window.currentUser.id).forEach(u => { 
+        const name = window.toSentenceCase(u.full_name || u.email.split('@')[0]);
+        html += `<div class="channel-item p-2.5 mx-2 mb-1 rounded-xl cursor-pointer hover:bg-gray-100 flex items-center gap-3 transition-colors ${window.currentRoom === 'dm_' + u.id ? 'bg-gray-100 border border-gray-200 font-bold shadow-sm' : 'border border-transparent'}" data-room="dm_${u.id}" data-name="${name}">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm" style="background: var(--accent)">${name.charAt(0).toUpperCase()}</div>
+            <span class="flex-1 truncate text-gray-700 tracking-wide text-sm">${name}</span>
+        </div>`; 
+    });
+    document.getElementById('chatsList').innerHTML = html;
+    
+    document.querySelectorAll('.channel-item').forEach(el => { 
+        el.addEventListener('click', () => { 
+            window.currentRoom = el.dataset.room; 
+            localStorage.setItem('mpgs_current_room', el.dataset.room); 
+            document.querySelectorAll('.channel-item').forEach(item => { item.classList.remove('bg-gray-100', 'border-gray-200', 'font-bold', 'shadow-sm'); item.classList.add('border-transparent'); });
+            el.classList.remove('border-transparent');
+            el.classList.add('bg-gray-100', 'border-gray-200', 'font-bold', 'shadow-sm');
+            const titleSpan = document.getElementById('roomTitleDisplay');
+            if(titleSpan) titleSpan.innerText = el.dataset.name;
+            document.getElementById('chatShellContainer').innerHTML = '<div class="m-auto flex flex-col items-center opacity-50 pt-10"><i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3 text-gray-400"></i><p class="text-sm font-medium text-gray-500">Loading chat...</p></div>';
+            window.loadMessages(); 
+        }); 
+    });
+}
+
 window.startSubscriptions = function() { 
     if(messageSubscription) messageSubscription.unsubscribe();
     messageSubscription = sb.channel('public:messages').on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, (p) => { if(p.new.room_id === window.currentRoom) window.loadMessages(); }).subscribe();
@@ -788,6 +922,7 @@ window.ensureProfile = async function() {
     if(!ex) await sb.from('profiles').insert({id: window.currentUser.id, email: window.currentUser.email, full_name: window.currentUser.email.split('@')[0], role: 'teacher'}); 
 };
 
+// Boot Sequence
 ;(async() => { 
     const {data: {session}} = await sb.auth.getSession(); 
     if(!session) {

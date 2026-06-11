@@ -85,8 +85,13 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 .ui-input:focus { border-color: var(--accent); outline: none; }
 
 .day-label { text-align: center; font-size: 10px; color: #888; background: rgba(128,0,32,0.08); border-radius: 99px; padding: 2px 14px; width: fit-content; margin: 0 auto 12px auto; }
-.row-sent  { display: flex; flex-direction: column; align-items: flex-end; margin-bottom: 12px; width: 100%; }
-.row-rcvd  { display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 12px; width: 100%; }
+.row-sent  { display: flex; flex-direction: column; align-items: flex-end; margin-bottom: 12px; width: 100%; animation: slideInUp 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+.row-rcvd  { display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 12px; width: 100%; animation: slideInUp 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+@keyframes slideInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
 
 .bubble { max-width: 95%; width: fit-content; min-width: 250px; position: relative; overflow: visible; z-index: 2;}
 .bubble.sent { background: var(--sent-bg); border: 1px solid var(--accent); border-radius: 14px 2px 14px 14px; }
@@ -172,6 +177,10 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
     85%  { opacity: 1; box-shadow: 0 2px 10px 1px var(--accent); }
     100% { opacity: 0; box-shadow: 0 0 0 0 var(--accent); }
 }
+
+/* FIX: CSS Task Trail Control */
+[id^="trail-"], [id^="task-trail-"] { display: none !important; }
+[id^="trail-"].active, [id^="task-trail-"].active { display: block !important; }
 
 [data-theme="dark"] .bg-white { background-color: var(--bg-sidebar) !important; color: var(--text-primary) !important; }
 [data-theme="dark"] .bg-gray-50 { background-color: var(--bg-body) !important; color: var(--text-primary) !important; }

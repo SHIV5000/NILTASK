@@ -7,7 +7,7 @@ let assigneeSubscription = null;
 let trailSubscription = null;
 
 window.currentTheme = localStorage.getItem('theme') || 'light';
-window.pendingScrollId = null; // SCROLL LOCK TRACKER
+window.pendingScrollId = null;
 
 window.applyTheme = function() { 
     document.documentElement.setAttribute('data-theme', window.currentTheme); 
@@ -20,6 +20,17 @@ window.showCenterToast = function(msg, icon = 'fa-solid fa-check-circle', color 
     document.body.appendChild(t); 
     setTimeout(() => t.classList.remove('opacity-0'), 10);
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 500); }, 3000); 
+};
+
+// FIXED: Defined missing openSecureFile
+window.openSecureFile = function(path) {
+    window.showCenterToast('Opening file...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
+    const { data } = sb.storage.from('task-proofs').getPublicUrl(path);
+    if(data && data.publicUrl) {
+        window.open(data.publicUrl, '_blank');
+    } else {
+        window.showCenterToast('Error finding file', 'fa-solid fa-times', 'text-red-500');
+    }
 };
 
 window.signIn = async function(email, pwd) { 
@@ -93,9 +104,15 @@ window.renderAuthScreen = function() {
     };
 };
 
+// FIXED: Robust sidebar toggling using inline display styles
 window.toggleRightSidebar = function() {
     const sb = document.getElementById('rightSidebar');
-    if(sb) sb.classList.toggle('hidden');
+    if(sb) sb.style.display = (sb.style.display === 'none') ? 'flex' : 'none';
+};
+
+window.toggleLeftSidebar = function() {
+    const sb = document.getElementById('leftSidebar');
+    if(sb) sb.style.display = (sb.style.display === 'none') ? 'flex' : 'none';
 };
 
 window.renderMainApp = function() {
@@ -104,7 +121,7 @@ window.renderMainApp = function() {
 
     document.getElementById('root').innerHTML = `
         <div class="flex h-full w-full bg-gray-50">
-            <div class="left-sidebar w-80 flex flex-col border-r z-20 shadow-sm bg-white border-gray-200">
+            <div id="leftSidebar" class="left-sidebar flex flex-col border-r z-20 shadow-sm bg-white border-gray-200" style="width: 320px;">
                 <div class="p-4 flex justify-between items-center border-b border-gray-200">
                     <h2 class="text-xl font-bold tracking-tight flex items-center gap-2 text-gray-800">
                         <i class="fa-solid fa-comments text-[var(--accent)]"></i> Chats
@@ -120,7 +137,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.23.3 - Boot Fix
+                        v1.24.0 - UX Polish & Toggles
                     </div>
                 </div>
             </div>
@@ -128,6 +145,7 @@ window.renderMainApp = function() {
             <div class="flex-1 flex flex-col relative min-w-0" style="background-color: var(--bg-chat); background-image: var(--chat-pattern); background-blend-mode: overlay;">
                 <div class="p-4 border-b z-10 flex justify-between items-center shadow-sm bg-white/95 backdrop-blur border-gray-200">
                     <div class="flex items-center gap-3">
+                        <i class="ti ti-layout-sidebar-left cursor-pointer hover:text-[var(--accent)] text-xl text-gray-500 pr-3 border-r border-gray-300" onclick="window.toggleLeftSidebar()" title="Toggle Channels"></i>
                         <span id="roomTitleDisplay" class="text-lg font-bold tracking-tight text-gray-800"># ${window.currentRoom}</span>
                     </div>
                     <div class="flex items-center gap-4 text-xl text-gray-500">
@@ -172,7 +190,7 @@ window.renderMainApp = function() {
                 </div>
             </div>
 
-            <div id="rightSidebar" class="right-sidebar w-[450px] border-l flex flex-col z-20 shadow-sm hidden md:flex bg-gray-50 border-gray-200">
+            <div id="rightSidebar" class="right-sidebar border-l flex flex-col z-20 shadow-sm bg-gray-50 border-gray-200" style="width: 450px;">
                 <div class="w-full h-full flex flex-col min-w-0"> <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
                         <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="fa-solid fa-filter text-[var(--accent)]"></i> Task Filters</h3>
                         <select id="taskFilter" onchange="window.toggleDateFilter()" class="text-xs px-2 py-2 rounded-lg border border-gray-200 font-medium text-gray-700 bg-gray-50 shadow-sm outline-none cursor-pointer w-full focus:ring-2 focus:ring-[var(--accent)] transition-all">
@@ -277,7 +295,6 @@ window.renderMainApp = function() {
         } 
     });
     
-    // Append the auto-generated toolbar into our styled wrapper
     const toolbar = document.querySelector('.ql-toolbar');
     document.getElementById('toolbar-container').appendChild(toolbar);
 
@@ -312,7 +329,6 @@ window.renderMainApp = function() {
         searchBar.addEventListener('input', window.applyFilters);
     }
     
-    // Bind click outside for dropdowns globally
     document.addEventListener('click', e => {
         if (!e.target.closest('.menu-wrap')) window.closeDropdowns();
     });
@@ -321,6 +337,14 @@ window.renderMainApp = function() {
     window.loadMessages(); 
     window.loadTasksForPanel(); 
 };
+
+// FIXED: Flawless Emoji Injection into Quill
+window.addEmoji = function() {
+    window.quillEditor.focus();
+    const range = window.quillEditor.getSelection() || { index: window.quillEditor.getLength() };
+    window.quillEditor.insertText(range.index, '😀');
+    window.showCenterToast('Emoji added!', 'fa-regular fa-face-smile', 'text-yellow-400');
+}
 
 window.applyReaction = async function(msgId, value, type) {
     const row = document.getElementById(`row-${msgId}`);
@@ -573,7 +597,6 @@ window.loadChatsList = async function() {
     });
 }
 
-// FIXED: Optimistic UI lock to prevent scroll jumping on new message
 window.sendMessage = async function() {
     let text = window.quillEditor.root.innerHTML.trim();
     text = text.replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
@@ -622,7 +645,6 @@ window.loadMessages = async function() {
                 c.scrollTop = c.scrollHeight;
                 window.pendingScrollId = null;
             } else if (isNearBottom) {
-                // Only auto-scroll to bottom if user is already there
                 c.scrollTop = c.scrollHeight; 
             }
         }, 100); 

@@ -120,7 +120,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.23.1 - Stability & Scroll Fix
+                        v1.23.2 - Stable App Boot
                     </div>
                 </div>
             </div>
@@ -575,6 +575,7 @@ window.loadChatsList = async function() {
     });
 }
 
+// FIXED: Optimistic UI lock to prevent scroll jumping on new message
 window.sendMessage = async function() {
     let text = window.quillEditor.root.innerHTML.trim();
     text = text.replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
@@ -623,6 +624,7 @@ window.loadMessages = async function() {
                 c.scrollTop = c.scrollHeight;
                 window.pendingScrollId = null;
             } else if (isNearBottom) {
+                // Only auto-scroll to bottom if user is already there
                 c.scrollTop = c.scrollHeight; 
             }
         }, 100); 
@@ -630,7 +632,7 @@ window.loadMessages = async function() {
 }
 
 // -----------------------------------------------------------------------------
-// CHAT BUBBLE COMPONENT RENDERER
+// CHAT BUBBLE COMPONENT RENDERER (HANDOFF SPEC)
 // -----------------------------------------------------------------------------
 
 window.toggleDropdown = function(id) {

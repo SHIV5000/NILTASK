@@ -7,6 +7,7 @@ let assigneeSubscription = null;
 let trailSubscription = null;
 
 window.currentTheme = localStorage.getItem('theme') || 'light';
+window.pendingScrollId = null; // SCROLL LOCK TRACKER
 
 window.applyTheme = function() { 
     document.documentElement.setAttribute('data-theme', window.currentTheme); 
@@ -92,14 +93,19 @@ window.renderAuthScreen = function() {
     };
 };
 
+window.toggleRightSidebar = function() {
+    const sb = document.getElementById('rightSidebar');
+    if(sb) sb.classList.toggle('hidden');
+};
+
 window.renderMainApp = function() {
     window.applyTheme();
     const userNameDisplay = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
 
     document.getElementById('root').innerHTML = `
         <div class="flex h-full w-full bg-gray-50">
-            <!-- Left Sidebar -->
-            <div class="w-80 flex flex-col border-r z-20 shadow-sm bg-white border-gray-200">
+            <!-- Draggable Left Sidebar -->
+            <div class="left-sidebar w-80 flex flex-col border-r z-20 shadow-sm bg-white border-gray-200">
                 <div class="p-4 flex justify-between items-center border-b border-gray-200">
                     <h2 class="text-xl font-bold tracking-tight flex items-center gap-2 text-gray-800">
                         <i class="fa-solid fa-comments text-[var(--accent)]"></i> Chats
@@ -115,31 +121,33 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.22.0 - 3D Bookmarks & Scrolling
+                        v1.23.0 - Resizing & Inline Input
                     </div>
                 </div>
             </div>
 
             <!-- Chat Area -->
-            <div class="flex-1 flex flex-col relative" style="background-color: var(--bg-chat); background-image: var(--chat-pattern); background-blend-mode: overlay;">
+            <div class="flex-1 flex flex-col relative min-w-0" style="background-color: var(--bg-chat); background-image: var(--chat-pattern); background-blend-mode: overlay;">
                 <div class="p-4 border-b z-10 flex justify-between items-center shadow-sm bg-white/95 backdrop-blur border-gray-200">
                     <div class="flex items-center gap-3">
                         <span id="roomTitleDisplay" class="text-lg font-bold tracking-tight text-gray-800"># ${window.currentRoom}</span>
                     </div>
-                    <div class="flex items-center gap-5 text-xl text-gray-500">
-                        <i class="fa-regular fa-clock cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="window.openTopPanel('scheduled')" title="Scheduled Messages"></i>
-                        <i class="fa-regular fa-bookmark cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="window.openTopPanel('bookmarks')" title="Bookmarks"></i>
-                        <i class="fa-regular fa-bell cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="window.openTopPanel('alerts')" title="Notifications"></i>
-                        <input type="text" id="messageSearchBar" placeholder="Search..." class="px-3 py-1 rounded-full text-sm w-48 border border-gray-200 bg-gray-50 focus:outline-none focus:border-[var(--accent)]">
+                    <div class="flex items-center gap-4 text-xl text-gray-500">
+                        <i class="ti ti-clock cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="window.openTopPanel('scheduled')" title="Scheduled Messages"></i>
+                        <i class="ti ti-bookmark cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="window.openTopPanel('bookmarks')" title="Bookmarks"></i>
+                        <i class="ti ti-bell cursor-pointer hover:text-[var(--accent)] top-bar-icon" onclick="window.openTopPanel('alerts')" title="Notifications"></i>
+                        <i class="ti ti-layout-sidebar-right cursor-pointer hover:text-[var(--accent)] top-bar-icon border-l border-gray-300 pl-4 ml-1" onclick="window.toggleRightSidebar()" title="Toggle Task Panel"></i>
+                        <input type="text" id="messageSearchBar" placeholder="Search..." class="px-3 py-1 rounded-full text-sm w-48 border border-gray-200 bg-gray-50 focus:outline-none focus:border-[var(--accent)] ml-2">
                     </div>
                 </div>
                 
-                <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col items-center">
+                <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col items-center min-w-0">
                     <div class="chat-shell w-full max-w-full bg-transparent border-none" id="chatShellContainer"></div>
                 </div>
                 
-                <div class="flex flex-col relative bg-white border-t border-gray-200 p-3 px-5">
-                    <div id="replyBanner" class="hidden mx-2 mt-0 mb-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl flex justify-between items-center z-0 relative shadow-sm text-xs">
+                <!-- REDESIGNED: Single Line Input Strip -->
+                <div class="flex flex-col relative bg-white border-t border-gray-200 p-3 px-5 z-20">
+                    <div id="replyBanner" class="hidden mx-0 mt-0 mb-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl flex justify-between items-center z-0 relative shadow-sm text-xs">
                         <div class="text-indigo-700 flex items-center gap-2 overflow-hidden">
                             <i class="fa-solid fa-reply"></i>
                             <span class="font-bold whitespace-nowrap">Replying to:</span>
@@ -148,49 +156,50 @@ window.renderMainApp = function() {
                         <i class="fa-solid fa-times text-indigo-400 hover:text-red-500 cursor-pointer p-1" onclick="window.cancelReply()"></i>
                     </div>
 
-                    <div class="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden flex flex-col relative z-10 shadow-inner">
-                        <div id="richEditor"></div>
-                    </div>
-                    <div class="flex justify-between items-center mt-3 px-2">
-                        <div class="flex gap-4 text-xl text-gray-500">
-                            <i class="fa-regular fa-face-smile cursor-pointer hover:text-[var(--accent)] transition-colors" title="Emoji" onclick="window.addEmoji()"></i>
-                            <i class="fa-solid fa-paperclip cursor-pointer hover:text-[var(--accent)] transition-colors" title="Attach File" onclick="document.getElementById('fileAttachment').click()"></i>
-                            <input type="file" id="fileAttachment" class="hidden">
+                    <div class="w-full bg-white border border-gray-300 rounded-xl flex flex-col shadow-sm focus-within:border-[var(--accent)] transition-colors">
+                        <div id="toolbar-container" class="border-b border-gray-200 bg-gray-50 rounded-t-xl">
+                           <!-- Quill Toolbar Injects Here -->
                         </div>
-                        <div class="flex gap-2">
-                            <button id="scheduleMsgBtn" class="px-4 py-2 rounded-full font-bold text-xs border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 shadow-sm cursor-pointer transition-colors">
-                                <i class="fa-regular fa-clock"></i> Schedule
-                            </button>
-                            <button id="sendBtn" class="bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white rounded-full px-5 py-2 font-bold flex items-center gap-2 shadow-md transition-colors text-sm">
-                                Send <i class="fa-solid fa-paper-plane text-xs"></i>
-                            </button>
+                        <div class="flex items-end gap-2 p-1.5 px-2">
+                            <button onclick="window.addEmoji()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Quick Emoji"><i class="ti ti-mood-smile text-xl"></i></button>
+                            <button onclick="document.getElementById('fileAttachment').click()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Attach File"><i class="ti ti-paperclip text-xl"></i></button>
+                            <input type="file" id="fileAttachment" class="hidden">
+
+                            <div class="flex-1 min-w-0 bg-transparent py-1">
+                                <div id="richEditor" class="w-full"></div>
+                            </div>
+
+                            <button onclick="window.showScheduleModal()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Schedule"><i class="ti ti-clock text-xl"></i></button>
+                            <button id="sendBtn" class="bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent-hover)] shadow-md transition-colors h-[38px] w-[46px] flex items-center justify-center mb-0.5"><i class="ti ti-send text-lg"></i></button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Right Sidebar: Tasks -->
-            <div class="w-[450px] border-l flex flex-col z-20 shadow-sm hidden md:flex bg-gray-50 border-gray-200">
-                <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
-                    <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="fa-solid fa-filter text-[var(--accent)]"></i> Task Filters</h3>
-                    <select id="taskFilter" onchange="window.toggleDateFilter()" class="text-xs px-2 py-2 rounded-lg border border-gray-200 font-medium text-gray-700 bg-gray-50 shadow-sm outline-none cursor-pointer w-full focus:ring-2 focus:ring-[var(--accent)] transition-all">
-                        <option value="all">All Tasks</option>
-                        <option value="today">Today</option>
-                        <option value="pending">Pending</option>
-                        <option value="completed">Completed</option>
-                        <option value="allotted_by_me">Allotted by Me</option>
-                        <option value="allotted_to_me">Allotted to Me</option>
-                        <option value="delegated">Delegated</option>
-                        <option value="transferred">Transferred</option>
-                        <option value="date_range">Date Range</option>
-                    </select>
+            <!-- Draggable Right Sidebar: Tasks -->
+            <div id="rightSidebar" class="right-sidebar w-[450px] border-l flex flex-col z-20 shadow-sm hidden md:flex bg-gray-50 border-gray-200">
+                <div class="w-full h-full flex flex-col min-w-0"> <!-- Direction Reset Wrapper -->
+                    <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
+                        <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="fa-solid fa-filter text-[var(--accent)]"></i> Task Filters</h3>
+                        <select id="taskFilter" onchange="window.toggleDateFilter()" class="text-xs px-2 py-2 rounded-lg border border-gray-200 font-medium text-gray-700 bg-gray-50 shadow-sm outline-none cursor-pointer w-full focus:ring-2 focus:ring-[var(--accent)] transition-all">
+                            <option value="all">All Tasks</option>
+                            <option value="today">Today</option>
+                            <option value="pending">Pending</option>
+                            <option value="completed">Completed</option>
+                            <option value="allotted_by_me">Allotted by Me</option>
+                            <option value="allotted_to_me">Allotted to Me</option>
+                            <option value="delegated">Delegated</option>
+                            <option value="transferred">Transferred</option>
+                            <option value="date_range">Date Range</option>
+                        </select>
+                    </div>
+                    <div id="dateRangeFilter" class="hidden px-3 pt-2 pb-3 bg-white border-b border-gray-200 flex gap-2 items-center">
+                        <input type="date" id="filterStartDate" onchange="window.loadTasksForPanel()" class="text-xs px-2 py-1.5 rounded w-full border border-gray-300 bg-gray-50 outline-none focus:border-[var(--accent)]">
+                        <span class="text-[10px] font-bold text-gray-400">TO</span>
+                        <input type="date" id="filterEndDate" onchange="window.loadTasksForPanel()" class="text-xs px-2 py-1.5 rounded w-full border border-gray-300 bg-gray-50 outline-none focus:border-[var(--accent)]">
+                    </div>
+                    <div id="tasksPanel" class="flex-1 overflow-y-auto p-4 bg-gray-50"></div>
                 </div>
-                <div id="dateRangeFilter" class="hidden px-3 pt-2 pb-3 bg-white border-b border-gray-200 flex gap-2 items-center">
-                    <input type="date" id="filterStartDate" onchange="window.loadTasksForPanel()" class="text-xs px-2 py-1.5 rounded w-full border border-gray-300 bg-gray-50 outline-none focus:border-[var(--accent)]">
-                    <span class="text-[10px] font-bold text-gray-400">TO</span>
-                    <input type="date" id="filterEndDate" onchange="window.loadTasksForPanel()" class="text-xs px-2 py-1.5 rounded w-full border border-gray-300 bg-gray-50 outline-none focus:border-[var(--accent)]">
-                </div>
-                <div id="tasksPanel" class="flex-1 overflow-y-auto p-4 bg-gray-50"></div>
             </div>
         </div>
 
@@ -258,11 +267,25 @@ window.renderMainApp = function() {
         </div>
     `;
     
+    // CUSTOM QUILL INITIALIZATION WITH COLORS
     window.quillEditor = new Quill('#richEditor', { 
         theme: 'snow', 
         placeholder: 'Type a message...', 
-        modules: { toolbar: [['bold','italic','underline','strike'], [{'list': 'ordered'}, [{'list': 'bullet'}]], ['clean']] } 
+        modules: { 
+            toolbar: {
+                container: [
+                    ['bold','italic','underline','strike'], 
+                    [{ 'color': ['#800000', '#006400', '#00008b'] }], // Maroon, Green, Blue
+                    [{'list': 'ordered'}, {'list': 'bullet'}], 
+                    ['clean']
+                ]
+            }
+        } 
     });
+    
+    // Append the auto-generated toolbar into our styled wrapper
+    const toolbar = document.querySelector('.ql-toolbar');
+    document.getElementById('toolbar-container').appendChild(toolbar);
 
     window.quillEditor.root.addEventListener('keydown', (e) => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); window.sendMessage(); } });
     document.getElementById('sendBtn').onclick = window.sendMessage;
@@ -400,7 +423,6 @@ window.saveReminder = async function() {
     window.closeReminderModal(); 
 }
 
-// FIXED: Optimistic UI Toggling with 3D Maroon Pill Styling
 window.toggleBookmark = async function(mid) { 
     window.closeDropdowns();
     const btn = document.querySelector(`#row-${mid} .act-btn[onclick*="toggleBookmark"]`);
@@ -554,48 +576,56 @@ window.loadChatsList = async function() {
     });
 }
 
-// FIXED: Capture parent message ID and pass it to loadMessages for auto-scrolling
+// FIXED: Optimistic UI lock to prevent scroll jumping on new message
 window.sendMessage = async function() {
     let text = window.quillEditor.root.innerHTML.trim();
     text = text.replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
     if (!text) return;
     
+    const sendBtn = document.getElementById('sendBtn');
+    if(sendBtn) sendBtn.innerHTML = '<i class="ti ti-loader fa-spin text-lg"></i>';
+
     let payload = { room_id: window.currentRoom, sender_id: window.currentUser.id, text, created_at: new Date().toISOString() };
-    let repliedTo = null;
     if (window.currentlyReplyingTo) {
         payload.parent_message_id = window.currentlyReplyingTo;
-        repliedTo = window.currentlyReplyingTo;
+        window.pendingScrollId = window.currentlyReplyingTo; // Lock scroll to parent
+    } else {
+        window.pendingScrollId = 'BOTTOM'; // Lock scroll to bottom
     }
     
     await sb.from('messages').insert(payload);
     window.quillEditor.root.innerHTML = '';
     window.cancelReply();
-    window.loadMessages(repliedTo);
+    if(sendBtn) sendBtn.innerHTML = '<i class="ti ti-send text-lg"></i>';
 }
 
-// FIXED: Fetches bookmarks and receives the scrollToId to snap the user directly to their new reply
-window.loadMessages = async function(scrollToId = null) {
+window.loadMessages = async function() {
     const {data: msgs} = await sb.from('messages').select('*, profiles(full_name, email)').eq('room_id', window.currentRoom).order('created_at', {ascending: true});
     
-    // Fetch user bookmarks for state mapping
     const {data: bms} = await sb.from('bookmarks').select('message_id').eq('user_id', window.currentUser.id);
     window.bookmarkedSet = new Set(bms?.map(b => b.message_id) || []);
 
+    const c = document.getElementById('messagesContainer');
+    const isNearBottom = c ? (c.scrollHeight - c.scrollTop - c.clientHeight < 150) : false;
+
     window.renderMessages(msgs || []);
     window.applyFilters();
-    const c = document.getElementById('messagesContainer');
+    
     if(c) {
         setTimeout(() => { 
-            if (scrollToId) {
-                const row = document.getElementById(`row-${scrollToId}`);
+            if (window.pendingScrollId && window.pendingScrollId !== 'BOTTOM') {
+                const row = document.getElementById(`row-${window.pendingScrollId}`);
                 if (row) {
                     row.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     row.classList.add('bg-yellow-50', 'transition-colors', 'duration-500');
                     setTimeout(() => row.classList.remove('bg-yellow-50', 'transition-colors', 'duration-500'), 1500);
-                } else {
-                    c.scrollTop = c.scrollHeight;
                 }
-            } else {
+                window.pendingScrollId = null;
+            } else if (window.pendingScrollId === 'BOTTOM') {
+                c.scrollTop = c.scrollHeight;
+                window.pendingScrollId = null;
+            } else if (isNearBottom) {
+                // Only auto-scroll to bottom if user is already there
                 c.scrollTop = c.scrollHeight; 
             }
         }, 100); 
@@ -675,7 +705,6 @@ window.renderMessages = function(messages) {
 
         let repliesHTML = '';
         if (replyCount > 0) {
-            // FIXED: Expanded by default
             repliesHTML = `
             <div class="b-divider"></div>
             <div class="replies-wrap" id="rw-${msg.id}" style="display:flex; flex-direction:column; gap:2px;">

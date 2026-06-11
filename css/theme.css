@@ -25,6 +25,7 @@
     --sent-bg: #24303f; 
     --received-bg: #1a232e;
     --chat-pattern: none;
+    --accent-secondary: #34d399; /* Mint green for success text */
 }
 
 body, input, select, textarea, button, .jira-card { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
@@ -253,3 +254,71 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 [data-theme="dark"] .replies-label { color: var(--text-secondary); }
 [data-theme="dark"] .reply-item { border-left: 2px solid var(--border-color); }
 [data-theme="dark"] .reply-num { background: var(--border-color); color: var(--text-primary); }
+
+/* =========================================
+   TASK PANEL NORMALIZER (v1.38.0)
+========================================= */
+
+/* Normalize Base Card Backgrounds */
+[data-theme="dark"] #tasksPanel .bg-white,
+[data-theme="dark"] .task-card { 
+    background-color: var(--bg-sidebar) !important; 
+    border-color: var(--border-color) !important;
+}
+
+/* Force Light Theme Text to Soft Slate */
+[data-theme="dark"] #tasksPanel .text-gray-900,
+[data-theme="dark"] #tasksPanel .text-gray-800,
+[data-theme="dark"] #tasksPanel .text-gray-700 { 
+    color: var(--text-primary) !important; 
+}
+
+[data-theme="dark"] #tasksPanel .text-gray-600,
+[data-theme="dark"] #tasksPanel .text-gray-500 { 
+    color: var(--text-secondary) !important; 
+}
+
+/* Normalize Hardcoded Green text to soft Mint */
+[data-theme="dark"] #tasksPanel .text-green-800,
+[data-theme="dark"] #tasksPanel .text-green-700,
+[data-theme="dark"] #tasksPanel .text-green-600 { 
+    color: var(--accent-secondary) !important; 
+}
+
+/* Normalize Pastel Badge Backgrounds to Dark Low-Opacity Variants */
+[data-theme="dark"] #tasksPanel .bg-indigo-50,
+[data-theme="dark"] #tasksPanel .bg-blue-50 { 
+    background-color: rgba(56, 189, 248, 0.1) !important; 
+    border-color: rgba(56, 189, 248, 0.2) !important; 
+    color: var(--accent-primary) !important; 
+}
+
+[data-theme="dark"] #tasksPanel .bg-green-50 { 
+    background-color: rgba(52, 211, 153, 0.1) !important; 
+    border-color: rgba(52, 211, 153, 0.2) !important; 
+    color: var(--accent-secondary) !important; 
+}
+
+[data-theme="dark"] #tasksPanel .bg-red-50 { 
+    background-color: rgba(248, 113, 113, 0.1) !important; 
+    border-color: rgba(248, 113, 113, 0.2) !important; 
+    color: #f87171 !important; 
+}
+
+[data-theme="dark"] #tasksPanel .bg-yellow-50, 
+[data-theme="dark"] #tasksPanel .bg-orange-50 { 
+    background-color: rgba(251, 191, 36, 0.1) !important; 
+    border-color: rgba(251, 191, 36, 0.2) !important; 
+    color: #fbbf24 !important; 
+}
+
+[data-theme="dark"] #tasksPanel .bg-purple-50 { 
+    background-color: rgba(167, 139, 250, 0.1) !important; 
+    border-color: rgba(167, 139, 250, 0.2) !important; 
+    color: #a855f7 !important; 
+}
+
+/* Ensure Action Buttons align with theme */
+[data-theme="dark"] #tasksPanel button.border {
+    border-color: var(--border-color) !important;
+}

@@ -1,5 +1,5 @@
 import { sb } from './shared.js';
-import './tasks.js';
+import './tasks.js'; // Imports and binds tasks to window
 
 let messageSubscription = null;
 let taskSubscription = null;
@@ -89,6 +89,7 @@ window.renderMainApp = function() {
 
     document.getElementById('root').innerHTML = `
         <div class="flex h-full w-full bg-gray-50">
+            <!-- Left Sidebar -->
             <div class="w-80 flex flex-col border-r z-20 shadow-sm bg-white border-gray-200">
                 <div class="p-4 flex justify-between items-center border-b border-gray-200">
                     <h2 class="text-xl font-bold tracking-tight flex items-center gap-2 text-gray-800">
@@ -105,11 +106,12 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.15.0 - Custom Thread Component
+                        v1.16.0 - High Density Text Threads
                     </div>
                 </div>
             </div>
 
+            <!-- Chat Area -->
             <div class="flex-1 flex flex-col relative" style="background-color: var(--bg-chat); background-image: var(--chat-pattern); background-blend-mode: overlay;">
                 <div class="p-4 border-b z-10 flex justify-between items-center shadow-sm bg-white/95 backdrop-blur border-gray-200">
                     <div class="flex items-center gap-3">
@@ -156,6 +158,7 @@ window.renderMainApp = function() {
                 </div>
             </div>
 
+            <!-- Right Sidebar: Tasks -->
             <div class="w-[450px] border-l flex flex-col z-20 shadow-sm hidden md:flex bg-gray-50 border-gray-200">
                 <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
                     <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="fa-solid fa-filter text-[var(--accent)]"></i> Task Filters</h3>
@@ -504,7 +507,7 @@ window.loadMessages = async function() {
 }
 
 // -----------------------------------------------------------------------------
-// PREMIUM UI RENDERING CORE (BUBBLES & TREE VIEW)
+// HIGH DENSITY UI RENDERING CORE (BUBBLES & NO-BUBBLE THREADS)
 // -----------------------------------------------------------------------------
 window.renderMessages = function(messages) {
     const c = document.getElementById('messagesContainer');
@@ -537,16 +540,16 @@ window.renderMessages = function(messages) {
         const senderName = isOwn ? 'You' : window.toSentenceCase(msg.profiles?.full_name || msg.profiles?.email.split('@')[0] || 'Unknown');
         const time = window.getISTTime(msg.created_at);
         const alignClass = isOwn ? 'sent' : 'received';
-        const checkIcon = isOwn ? ' <i class="fa-solid fa-check-double text-blue-500"></i>' : '';
+        const checkIcon = isOwn ? ' <i class="fa-solid fa-check-double text-blue-500 text-[10px]"></i>' : '';
         const snippetText = window.getSnippet(msg.text);
         
-        let displayHtml = msg.text.replace(/href="secure-file:([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800 transition-colors"`);
+        let displayHtml = msg.text.replace(/href="secure-file:([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800"`);
 
         let html = `
-        <div id="msg-${msg.id}" class="msg-row ${alignClass} group/thread">
+        <div id="msg-${msg.id}" class="msg-row ${alignClass} group/thread w-full">
             <div class="msg-sender">${window.escapeHtml(senderName)}</div>
-            <div class="msg-bubble shadow-sm">
-                <div class="bubble-inner">
+            <div class="msg-bubble">
+                <div class="bubble-inner relative">
                     <div class="bubble-top-row">
                         <span class="msg-time">${time}${checkIcon}</span>
                         <button class="menu-dots" data-msg-id="${msg.id}" data-msg-text="${window.escapeHtml(msg.text)}">⋮</button>
@@ -555,53 +558,62 @@ window.renderMessages = function(messages) {
                     <div class="bubble-footer">
                         <button class="tag font-medium" onclick="window.initiateReply('${msg.id}', '${snippetText}')"><i class="fa-solid fa-reply"></i> Reply</button>
                         <div class="relative inline-block group/tagbtn">
-                            <button class="emoji-btn hover:bg-gray-100"><i class="fa-solid fa-plus"></i></button>
-                            <div class="absolute bottom-full ${isOwn ? 'right-0' : 'left-0'} mb-1 hidden group-hover/tagbtn:flex bg-white border border-gray-200 shadow-xl rounded-xl p-1.5 gap-1.5 z-50 items-center">
+                            <button class="emoji-btn hover:bg-gray-100"><i class="fa-solid fa-plus text-[10px]"></i></button>
+                            <div class="absolute bottom-full ${isOwn ? 'right-0' : 'left-0'} mb-1 hidden group-hover/tagbtn:flex bg-white border border-gray-200 shadow-xl rounded-xl p-1 gap-1 z-50 items-center">
                                 <span class="cursor-pointer hover:bg-gray-100 p-1 rounded-lg text-sm" onclick="window.showCenterToast('👍 Applied', 'fa-regular fa-face-smile', 'text-yellow-500')">👍</span>
                                 <span class="cursor-pointer hover:bg-gray-100 p-1 rounded-lg text-sm" onclick="window.showCenterToast('❤️ Applied', 'fa-solid fa-heart', 'text-red-500')">❤️</span>
-                                <div class="w-px h-4 bg-gray-200 mx-1"></div>
-                                <span class="cursor-pointer bg-green-50 hover:bg-green-100 text-green-700 px-2 py-1 rounded-md text-[10px] font-bold border border-green-200" onclick="window.showCenterToast('Tag Applied: Thanks', 'fa-solid fa-tag', 'text-green-500')">Thanks</span>
-                                <span class="cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-1 rounded-md text-[10px] font-bold border border-blue-200" onclick="window.showCenterToast('Tag Applied: Noted', 'fa-solid fa-tag', 'text-blue-500')">Noted</span>
+                                <div class="w-px h-3 bg-gray-200 mx-0.5"></div>
+                                <span class="cursor-pointer bg-green-50 hover:bg-green-100 text-green-700 px-2 py-0.5 rounded text-[9px] font-bold border border-green-200" onclick="window.showCenterToast('Tag Applied: Thanks', 'fa-solid fa-tag', 'text-green-500')">Thanks</span>
+                                <span class="cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[9px] font-bold border border-blue-200" onclick="window.showCenterToast('Tag Applied: Noted', 'fa-solid fa-tag', 'text-blue-500')">Noted</span>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>`;
+            </div>`;
         
+        // NO-BUBBLE TEXT REPLIES WITH PRECISE CONNECTORS
         if (replies[msg.id] && replies[msg.id].length > 0) {
-            html += `<div class="thread-container">`;
+            
+            // Container for all replies attached to this parent
+            html += `<div class="w-full flex flex-col ${isOwn ? 'items-end pr-4' : 'items-start pl-4'} mt-1 relative">`;
+            
+            // The Vertical Spine drops from the bottom of the parent bubble
+            const spineSide = isOwn ? 'right-6' : 'left-6';
+            html += `<div class="absolute top-0 bottom-2 ${spineSide} w-[2px] bg-gray-300 z-0"></div>`;
+
             replies[msg.id].forEach((child, idx) => { 
                 const cIsOwn = child.sender_id === window.currentUser.id;
                 const cName = cIsOwn ? 'You' : window.toSentenceCase(child.profiles?.full_name || child.profiles?.email.split('@')[0] || 'Unknown');
                 const cTime = window.getISTTime(child.created_at);
-                const cAlignClass = cIsOwn ? 'sent' : 'received';
-                const cCheckIcon = cIsOwn ? ' <i class="fa-solid fa-check-double text-blue-500"></i>' : '';
                 let cDisplayHtml = child.text.replace(/href="secure-file:([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium"`);
                 const cSnippet = window.getSnippet(child.text);
                 
+                // The Horizontal Branch touching the serial number
+                const branchClass = isOwn ? `absolute top-[10px] right-6 w-4 h-[2px] bg-gray-300` : `absolute top-[10px] left-6 w-4 h-[2px] bg-gray-300`;
+
                 html += `
-                <div class="thread-item" data-serial="${idx + 1}.">
-                    <hr class="connector-line">
-                    <div id="msg-${child.id}" class="msg-row ${cAlignClass}">
-                        <div class="msg-sender">${window.escapeHtml(cName)}</div>
-                        <div class="msg-bubble shadow-sm">
-                            <div class="bubble-inner">
-                                <div class="bubble-top-row">
-                                    <span class="msg-time">${cTime}${cCheckIcon}</span>
-                                    <button class="menu-dots" data-msg-id="${child.id}" data-msg-text="${window.escapeHtml(child.text)}">⋮</button>
-                                </div>
-                                <div class="msg-text">${cDisplayHtml}</div>
-                                <div class="bubble-footer">
-                                    <button class="tag font-medium" onclick="window.initiateReply('${msg.id}', '${cSnippet}')"><i class="fa-solid fa-reply"></i> Reply</button>
-                                    <div class="relative inline-block group/tagbtn">
-                                        <button class="emoji-btn hover:bg-gray-100"><i class="fa-solid fa-plus"></i></button>
-                                        <div class="absolute bottom-full ${cIsOwn ? 'right-0' : 'left-0'} mb-1 hidden group-hover/tagbtn:flex bg-white border border-gray-200 shadow-xl rounded-xl p-1.5 gap-1.5 z-50 items-center">
-                                            <span class="cursor-pointer hover:bg-gray-100 p-1 rounded-lg text-sm" onclick="window.showCenterToast('👍 Applied', 'fa-regular fa-face-smile', 'text-yellow-500')">👍</span>
-                                            <div class="w-px h-4 bg-gray-200 mx-1"></div>
-                                            <span class="cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-1 rounded-md text-[10px] font-bold border border-blue-200" onclick="window.showCenterToast('Tag Applied: Noted', 'fa-solid fa-tag', 'text-blue-500')">Noted</span>
-                                        </div>
-                                    </div>
+                <div class="relative w-full max-w-[85%] flex flex-col group/child mb-2 z-10 ${isOwn ? 'items-end' : 'items-start'}">
+                    ${branchClass}
+                    
+                    <div class="flex flex-col ${isOwn ? 'mr-10 items-end text-right' : 'ml-10 items-start text-left'} w-full">
+                        <div class="flex items-center gap-1.5 mb-0.5">
+                            <span class="text-[10px] font-black text-[var(--accent)]">${idx + 1}.</span>
+                            <span class="text-[10px] font-bold text-gray-700">${window.escapeHtml(cName)}</span>
+                            <span class="text-[8px] text-gray-400 ml-1">${cTime}</span>
+                        </div>
+                        <div class="text-[13px] text-gray-900 leading-tight w-full">${cDisplayHtml}</div>
+                        
+                        <!-- Child Reactions (Hover) -->
+                        <div class="flex items-center gap-2 mt-1 opacity-0 group-hover/child:opacity-100 transition-opacity">
+                            <button class="text-[9px] font-bold text-gray-500 hover:text-[var(--accent)]" onclick="window.initiateReply('${msg.id}', '${cSnippet}')"><i class="fa-solid fa-reply"></i> Reply</button>
+                            <div class="relative inline-block group/tagbtn">
+                                <button class="text-[9px] text-gray-500 hover:text-[var(--accent)]"><i class="fa-solid fa-plus"></i> Add Tag</button>
+                                <div class="absolute bottom-full ${isOwn ? 'right-0' : 'left-0'} mb-1 hidden group-hover/tagbtn:flex bg-white border border-gray-200 shadow-xl rounded-xl p-1 gap-1 z-50 items-center">
+                                    <span class="cursor-pointer hover:bg-gray-100 p-1 rounded-lg text-sm" onclick="window.showCenterToast('👍 Applied', 'fa-regular fa-face-smile', 'text-yellow-500')">👍</span>
+                                    <span class="cursor-pointer hover:bg-gray-100 p-1 rounded-lg text-sm" onclick="window.showCenterToast('❤️ Applied', 'fa-solid fa-heart', 'text-red-500')">❤️</span>
+                                    <div class="w-px h-3 bg-gray-200 mx-0.5"></div>
+                                    <span class="cursor-pointer bg-green-50 hover:bg-green-100 text-green-700 px-2 py-0.5 rounded text-[9px] font-bold border border-green-200" onclick="window.showCenterToast('Tag Applied: Thanks', 'fa-solid fa-tag', 'text-green-500')">Thanks</span>
+                                    <span class="cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[9px] font-bold border border-blue-200" onclick="window.showCenterToast('Tag Applied: Noted', 'fa-solid fa-tag', 'text-blue-500')">Noted</span>
                                 </div>
                             </div>
                         </div>
@@ -610,6 +622,7 @@ window.renderMessages = function(messages) {
             });
             html += `</div>`;
         }
+        html += `</div>`;
         return html;
     }
 

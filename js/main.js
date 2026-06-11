@@ -187,7 +187,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.28.2 - Full Code Restored
+                        v1.30.0 - Final Version
                     </div>
                 </div>
             </div>
@@ -428,6 +428,19 @@ window.renderMainApp = function() {
     if (typeof window.loadTasksForPanel === 'function') {
         window.loadTasksForPanel(); 
     }
+
+    // FIXED: Global Mutation Observer to Force-Collapse Task Trails by Default
+    const tasksPanel = document.getElementById('tasksPanel');
+    if (tasksPanel) {
+        new MutationObserver(() => {
+            document.querySelectorAll('[id^="trail-"], [id^="task-trail-"]').forEach(el => {
+                if (el.dataset.initialized !== 'true') {
+                    el.style.setProperty('display', 'none', 'important');
+                    el.dataset.initialized = 'true';
+                }
+            });
+        }).observe(tasksPanel, { childList: true, subtree: true });
+    }
 };
 
 window.insertEmoji = function(char) {
@@ -518,14 +531,21 @@ window.toggleReplies = function(id) {
     if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
 }
 
+// FIXED: Task Trail UI Toggles using inline overrides
 window.toggleTaskTrail = function(id) {
     const el = document.getElementById(id);
-    if (el) el.classList.toggle('active');
-}
-window.toggleTrail = function(id) {
-    const el = document.getElementById(id);
-    if (el) el.classList.toggle('active');
-}
+    if (!el) return;
+    const isHidden = el.style.display === 'none' || window.getComputedStyle(el).display === 'none';
+    if (isHidden) {
+        el.style.removeProperty('display');
+        if(window.getComputedStyle(el).display === 'none') {
+             el.style.setProperty('display', 'block', 'important');
+        }
+    } else {
+        el.style.setProperty('display', 'none', 'important');
+    }
+};
+window.toggleTrail = window.toggleTaskTrail; // Maps both naming conventions
 
 window.renderMessages = function(messages) {
     const c = document.getElementById('chatShellContainer');
@@ -836,7 +856,6 @@ window.openTopPanel = async function(type) {
     document.querySelector('.chat-area').appendChild(panel);
 }
 
-// RESTORED: Schedule Control Functions
 window.deleteScheduled = async function(id) {
     await sb.from('scheduled_messages').delete().eq('id', id);
     document.querySelectorAll('.top-panel-dropdown').forEach(m => m.remove());
@@ -864,7 +883,6 @@ window.saveScheduledMessage = async function() {
     window.showCenterToast('Message Scheduled Successfully!');
 }
 
-// RESTORED: Chat List Generator
 window.loadChatsList = async function() {
     const groups = ['general', 'math', 'science', 'leadership'];
     const {data: users} = await sb.from('profiles').select('id, email, full_name');

@@ -178,12 +178,6 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
     100% { opacity: 0; box-shadow: 0 0 0 0 var(--accent); }
 }
 
-[data-theme="dark"] .bg-white { background-color: var(--bg-sidebar) !important; color: var(--text-primary) !important; }
-[data-theme="dark"] .bg-gray-50 { background-color: var(--bg-body) !important; color: var(--text-primary) !important; }
-[data-theme="dark"] .text-gray-800 { color: #f8fafc !important; }
-[data-theme="dark"] .text-gray-700 { color: #e2e8f0 !important; }
-[data-theme="dark"] .text-gray-500 { color: #94a3b8 !important; }
-[data-theme="dark"] .border-gray-200, [data-theme="dark"] .border-gray-300 { border-color: var(--border-color) !important; }
 [data-theme="dark"] .bubble.sent { color: #fff; }
 [data-theme="dark"] .bubble.rcvd { color: #fff; }
 [data-theme="dark"] .bubble.sent .b-name { color: #ffccd5; }

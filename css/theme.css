@@ -205,7 +205,7 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 }
 
 /* =========================================
-   STRICT GITHUB DARK MODE OVERRIDES (v1.39.0)
+   STRICT GITHUB DARK MODE OVERRIDES
 ========================================= */
 
 [data-theme="dark"] .bg-white { background-color: var(--bg-sidebar) !important; color: var(--text-primary) !important; }
@@ -225,7 +225,7 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 [data-theme="dark"] .b-avatar.sent-av { background: var(--accent); color: #ffffff; }
 [data-theme="dark"] .b-avatar.rcvd-av { background: var(--border-color); color: var(--text-primary); }
 
-/* Typography Overrides (Eradicate Maroon) */
+/* Typography Overrides */
 [data-theme="dark"] .bubble.sent .b-name,
 [data-theme="dark"] .bubble.sent .b-subject,
 [data-theme="dark"] .bubble.rcvd .b-name,
@@ -260,14 +260,12 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
    TASK PANEL NORMALIZER - GITHUB EDITION
 ========================================= */
 
-/* Normalize Base Card Backgrounds to GitHub Panels */
 [data-theme="dark"] #tasksPanel .bg-white,
 [data-theme="dark"] .task-card { 
     background-color: #161b22 !important; 
     border-color: var(--border-color) !important;
 }
 
-/* Force Text to GitHub White/Grey */
 [data-theme="dark"] #tasksPanel .text-gray-900,
 [data-theme="dark"] #tasksPanel .text-gray-800,
 [data-theme="dark"] #tasksPanel .text-gray-700 { 
@@ -279,12 +277,10 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
     color: var(--text-secondary) !important; 
 }
 
-/* Force Icons to GitHub Grey */
 [data-theme="dark"] #tasksPanel i {
     color: var(--text-secondary);
 }
 
-/* Flatten Badges to GitHub Secondary Buttons */
 [data-theme="dark"] #tasksPanel .bg-indigo-50,
 [data-theme="dark"] #tasksPanel .bg-blue-50,
 [data-theme="dark"] #tasksPanel .bg-green-50,
@@ -308,7 +304,6 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
     color: var(--text-secondary) !important;
 }
 
-/* Sparse Accents for Specific Text States */
 [data-theme="dark"] #tasksPanel .text-red-600,
 [data-theme="dark"] #tasksPanel .text-red-700 {
     color: var(--accent-danger) !important;
@@ -319,13 +314,26 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
     color: var(--accent-success) !important;
 }
 
-/* Ensure Primary Buttons Look Like Primary Actions */
 [data-theme="dark"] #tasksPanel button.bg-blue-600 {
-    background-color: var(--accent-success) !important; /* GitHub standard for primary forms */
+    background-color: var(--accent-success) !important; 
     border-color: rgba(240, 246, 252, 0.1) !important;
     color: #ffffff !important;
 }
 
 [data-theme="dark"] #tasksPanel button.bg-blue-600:hover {
     background-color: #2ea043 !important;
+}
+
+/* =========================================
+   THE WISE TRAIL TOGGLE (v1.45.0)
+========================================= */
+
+/* Default State: Hidden absolutely */
+[id^="trail-"], [id^="task-trail-"] {
+    display: none !important;
+}
+
+/* Expanded State: Visible absolutely via UI logic */
+[id^="trail-"].show-trail, [id^="task-trail-"].show-trail {
+    display: block !important;
 }

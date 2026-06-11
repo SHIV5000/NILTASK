@@ -87,21 +87,17 @@ window.closeDropdowns = function() {
     document.querySelectorAll('.bubble-dropdown').forEach(d => d.classList.remove('open'));
 };
 
+/* CLASS-BASED TOGGLE LOGIC (v1.45.0) */
 window.toggleTaskTrail = function(id) {
-    let el = document.getElementById(id) || document.getElementById('trail-' + id) || document.getElementById('task-trail-' + id);
-    if (!el) return;
-
-    // Extract base ID cleanly
     let baseId = String(id).replace('task-trail-', '').replace('trail-', '');
+    let el = document.getElementById('trail-' + baseId) || document.getElementById('task-trail-' + baseId) || document.getElementById(baseId);
 
     if (window.expandedTrails.has(baseId)) {
         window.expandedTrails.delete(baseId);
-        el.classList.add('hidden'); // Force Tailwind obedience
-        el.style.setProperty('display', 'none', 'important');
+        if (el) el.classList.remove('show-trail');
     } else {
         window.expandedTrails.add(baseId);
-        el.classList.remove('hidden'); // Free the container from Tailwind's grip
-        el.style.setProperty('display', 'block', 'important');
+        if (el) el.classList.add('show-trail');
     }
 };
 window.toggleTrail = window.toggleTaskTrail;

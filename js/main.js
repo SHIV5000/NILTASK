@@ -105,7 +105,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.17.1 - Full-Width Layout Update
+                        v1.18.0 - Reaction Tag Popovers
                     </div>
                 </div>
             </div>
@@ -123,8 +123,8 @@ window.renderMainApp = function() {
                     </div>
                 </div>
                 
-                <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col">
-                    <div class="w-full bg-transparent border-none" id="chatShellContainer"></div>
+                <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col items-center">
+                    <div class="chat-shell w-full max-w-full bg-transparent border-none" id="chatShellContainer"></div>
                 </div>
                 
                 <div class="flex flex-col relative bg-white border-t border-gray-200 p-3 px-5">
@@ -432,10 +432,7 @@ window.showScheduleModal = function() {
     document.getElementById('scheduleModal').classList.add('flex');
 }
 
-window.closeScheduleModal = function() {
-    document.getElementById('scheduleModal').classList.add('hidden');
-    document.getElementById('scheduleModal').classList.remove('flex');
-}
+window.closeScheduleModal = function() { document.getElementById('scheduleModal').classList.add('hidden'); document.getElementById('scheduleModal').classList.remove('flex'); }
 
 window.saveScheduledMessage = async function() {
     const time = document.getElementById('scheduleDateTime').value;
@@ -624,8 +621,33 @@ window.renderMessages = function(messages) {
             
             <div class="b-text">${displayHtml}</div>
             
-            <div class="b-footer">
-              <button class="e-add" title="Add reaction"><i class="ti ti-mood-smile"></i></button>
+            <div class="b-footer relative">
+              
+              <div class="relative inline-block group/reaction z-50">
+                  <button class="e-add" title="Add reaction"><i class="ti ti-mood-smile"></i></button>
+                  <div class="absolute bottom-full ${isSent ? 'right-0' : 'left-0'} mb-2 hidden group-hover/reaction:flex flex-col bg-white border border-gray-200 shadow-2xl rounded-xl p-3 min-w-[280px] cursor-default z-[100]">
+                      <div class="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Reactions</div>
+                      <div class="flex flex-wrap gap-1 border-b border-gray-100 pb-2 mb-2">
+                          <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.showCenterToast('👍 Reacted', 'fa-regular fa-face-smile', 'text-yellow-500')">👍</span>
+                          <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.showCenterToast('❤️ Reacted', 'fa-solid fa-heart', 'text-red-500')">❤️</span>
+                          <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.showCenterToast('😂 Reacted', 'fa-regular fa-face-laugh-squint', 'text-yellow-500')">😂</span>
+                          <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.showCenterToast('😮 Reacted', 'fa-regular fa-face-surprise', 'text-yellow-500')">😮</span>
+                          <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.showCenterToast('😢 Reacted', 'fa-regular fa-face-sad-tear', 'text-blue-500')">😢</span>
+                          <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.showCenterToast('🙏 Reacted', 'fa-solid fa-hands-praying', 'text-yellow-500')">🙏</span>
+                          <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.showCenterToast('🎉 Reacted', 'fa-solid fa-champagne-glasses', 'text-pink-500')">🎉</span>
+                          <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.showCenterToast('🔥 Reacted', 'fa-solid fa-fire', 'text-orange-500')">🔥</span>
+                      </div>
+                      <div class="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Quick Tags</div>
+                      <div class="flex flex-wrap gap-2">
+                          <span class="cursor-pointer bg-green-50 hover:bg-green-100 text-green-700 px-3 py-1 rounded-md text-[11px] font-bold border border-green-200 shadow-sm" onclick="window.showCenterToast('Tag: Thank You', 'fa-solid fa-tag', 'text-green-500')">Thank You</span>
+                          <span class="cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1 rounded-md text-[11px] font-bold border border-blue-200 shadow-sm" onclick="window.showCenterToast('Tag: Noted', 'fa-solid fa-tag', 'text-blue-500')">Noted</span>
+                          <span class="cursor-pointer bg-purple-50 hover:bg-purple-100 text-purple-700 px-3 py-1 rounded-md text-[11px] font-bold border border-purple-200 shadow-sm" onclick="window.showCenterToast('Tag: Copied', 'fa-solid fa-tag', 'text-purple-500')">Copied</span>
+                          <span class="cursor-pointer bg-orange-50 hover:bg-orange-100 text-orange-700 px-3 py-1 rounded-md text-[11px] font-bold border border-orange-200 shadow-sm" onclick="window.showCenterToast('Tag: Yes Sir', 'fa-solid fa-tag', 'text-orange-500')">Yes Sir</span>
+                          <span class="cursor-pointer bg-pink-50 hover:bg-pink-100 text-pink-700 px-3 py-1 rounded-md text-[11px] font-bold border border-pink-200 shadow-sm" onclick="window.showCenterToast('Tag: Yes Madam', 'fa-solid fa-tag', 'text-pink-500')">Yes Madam</span>
+                      </div>
+                  </div>
+              </div>
+
             </div>
             
             <div class="b-actions">

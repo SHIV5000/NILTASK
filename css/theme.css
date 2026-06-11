@@ -9,7 +9,6 @@
     --border-color: rgba(134, 150, 160, 0.15);
     --chat-pattern: url("https://www.transparenttextures.com/patterns/cubes.png");
     
-    /* Strict Chat Colors */
     --sent-bg: #fff0f0; 
     --received-bg: #ffffff;
 }
@@ -22,7 +21,7 @@
     --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
     --border-color: rgba(255,255,255,0.1);
-    --sent-bg: #3b0717; /* Deep Maroon */
+    --sent-bg: #3b0717; 
     --received-bg: #1e293b;
     --chat-pattern: none;
 }
@@ -42,23 +41,23 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 .drag-resizer:hover, .drag-resizer:active { background: var(--accent); opacity: 0.5; }
 
 .sidebar-glass { background: var(--bg-sidebar); backdrop-filter: blur(10px); border-color: var(--border-color); }
-.chat-area { background-color: var(--bg-chat); background-image: var(--chat-pattern); background-blend-mode: overlay; position: relative; z-index: 1;}
+.chat-area { background-color: var(--bg-chat); background-blend-mode: overlay; position: relative; z-index: 1;}
 
-/* BACKGROUND WATERMARK ENGINE */
+/* REPEATING SVG WATERMARK ENGINE */
 .chat-area::before {
-    content: attr(data-watermark);
+    content: '';
     position: absolute;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%) rotate(-30deg);
-    font-size: clamp(4rem, 10vw, 10rem);
-    font-weight: 800;
-    color: rgba(0, 0, 0, 0.03);
-    white-space: nowrap;
+    inset: 0;
+    background-image: var(--wm-light);
+    background-repeat: repeat;
+    background-size: 300px 200px;
     pointer-events: none;
     z-index: 0;
     user-select: none;
 }
-[data-theme="dark"] .chat-area::before { color: rgba(255, 255, 255, 0.02); }
+[data-theme="dark"] .chat-area::before {
+    background-image: var(--wm-dark);
+}
 
 .badge { padding: 4px 10px; border-radius: 9999px; font-weight: 700; font-size: 11px; letter-spacing: 0.5px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid rgba(0,0,0,0.05); }
 .badge-pending { background-color: #fef9c3; color: #854d0e; }

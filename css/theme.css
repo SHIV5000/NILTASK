@@ -12,20 +12,21 @@
     --received-bg: #ffffff;
 }
 
-/* Retina-Friendly Slate Dark Palette */
+/* Strict GitHub Dark Palette */
 [data-theme="dark"] {
-    --bg-body: #121820;
-    --bg-sidebar: #1a232e;
-    --bg-chat: #121820;
-    --text-primary: #e2e8f0;
-    --text-secondary: #94a3b8;
-    --border-color: #1e293b;
-    --accent: #38bdf8;
-    --accent-hover: #7dd3fc;
-    --sent-bg: #24303f; 
-    --received-bg: #1a232e;
+    --bg-body: #0d1117;
+    --bg-sidebar: #010409;
+    --bg-chat: #0d1117;
+    --text-primary: #e6edf3;
+    --text-secondary: #8d96a0;
+    --border-color: #30363d;
+    --accent: #2f81f7;
+    --accent-hover: #1f6feb;
+    --sent-bg: #161b22; 
+    --received-bg: #0d1117;
     --chat-pattern: none;
-    --accent-secondary: #34d399; /* Mint green for success text */
+    --accent-success: #238636;
+    --accent-danger: #da3633;
 }
 
 body, input, select, textarea, button, .jira-card { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
@@ -39,7 +40,7 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 }
 
 [data-theme="dark"] ::selection {
-    background-color: rgba(56, 189, 248, 0.25);
+    background-color: rgba(47, 129, 247, 0.3);
     color: var(--text-primary);
 }
 
@@ -204,7 +205,7 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 }
 
 /* =========================================
-   RETINA-FRIENDLY SLATE DARK MODE OVERRIDES
+   STRICT GITHUB DARK MODE OVERRIDES (v1.39.0)
 ========================================= */
 
 [data-theme="dark"] .bg-white { background-color: var(--bg-sidebar) !important; color: var(--text-primary) !important; }
@@ -220,11 +221,11 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 [data-theme="dark"] .b-header { border-bottom-color: var(--border-color); }
 [data-theme="dark"] .chat-shell { background: transparent; }
 
-/* Purge Maroon: Avatars */
+/* Avatars */
 [data-theme="dark"] .b-avatar.sent-av { background: var(--accent); color: #ffffff; }
 [data-theme="dark"] .b-avatar.rcvd-av { background: var(--border-color); color: var(--text-primary); }
 
-/* Purge Maroon: Typography */
+/* Typography Overrides (Eradicate Maroon) */
 [data-theme="dark"] .bubble.sent .b-name,
 [data-theme="dark"] .bubble.sent .b-subject,
 [data-theme="dark"] .bubble.rcvd .b-name,
@@ -232,41 +233,41 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 [data-theme="dark"] .reply-name,
 [data-theme="dark"] .reply-badge { color: var(--accent); }
 
-/* Purge Maroon: Buttons & Interactions */
+/* Buttons & Interactions */
 [data-theme="dark"] .dot-btn:hover,
 [data-theme="dark"] .dd-item:hover,
-[data-theme="dark"] .act-btn:hover { background: rgba(56, 189, 248, 0.15); color: var(--accent); }
+[data-theme="dark"] .act-btn:hover { background: rgba(47, 129, 247, 0.15); color: var(--accent); }
 [data-theme="dark"] .e-add:hover { border-color: var(--accent); color: var(--accent); }
 
-/* Purge Maroon: Bookmarks */
+/* Bookmarks */
 [data-theme="dark"] .act-btn.bookmarked {
-    background: var(--accent); color: #121820 !important;
+    background: var(--accent); color: #ffffff !important;
     box-shadow: none; border: 1px solid var(--accent-hover); transform: translateY(-1px);
 }
 
-/* Purge Maroon: Reactions */
-[data-theme="dark"] .e-chip { background: var(--bg-sidebar); border-color: var(--border-color); color: var(--text-primary); }
-[data-theme="dark"] .bubble.sent .e-chip { background: var(--bg-body); border-color: var(--border-color); color: var(--text-secondary); }
+/* Reactions */
+[data-theme="dark"] .e-chip { background: #21262d; border-color: var(--border-color); color: var(--text-primary); }
+[data-theme="dark"] .bubble.sent .e-chip { background: #161b22; border-color: var(--border-color); color: var(--text-secondary); }
 
-/* Purge Maroon: Reply Trails */
-[data-theme="dark"] .reply-badge { background: rgba(56, 189, 248, 0.15); }
+/* Reply Trails */
+[data-theme="dark"] .reply-badge { background: rgba(47, 129, 247, 0.15); }
 [data-theme="dark"] .b-divider { background: var(--border-color); }
 [data-theme="dark"] .replies-label { color: var(--text-secondary); }
 [data-theme="dark"] .reply-item { border-left: 2px solid var(--border-color); }
 [data-theme="dark"] .reply-num { background: var(--border-color); color: var(--text-primary); }
 
 /* =========================================
-   TASK PANEL NORMALIZER (v1.38.0)
+   TASK PANEL NORMALIZER - GITHUB EDITION
 ========================================= */
 
-/* Normalize Base Card Backgrounds */
+/* Normalize Base Card Backgrounds to GitHub Panels */
 [data-theme="dark"] #tasksPanel .bg-white,
 [data-theme="dark"] .task-card { 
-    background-color: var(--bg-sidebar) !important; 
+    background-color: #161b22 !important; 
     border-color: var(--border-color) !important;
 }
 
-/* Force Light Theme Text to Soft Slate */
+/* Force Text to GitHub White/Grey */
 [data-theme="dark"] #tasksPanel .text-gray-900,
 [data-theme="dark"] #tasksPanel .text-gray-800,
 [data-theme="dark"] #tasksPanel .text-gray-700 { 
@@ -278,47 +279,53 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
     color: var(--text-secondary) !important; 
 }
 
-/* Normalize Hardcoded Green text to soft Mint */
-[data-theme="dark"] #tasksPanel .text-green-800,
-[data-theme="dark"] #tasksPanel .text-green-700,
-[data-theme="dark"] #tasksPanel .text-green-600 { 
-    color: var(--accent-secondary) !important; 
+/* Force Icons to GitHub Grey */
+[data-theme="dark"] #tasksPanel i {
+    color: var(--text-secondary);
 }
 
-/* Normalize Pastel Badge Backgrounds to Dark Low-Opacity Variants */
+/* Flatten Badges to GitHub Secondary Buttons */
 [data-theme="dark"] #tasksPanel .bg-indigo-50,
-[data-theme="dark"] #tasksPanel .bg-blue-50 { 
-    background-color: rgba(56, 189, 248, 0.1) !important; 
-    border-color: rgba(56, 189, 248, 0.2) !important; 
-    color: var(--accent-primary) !important; 
+[data-theme="dark"] #tasksPanel .bg-blue-50,
+[data-theme="dark"] #tasksPanel .bg-green-50,
+[data-theme="dark"] #tasksPanel .bg-red-50,
+[data-theme="dark"] #tasksPanel .bg-yellow-50,
+[data-theme="dark"] #tasksPanel .bg-orange-50,
+[data-theme="dark"] #tasksPanel .bg-purple-50 {
+    background-color: #21262d !important; 
+    border: 1px solid var(--border-color) !important; 
+    color: var(--text-primary) !important; 
+    box-shadow: none !important;
 }
 
-[data-theme="dark"] #tasksPanel .bg-green-50 { 
-    background-color: rgba(52, 211, 153, 0.1) !important; 
-    border-color: rgba(52, 211, 153, 0.2) !important; 
-    color: var(--accent-secondary) !important; 
+[data-theme="dark"] #tasksPanel .bg-indigo-50 i,
+[data-theme="dark"] #tasksPanel .bg-blue-50 i,
+[data-theme="dark"] #tasksPanel .bg-green-50 i,
+[data-theme="dark"] #tasksPanel .bg-red-50 i,
+[data-theme="dark"] #tasksPanel .bg-yellow-50 i,
+[data-theme="dark"] #tasksPanel .bg-orange-50 i,
+[data-theme="dark"] #tasksPanel .bg-purple-50 i {
+    color: var(--text-secondary) !important;
 }
 
-[data-theme="dark"] #tasksPanel .bg-red-50 { 
-    background-color: rgba(248, 113, 113, 0.1) !important; 
-    border-color: rgba(248, 113, 113, 0.2) !important; 
-    color: #f87171 !important; 
+/* Sparse Accents for Specific Text States */
+[data-theme="dark"] #tasksPanel .text-red-600,
+[data-theme="dark"] #tasksPanel .text-red-700 {
+    color: var(--accent-danger) !important;
 }
 
-[data-theme="dark"] #tasksPanel .bg-yellow-50, 
-[data-theme="dark"] #tasksPanel .bg-orange-50 { 
-    background-color: rgba(251, 191, 36, 0.1) !important; 
-    border-color: rgba(251, 191, 36, 0.2) !important; 
-    color: #fbbf24 !important; 
+[data-theme="dark"] #tasksPanel .text-green-700,
+[data-theme="dark"] #tasksPanel .text-green-800 {
+    color: var(--accent-success) !important;
 }
 
-[data-theme="dark"] #tasksPanel .bg-purple-50 { 
-    background-color: rgba(167, 139, 250, 0.1) !important; 
-    border-color: rgba(167, 139, 250, 0.2) !important; 
-    color: #a855f7 !important; 
+/* Ensure Primary Buttons Look Like Primary Actions */
+[data-theme="dark"] #tasksPanel button.bg-blue-600 {
+    background-color: var(--accent-success) !important; /* GitHub standard for primary forms */
+    border-color: rgba(240, 246, 252, 0.1) !important;
+    color: #ffffff !important;
 }
 
-/* Ensure Action Buttons align with theme */
-[data-theme="dark"] #tasksPanel button.border {
-    border-color: var(--border-color) !important;
+[data-theme="dark"] #tasksPanel button.bg-blue-600:hover {
+    background-color: #2ea043 !important;
 }

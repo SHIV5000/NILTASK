@@ -12,7 +12,6 @@ window.applyTheme = function() {
     document.documentElement.setAttribute('data-theme', window.currentTheme); 
 };
 
-// OVERRIDE SHARED TOAST: Modifies the toast output specifically for the sleek Top-Bar design.
 window.showCenterToast = function(msg, icon = 'fa-solid fa-check-circle', color = 'text-green-400') { 
     const t = document.createElement('div'); 
     t.className = 'center-toast opacity-0'; 
@@ -99,6 +98,7 @@ window.renderMainApp = function() {
 
     document.getElementById('root').innerHTML = `
         <div class="flex h-full w-full bg-gray-50">
+            <!-- Left Sidebar -->
             <div class="w-80 flex flex-col border-r z-20 shadow-sm bg-white border-gray-200">
                 <div class="p-4 flex justify-between items-center border-b border-gray-200">
                     <h2 class="text-xl font-bold tracking-tight flex items-center gap-2 text-gray-800">
@@ -115,11 +115,12 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.19.0 - Layout Precision Fixes
+                        v1.20.0 - Affixed Reactions
                     </div>
                 </div>
             </div>
 
+            <!-- Chat Area -->
             <div class="flex-1 flex flex-col relative" style="background-color: var(--bg-chat); background-image: var(--chat-pattern); background-blend-mode: overlay;">
                 <div class="p-4 border-b z-10 flex justify-between items-center shadow-sm bg-white/95 backdrop-blur border-gray-200">
                     <div class="flex items-center gap-3">
@@ -133,8 +134,8 @@ window.renderMainApp = function() {
                     </div>
                 </div>
                 
-                <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col items-center">
-                    <div class="chat-shell w-full max-w-full bg-transparent border-none" id="chatShellContainer"></div>
+                <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col">
+                    <div class="w-full bg-transparent border-none" id="chatShellContainer"></div>
                 </div>
                 
                 <div class="flex flex-col relative bg-white border-t border-gray-200 p-3 px-5">
@@ -168,6 +169,7 @@ window.renderMainApp = function() {
                 </div>
             </div>
 
+            <!-- Right Sidebar: Tasks -->
             <div class="w-[450px] border-l flex flex-col z-20 shadow-sm hidden md:flex bg-gray-50 border-gray-200">
                 <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
                     <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="fa-solid fa-filter text-[var(--accent)]"></i> Task Filters</h3>
@@ -291,7 +293,6 @@ window.renderMainApp = function() {
     document.getElementById('scheduleMsgBtn').onclick = window.showScheduleModal;
     document.getElementById('messageSearchBar').addEventListener('input', window.applyFilters);
     
-    // Bind click outside for dropdowns globally
     document.addEventListener('click', e => {
         if (!e.target.closest('.menu-wrap')) window.closeDropdowns();
     });
@@ -299,6 +300,38 @@ window.renderMainApp = function() {
     window.loadChatsList(); 
     window.loadMessages(); 
     window.loadTasksForPanel(); 
+};
+
+// -----------------------------------------------------------------------------
+// NEW: PHYSICAL REACTION AFFIXING ENGINE
+// -----------------------------------------------------------------------------
+window.applyReaction = async function(msgId, value, type) {
+    const row = document.getElementById(`row-${msgId}`);
+    if (!row) return;
+    const footer = row.querySelector('.b-footer');
+    if (!footer) return;
+
+    if (type === 'emoji') {
+        const chipHtml = `<button class="e-chip active">${value} <span class="e-cnt">1</span></button>`;
+        const reactionMenu = footer.querySelector('.group\\/reaction');
+        reactionMenu.insertAdjacentHTML('beforebegin', chipHtml);
+    } else {
+        let colorClass = 'bg-blue-50 text-blue-700 border-blue-200';
+        if(value === 'Thank You') colorClass = 'bg-green-50 text-green-700 border-green-200';
+        if(value === 'Noted') colorClass = 'bg-blue-50 text-blue-700 border-blue-200';
+        if(value === 'Copied') colorClass = 'bg-purple-50 text-purple-700 border-purple-200';
+        if(value === 'Yes Sir') colorClass = 'bg-orange-50 text-orange-700 border-orange-200';
+        if(value === 'Yes Madam') colorClass = 'bg-pink-50 text-pink-700 border-pink-200';
+        
+        const tagHtml = `<span class="${colorClass} px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ml-1">${value}</span>`;
+        footer.insertAdjacentHTML('beforeend', tagHtml);
+    }
+
+    const hoverMenu = row.querySelector('.group\\/reaction .absolute');
+    if (hoverMenu) {
+        hoverMenu.style.display = 'none';
+        setTimeout(() => { hoverMenu.style.display = ''; }, 300);
+    }
 };
 
 window.openTaskModal = async function(mid, text) { 
@@ -499,7 +532,6 @@ window.loadChatsList = async function() {
 
 window.sendMessage = async function() {
     let text = window.quillEditor.root.innerHTML.trim();
-    // STRIP WASTED SPACE: Remove empty paragraph tags generated by enter clicks
     text = text.replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
     if (!text) return;
     
@@ -525,8 +557,24 @@ window.loadMessages = async function() {
 }
 
 // -----------------------------------------------------------------------------
-// CHAT BUBBLE COMPONENT RENDERER (HANDOFF SPEC)
+// CHAT BUBBLE COMPONENT RENDERER
 // -----------------------------------------------------------------------------
+
+window.toggleDropdown = function(id) {
+    document.querySelectorAll('.bubble-dropdown').forEach(d => {
+        if (d.id !== id) d.classList.remove('open');
+    });
+    document.getElementById(id).classList.toggle('open');
+}
+
+window.closeDropdowns = function() {
+    document.querySelectorAll('.bubble-dropdown').forEach(d => d.classList.remove('open'));
+}
+
+window.toggleReplies = function(id) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+}
 
 window.renderMessages = function(messages) {
     const c = document.getElementById('chatShellContainer');
@@ -622,29 +670,28 @@ window.renderMessages = function(messages) {
             <div class="b-footer">
               <div class="relative inline-block group/reaction z-50">
                   <button class="e-add" title="Add reaction"><i class="ti ti-mood-smile"></i></button>
-                  
                   <div class="absolute bottom-full ${isSent ? 'right-0' : 'left-0'} pb-1.5 hidden group-hover/reaction:block cursor-default z-[100]">
                       <div class="bg-white border border-gray-200 shadow-2xl rounded-xl p-3 min-w-[280px] flex flex-col">
                           
                           <div class="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Reactions</div>
                           <div class="flex flex-wrap gap-1 border-b border-gray-100 pb-2 mb-2">
-                              <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.showCenterToast('👍 Reacted', 'fa-regular fa-face-smile', 'text-yellow-500')">👍</span>
-                              <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.showCenterToast('❤️ Reacted', 'fa-solid fa-heart', 'text-red-500')">❤️</span>
-                              <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.showCenterToast('😂 Reacted', 'fa-regular fa-face-laugh-squint', 'text-yellow-500')">😂</span>
-                              <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.showCenterToast('😮 Reacted', 'fa-regular fa-face-surprise', 'text-yellow-500')">😮</span>
-                              <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.showCenterToast('😢 Reacted', 'fa-regular fa-face-sad-tear', 'text-blue-500')">😢</span>
-                              <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.showCenterToast('🙏 Reacted', 'fa-solid fa-hands-praying', 'text-yellow-500')">🙏</span>
-                              <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.showCenterToast('🎉 Reacted', 'fa-solid fa-champagne-glasses', 'text-pink-500')">🎉</span>
-                              <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.showCenterToast('🔥 Reacted', 'fa-solid fa-fire', 'text-orange-500')">🔥</span>
+                              <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.applyReaction('${msg.id}', '👍', 'emoji')">👍</span>
+                              <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.applyReaction('${msg.id}', '❤️', 'emoji')">❤️</span>
+                              <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.applyReaction('${msg.id}', '😂', 'emoji')">😂</span>
+                              <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.applyReaction('${msg.id}', '😮', 'emoji')">😮</span>
+                              <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.applyReaction('${msg.id}', '😢', 'emoji')">😢</span>
+                              <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.applyReaction('${msg.id}', '🙏', 'emoji')">🙏</span>
+                              <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.applyReaction('${msg.id}', '🎉', 'emoji')">🎉</span>
+                              <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.applyReaction('${msg.id}', '🔥', 'emoji')">🔥</span>
                           </div>
                           
                           <div class="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Quick Tags</div>
                           <div class="flex flex-wrap gap-2">
-                              <span class="cursor-pointer bg-green-50 hover:bg-green-100 text-green-700 px-3 py-1 rounded-md text-[11px] font-bold border border-green-200 shadow-sm" onclick="window.showCenterToast('Tag: Thank You', 'fa-solid fa-tag', 'text-green-500')">Thank You</span>
-                              <span class="cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1 rounded-md text-[11px] font-bold border border-blue-200 shadow-sm" onclick="window.showCenterToast('Tag: Noted', 'fa-solid fa-tag', 'text-blue-500')">Noted</span>
-                              <span class="cursor-pointer bg-purple-50 hover:bg-purple-100 text-purple-700 px-3 py-1 rounded-md text-[11px] font-bold border border-purple-200 shadow-sm" onclick="window.showCenterToast('Tag: Copied', 'fa-solid fa-tag', 'text-purple-500')">Copied</span>
-                              <span class="cursor-pointer bg-orange-50 hover:bg-orange-100 text-orange-700 px-3 py-1 rounded-md text-[11px] font-bold border border-orange-200 shadow-sm" onclick="window.showCenterToast('Tag: Yes Sir', 'fa-solid fa-tag', 'text-orange-500')">Yes Sir</span>
-                              <span class="cursor-pointer bg-pink-50 hover:bg-pink-100 text-pink-700 px-3 py-1 rounded-md text-[11px] font-bold border border-pink-200 shadow-sm" onclick="window.showCenterToast('Tag: Yes Madam', 'fa-solid fa-tag', 'text-pink-500')">Yes Madam</span>
+                              <span class="cursor-pointer bg-green-50 hover:bg-green-100 text-green-700 px-3 py-1 rounded-md text-[11px] font-bold border border-green-200 shadow-sm" onclick="window.applyReaction('${msg.id}', 'Thank You', 'tag')">Thank You</span>
+                              <span class="cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1 rounded-md text-[11px] font-bold border border-blue-200 shadow-sm" onclick="window.applyReaction('${msg.id}', 'Noted', 'tag')">Noted</span>
+                              <span class="cursor-pointer bg-purple-50 hover:bg-purple-100 text-purple-700 px-3 py-1 rounded-md text-[11px] font-bold border border-purple-200 shadow-sm" onclick="window.applyReaction('${msg.id}', 'Copied', 'tag')">Copied</span>
+                              <span class="cursor-pointer bg-orange-50 hover:bg-orange-100 text-orange-700 px-3 py-1 rounded-md text-[11px] font-bold border border-orange-200 shadow-sm" onclick="window.applyReaction('${msg.id}', 'Yes Sir', 'tag')">Yes Sir</span>
+                              <span class="cursor-pointer bg-pink-50 hover:bg-pink-100 text-pink-700 px-3 py-1 rounded-md text-[11px] font-bold border border-pink-200 shadow-sm" onclick="window.applyReaction('${msg.id}', 'Yes Madam', 'tag')">Yes Madam</span>
                           </div>
                       </div>
                   </div>

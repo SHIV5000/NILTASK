@@ -115,7 +115,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.21.0 - Smart Scroll & Hide
+                        v1.22.0 - 3D Bookmarks & Scrolling
                     </div>
                 </div>
             </div>
@@ -400,11 +400,24 @@ window.saveReminder = async function() {
     window.closeReminderModal(); 
 }
 
+// FIXED: Optimistic UI Toggling with 3D Maroon Pill Styling
 window.toggleBookmark = async function(mid) { 
     window.closeDropdowns();
-    const {data: ex} = await sb.from('bookmarks').select('id').eq('user_id', window.currentUser.id).eq('message_id',mid).maybeSingle(); 
-    if(ex) { await sb.from('bookmarks').delete().eq('id',ex.id); window.showCenterToast('Bookmark removed', 'fa-solid fa-info-circle', 'text-yellow-400'); } 
-    else { await sb.from('bookmarks').insert({ user_id: window.currentUser.id, message_id: mid }); window.showCenterToast('Message Bookmarked'); } 
+    const btn = document.querySelector(`#row-${mid} .act-btn[onclick*="toggleBookmark"]`);
+    let isCurrentlyBookmarked = window.bookmarkedSet && window.bookmarkedSet.has(mid);
+    
+    if (isCurrentlyBookmarked) {
+        window.bookmarkedSet.delete(mid);
+        if (btn) { btn.classList.remove('bookmarked'); btn.innerHTML = '<i class="ti ti-bookmark"></i> Bookmark'; }
+        window.showCenterToast('Bookmark removed', 'fa-solid fa-info-circle', 'text-yellow-400');
+        await sb.from('bookmarks').delete().eq('user_id', window.currentUser.id).eq('message_id', mid);
+    } else {
+        window.bookmarkedSet = window.bookmarkedSet || new Set();
+        window.bookmarkedSet.add(mid);
+        if (btn) { btn.classList.add('bookmarked'); btn.innerHTML = '<i class="ti ti-bookmark-filled"></i> Bookmarked'; }
+        window.showCenterToast('Message Bookmarked');
+        await sb.from('bookmarks').insert({ user_id: window.currentUser.id, message_id: mid });
+    } 
 }
 
 window.initiateReply = function(parentId, text) {
@@ -505,11 +518,6 @@ window.saveScheduledMessage = async function() {
     window.showCenterToast('Message Scheduled Successfully!');
 }
 
-window.addEmoji = function() {
-    window.quillEditor.root.innerHTML += '😀'; 
-    window.showCenterToast('Emoji added!', 'fa-regular fa-face-smile', 'text-yellow-400');
-}
-
 window.loadChatsList = async function() {
     const groups = ['general', 'math', 'science', 'leadership'];
     const {data: users} = await sb.from('profiles').select('id, email, full_name');
@@ -565,9 +573,14 @@ window.sendMessage = async function() {
     window.loadMessages(repliedTo);
 }
 
-// FIXED: Receives the scrollToId and smoothly snaps the user directly to their new reply
+// FIXED: Fetches bookmarks and receives the scrollToId to snap the user directly to their new reply
 window.loadMessages = async function(scrollToId = null) {
     const {data: msgs} = await sb.from('messages').select('*, profiles(full_name, email)').eq('room_id', window.currentRoom).order('created_at', {ascending: true});
+    
+    // Fetch user bookmarks for state mapping
+    const {data: bms} = await sb.from('bookmarks').select('message_id').eq('user_id', window.currentUser.id);
+    window.bookmarkedSet = new Set(bms?.map(b => b.message_id) || []);
+
     window.renderMessages(msgs || []);
     window.applyFilters();
     const c = document.getElementById('messagesContainer');
@@ -576,23 +589,21 @@ window.loadMessages = async function(scrollToId = null) {
             if (scrollToId) {
                 const row = document.getElementById(`row-${scrollToId}`);
                 if (row) {
-                    const rw = document.getElementById(`rw-${scrollToId}`);
-                    if (rw) rw.style.display = 'flex';
                     row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    row.classList.add('bg-yellow-50');
-                    setTimeout(() => row.classList.remove('bg-yellow-50'), 1500);
+                    row.classList.add('bg-yellow-50', 'transition-colors', 'duration-500');
+                    setTimeout(() => row.classList.remove('bg-yellow-50', 'transition-colors', 'duration-500'), 1500);
                 } else {
                     c.scrollTop = c.scrollHeight;
                 }
             } else {
                 c.scrollTop = c.scrollHeight; 
             }
-        }, 50); 
+        }, 100); 
     }
 }
 
 // -----------------------------------------------------------------------------
-// CHAT BUBBLE COMPONENT RENDERER
+// CHAT BUBBLE COMPONENT RENDERER (HANDOFF SPEC)
 // -----------------------------------------------------------------------------
 
 window.toggleDropdown = function(id) {
@@ -616,6 +627,8 @@ window.renderMessages = function(messages) {
     if (!c) return;
     if (!messages.length) { c.innerHTML = '<div class="m-auto flex flex-col items-center opacity-50 pt-10"><i class="ti ti-messages text-5xl mb-3 text-gray-300"></i><p class="font-medium text-gray-500">Say hello!</p></div>'; return; }
     
+    window.bookmarkedSet = window.bookmarkedSet || new Set();
+
     const msgMap = new Map();
     messages.forEach(m => msgMap.set(m.id, m));
     const topLevel = [];
@@ -651,22 +664,21 @@ window.renderMessages = function(messages) {
         const roleStr = isSent ? 'Teacher' : 'Teacher'; 
         const tickHTML = isSent ? `<span class="b-tick">✓✓</span>` : '';
         const replyCount = replies[msg.id] ? replies[msg.id].length : 0;
+        const isBookmarked = window.bookmarkedSet.has(msg.id);
 
         const ddItems = isSent
             ? `<button class="dd-item" onclick="window.closeDropdowns(); window.openTaskModal('${msg.id}', '${window.escapeHtml(msg.text)}')"><i class="ti ti-clipboard-check"></i>Create Task</button>
                <button class="dd-item" onclick="window.closeDropdowns(); window.showReminderModal('${msg.id}', '${snippetText}')"><i class="ti ti-bell"></i>Reminder</button>
-               <button class="dd-item" onclick="window.closeDropdowns(); window.toggleBookmark('${msg.id}')"><i class="ti ti-bookmark"></i>Bookmark</button>
                <button class="dd-item danger" onclick="window.closeDropdowns()"><i class="ti ti-trash"></i>Delete</button>`
             : `<button class="dd-item" onclick="window.closeDropdowns(); window.openTaskModal('${msg.id}', '${window.escapeHtml(msg.text)}')"><i class="ti ti-clipboard-check"></i>Create Task</button>
-               <button class="dd-item" onclick="window.closeDropdowns(); window.showReminderModal('${msg.id}', '${snippetText}')"><i class="ti ti-bell"></i>Reminder</button>
-               <button class="dd-item" onclick="window.closeDropdowns(); window.toggleBookmark('${msg.id}')"><i class="ti ti-bookmark"></i>Bookmark</button>`;
+               <button class="dd-item" onclick="window.closeDropdowns(); window.showReminderModal('${msg.id}', '${snippetText}')"><i class="ti ti-bell"></i>Reminder</button>`;
 
         let repliesHTML = '';
         if (replyCount > 0) {
-            // FIXED: Replies are set to display:none by default.
+            // FIXED: Expanded by default
             repliesHTML = `
             <div class="b-divider"></div>
-            <div class="replies-wrap" id="rw-${msg.id}" style="display:none; flex-direction:column; gap:2px;">
+            <div class="replies-wrap" id="rw-${msg.id}" style="display:flex; flex-direction:column; gap:2px;">
               <div class="replies-label"><i class="ti ti-git-branch"></i>Replies</div>
               ${replies[msg.id].map((r, idx) => {
                   const rName = window.toSentenceCase(r.profiles?.full_name || r.profiles?.email.split('@')[0] || 'Unknown');
@@ -737,7 +749,7 @@ window.renderMessages = function(messages) {
             <div class="b-actions">
               ${replyCount > 0 ? `<button class="act-btn" onclick="window.toggleReplies('rw-${msg.id}')"><i class="ti ti-message-2"></i> Replies <span class="reply-badge">${replyCount}</span></button>` : ''}
               <button class="act-btn" onclick="window.initiateReply('${msg.id}', '${snippetText}')"><i class="ti ti-corner-up-left"></i> Reply</button>
-              <button class="act-btn" onclick="window.toggleBookmark('${msg.id}')"><i class="ti ti-bookmark"></i> Save</button>
+              <button class="act-btn ${isBookmarked ? 'bookmarked' : ''}" onclick="window.toggleBookmark('${msg.id}')"><i class="ti ${isBookmarked ? 'ti-bookmark-filled' : 'ti-bookmark'}"></i> ${isBookmarked ? 'Bookmarked' : 'Bookmark'}</button>
             </div>
             
             ${repliesHTML}

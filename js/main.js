@@ -285,7 +285,7 @@ window.renderMainApp = function() {
         <div id="fileRenameModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
             <div class="bg-[var(--bg-sidebar)] rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border border-[var(--border-color)]">
                 <h3 class="text-xl font-bold mb-4 text-[var(--text-primary)]">Rename Attachment</h3>
-                <p class="text-xs text-[var(--text-secondary)] mb-2">You can optionally rename this file before uploading it to the secure server.</p>
+                <p class="text-xs text-[var(--text-secondary)] mb-3">You can optionally rename this file before uploading it to the secure server.</p>
                 <input type="text" id="newFileNameInput" class="w-full p-3 rounded-xl mb-6 border border-[var(--border-color)] bg-[var(--bg-body)] text-[var(--text-primary)] outline-none focus:border-[var(--accent)] text-sm">
                 <div class="flex gap-3">
                     <button onclick="window.cancelFileRename()" class="flex-1 py-2.5 rounded-xl font-bold bg-[var(--bg-body)] text-[var(--text-primary)] border border-[var(--border-color)] hover:opacity-80 transition-opacity">Cancel</button>

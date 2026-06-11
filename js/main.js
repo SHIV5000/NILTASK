@@ -24,7 +24,6 @@ window.showCenterToast = function(msg, icon = 'fa-solid fa-check-circle', color 
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 500); }, 3000); 
 };
 
-// FIXED: Generates a temporary Signed URL for the private "task-proofs" bucket
 window.openSecureFile = async function(path) {
     window.showCenterToast('Authenticating secure file...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
     const { data, error } = await sb.storage.from('task-proofs').createSignedUrl(path, 86400);
@@ -170,6 +169,7 @@ window.renderMainApp = function() {
 
     document.getElementById('root').innerHTML = `
         <div class="flex h-full w-full bg-gray-50">
+            <!-- Draggable Left Sidebar -->
             <div id="leftSidebar" class="left-sidebar flex-col border-r z-20 shadow-sm bg-white border-gray-200" style="display: ${leftDisplay}; width: ${leftWidth};">
                 <div class="p-4 flex justify-between items-center border-b border-gray-200">
                     <h2 class="text-xl font-bold tracking-tight flex items-center gap-2 text-gray-800">
@@ -186,13 +186,14 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.26.0 - Advanced Layout
+                        v1.26.1 - Professional Glow
                     </div>
                 </div>
             </div>
             
             <div id="leftResizer" class="drag-resizer"></div>
 
+            <!-- Chat Area -->
             <div class="flex-1 flex flex-col relative min-w-0" style="background-color: var(--bg-chat); background-image: var(--chat-pattern); background-blend-mode: overlay;">
                 <div class="p-4 border-b z-10 flex justify-between items-center shadow-sm bg-white/95 backdrop-blur border-gray-200">
                     <div class="flex items-center gap-3">
@@ -262,6 +263,7 @@ window.renderMainApp = function() {
 
             <div id="rightResizer" class="drag-resizer"></div>
 
+            <!-- Draggable Right Sidebar: Tasks -->
             <div id="rightSidebar" class="right-sidebar border-l flex-col z-20 shadow-sm bg-gray-50 border-gray-200" style="display: ${rightDisplay}; width: ${rightWidth};">
                 <div class="w-full h-full flex flex-col min-w-0">
                     <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
@@ -352,7 +354,6 @@ window.renderMainApp = function() {
         </div>
     `;
     
-    // CUSTOM QUILL INITIALIZATION WITH COLORS
     window.quillEditor = new Quill('#richEditor', { 
         theme: 'snow', 
         placeholder: 'Type a message...', 
@@ -360,7 +361,7 @@ window.renderMainApp = function() {
             toolbar: {
                 container: [
                     ['bold','italic','underline','strike'], 
-                    [{ 'color': ['#800000', '#006400', '#00008b'] }], // Maroon, Green, Blue
+                    [{ 'color': ['#800000', '#006400', '#00008b'] }], 
                     [{'list': 'ordered'}, {'list': 'bullet'}], 
                     ['clean']
                 ]
@@ -409,7 +410,6 @@ window.renderMainApp = function() {
     document.addEventListener('click', e => {
         if (!e.target.closest('.menu-wrap')) window.closeDropdowns();
         
-        // Auto-close emoji picker if clicked outside
         const ep = document.getElementById('inputEmojiPicker');
         if (ep && !e.target.closest('#inputEmojiPicker') && !e.target.closest('[onclick="window.toggleInputEmojiPicker()"]')) {
             ep.classList.add('hidden');
@@ -422,7 +422,6 @@ window.renderMainApp = function() {
     window.loadTasksForPanel(); 
 };
 
-// FIXED: Emoji Picker Toggling and Precise Injection
 window.toggleInputEmojiPicker = function() {
     const ep = document.getElementById('inputEmojiPicker');
     if(ep) ep.classList.toggle('hidden');
@@ -475,7 +474,6 @@ window.scrollToAndHighlight = function(rowId) {
         const rw = document.getElementById(`rw-${msgId}`);
         if (rw) rw.style.display = 'flex';
         
-        // FIXED: Apply Hacker Style Conic Glow to the Bubble
         const bubble = row.querySelector('.bubble');
         if(bubble) {
             bubble.classList.add('glow-target');
@@ -746,10 +744,6 @@ window.loadMessages = async function() {
         }, 100); 
     }
 }
-
-// -----------------------------------------------------------------------------
-// CHAT BUBBLE COMPONENT RENDERER (HANDOFF SPEC)
-// -----------------------------------------------------------------------------
 
 window.toggleDropdown = function(id) {
     document.querySelectorAll('.bubble-dropdown').forEach(d => {

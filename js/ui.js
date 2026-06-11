@@ -86,22 +86,15 @@ window.closeDropdowns = function() {
     document.querySelectorAll('.bubble-dropdown').forEach(d => d.classList.remove('open'));
 };
 
-/* THE BULLETPROOF NATIVE TOGGLE (v1.46.0) */
+/* RESTORED V1.34.0 SIMPLE TOGGLE */
 window.toggleTaskTrail = function(id) {
     let el = document.getElementById(id) || document.getElementById('trail-' + id) || document.getElementById('task-trail-' + id);
     if (!el) return;
-
-    // Check actual visibility state
-    const isHidden = el.style.display === 'none' || el.classList.contains('hidden') || window.getComputedStyle(el).display === 'none';
-
-    if (isHidden) {
-        // Force expand
-        el.classList.remove('hidden');
-        el.style.setProperty('display', 'block', 'important');
-    } else {
-        // Force collapse
-        el.classList.add('hidden');
-        el.style.setProperty('display', 'none', 'important');
+    const isHidden = window.getComputedStyle(el).display === 'none' || el.style.display === 'none';
+    if (isHidden) { 
+        el.style.setProperty('display', 'block', 'important'); 
+    } else { 
+        el.style.setProperty('display', 'none', 'important'); 
     }
 };
 window.toggleTrail = window.toggleTaskTrail;

@@ -338,7 +338,7 @@ window.renderMainApp = function() {
                 </label>
                 <div class="flex gap-3 mt-4 pt-2">
                     <button onclick="window.closeTaskModal()" class="flex-1 py-2.5 rounded-xl font-bold bg-[var(--bg-body)] text-[var(--text-primary)] border border-[var(--border-color)] hover:opacity-80 transition-opacity">Cancel</button>
-                    <button onclick="window.saveTaskMultiAssignee()" class="flex-1 py-2.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-bold shadow-md transition-colors">Create Ticket</button>
+                    <button onclick="window.saveTaskMultiAssignee()" class="flex-1 py-2.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-bold shadow-md transition-colors">Create Task</button>
                 </div>
             </div>
         </div>

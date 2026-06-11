@@ -178,10 +178,6 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
     100% { opacity: 0; box-shadow: 0 0 0 0 var(--accent); }
 }
 
-/* FIX: CSS Task Trail Control */
-[id^="trail-"], [id^="task-trail-"] { display: none !important; }
-[id^="trail-"].active, [id^="task-trail-"].active { display: block !important; }
-
 [data-theme="dark"] .bg-white { background-color: var(--bg-sidebar) !important; color: var(--text-primary) !important; }
 [data-theme="dark"] .bg-gray-50 { background-color: var(--bg-body) !important; color: var(--text-primary) !important; }
 [data-theme="dark"] .text-gray-800 { color: #f8fafc !important; }

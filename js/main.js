@@ -187,7 +187,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.30.0 - Final Version
+                        v1.31.0 - File Links & Trail Fix
                     </div>
                 </div>
             </div>
@@ -372,6 +372,7 @@ window.renderMainApp = function() {
     window.quillEditor.root.addEventListener('keydown', (e) => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); window.sendMessage(); } });
     document.getElementById('sendBtn').onclick = window.sendMessage;
     
+    // FIXED: Fake HTTPS scheme to bypass Quill's link sanitizer
     document.getElementById('fileAttachment').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -398,7 +399,8 @@ window.renderMainApp = function() {
         const range = window.quillEditor.getSelection();
         const index = range ? range.index : window.quillEditor.getLength();
         
-        window.quillEditor.insertText(index, `📁 Attached File: ${finalName} (${sizeKB} KB)\n`, 'link', `secure-file:${filePath}`);
+        // Trick Quill by passing a recognizable HTTP schema
+        window.quillEditor.insertText(index, `📁 Attached File: ${finalName} (${sizeKB} KB)\n`, 'link', `https://secure-file.local/${filePath}`);
         window.showCenterToast('File securely attached!', 'fa-solid fa-check-circle', 'text-green-500');
         e.target.value = ''; 
     });
@@ -420,7 +422,6 @@ window.renderMainApp = function() {
 
     window.initResizers();
     
-    // THE RESTORED BOOT CALLS
     if (typeof window.loadChatsList === 'function') {
         window.loadChatsList(); 
     }
@@ -429,7 +430,7 @@ window.renderMainApp = function() {
         window.loadTasksForPanel(); 
     }
 
-    // FIXED: Global Mutation Observer to Force-Collapse Task Trails by Default
+    // Global Mutation Observer to Force-Collapse Task Trails by Default
     const tasksPanel = document.getElementById('tasksPanel');
     if (tasksPanel) {
         new MutationObserver(() => {
@@ -531,21 +532,18 @@ window.toggleReplies = function(id) {
     if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
 }
 
-// FIXED: Task Trail UI Toggles using inline overrides
+// FIXED: Task Trail UI Toggles unconditionally overriding the hidden property
 window.toggleTaskTrail = function(id) {
     const el = document.getElementById(id);
     if (!el) return;
-    const isHidden = el.style.display === 'none' || window.getComputedStyle(el).display === 'none';
+    const isHidden = window.getComputedStyle(el).display === 'none';
     if (isHidden) {
-        el.style.removeProperty('display');
-        if(window.getComputedStyle(el).display === 'none') {
-             el.style.setProperty('display', 'block', 'important');
-        }
+        el.style.setProperty('display', 'block', 'important');
     } else {
         el.style.setProperty('display', 'none', 'important');
     }
 };
-window.toggleTrail = window.toggleTaskTrail; // Maps both naming conventions
+window.toggleTrail = window.toggleTaskTrail;
 
 window.renderMessages = function(messages) {
     const c = document.getElementById('chatShellContainer');
@@ -581,7 +579,8 @@ window.renderMessages = function(messages) {
         const time = window.getISTTime(msg.created_at);
         const snippetText = window.getSnippet(msg.text);
         
-        let displayHtml = msg.text.replace(/href="secure-file:([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800 transition-colors"`);
+        // FIXED: Regex updated to catch the fake https URL
+        let displayHtml = msg.text.replace(/href="https:\/\/secure-file\.local\/([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800 transition-colors"`);
 
         const rowClass = isSent ? 'row-sent' : 'row-rcvd';
         const bubbleClass = isSent ? 'bubble sent' : 'bubble rcvd';
@@ -608,7 +607,7 @@ window.renderMessages = function(messages) {
               ${replies[msg.id].map((r, idx) => {
                   const rName = window.toSentenceCase(r.profiles?.full_name || r.profiles?.email.split('@')[0] || 'Unknown');
                   const rTime = window.getISTTime(r.created_at);
-                  const rDisplayHtml = r.text.replace(/href="secure-file:([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium"`);
+                  const rDisplayHtml = r.text.replace(/href="https:\/\/secure-file\.local\/([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium"`);
                   return `
                   <div class="reply-item">
                     <div class="reply-num">${idx + 1}</div>

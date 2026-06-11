@@ -5,7 +5,6 @@ window.currentTheme = localStorage.getItem('theme') || 'light';
 window.currentRoom = localStorage.getItem('mpgs_current_room') || 'general';
 window.pendingScrollId = null; 
 window.pendingFileUpload = null;
-window.expandedTrails = new Set(); // Memory for Task Trails
 
 window.applyTheme = function() { 
     document.documentElement.setAttribute('data-theme', window.currentTheme); 
@@ -87,17 +86,22 @@ window.closeDropdowns = function() {
     document.querySelectorAll('.bubble-dropdown').forEach(d => d.classList.remove('open'));
 };
 
-/* CLASS-BASED TOGGLE LOGIC (v1.45.0) */
+/* THE BULLETPROOF NATIVE TOGGLE (v1.46.0) */
 window.toggleTaskTrail = function(id) {
-    let baseId = String(id).replace('task-trail-', '').replace('trail-', '');
-    let el = document.getElementById('trail-' + baseId) || document.getElementById('task-trail-' + baseId) || document.getElementById(baseId);
+    let el = document.getElementById(id) || document.getElementById('trail-' + id) || document.getElementById('task-trail-' + id);
+    if (!el) return;
 
-    if (window.expandedTrails.has(baseId)) {
-        window.expandedTrails.delete(baseId);
-        if (el) el.classList.remove('show-trail');
+    // Check actual visibility state
+    const isHidden = el.style.display === 'none' || el.classList.contains('hidden') || window.getComputedStyle(el).display === 'none';
+
+    if (isHidden) {
+        // Force expand
+        el.classList.remove('hidden');
+        el.style.setProperty('display', 'block', 'important');
     } else {
-        window.expandedTrails.add(baseId);
-        if (el) el.classList.add('show-trail');
+        // Force collapse
+        el.classList.add('hidden');
+        el.style.setProperty('display', 'none', 'important');
     }
 };
 window.toggleTrail = window.toggleTaskTrail;

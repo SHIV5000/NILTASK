@@ -6,11 +6,11 @@ let taskSubscription = null;
 let assigneeSubscription = null;
 let trailSubscription = null;
 
-// STATE PERSISTENCE ENGFINE
+// STATE PERSISTENCE ENGINE
 window.currentTheme = localStorage.getItem('theme') || 'light';
 window.currentRoom = localStorage.getItem('mpgs_current_room') || 'general';
 window.pendingScrollId = null; 
-window.pendingFileUpload = null; // FIXED: Stores file while modal is open
+window.pendingFileUpload = null;
 
 window.applyTheme = function() { 
     document.documentElement.setAttribute('data-theme', window.currentTheme); 
@@ -169,6 +169,7 @@ window.renderMainApp = function() {
 
     document.getElementById('root').innerHTML = `
         <div class="flex h-full w-full bg-gray-50">
+            <!-- Draggable Left Sidebar -->
             <div id="leftSidebar" class="left-sidebar flex-col border-r z-20 shadow-sm bg-white border-gray-200" style="display: ${leftDisplay}; width: ${leftWidth};">
                 <div class="p-4 flex justify-between items-center border-b border-gray-200">
                     <h2 class="text-xl font-bold tracking-tight flex items-center gap-2 text-gray-800">
@@ -188,13 +189,14 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.32.0 - Complete Edition
+                        v1.33.0 - Ultimate Stability
                     </div>
                 </div>
             </div>
 
             <div id="leftResizer" class="drag-resizer"></div>
 
+            <!-- Chat Area -->
             <div class="flex-1 flex flex-col relative min-w-0 chat-area">
                 <div class="p-4 border-b z-10 flex justify-between items-center shadow-sm bg-white/95 backdrop-blur border-gray-200">
                     <div class="flex items-center gap-3">
@@ -214,6 +216,7 @@ window.renderMainApp = function() {
                     <div class="chat-shell w-full max-w-full bg-transparent border-none" id="chatShellContainer"></div>
                 </div>
                 
+                <!-- REDESIGNED: Single Line Input Strip -->
                 <div class="flex flex-col relative bg-white border-t border-gray-200 p-3 px-5 z-20">
                     <div id="replyBanner" class="hidden mx-0 mt-0 mb-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl flex justify-between items-center z-0 relative shadow-sm text-xs">
                         <div class="text-indigo-700 flex items-center gap-2 overflow-hidden">
@@ -225,6 +228,7 @@ window.renderMainApp = function() {
                     </div>
 
                     <div class="w-full bg-white border border-gray-300 rounded-xl flex flex-col shadow-sm focus-within:border-[var(--accent)] transition-colors relative">
+                        <!-- Floating Input Emoji Picker -->
                         <div id="inputEmojiPicker" class="absolute bottom-full left-0 mb-2 hidden bg-white border border-gray-200 shadow-2xl rounded-xl p-3 min-w-[240px] z-50">
                            <div class="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Insert Emoji</div>
                            <div class="flex flex-wrap gap-1">
@@ -241,7 +245,9 @@ window.renderMainApp = function() {
                            </div>
                         </div>
 
-                        <div id="toolbar-container" class="border-b border-gray-200 bg-gray-50 rounded-t-xl"></div>
+                        <div id="toolbar-container" class="border-b border-gray-200 bg-gray-50 rounded-t-xl">
+                           <!-- Quill Toolbar Injects Here -->
+                        </div>
                         <div class="flex items-end gap-2 p-1.5 px-2">
                             <button onclick="window.toggleInputEmojiPicker()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Quick Emoji"><i class="ti ti-mood-smile text-xl"></i></button>
                             <button onclick="document.getElementById('fileAttachment').click()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Attach File"><i class="ti ti-paperclip text-xl"></i></button>
@@ -260,8 +266,9 @@ window.renderMainApp = function() {
 
             <div id="rightResizer" class="drag-resizer"></div>
 
+            <!-- Draggable Right Sidebar: Tasks -->
             <div id="rightSidebar" class="right-sidebar border-l flex-col z-20 shadow-sm bg-gray-50 border-gray-200" style="display: ${rightDisplay}; width: ${rightWidth};">
-                <div class="w-full h-full flex flex-col min-w-0"> 
+                <div class="w-full h-full flex flex-col min-w-0"> <!-- Direction Reset Wrapper -->
                     <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
                         <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="fa-solid fa-filter text-[var(--accent)]"></i> Task Filters</h3>
                         <select id="taskFilter" onchange="window.toggleDateFilter()" class="text-xs px-2 py-2 rounded-lg border border-gray-200 font-medium text-gray-700 bg-gray-50 shadow-sm outline-none cursor-pointer w-full focus:ring-2 focus:ring-[var(--accent)] transition-all">
@@ -286,6 +293,7 @@ window.renderMainApp = function() {
             </div>
         </div>
 
+        <!-- Inline File Rename Modal -->
         <div id="fileRenameModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
             <div class="bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border border-gray-200">
                 <h3 class="text-xl font-bold mb-4 text-gray-800">Rename Attachment</h3>
@@ -362,6 +370,7 @@ window.renderMainApp = function() {
         </div>
     `;
     
+    // CUSTOM QUILL INITIALIZATION WITH COLORS
     window.quillEditor = new Quill('#richEditor', { 
         theme: 'snow', 
         placeholder: 'Type a message...', 
@@ -369,7 +378,7 @@ window.renderMainApp = function() {
             toolbar: {
                 container: [
                     ['bold','italic','underline','strike'], 
-                    [{ 'color': ['#800000', '#006400', '#00008b'] }], 
+                    [{ 'color': ['#800000', '#006400', '#00008b'] }], // Maroon, Green, Blue
                     [{'list': 'ordered'}, {'list': 'bullet'}], 
                     ['clean']
                 ]
@@ -377,13 +386,14 @@ window.renderMainApp = function() {
         } 
     });
     
+    // Append the auto-generated toolbar into our styled wrapper
     const toolbar = document.querySelector('.ql-toolbar');
     document.getElementById('toolbar-container').appendChild(toolbar);
 
     window.quillEditor.root.addEventListener('keydown', (e) => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); window.sendMessage(); } });
     document.getElementById('sendBtn').onclick = window.sendMessage;
     
-    // FIXED: Inline File Rename Flow
+    // File Attachment flow triggers inline Modal
     document.getElementById('fileAttachment').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -401,6 +411,7 @@ window.renderMainApp = function() {
         searchBar.addEventListener('input', window.applyFilters);
     }
     
+    // Bind click outside for dropdowns globally
     document.addEventListener('click', e => {
         if (!e.target.closest('.menu-wrap')) window.closeDropdowns();
         const ep = document.getElementById('inputEmojiPicker');
@@ -413,9 +424,22 @@ window.renderMainApp = function() {
     if (typeof window.loadChatsList === 'function') window.loadChatsList(); 
     window.loadMessages(); 
     if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel(); 
+
+    // Intelligent DOM Observer: Sets inline "display: none" dynamically on render
+    const tasksPanel = document.getElementById('tasksPanel');
+    if (tasksPanel) {
+        new MutationObserver(() => {
+            document.querySelectorAll('[id^="trail-"], [id^="task-trail-"]').forEach(el => {
+                if (el.dataset.initialized !== 'true') {
+                    el.style.display = 'none'; // Unobtrusive inline styling
+                    el.dataset.initialized = 'true';
+                }
+            });
+        }).observe(tasksPanel, { childList: true, subtree: true });
+    }
 };
 
-// FIXED: Global Handlers for the File Rename Modal
+// Global Handlers for the File Rename Modal
 window.cancelFileRename = function() {
     window.pendingFileUpload = null;
     document.getElementById('fileAttachment').value = '';
@@ -452,7 +476,7 @@ window.confirmFileRename = async function() {
     const range = window.quillEditor.getSelection();
     const index = range ? range.index : window.quillEditor.getLength();
     
-    // FIXED: Tricks Quill into accepting the URL by disguising it as HTTPS
+    // Tricks Quill into accepting the URL by disguising it as HTTPS
     window.quillEditor.insertText(index, `📁 Attached File: ${finalName} (${sizeKB} KB)\n`, 'link', `https://secure-file.local/${filePath}`);
     window.showCenterToast('File securely attached!', 'fa-solid fa-check-circle', 'text-green-500');
     document.getElementById('fileAttachment').value = ''; 
@@ -546,10 +570,15 @@ window.toggleReplies = function(id) {
     if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
 }
 
-// FIXED: Task Trail UI Toggles perfectly rely on the CSS class logic now.
+// FIXED: Task Trail UI Toggles using pure inline overrides
 window.toggleTaskTrail = function(id) {
     const el = document.getElementById(id);
-    if (el) el.classList.toggle('active');
+    if (!el) return;
+    if (el.style.display === 'none') {
+        el.style.display = 'block';
+    } else {
+        el.style.display = 'none';
+    }
 };
 window.toggleTrail = window.toggleTaskTrail;
 
@@ -587,7 +616,6 @@ window.renderMessages = function(messages) {
         const time = window.getISTTime(msg.created_at);
         const snippetText = window.getSnippet(msg.text);
         
-        // FIXED: The regex intercepts the fake "https://secure-file.local/" domain safely.
         let displayHtml = msg.text.replace(/href="https:\/\/secure-file\.local\/([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800 transition-colors"`);
 
         const rowClass = isSent ? 'row-sent' : 'row-rcvd';

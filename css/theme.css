@@ -12,15 +12,16 @@
     --received-bg: #ffffff;
 }
 
+/* GitHub Native Dark Theme Palette */
 [data-theme="dark"] {
-    --bg-body: #0f172a;
-    --bg-sidebar: #1e293b;
-    --bg-chat: #0b1120;
-    --text-primary: #f8fafc;
-    --text-secondary: #94a3b8;
-    --border-color: rgba(255,255,255,0.1);
+    --bg-body: #0d1117;
+    --bg-sidebar: #161b22;
+    --bg-chat: #0d1117;
+    --text-primary: #c9d1d9;
+    --text-secondary: #8b949e;
+    --border-color: #30363d;
     --sent-bg: #3b0717; 
-    --received-bg: #1e293b;
+    --received-bg: #21262d;
     --chat-pattern: none;
 }
 
@@ -178,12 +179,18 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
     100% { opacity: 0; box-shadow: 0 0 0 0 var(--accent); }
 }
 
+[data-theme="dark"] .bg-white { background-color: var(--bg-sidebar) !important; color: var(--text-primary) !important; }
+[data-theme="dark"] .bg-gray-50 { background-color: var(--bg-body) !important; color: var(--text-primary) !important; }
+[data-theme="dark"] .text-gray-800 { color: #c9d1d9 !important; }
+[data-theme="dark"] .text-gray-700 { color: #c9d1d9 !important; }
+[data-theme="dark"] .text-gray-500 { color: #8b949e !important; }
+[data-theme="dark"] .border-gray-200, [data-theme="dark"] .border-gray-300 { border-color: var(--border-color) !important; }
 [data-theme="dark"] .bubble.sent { color: #fff; }
-[data-theme="dark"] .bubble.rcvd { color: #fff; }
+[data-theme="dark"] .bubble.rcvd { color: #c9d1d9; }
 [data-theme="dark"] .bubble.sent .b-name { color: #ffccd5; }
-[data-theme="dark"] .bubble.rcvd .b-name { color: #93c5fd; }
-[data-theme="dark"] .b-footer { border-top-color: rgba(255,255,255,0.1); }
-[data-theme="dark"] .b-header { border-bottom-color: rgba(255,255,255,0.1); }
-[data-theme="dark"] .e-chip { background: #334155; border-color: rgba(255,255,255,0.1); color: #e2e8f0; }
+[data-theme="dark"] .bubble.rcvd .b-name { color: #58a6ff; }
+[data-theme="dark"] .b-footer { border-top-color: #30363d; }
+[data-theme="dark"] .b-header { border-bottom-color: #30363d; }
+[data-theme="dark"] .e-chip { background: #21262d; border-color: #30363d; color: #c9d1d9; }
 [data-theme="dark"] .bubble.sent .e-chip { background: rgba(0,0,0,0.2); border-color: rgba(255,255,255,0.1); color: #cbd5e1; }
 [data-theme="dark"] .chat-shell { background: transparent; }

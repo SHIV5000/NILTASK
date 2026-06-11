@@ -22,7 +22,6 @@ window.showCenterToast = function(msg, icon = 'fa-solid fa-check-circle', color 
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 500); }, 3000); 
 };
 
-// FIXED: Defined missing openSecureFile
 window.openSecureFile = function(path) {
     window.showCenterToast('Opening file...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
     const { data } = sb.storage.from('task-proofs').getPublicUrl(path);
@@ -104,15 +103,19 @@ window.renderAuthScreen = function() {
     };
 };
 
-// FIXED: Robust sidebar toggling using inline display styles
+// FIXED: Absolute truth toggle using getComputedStyle
 window.toggleRightSidebar = function() {
     const sb = document.getElementById('rightSidebar');
-    if(sb) sb.style.display = (sb.style.display === 'none') ? 'flex' : 'none';
+    if (!sb) return;
+    const isHidden = window.getComputedStyle(sb).display === 'none';
+    sb.style.setProperty('display', isHidden ? 'flex' : 'none', 'important');
 };
 
 window.toggleLeftSidebar = function() {
     const sb = document.getElementById('leftSidebar');
-    if(sb) sb.style.display = (sb.style.display === 'none') ? 'flex' : 'none';
+    if (!sb) return;
+    const isHidden = window.getComputedStyle(sb).display === 'none';
+    sb.style.setProperty('display', isHidden ? 'flex' : 'none', 'important');
 };
 
 window.renderMainApp = function() {
@@ -121,7 +124,7 @@ window.renderMainApp = function() {
 
     document.getElementById('root').innerHTML = `
         <div class="flex h-full w-full bg-gray-50">
-            <div id="leftSidebar" class="left-sidebar flex flex-col border-r z-20 shadow-sm bg-white border-gray-200" style="width: 320px;">
+            <div id="leftSidebar" class="left-sidebar flex flex-col border-r z-20 shadow-sm bg-white border-gray-200">
                 <div class="p-4 flex justify-between items-center border-b border-gray-200">
                     <h2 class="text-xl font-bold tracking-tight flex items-center gap-2 text-gray-800">
                         <i class="fa-solid fa-comments text-[var(--accent)]"></i> Chats
@@ -137,7 +140,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.24.0 - UX Polish & Toggles
+                        v1.24.1 - Critical Fixes
                     </div>
                 </div>
             </div>
@@ -172,8 +175,7 @@ window.renderMainApp = function() {
                     </div>
 
                     <div class="w-full bg-white border border-gray-300 rounded-xl flex flex-col shadow-sm focus-within:border-[var(--accent)] transition-colors">
-                        <div id="toolbar-container" class="border-b border-gray-200 bg-gray-50 rounded-t-xl">
-                           </div>
+                        <div id="toolbar-container" class="border-b border-gray-200 bg-gray-50 rounded-t-xl"></div>
                         <div class="flex items-end gap-2 p-1.5 px-2">
                             <button onclick="window.addEmoji()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Quick Emoji"><i class="ti ti-mood-smile text-xl"></i></button>
                             <button onclick="document.getElementById('fileAttachment').click()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Attach File"><i class="ti ti-paperclip text-xl"></i></button>
@@ -190,7 +192,7 @@ window.renderMainApp = function() {
                 </div>
             </div>
 
-            <div id="rightSidebar" class="right-sidebar border-l flex flex-col z-20 shadow-sm bg-gray-50 border-gray-200" style="width: 450px;">
+            <div id="rightSidebar" class="right-sidebar border-l flex flex-col z-20 shadow-sm bg-gray-50 border-gray-200">
                 <div class="w-full h-full flex flex-col min-w-0"> <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
                         <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="fa-solid fa-filter text-[var(--accent)]"></i> Task Filters</h3>
                         <select id="taskFilter" onchange="window.toggleDateFilter()" class="text-xs px-2 py-2 rounded-lg border border-gray-200 font-medium text-gray-700 bg-gray-50 shadow-sm outline-none cursor-pointer w-full focus:ring-2 focus:ring-[var(--accent)] transition-all">
@@ -301,6 +303,7 @@ window.renderMainApp = function() {
     window.quillEditor.root.addEventListener('keydown', (e) => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); window.sendMessage(); } });
     document.getElementById('sendBtn').onclick = window.sendMessage;
     
+    // FIXED: Real public URL extraction to bypass Quill's link sanitizer
     document.getElementById('fileAttachment').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (file) {
@@ -315,9 +318,13 @@ window.renderMainApp = function() {
                 return;
             }
             
+            const { data: urlData } = sb.storage.from('task-proofs').getPublicUrl(filePath);
+            const fileUrl = urlData.publicUrl;
+            
             window.quillEditor.focus();
-            const range = window.quillEditor.getSelection() || { index: window.quillEditor.getLength() };
-            window.quillEditor.insertText(range.index, `📁 Attached File: ${file.name} (${sizeKB} KB)\n`, 'link', `secure-file:${filePath}`);
+            const range = window.quillEditor.getSelection();
+            const index = range ? range.index : window.quillEditor.getLength();
+            window.quillEditor.insertText(index, `📁 Attached File: ${file.name} (${sizeKB} KB)\n`, 'link', fileUrl);
             
             window.showCenterToast('File securely attached!', 'fa-solid fa-check-circle', 'text-green-500');
             e.target.value = ''; 
@@ -338,11 +345,13 @@ window.renderMainApp = function() {
     window.loadTasksForPanel(); 
 };
 
-// FIXED: Flawless Emoji Injection into Quill
+// FIXED: Exact cursor target calculation
 window.addEmoji = function() {
     window.quillEditor.focus();
-    const range = window.quillEditor.getSelection() || { index: window.quillEditor.getLength() };
-    window.quillEditor.insertText(range.index, '😀');
+    const range = window.quillEditor.getSelection();
+    const index = range ? range.index : window.quillEditor.getLength();
+    window.quillEditor.insertText(index, '😀');
+    window.quillEditor.setSelection(index + 2); // Push cursor past the emoji
     window.showCenterToast('Emoji added!', 'fa-regular fa-face-smile', 'text-yellow-400');
 }
 

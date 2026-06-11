@@ -74,3 +74,148 @@ window.initResizers = function() {
     });
     document.addEventListener('mouseup', () => { isResizingLeft = false; isResizingRight = false; document.body.style.cursor = 'default'; });
 };
+
+window.toggleDropdown = function(id) {
+    document.querySelectorAll('.bubble-dropdown').forEach(d => {
+        if (d.id !== id) d.classList.remove('open');
+    });
+    document.getElementById(id).classList.toggle('open');
+};
+
+window.closeDropdowns = function() {
+    document.querySelectorAll('.bubble-dropdown').forEach(d => d.classList.remove('open'));
+};
+
+window.toggleTaskTrail = function(id) {
+    let el = document.getElementById(id) || document.getElementById('trail-' + id) || document.getElementById('task-trail-' + id);
+    if (!el) return;
+    const isHidden = window.getComputedStyle(el).display === 'none' || el.style.display === 'none';
+    if (isHidden) { el.style.setProperty('display', 'block', 'important'); } 
+    else { el.style.setProperty('display', 'none', 'important'); }
+};
+window.toggleTrail = window.toggleTaskTrail;
+
+window.openTaskModal = async function(mid, text) { 
+    window.currentMessageId = mid; 
+    let tmp = document.createElement("DIV");
+    tmp.innerHTML = text;
+    window.currentMessageTextRaw = (tmp.textContent || tmp.innerText || "").substring(0,60) + "...";
+
+    window.closeDropdowns();
+    document.getElementById('taskModal').classList.remove('hidden'); 
+    document.getElementById('taskModal').classList.add('flex'); 
+    document.getElementById('taskTitle').value = (tmp.textContent || tmp.innerText || "").trim(); 
+    
+    const filteredUsers = window.globalUsersCache.filter(u => u.id !== window.currentUser.id);
+    const list = document.getElementById('assigneeCheckboxList');
+    list.innerHTML = filteredUsers.map(u => `
+        <label class="assignee-item flex items-center gap-2 text-[13px] p-1.5 rounded-lg cursor-pointer transition-colors border border-transparent" style="hover:bg-color: var(--bg-body); hover:border-color: var(--border-color);">
+            <input type="checkbox" value="${u.id}" class="assignee-cb w-4 h-4 accent-indigo-600 rounded">
+            <span class="assignee-name font-semibold" style="color: var(--text-primary);">${window.escapeHtml(window.toSentenceCase(u.full_name || u.email.split('@')[0]))}</span>
+        </label>
+    `).join('');
+    document.getElementById('assigneeSearch').value = '';
+};
+
+window.filterAssignees = function() {
+    const term = document.getElementById('assigneeSearch').value.toLowerCase();
+    document.querySelectorAll('.assignee-item').forEach(el => {
+        const name = el.querySelector('.assignee-name').innerText.toLowerCase();
+        el.style.display = name.includes(term) ? 'flex' : 'none';
+    });
+};
+
+window.closeTaskModal = function() { document.getElementById('taskModal').classList.add('hidden'); document.getElementById('taskModal').classList.remove('flex'); };
+
+window.showReminderModal = function(mid, text) { 
+    window.currentReminderId = mid; 
+    window.closeDropdowns();
+    document.getElementById('reminderMessagePreview').innerText = text; 
+    document.getElementById('reminderModal').classList.remove('hidden'); 
+    document.getElementById('reminderModal').classList.add('flex'); 
+};
+
+window.closeReminderModal = function() { document.getElementById('reminderModal').classList.add('hidden'); document.getElementById('reminderModal').classList.remove('flex'); };
+
+window.saveReminder = async function() { 
+    const dt = document.getElementById('reminderDateTime').value; 
+    if(!dt) return; 
+    await sb.from('reminders').insert({ user_id: window.currentUser.id, message_id: window.currentReminderId, reminder_time: new Date(dt).toISOString(), triggered: false }); 
+    window.showCenterToast('Reminder Set Successfully'); 
+    window.closeReminderModal(); 
+};
+
+window.toggleDateFilter = function() {
+    const val = document.getElementById('taskFilter').value;
+    const dr = document.getElementById('dateRangeFilter');
+    if (val === 'date_range') dr.classList.remove('hidden');
+    else dr.classList.add('hidden');
+    if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel();
+};
+
+window.openTopPanel = async function(type) {
+    document.querySelectorAll('.top-panel-dropdown').forEach(m => m.remove());
+    const panel = document.createElement('div');
+    panel.className = 'top-panel-dropdown right-10 top-16 w-80 max-h-96 overflow-y-auto p-4 border shadow-2xl rounded-2xl z-50';
+    panel.style.backgroundColor = 'var(--bg-sidebar)';
+    panel.style.borderColor = 'var(--border-color)';
+    
+    if (type === 'scheduled') {
+        panel.innerHTML = `<h4 class="font-bold border-b pb-3 mb-3 flex items-center gap-2" style="border-color: var(--border-color); color: var(--text-primary);"><i class="fa-regular fa-clock text-blue-500"></i> Scheduled Messages</h4>`;
+        const {data} = await sb.from('scheduled_messages').select('*').eq('sender_id', window.currentUser.id).eq('status', 'pending');
+        if(!data || data.length===0) panel.innerHTML += `<p class="text-xs italic text-center py-4" style="color: var(--text-secondary);">No scheduled messages.</p>`;
+        data?.forEach(d => {
+            panel.innerHTML += `<div class="mb-2 p-2.5 border rounded-xl text-sm flex justify-between items-center group/item transition-colors" style="background-color: var(--bg-body); border-color: var(--border-color);">
+                <span class="truncate w-48" style="color: var(--text-primary);">${window.escapeHtml(d.message_text)}</span>
+                <i class="fa-solid fa-times hover:text-red-500 cursor-pointer p-1" style="color: var(--text-secondary);" onclick="window.deleteScheduled('${d.id}')"></i>
+            </div>`;
+        });
+    } else if (type === 'bookmarks') {
+        panel.innerHTML = `<h4 class="font-bold border-b pb-3 mb-3 flex items-center gap-2" style="border-color: var(--border-color); color: var(--text-primary);"><i class="fa-regular fa-bookmark text-orange-500"></i> Bookmarks</h4>`;
+        const {data} = await sb.from('bookmarks').select('*, messages(text)').eq('user_id', window.currentUser.id);
+        if(!data || data.length===0) panel.innerHTML += `<p class="text-xs italic text-center py-4" style="color: var(--text-secondary);">No bookmarks found.</p>`;
+        data?.forEach(d => {
+            panel.innerHTML += `<div class="mb-2 p-2.5 border rounded-xl text-sm cursor-pointer transition-colors group/item" style="background-color: var(--bg-body); border-color: var(--border-color);" onclick="window.scrollToAndHighlight('row-${d.message_id}')">
+                <span class="truncate block" style="color: var(--text-primary);">${window.escapeHtml(d.messages?.text)}</span>
+            </div>`;
+        });
+    } else if (type === 'alerts') {
+        panel.innerHTML = `<h4 class="font-bold border-b pb-3 mb-3 flex items-center gap-2" style="border-color: var(--border-color); color: var(--text-primary);"><i class="fa-regular fa-bell text-yellow-500"></i> Notifications</h4>`;
+        const {data} = await sb.from('notifications').select('*').eq('user_id', window.currentUser.id).order('created_at', {ascending: false}).limit(10);
+        if(!data || data.length===0) panel.innerHTML += `<p class="text-xs italic text-center py-4" style="color: var(--text-secondary);">All caught up!</p>`;
+        data?.forEach(d => {
+             panel.innerHTML += `<div class="mb-2 p-2.5 border rounded-xl text-sm cursor-pointer transition-colors group/item" style="background-color: var(--bg-body); border-color: var(--border-color);" onclick="window.scrollToAndHighlight('row-${d.message_id}')">
+                <span class="block font-medium" style="color: var(--text-primary);">${window.escapeHtml(d.message)}</span>
+                <div class="text-[9px] mt-1" style="color: var(--text-secondary);">${window.getISTTime(d.created_at)}</div>
+            </div>`;
+        });
+    }
+    document.querySelector('.chat-area').appendChild(panel);
+};
+
+window.deleteScheduled = async function(id) {
+    await sb.from('scheduled_messages').delete().eq('id', id);
+    document.querySelectorAll('.top-panel-dropdown').forEach(m => m.remove());
+    window.showCenterToast('Scheduled message cancelled.', 'fa-solid fa-info-circle', 'text-yellow-400');
+};
+
+window.showScheduleModal = function() {
+    let txt = window.quillEditor.root.innerHTML.trim();
+    txt = txt.replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
+    if(!txt) { window.showCenterToast('Type a message first.', 'fa-solid fa-exclamation-triangle', 'text-yellow-500'); return; }
+    document.getElementById('scheduleModal').classList.remove('hidden');
+    document.getElementById('scheduleModal').classList.add('flex');
+};
+
+window.closeScheduleModal = function() { document.getElementById('scheduleModal').classList.add('hidden'); document.getElementById('scheduleModal').classList.remove('flex'); };
+
+window.saveScheduledMessage = async function() {
+    const time = document.getElementById('scheduleDateTime').value;
+    if(!time) return;
+    let txt = window.quillEditor.root.innerHTML.trim();
+    txt = txt.replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
+    await sb.from('scheduled_messages').insert({ sender_id: window.currentUser.id, room_id: window.currentRoom, message_text: txt, scheduled_time: new Date(time).toISOString(), status: 'pending' });
+    window.closeScheduleModal();
+    window.quillEditor.root.innerHTML = '';
+    window.showCenterToast('Message Scheduled Successfully!');
+};

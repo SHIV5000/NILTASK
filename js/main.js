@@ -10,7 +10,7 @@ let assigneeSubscription = null;
 let trailSubscription = null;
 
 window.renderMainApp = function() {
-    window.applyTheme();
+    if (typeof window.applyTheme === 'function') window.applyTheme();
     const userNameDisplay = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
     
     const leftWidth = localStorage.getItem('mpgs_left_width') || '320px';
@@ -45,7 +45,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color: var(--text-secondary);">
-                        v1.41.0 - Architectural Split
+                        v1.42.0 - UI Restoration
                     </div>
                 </div>
             </div>
@@ -223,8 +223,8 @@ window.renderMainApp = function() {
     const toolbar = document.querySelector('.ql-toolbar');
     document.getElementById('toolbar-container').appendChild(toolbar);
 
-    window.quillEditor.root.addEventListener('keydown', (e) => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); window.sendMessage(); } });
-    document.getElementById('sendBtn').onclick = window.sendMessage;
+    window.quillEditor.root.addEventListener('keydown', (e) => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); if(typeof window.sendMessage === 'function') window.sendMessage(); } });
+    document.getElementById('sendBtn').onclick = () => { if(typeof window.sendMessage === 'function') window.sendMessage(); };
     
     // Modals
     document.getElementById('fileAttachment').addEventListener('change', (e) => {
@@ -240,19 +240,19 @@ window.renderMainApp = function() {
     });
     
     const searchBar = document.getElementById('messageSearchBar');
-    if(searchBar) searchBar.addEventListener('input', window.applyFilters);
+    if(searchBar) searchBar.addEventListener('input', () => { if(typeof window.applyFilters === 'function') window.applyFilters(); });
     
     document.addEventListener('click', e => {
-        if (!e.target.closest('.menu-wrap')) window.closeDropdowns();
+        if (!e.target.closest('.menu-wrap')) { if(typeof window.closeDropdowns === 'function') window.closeDropdowns(); }
         const ep = document.getElementById('inputEmojiPicker');
         if (ep && !e.target.closest('#inputEmojiPicker') && !e.target.closest('[onclick="window.toggleInputEmojiPicker()"]')) {
             ep.classList.add('hidden');
         }
     });
 
-    window.initResizers();
+    if (typeof window.initResizers === 'function') window.initResizers();
     if (typeof window.loadChatsList === 'function') window.loadChatsList(); 
-    window.loadMessages(); 
+    if (typeof window.loadMessages === 'function') window.loadMessages(); 
     if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel(); 
 
     // Intelligent DOM Observer
@@ -269,29 +269,70 @@ window.renderMainApp = function() {
     }
 };
 
+window.loadChatsList = async function() {
+    const groups = ['general', 'math', 'science', 'leadership'];
+    const {data: users} = await sb.from('profiles').select('id, email, full_name');
+    window.globalUsersCache = users || []; 
+    
+    let html = `<div class="px-4 py-2 mt-2 text-[10px] font-black tracking-widest uppercase" style="color: var(--text-secondary);">Channels</div>`;
+    groups.forEach(g => { 
+        const isCurrent = window.currentRoom === g;
+        html += `<div class="channel-item p-2.5 mx-2 mb-1 rounded-xl cursor-pointer flex items-center gap-3 transition-colors border" style="background-color: ${isCurrent ? 'var(--bg-body)' : 'transparent'}; border-color: ${isCurrent ? 'var(--border-color)' : 'transparent'}; font-weight: ${isCurrent ? 'bold' : 'normal'};" data-room="${g}" data-name="# ${g}">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs border" style="background-color: var(--bg-sidebar); border-color: var(--border-color); color: var(--text-secondary);"><i class="ti ti-hash"></i></div>
+            <span class="flex-1 truncate tracking-wide text-sm" style="color: var(--text-primary);"># ${g}</span>
+        </div>`; 
+    });
+    html += `<div class="px-4 py-2 mt-4 text-[10px] font-black tracking-widest uppercase" style="color: var(--text-secondary);">Direct Messages</div>`;
+    window.globalUsersCache.filter(u => u.id !== window.currentUser.id).forEach(u => { 
+        const name = (typeof window.toSentenceCase === 'function') ? window.toSentenceCase(u.full_name || u.email.split('@')[0]) : (u.full_name || u.email.split('@')[0]);
+        const isCurrent = window.currentRoom === 'dm_' + u.id;
+        html += `<div class="channel-item p-2.5 mx-2 mb-1 rounded-xl cursor-pointer flex items-center gap-3 transition-colors border" style="background-color: ${isCurrent ? 'var(--bg-body)' : 'transparent'}; border-color: ${isCurrent ? 'var(--border-color)' : 'transparent'}; font-weight: ${isCurrent ? 'bold' : 'normal'};" data-room="dm_${u.id}" data-name="${name}">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm" style="background: var(--accent)">${name.charAt(0).toUpperCase()}</div>
+            <span class="flex-1 truncate tracking-wide text-sm" style="color: var(--text-primary);">${name}</span>
+        </div>`; 
+    });
+    
+    const chatsListEl = document.getElementById('chatsList');
+    if(chatsListEl) {
+        chatsListEl.innerHTML = html;
+        document.querySelectorAll('.channel-item').forEach(el => { 
+            el.addEventListener('click', () => { 
+                window.currentRoom = el.dataset.room; 
+                localStorage.setItem('mpgs_current_room', el.dataset.room); 
+                window.loadChatsList(); 
+                const titleSpan = document.getElementById('roomTitleDisplay');
+                if(titleSpan) titleSpan.innerText = el.dataset.name;
+                const shell = document.getElementById('chatShellContainer');
+                if (shell) shell.innerHTML = '<div class="m-auto flex flex-col items-center opacity-50 pt-10"><i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3" style="color: var(--text-secondary);"></i><p class="text-sm font-medium" style="color: var(--text-secondary);">Loading chat...</p></div>';
+                if (typeof window.loadMessages === 'function') window.loadMessages(); 
+            }); 
+        });
+    }
+};
+
 window.startSubscriptions = function() { 
     if(messageSubscription) messageSubscription.unsubscribe();
-    messageSubscription = sb.channel('public:messages').on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, (p) => { if(p.new.room_id === window.currentRoom) window.loadMessages(); }).subscribe();
+    messageSubscription = sb.channel('public:messages').on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, (p) => { if(p.new.room_id === window.currentRoom && typeof window.loadMessages === 'function') window.loadMessages(); }).subscribe();
     
     if(taskSubscription) taskSubscription.unsubscribe(); 
-    taskSubscription = sb.channel('tasks-changes').on('postgres_changes', {event:'*', schema:'public', table:'tasks'}, () => { window.loadTasksForPanel(); }).subscribe(); 
+    taskSubscription = sb.channel('tasks-changes').on('postgres_changes', {event:'*', schema:'public', table:'tasks'}, () => { if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel(); }).subscribe(); 
     
     if(assigneeSubscription) assigneeSubscription.unsubscribe(); 
-    assigneeSubscription = sb.channel('assignees-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_assignees'}, () => { window.loadTasksForPanel(); }).subscribe(); 
+    assigneeSubscription = sb.channel('assignees-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_assignees'}, () => { if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel(); }).subscribe(); 
     
     if(trailSubscription) trailSubscription.unsubscribe(); 
-    trailSubscription = sb.channel('trails-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_trails'}, () => { window.loadTasksForPanel(); }).subscribe(); 
+    trailSubscription = sb.channel('trails-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_trails'}, () => { if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel(); }).subscribe(); 
 };
 
 // Boot Sequence
 ;(async() => { 
     const {data: {session}} = await sb.auth.getSession(); 
     if(!session) {
-        window.renderAuthScreen(); 
+        if (typeof window.renderAuthScreen === 'function') window.renderAuthScreen(); 
     } else { 
         window.currentUser = session.user; 
-        await window.ensureProfile(); 
-        window.renderMainApp(); 
-        window.startSubscriptions(); 
+        if (typeof window.ensureProfile === 'function') await window.ensureProfile(); 
+        if (typeof window.renderMainApp === 'function') window.renderMainApp(); 
+        if (typeof window.startSubscriptions === 'function') window.startSubscriptions(); 
     } 
 })();

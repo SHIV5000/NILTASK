@@ -1,4 +1,4 @@
-import { sb } from './shared.js';
+import { sb } from './shared.js'; 
 
 window.openTaskModal = async function(mid, text) { 
     window.currentMessageId = mid; 

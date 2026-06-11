@@ -5,6 +5,7 @@ window.currentTheme = localStorage.getItem('theme') || 'light';
 window.currentRoom = localStorage.getItem('mpgs_current_room') || 'general';
 window.pendingScrollId = null; 
 window.pendingFileUpload = null;
+window.expandedTrails = new Set(); // NEW: Memory for Task Trails
 
 window.applyTheme = function() { 
     document.documentElement.setAttribute('data-theme', window.currentTheme); 
@@ -88,10 +89,17 @@ window.closeDropdowns = function() {
 
 window.toggleTaskTrail = function(id) {
     let el = document.getElementById(id) || document.getElementById('trail-' + id) || document.getElementById('task-trail-' + id);
-    if (!el) return;
-    const isHidden = window.getComputedStyle(el).display === 'none' || el.style.display === 'none';
-    if (isHidden) { el.style.setProperty('display', 'block', 'important'); } 
-    else { el.style.setProperty('display', 'none', 'important'); }
+    
+    // Extract base ID cleanly
+    let baseId = String(id).replace('task-trail-', '').replace('trail-', '');
+
+    if (window.expandedTrails.has(baseId)) {
+        window.expandedTrails.delete(baseId);
+        if (el) el.style.setProperty('display', 'none', 'important');
+    } else {
+        window.expandedTrails.add(baseId);
+        if (el) el.style.setProperty('display', 'block', 'important');
+    }
 };
 window.toggleTrail = window.toggleTaskTrail;
 

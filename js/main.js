@@ -159,7 +159,7 @@ window.renderMainApp = function() {
     const leftDisplay = localStorage.getItem('mpgs_left_sidebar_state') || 'flex';
     const rightDisplay = localStorage.getItem('mpgs_right_sidebar_state') || 'flex';
 
-    // SVG Watermark Generator
+    // REPEATING SVG WATERMARK GENERATOR
     const wt = window.escapeHtml(userNameDisplay.toUpperCase());
     const svgL = encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200"><text x="50%" y="50%" transform="rotate(-30 150 100)" fill="rgba(0,0,0,0.04)" font-size="20" font-family="sans-serif" font-weight="900" text-anchor="middle" dominant-baseline="middle">${wt}</text></svg>`);
     const svgD = encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200"><text x="50%" y="50%" transform="rotate(-30 150 100)" fill="rgba(255,255,255,0.02)" font-size="20" font-family="sans-serif" font-weight="900" text-anchor="middle" dominant-baseline="middle">${wt}</text></svg>`);
@@ -180,6 +180,16 @@ window.renderMainApp = function() {
                 </div>
                 <div class="p-3"><input type="text" id="globalSearch" placeholder="Search chats" class="w-full p-2 rounded-xl text-sm border border-gray-200 bg-gray-50 focus:outline-none focus:border-[var(--accent)]"></div>
                 <div id="chatsList" class="flex-1 overflow-y-auto px-2 pb-4"></div>
+                
+                <div class="p-3 border-t border-gray-200 flex flex-col items-center justify-center gap-1.5 bg-gray-50/50">
+                    <div class="text-[13px] font-bold text-gray-700 flex items-center gap-2 bg-white border border-gray-200 shadow-sm px-3 py-1.5 rounded-full w-full justify-center">
+                        <div class="w-5 h-5 rounded-full bg-[var(--accent)] text-white flex items-center justify-center text-[10px]">${userNameDisplay.charAt(0).toUpperCase()}</div>
+                        ${window.escapeHtml(userNameDisplay.toUpperCase())}
+                    </div>
+                    <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
+                        v1.27.2 - Fully Restored System
+                    </div>
+                </div>
             </div>
             
             <div id="leftResizer" class="drag-resizer"></div>
@@ -198,7 +208,9 @@ window.renderMainApp = function() {
                         <input type="text" id="messageSearchBar" placeholder="Search..." class="px-3 py-1 rounded-full text-sm w-48 border border-gray-200 bg-gray-50 focus:outline-none focus:border-[var(--accent)] ml-2">
                     </div>
                 </div>
+                
                 <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col items-center min-w-0"><div class="chat-shell w-full max-w-full bg-transparent border-none" id="chatShellContainer"></div></div>
+                
                 <div class="flex flex-col relative bg-white border-t border-gray-200 p-3 px-5 z-20">
                     <div id="replyBanner" class="hidden mx-0 mt-0 mb-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl flex justify-between items-center z-0 relative shadow-sm text-xs">
                         <div class="text-indigo-700 flex items-center gap-2 overflow-hidden"><i class="fa-solid fa-reply"></i><span class="font-bold whitespace-nowrap">Replying to:</span><span id="replyBannerText" class="italic truncate text-indigo-500 max-w-[200px]"></span></div>
@@ -339,7 +351,6 @@ window.renderMainApp = function() {
         const index = range ? range.index : window.quillEditor.getLength();
         
         window.quillEditor.insertText(index, `📁 Attached File: ${finalName} (${sizeKB} KB)\n`, 'link', `secure-file:${filePath}`);
-        
         window.showCenterToast('File securely attached!', 'fa-solid fa-check-circle', 'text-green-500');
         e.target.value = ''; 
     });
@@ -756,43 +767,6 @@ window.saveScheduledMessage = async function() {
     window.closeScheduleModal();
     window.quillEditor.root.innerHTML = '';
     window.showCenterToast('Message Scheduled Successfully!');
-}
-
-window.loadChatsList = async function() {
-    const groups = ['general', 'math', 'science', 'leadership'];
-    const {data: users} = await sb.from('profiles').select('id, email, full_name');
-    window.globalUsersCache = users || []; 
-    
-    let html = `<div class="px-4 py-2 mt-2 text-[10px] font-black tracking-widest text-gray-400 uppercase">Channels</div>`;
-    groups.forEach(g => { 
-        html += `<div class="channel-item p-2.5 mx-2 mb-1 rounded-xl cursor-pointer hover:bg-gray-100 flex items-center gap-3 transition-colors ${window.currentRoom === g ? 'bg-gray-100 border border-gray-200 font-bold shadow-sm' : 'border border-transparent'}" data-room="${g}" data-name="# ${g}">
-            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 text-xs bg-gray-50 border border-gray-200"><i class="ti ti-hash"></i></div>
-            <span class="flex-1 truncate text-gray-700 tracking-wide text-sm"># ${g}</span>
-        </div>`; 
-    });
-    html += `<div class="px-4 py-2 mt-4 text-[10px] font-black tracking-widest text-gray-400 uppercase">Direct Messages</div>`;
-    window.globalUsersCache.filter(u => u.id !== window.currentUser.id).forEach(u => { 
-        const name = window.toSentenceCase(u.full_name || u.email.split('@')[0]);
-        html += `<div class="channel-item p-2.5 mx-2 mb-1 rounded-xl cursor-pointer hover:bg-gray-100 flex items-center gap-3 transition-colors ${window.currentRoom === 'dm_' + u.id ? 'bg-gray-100 border border-gray-200 font-bold shadow-sm' : 'border border-transparent'}" data-room="dm_${u.id}" data-name="${name}">
-            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm" style="background: var(--accent)">${name.charAt(0).toUpperCase()}</div>
-            <span class="flex-1 truncate text-gray-700 tracking-wide text-sm">${name}</span>
-        </div>`; 
-    });
-    document.getElementById('chatsList').innerHTML = html;
-    
-    document.querySelectorAll('.channel-item').forEach(el => { 
-        el.addEventListener('click', () => { 
-            window.currentRoom = el.dataset.room; 
-            localStorage.setItem('mpgs_current_room', el.dataset.room); 
-            document.querySelectorAll('.channel-item').forEach(item => { item.classList.remove('bg-gray-100', 'border-gray-200', 'font-bold', 'shadow-sm'); item.classList.add('border-transparent'); });
-            el.classList.remove('border-transparent');
-            el.classList.add('bg-gray-100', 'border-gray-200', 'font-bold', 'shadow-sm');
-            const titleSpan = document.getElementById('roomTitleDisplay');
-            if(titleSpan) titleSpan.innerText = el.dataset.name;
-            document.getElementById('chatShellContainer').innerHTML = '<div class="m-auto flex flex-col items-center opacity-50 pt-10"><i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3 text-gray-400"></i><p class="text-sm font-medium text-gray-500">Loading chat...</p></div>';
-            window.loadMessages(); 
-        }); 
-    });
 }
 
 window.startSubscriptions = function() { 

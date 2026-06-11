@@ -186,7 +186,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.27.3 - Restoration Check
+                        v1.28.0 - Full Code Lock
                     </div>
                 </div>
             </div>
@@ -766,43 +766,6 @@ window.saveScheduledMessage = async function() {
     window.closeScheduleModal();
     window.quillEditor.root.innerHTML = '';
     window.showCenterToast('Message Scheduled Successfully!');
-}
-
-window.loadChatsList = async function() {
-    const groups = ['general', 'math', 'science', 'leadership'];
-    const {data: users} = await sb.from('profiles').select('id, email, full_name');
-    window.globalUsersCache = users || []; 
-    
-    let html = `<div class="px-4 py-2 mt-2 text-[10px] font-black tracking-widest text-gray-400 uppercase">Channels</div>`;
-    groups.forEach(g => { 
-        html += `<div class="channel-item p-2.5 mx-2 mb-1 rounded-xl cursor-pointer hover:bg-gray-100 flex items-center gap-3 transition-colors ${window.currentRoom === g ? 'bg-gray-100 border border-gray-200 font-bold shadow-sm' : 'border border-transparent'}" data-room="${g}" data-name="# ${g}">
-            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 text-xs bg-gray-50 border border-gray-200"><i class="ti ti-hash"></i></div>
-            <span class="flex-1 truncate text-gray-700 tracking-wide text-sm"># ${g}</span>
-        </div>`; 
-    });
-    html += `<div class="px-4 py-2 mt-4 text-[10px] font-black tracking-widest text-gray-400 uppercase">Direct Messages</div>`;
-    window.globalUsersCache.filter(u => u.id !== window.currentUser.id).forEach(u => { 
-        const name = window.toSentenceCase(u.full_name || u.email.split('@')[0]);
-        html += `<div class="channel-item p-2.5 mx-2 mb-1 rounded-xl cursor-pointer hover:bg-gray-100 flex items-center gap-3 transition-colors ${window.currentRoom === 'dm_' + u.id ? 'bg-gray-100 border border-gray-200 font-bold shadow-sm' : 'border border-transparent'}" data-room="dm_${u.id}" data-name="${name}">
-            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm" style="background: var(--accent)">${name.charAt(0).toUpperCase()}</div>
-            <span class="flex-1 truncate text-gray-700 tracking-wide text-sm">${name}</span>
-        </div>`; 
-    });
-    document.getElementById('chatsList').innerHTML = html;
-    
-    document.querySelectorAll('.channel-item').forEach(el => { 
-        el.addEventListener('click', () => { 
-            window.currentRoom = el.dataset.room; 
-            localStorage.setItem('mpgs_current_room', el.dataset.room); 
-            document.querySelectorAll('.channel-item').forEach(item => { item.classList.remove('bg-gray-100', 'border-gray-200', 'font-bold', 'shadow-sm'); item.classList.add('border-transparent'); });
-            el.classList.remove('border-transparent');
-            el.classList.add('bg-gray-100', 'border-gray-200', 'font-bold', 'shadow-sm');
-            const titleSpan = document.getElementById('roomTitleDisplay');
-            if(titleSpan) titleSpan.innerText = el.dataset.name;
-            document.getElementById('chatShellContainer').innerHTML = '<div class="m-auto flex flex-col items-center opacity-50 pt-10"><i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3 text-gray-400"></i><p class="text-sm font-medium text-gray-500">Loading chat...</p></div>';
-            window.loadMessages(); 
-        }); 
-    });
 }
 
 window.startSubscriptions = function() { 

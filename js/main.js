@@ -115,7 +115,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.20.0 - Affixed Reactions
+                        v1.21.0 - Smart Scroll & Hide
                     </div>
                 </div>
             </div>
@@ -134,8 +134,8 @@ window.renderMainApp = function() {
                     </div>
                 </div>
                 
-                <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col">
-                    <div class="w-full bg-transparent border-none" id="chatShellContainer"></div>
+                <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col items-center">
+                    <div class="chat-shell w-full max-w-full bg-transparent border-none" id="chatShellContainer"></div>
                 </div>
                 
                 <div class="flex flex-col relative bg-white border-t border-gray-200 p-3 px-5">
@@ -302,9 +302,6 @@ window.renderMainApp = function() {
     window.loadTasksForPanel(); 
 };
 
-// -----------------------------------------------------------------------------
-// NEW: PHYSICAL REACTION AFFIXING ENGINE
-// -----------------------------------------------------------------------------
 window.applyReaction = async function(msgId, value, type) {
     const row = document.getElementById(`row-${msgId}`);
     if (!row) return;
@@ -333,6 +330,25 @@ window.applyReaction = async function(msgId, value, type) {
         setTimeout(() => { hoverMenu.style.display = ''; }, 300);
     }
 };
+
+window.scrollToAndHighlight = function(rowId) {
+    document.querySelectorAll('.top-panel-dropdown').forEach(m => m.remove());
+    const row = document.getElementById(rowId);
+    if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const msgId = rowId.replace('row-', '');
+        const rw = document.getElementById(`rw-${msgId}`);
+        if (rw) rw.style.display = 'flex';
+        
+        const bubble = row.querySelector('.bubble');
+        if(bubble) {
+            const oldBg = bubble.style.backgroundColor;
+            bubble.style.transition = 'background-color 0.5s';
+            bubble.style.backgroundColor = '#fef08a'; 
+            setTimeout(() => { bubble.style.backgroundColor = oldBg || ''; }, 1500);
+        }
+    }
+}
 
 window.openTaskModal = async function(mid, text) { 
     window.currentMessageId = mid; 
@@ -530,29 +546,48 @@ window.loadChatsList = async function() {
     });
 }
 
+// FIXED: Capture parent message ID and pass it to loadMessages for auto-scrolling
 window.sendMessage = async function() {
     let text = window.quillEditor.root.innerHTML.trim();
     text = text.replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
     if (!text) return;
     
     let payload = { room_id: window.currentRoom, sender_id: window.currentUser.id, text, created_at: new Date().toISOString() };
+    let repliedTo = null;
     if (window.currentlyReplyingTo) {
         payload.parent_message_id = window.currentlyReplyingTo;
+        repliedTo = window.currentlyReplyingTo;
     }
     
     await sb.from('messages').insert(payload);
     window.quillEditor.root.innerHTML = '';
     window.cancelReply();
-    window.loadMessages();
+    window.loadMessages(repliedTo);
 }
 
-window.loadMessages = async function() {
+// FIXED: Receives the scrollToId and smoothly snaps the user directly to their new reply
+window.loadMessages = async function(scrollToId = null) {
     const {data: msgs} = await sb.from('messages').select('*, profiles(full_name, email)').eq('room_id', window.currentRoom).order('created_at', {ascending: true});
     window.renderMessages(msgs || []);
     window.applyFilters();
     const c = document.getElementById('messagesContainer');
     if(c) {
-        setTimeout(() => { c.scrollTop = c.scrollHeight; }, 50); 
+        setTimeout(() => { 
+            if (scrollToId) {
+                const row = document.getElementById(`row-${scrollToId}`);
+                if (row) {
+                    const rw = document.getElementById(`rw-${scrollToId}`);
+                    if (rw) rw.style.display = 'flex';
+                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    row.classList.add('bg-yellow-50');
+                    setTimeout(() => row.classList.remove('bg-yellow-50'), 1500);
+                } else {
+                    c.scrollTop = c.scrollHeight;
+                }
+            } else {
+                c.scrollTop = c.scrollHeight; 
+            }
+        }, 50); 
     }
 }
 
@@ -628,9 +663,10 @@ window.renderMessages = function(messages) {
 
         let repliesHTML = '';
         if (replyCount > 0) {
+            // FIXED: Replies are set to display:none by default.
             repliesHTML = `
             <div class="b-divider"></div>
-            <div class="replies-wrap" id="rw-${msg.id}" style="display:flex;flex-direction:column;gap:2px;">
+            <div class="replies-wrap" id="rw-${msg.id}" style="display:none; flex-direction:column; gap:2px;">
               <div class="replies-label"><i class="ti ti-git-branch"></i>Replies</div>
               ${replies[msg.id].map((r, idx) => {
                   const rName = window.toSentenceCase(r.profiles?.full_name || r.profiles?.email.split('@')[0] || 'Unknown');
@@ -653,7 +689,7 @@ window.renderMessages = function(messages) {
         }
 
         return `
-        <div class="${rowClass}" id="row-${msg.id}">
+        <div class="${rowClass} transition-colors" id="row-${msg.id}">
           <div class="${bubbleClass}">
             <div class="b-header">
               <div class="${avClass}">${avatarInitial}</div>

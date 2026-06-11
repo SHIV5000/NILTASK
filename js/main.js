@@ -6,17 +6,15 @@ let taskSubscription = null;
 let assigneeSubscription = null;
 let trailSubscription = null;
 
+// STATE PERSISTENCE ENGINE
 window.currentTheme = localStorage.getItem('theme') || 'light';
 window.currentRoom = localStorage.getItem('mpgs_current_room') || 'general';
 window.pendingScrollId = null; 
-
-/* --- LOCKED BLOCK START: MAIN CHAT, BUBBLES, REPLIES & SCHEDULING --- */
 
 window.applyTheme = function() { 
     document.documentElement.setAttribute('data-theme', window.currentTheme); 
 };
 
-// FIXED: Light/Dark Mode Toggler
 window.toggleTheme = function() {
     window.currentTheme = window.currentTheme === 'light' ? 'dark' : 'light';
     localStorage.setItem('theme', window.currentTheme);
@@ -37,6 +35,77 @@ window.openSecureFile = async function(path) {
     const { data, error } = await sb.storage.from('task-proofs').createSignedUrl(path, 86400);
     if (error) { window.showCenterToast('Access Denied: ' + error.message, 'fa-solid fa-times', 'text-red-500'); return; }
     if (data && data.signedUrl) window.open(data.signedUrl, '_blank');
+};
+
+window.signIn = async function(email, pwd) { 
+    const {data, error} = await sb.auth.signInWithPassword({email, password: pwd}); 
+    if(!error && data?.user) { 
+        window.currentUser = data.user; 
+        await window.ensureProfile(); 
+        window.renderMainApp(); 
+        window.startSubscriptions(); 
+        return true; 
+    } 
+    return false; 
+};
+
+window.signUp = async function(email, pwd) { 
+    const {data, error} = await sb.auth.signUp({email, password: pwd}); 
+    if(error) throw error; 
+    window.showCenterToast('Sign up successful! Please wait for admin approval.', 'fa-solid fa-envelope', 'text-blue-400'); 
+};
+
+window.logout = async function() { 
+    await sb.auth.signOut(); 
+    window.currentUser = null; 
+    window.renderAuthScreen(); 
+};
+
+window.renderAuthScreen = function() { 
+    window.applyTheme();
+    document.getElementById('root').innerHTML = `
+        <div class="min-h-screen w-full flex items-center justify-center" style="background-color: var(--bg-body);">
+            <div class="modal-content p-10 rounded-3xl shadow-2xl w-full max-w-md relative overflow-hidden bg-white">
+                <div class="text-center mb-8">
+                    <h1 class="text-3xl font-bold tracking-tight text-gray-900">MPGS TaskFlow</h1>
+                    <p class="text-sm mt-2 text-gray-500">Enterprise Communication Portal</p>
+                </div>
+                <div class="space-y-4">
+                    <input id="email" placeholder="Email Address" class="ui-input w-full px-4 py-3 rounded-xl border border-gray-300">
+                    <div class="relative">
+                        <input id="password" type="password" placeholder="Password (Min 6 chars)" class="ui-input w-full px-4 py-3 rounded-xl border border-gray-300 pr-10">
+                        <i class="fa-solid fa-eye absolute right-4 top-4 text-gray-400 cursor-pointer hover:text-gray-600" id="togglePassword"></i>
+                    </div>
+                    <div class="flex gap-3 pt-2">
+                        <button id="loginBtn" class="flex-1 py-3 px-4 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-medium shadow-md transition-colors">Login</button>
+                        <button id="signupBtn" class="flex-1 py-3 px-4 rounded-xl border border-[var(--accent)] text-[var(--accent)] hover:bg-black/5 font-medium shadow-sm transition-colors">Sign Up</button>
+                    </div>
+                    <div id="authMsg" class="mt-4 text-center text-red-500 text-sm font-medium h-5"></div>
+                </div>
+            </div>
+        </div>`; 
+    
+    document.getElementById('togglePassword').onclick = () => {
+        const pwd = document.getElementById('password');
+        const icon = document.getElementById('togglePassword');
+        if (pwd.type === 'password') { pwd.type = 'text'; icon.classList.replace('fa-eye', 'fa-eye-slash'); }
+        else { pwd.type = 'password'; icon.classList.replace('fa-eye-slash', 'fa-eye'); }
+    };
+
+    document.getElementById('loginBtn').onclick = async () => { 
+        const ok = await window.signIn(document.getElementById('email').value, document.getElementById('password').value); 
+        if(!ok) document.getElementById('authMsg').innerText = 'Invalid credentials'; 
+    };
+    
+    document.getElementById('signupBtn').onclick = async () => { 
+        try { 
+            const email = document.getElementById('email').value;
+            const pwd = document.getElementById('password').value;
+            if(pwd.length < 6) throw new Error("Password must be at least 6 characters.");
+            if(!email) throw new Error("Email is required.");
+            await window.signUp(email, pwd); 
+        } catch(e) { document.getElementById('authMsg').innerText = e.message; } 
+    };
 };
 
 window.toggleRightSidebar = function() {
@@ -90,6 +159,13 @@ window.renderMainApp = function() {
     const leftDisplay = localStorage.getItem('mpgs_left_sidebar_state') || 'flex';
     const rightDisplay = localStorage.getItem('mpgs_right_sidebar_state') || 'flex';
 
+    // SVG Watermark Generator
+    const wt = window.escapeHtml(userNameDisplay.toUpperCase());
+    const svgL = encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200"><text x="50%" y="50%" transform="rotate(-30 150 100)" fill="rgba(0,0,0,0.04)" font-size="20" font-family="sans-serif" font-weight="900" text-anchor="middle" dominant-baseline="middle">${wt}</text></svg>`);
+    const svgD = encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200"><text x="50%" y="50%" transform="rotate(-30 150 100)" fill="rgba(255,255,255,0.02)" font-size="20" font-family="sans-serif" font-weight="900" text-anchor="middle" dominant-baseline="middle">${wt}</text></svg>`);
+    document.documentElement.style.setProperty('--wm-light', `url('data:image/svg+xml;utf8,${svgL}')`);
+    document.documentElement.style.setProperty('--wm-dark', `url('data:image/svg+xml;utf8,${svgD}')`);
+
     document.getElementById('root').innerHTML = `
         <div class="flex h-full w-full bg-gray-50">
             <div id="leftSidebar" class="left-sidebar flex-col border-r z-20 shadow-sm bg-white border-gray-200" style="display: ${leftDisplay}; width: ${leftWidth};">
@@ -108,7 +184,7 @@ window.renderMainApp = function() {
             
             <div id="leftResizer" class="drag-resizer"></div>
 
-            <div class="flex-1 flex flex-col relative min-w-0 chat-area" data-watermark="${window.escapeHtml(userNameDisplay.toUpperCase())}">
+            <div class="flex-1 flex flex-col relative min-w-0 chat-area">
                 <div class="p-4 border-b z-10 flex justify-between items-center shadow-sm bg-white/95 backdrop-blur border-gray-200">
                     <div class="flex items-center gap-3">
                         <i class="ti ti-layout-sidebar-left cursor-pointer hover:text-[var(--accent)] text-xl text-gray-500 pr-3 border-r border-gray-300" onclick="window.toggleLeftSidebar()" title="Toggle Channels"></i>
@@ -128,6 +204,7 @@ window.renderMainApp = function() {
                         <div class="text-indigo-700 flex items-center gap-2 overflow-hidden"><i class="fa-solid fa-reply"></i><span class="font-bold whitespace-nowrap">Replying to:</span><span id="replyBannerText" class="italic truncate text-indigo-500 max-w-[200px]"></span></div>
                         <i class="fa-solid fa-times text-indigo-400 hover:text-red-500 cursor-pointer p-1" onclick="window.cancelReply()"></i>
                     </div>
+
                     <div class="w-full bg-white border border-gray-300 rounded-xl flex flex-col shadow-sm focus-within:border-[var(--accent)] transition-colors relative">
                         <div id="inputEmojiPicker" class="absolute bottom-full left-0 mb-2 hidden bg-white border border-gray-200 shadow-2xl rounded-xl p-3 min-w-[240px] z-50">
                            <div class="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Insert Emoji</div>
@@ -154,7 +231,9 @@ window.renderMainApp = function() {
                     </div>
                 </div>
             </div>
+            
             <div id="rightResizer" class="drag-resizer"></div>
+
             <div id="rightSidebar" class="right-sidebar border-l flex-col z-20 shadow-sm bg-gray-50 border-gray-200" style="display: ${rightDisplay}; width: ${rightWidth};">
                 <div class="w-full h-full flex flex-col min-w-0">
                     <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
@@ -167,6 +246,65 @@ window.renderMainApp = function() {
                 </div>
             </div>
         </div>
+
+        <div id="scheduleModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+            <div class="bg-white rounded-2xl p-6 w-full max-w-sm mx-4 text-center shadow-2xl border border-gray-200">
+                <i class="fa-regular fa-clock text-4xl mb-4 text-[var(--accent)]"></i>
+                <h3 class="text-xl font-bold mb-2 text-gray-800">Schedule Message</h3>
+                <p class="text-sm mb-6 text-gray-500">Select when to send your composed message.</p>
+                <input type="datetime-local" id="scheduleDateTime" class="w-full p-3 rounded-xl mb-6 border border-gray-300 bg-gray-50 outline-none focus:border-[var(--accent)]">
+                <div class="flex gap-3">
+                    <button onclick="window.closeScheduleModal()" class="flex-1 py-2.5 rounded-xl font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">Cancel</button>
+                    <button onclick="window.saveScheduledMessage()" class="flex-1 py-2.5 rounded-xl font-bold bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white shadow-md transition-colors">Confirm</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="taskModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+            <div class="bg-white rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl border border-gray-200">
+                <h3 class="text-xl font-bold mb-4 text-gray-800">Create Task</h3>
+                <input id="taskTitle" class="w-full p-3 rounded-xl mb-3 border border-gray-300 bg-gray-50 outline-none focus:border-[var(--accent)] text-sm font-medium" placeholder="Task Title">
+                <p class="text-xs font-bold text-gray-500 mb-1 ml-1">Assigned To:</p>
+                <div class="border rounded-xl mb-3 overflow-hidden border-gray-300">
+                    <input type="text" id="assigneeSearch" onkeyup="window.filterAssignees()" placeholder="Search users..." class="w-full p-2.5 text-xs border-b border-gray-200 outline-none bg-gray-50 text-gray-700 font-medium">
+                    <div id="assigneeCheckboxList" class="max-h-32 overflow-y-auto bg-white p-2 flex flex-col gap-1"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                        <p class="text-xs font-bold text-gray-500 mb-1 ml-1">Deadline:</p>
+                        <input type="date" id="taskDeadline" class="w-full p-2.5 rounded-xl border border-gray-300 bg-gray-50 outline-none focus:border-[var(--accent)] text-sm">
+                    </div>
+                    <div>
+                        <p class="text-xs font-bold text-gray-500 mb-1 ml-1">Priority:</p>
+                        <select id="taskPriority" class="w-full p-2.5 rounded-xl border border-gray-300 bg-gray-50 outline-none focus:border-[var(--accent)] text-sm font-medium">
+                            <option value="Low">Low</option><option value="Medium" selected>Medium</option><option value="High">High</option>
+                        </select>
+                    </div>
+                </div>
+                <label class="flex items-start gap-2 text-xs cursor-pointer mt-2 mb-4 p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-900 transition-colors hover:bg-indigo-100">
+                    <input type="checkbox" id="taskRequireProof" class="mt-0.5 w-4 h-4 accent-indigo-600 rounded"> 
+                    <span><b class="text-sm">Require proof File To Complete</b><br><span class="opacity-80 leading-tight block mt-0.5">Users Need To Upload File To Submit Task</span></span>
+                </label>
+                <div class="flex gap-3 mt-4 pt-2">
+                    <button onclick="window.closeTaskModal()" class="flex-1 py-2.5 rounded-xl font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">Cancel</button>
+                    <button onclick="window.saveTaskMultiAssignee()" class="flex-1 py-2.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-bold shadow-md transition-colors">Create Ticket</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="reminderModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+            <div class="bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border border-gray-200">
+                <h3 class="text-xl font-bold mb-4 text-gray-800">Set Reminder</h3>
+                <div class="bg-gray-50 border border-gray-200 p-3 rounded-xl mb-4">
+                    <p id="reminderMessagePreview" class="text-xs text-gray-600 line-clamp-2 italic font-medium"></p>
+                </div>
+                <input type="datetime-local" id="reminderDateTime" class="w-full p-3 rounded-xl mb-6 border border-gray-300 bg-gray-50 outline-none focus:border-[var(--accent)] text-sm">
+                <div class="flex gap-3">
+                    <button onclick="window.closeReminderModal()" class="flex-1 py-2.5 rounded-xl font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">Cancel</button>
+                    <button onclick="window.saveReminder()" class="flex-1 py-2.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-bold shadow-md transition-colors">Set Alarm</button>
+                </div>
+            </div>
+        </div>
     `;
     
     window.quillEditor = new Quill('#richEditor', { theme: 'snow', modules: { toolbar: { container: [['bold','italic','underline','strike'], [{ 'color': ['#800000', '#006400', '#00008b'] }], [{'list': 'ordered'}, {'list': 'bullet'}], ['clean']] } } });
@@ -174,7 +312,6 @@ window.renderMainApp = function() {
     window.quillEditor.root.addEventListener('keydown', (e) => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); window.sendMessage(); } });
     document.getElementById('sendBtn').onclick = window.sendMessage;
     
-    // FIXED: File Rename Prompt and Reverted to `secure-file` tag schema to fix click intercept
     document.getElementById('fileAttachment').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -201,7 +338,6 @@ window.renderMainApp = function() {
         const range = window.quillEditor.getSelection();
         const index = range ? range.index : window.quillEditor.getLength();
         
-        // Inserts the secure-file wrapper so buildMsgHTML regex catches it later
         window.quillEditor.insertText(index, `📁 Attached File: ${finalName} (${sizeKB} KB)\n`, 'link', `secure-file:${filePath}`);
         
         window.showCenterToast('File securely attached!', 'fa-solid fa-check-circle', 'text-green-500');
@@ -215,7 +351,6 @@ window.renderMainApp = function() {
     
     document.addEventListener('click', e => {
         if (!e.target.closest('.menu-wrap')) window.closeDropdowns();
-        
         const ep = document.getElementById('inputEmojiPicker');
         if (ep && !e.target.closest('#inputEmojiPicker') && !e.target.closest('[onclick="window.toggleInputEmojiPicker()"]')) {
             ep.classList.add('hidden');
@@ -335,7 +470,6 @@ window.renderMessages = function(messages) {
         const time = window.getISTTime(msg.created_at);
         const snippetText = window.getSnippet(msg.text);
         
-        // FIXED: The regex will now correctly find secure-file schemas and inject the openSecureFile handler.
         let displayHtml = msg.text.replace(/href="secure-file:([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800 transition-colors"`);
 
         const rowClass = isSent ? 'row-sent' : 'row-rcvd';
@@ -392,15 +526,12 @@ window.renderMessages = function(messages) {
                 <div class="bubble-dropdown" id="dd-${msg.id}">${ddItems}</div>
               </div>
             </div>
-            
             <div class="b-text">${displayHtml}</div>
-            
             <div class="b-footer">
               <div class="relative inline-block group/reaction z-50">
                   <button class="e-add" title="Add reaction"><i class="ti ti-mood-smile"></i></button>
                   <div class="absolute bottom-full ${isSent ? 'right-0' : 'left-0'} pb-1.5 hidden group-hover/reaction:block cursor-default z-[100]">
                       <div class="bg-white border border-gray-200 shadow-2xl rounded-xl p-3 min-w-[280px] flex flex-col">
-                          
                           <div class="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Reactions</div>
                           <div class="flex flex-wrap gap-1 border-b border-gray-100 pb-2 mb-2">
                               <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.applyReaction('${msg.id}', '👍', 'emoji')">👍</span>
@@ -412,7 +543,6 @@ window.renderMessages = function(messages) {
                               <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.applyReaction('${msg.id}', '🎉', 'emoji')">🎉</span>
                               <span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.applyReaction('${msg.id}', '🔥', 'emoji')">🔥</span>
                           </div>
-                          
                           <div class="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Quick Tags</div>
                           <div class="flex flex-wrap gap-2">
                               <span class="cursor-pointer bg-green-50 hover:bg-green-100 text-green-700 px-3 py-1 rounded-md text-[11px] font-bold border border-green-200 shadow-sm" onclick="window.applyReaction('${msg.id}', 'Thank You', 'tag')">Thank You</span>
@@ -425,13 +555,11 @@ window.renderMessages = function(messages) {
                   </div>
               </div>
             </div>
-            
             <div class="b-actions">
               ${replyCount > 0 ? `<button class="act-btn" onclick="window.toggleReplies('rw-${msg.id}')"><i class="ti ti-message-2"></i> Replies <span class="reply-badge">${replyCount}</span></button>` : ''}
               <button class="act-btn" onclick="window.initiateReply('${msg.id}', '${snippetText}')"><i class="ti ti-corner-up-left"></i> Reply</button>
               <button class="act-btn ${isBookmarked ? 'bookmarked' : ''}" onclick="window.toggleBookmark('${msg.id}')"><i class="ti ${isBookmarked ? 'ti-bookmark-filled' : 'ti-bookmark'}"></i> ${isBookmarked ? 'Bookmarked' : 'Bookmark'}</button>
             </div>
-            
             ${repliesHTML}
           </div>
         </div>`;
@@ -464,28 +592,105 @@ window.applyReaction = async function(msgId, value, type) {
     }
 
     const hoverMenu = row.querySelector('.group\\/reaction .absolute');
-    if (hoverMenu) {
-        hoverMenu.style.display = 'none';
-        setTimeout(() => { hoverMenu.style.display = ''; }, 300);
-    }
+    if (hoverMenu) { hoverMenu.style.display = 'none'; setTimeout(() => { hoverMenu.style.display = ''; }, 300); }
 };
 
-window.scrollToAndHighlight = function(rowId) {
-    document.querySelectorAll('.top-panel-dropdown').forEach(m => m.remove());
-    const row = document.getElementById(rowId);
-    if (row) {
-        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        const msgId = rowId.replace('row-', '');
-        const rw = document.getElementById(`rw-${msgId}`);
-        if (rw) rw.style.display = 'flex';
-        
-        const bubble = row.querySelector('.bubble');
-        if(bubble) {
-            bubble.classList.add('glow-target');
-            setTimeout(() => { bubble.classList.add('active-glow'); }, 50);
-            setTimeout(() => { bubble.classList.remove('glow-target', 'active-glow'); }, 3500);
-        }
-    }
+window.openTaskModal = async function(mid, text) { 
+    window.currentMessageId = mid; 
+    let tmp = document.createElement("DIV"); tmp.innerHTML = text;
+    window.currentMessageTextRaw = (tmp.textContent || tmp.innerText || "").substring(0,60) + "...";
+    window.closeDropdowns();
+    document.getElementById('taskModal').classList.remove('hidden'); 
+    document.getElementById('taskModal').classList.add('flex'); 
+    document.getElementById('taskTitle').value = (tmp.textContent || tmp.innerText || "").trim(); 
+    
+    const filteredUsers = window.globalUsersCache.filter(u => u.id !== window.currentUser.id);
+    const list = document.getElementById('assigneeCheckboxList');
+    list.innerHTML = filteredUsers.map(u => `
+        <label class="assignee-item flex items-center gap-2 text-[13px] p-1.5 hover:bg-indigo-50 rounded-lg cursor-pointer transition-colors border border-transparent hover:border-indigo-100">
+            <input type="checkbox" value="${u.id}" class="assignee-cb w-4 h-4 accent-indigo-600 rounded">
+            <span class="assignee-name font-semibold text-gray-700">${window.escapeHtml(window.toSentenceCase(u.full_name || u.email.split('@')[0]))}</span>
+        </label>
+    `).join('');
+    document.getElementById('assigneeSearch').value = '';
+}
+
+window.filterAssignees = function() {
+    const term = document.getElementById('assigneeSearch').value.toLowerCase();
+    document.querySelectorAll('.assignee-item').forEach(el => {
+        const name = el.querySelector('.assignee-name').innerText.toLowerCase();
+        el.style.display = name.includes(term) ? 'flex' : 'none';
+    });
+}
+
+window.closeTaskModal = function() { document.getElementById('taskModal').classList.add('hidden'); document.getElementById('taskModal').classList.remove('flex'); }
+
+window.showReminderModal = function(mid, text) { 
+    window.currentReminderId = mid; 
+    window.closeDropdowns();
+    document.getElementById('reminderMessagePreview').innerText = text; 
+    document.getElementById('reminderModal').classList.remove('hidden'); 
+    document.getElementById('reminderModal').classList.add('flex'); 
+}
+
+window.closeReminderModal = function() { document.getElementById('reminderModal').classList.add('hidden'); document.getElementById('reminderModal').classList.remove('flex'); }
+
+window.saveReminder = async function() { 
+    const dt = document.getElementById('reminderDateTime').value; 
+    if(!dt) return; 
+    await sb.from('reminders').insert({ user_id: window.currentUser.id, message_id: window.currentReminderId, reminder_time: new Date(dt).toISOString(), triggered: false }); 
+    window.showCenterToast('Reminder Set Successfully'); 
+    window.closeReminderModal(); 
+}
+
+window.toggleBookmark = async function(mid) { 
+    window.closeDropdowns();
+    const btn = document.querySelector(`#row-${mid} .act-btn[onclick*="toggleBookmark"]`);
+    let isCurrentlyBookmarked = window.bookmarkedSet && window.bookmarkedSet.has(mid);
+    if (isCurrentlyBookmarked) {
+        window.bookmarkedSet.delete(mid);
+        if (btn) { btn.classList.remove('bookmarked'); btn.innerHTML = '<i class="ti ti-bookmark"></i> Bookmark'; }
+        window.showCenterToast('Bookmark removed', 'fa-solid fa-info-circle', 'text-yellow-400');
+        await sb.from('bookmarks').delete().eq('user_id', window.currentUser.id).eq('message_id', mid);
+    } else {
+        window.bookmarkedSet.add(mid);
+        if (btn) { btn.classList.add('bookmarked'); btn.innerHTML = '<i class="ti ti-bookmark-filled"></i> Bookmarked'; }
+        window.showCenterToast('Message Bookmarked');
+        await sb.from('bookmarks').insert({ user_id: window.currentUser.id, message_id: mid });
+    } 
+}
+
+window.initiateReply = function(parentId, text) {
+    window.currentlyReplyingTo = parentId;
+    const banner = document.getElementById('replyBanner');
+    const bannerText = document.getElementById('replyBannerText');
+    banner.classList.remove('hidden');
+    bannerText.innerText = text;
+    window.quillEditor.focus();
+};
+
+window.cancelReply = function() {
+    window.currentlyReplyingTo = null;
+    const banner = document.getElementById('replyBanner');
+    if(banner) banner.classList.add('hidden');
+};
+
+window.toggleDateFilter = function() {
+    const val = document.getElementById('taskFilter').value;
+    const dr = document.getElementById('dateRangeFilter');
+    if (val === 'date_range') dr.classList.remove('hidden');
+    else dr.classList.add('hidden');
+    window.loadTasksForPanel();
+}
+
+window.applyFilters = function() {
+    const search = document.getElementById('messageSearchBar').value.toLowerCase();
+    document.querySelectorAll('.row-sent, .row-rcvd').forEach(el => {
+        let show = true;
+        const text = el.innerText.toLowerCase();
+        if (search && !text.includes(search)) show = false;
+        el.style.display = show ? 'flex' : 'none';
+    });
 }
 
 window.openTopPanel = async function(type) {
@@ -553,105 +758,40 @@ window.saveScheduledMessage = async function() {
     window.showCenterToast('Message Scheduled Successfully!');
 }
 
-window.openTaskModal = async function(mid, text) { 
-    window.currentMessageId = mid; 
-    let tmp = document.createElement("DIV");
-    tmp.innerHTML = text;
-    window.currentMessageTextRaw = (tmp.textContent || tmp.innerText || "").substring(0,60) + "...";
-
-    window.closeDropdowns();
-    document.getElementById('taskModal').classList.remove('hidden'); 
-    document.getElementById('taskModal').classList.add('flex'); 
-    document.getElementById('taskTitle').value = (tmp.textContent || tmp.innerText || "").trim(); 
+window.loadChatsList = async function() {
+    const groups = ['general', 'math', 'science', 'leadership'];
+    const {data: users} = await sb.from('profiles').select('id, email, full_name');
+    window.globalUsersCache = users || []; 
     
-    const filteredUsers = window.globalUsersCache.filter(u => u.id !== window.currentUser.id);
-    const list = document.getElementById('assigneeCheckboxList');
-    list.innerHTML = filteredUsers.map(u => `
-        <label class="assignee-item flex items-center gap-2 text-[13px] p-1.5 hover:bg-indigo-50 rounded-lg cursor-pointer transition-colors border border-transparent hover:border-indigo-100">
-            <input type="checkbox" value="${u.id}" class="assignee-cb w-4 h-4 accent-indigo-600 rounded">
-            <span class="assignee-name font-semibold text-gray-700">${window.escapeHtml(window.toSentenceCase(u.full_name || u.email.split('@')[0]))}</span>
-        </label>
-    `).join('');
-    document.getElementById('assigneeSearch').value = '';
-}
-
-window.filterAssignees = function() {
-    const term = document.getElementById('assigneeSearch').value.toLowerCase();
-    document.querySelectorAll('.assignee-item').forEach(el => {
-        const name = el.querySelector('.assignee-name').innerText.toLowerCase();
-        el.style.display = name.includes(term) ? 'flex' : 'none';
+    let html = `<div class="px-4 py-2 mt-2 text-[10px] font-black tracking-widest text-gray-400 uppercase">Channels</div>`;
+    groups.forEach(g => { 
+        html += `<div class="channel-item p-2.5 mx-2 mb-1 rounded-xl cursor-pointer hover:bg-gray-100 flex items-center gap-3 transition-colors ${window.currentRoom === g ? 'bg-gray-100 border border-gray-200 font-bold shadow-sm' : 'border border-transparent'}" data-room="${g}" data-name="# ${g}">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 text-xs bg-gray-50 border border-gray-200"><i class="ti ti-hash"></i></div>
+            <span class="flex-1 truncate text-gray-700 tracking-wide text-sm"># ${g}</span>
+        </div>`; 
     });
-}
-
-window.closeTaskModal = function() { document.getElementById('taskModal').classList.add('hidden'); document.getElementById('taskModal').classList.remove('flex'); }
-
-window.showReminderModal = function(mid, text) { 
-    window.currentReminderId = mid; 
-    window.closeDropdowns();
-    document.getElementById('reminderMessagePreview').innerText = text; 
-    document.getElementById('reminderModal').classList.remove('hidden'); 
-    document.getElementById('reminderModal').classList.add('flex'); 
-}
-
-window.closeReminderModal = function() { document.getElementById('reminderModal').classList.add('hidden'); document.getElementById('reminderModal').classList.remove('flex'); }
-
-window.saveReminder = async function() { 
-    const dt = document.getElementById('reminderDateTime').value; 
-    if(!dt) return; 
-    await sb.from('reminders').insert({ user_id: window.currentUser.id, message_id: window.currentReminderId, reminder_time: new Date(dt).toISOString(), triggered: false }); 
-    window.showCenterToast('Reminder Set Successfully'); 
-    window.closeReminderModal(); 
-}
-
-window.toggleBookmark = async function(mid) { 
-    window.closeDropdowns();
-    const btn = document.querySelector(`#row-${mid} .act-btn[onclick*="toggleBookmark"]`);
-    let isCurrentlyBookmarked = window.bookmarkedSet && window.bookmarkedSet.has(mid);
+    html += `<div class="px-4 py-2 mt-4 text-[10px] font-black tracking-widest text-gray-400 uppercase">Direct Messages</div>`;
+    window.globalUsersCache.filter(u => u.id !== window.currentUser.id).forEach(u => { 
+        const name = window.toSentenceCase(u.full_name || u.email.split('@')[0]);
+        html += `<div class="channel-item p-2.5 mx-2 mb-1 rounded-xl cursor-pointer hover:bg-gray-100 flex items-center gap-3 transition-colors ${window.currentRoom === 'dm_' + u.id ? 'bg-gray-100 border border-gray-200 font-bold shadow-sm' : 'border border-transparent'}" data-room="dm_${u.id}" data-name="${name}">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm" style="background: var(--accent)">${name.charAt(0).toUpperCase()}</div>
+            <span class="flex-1 truncate text-gray-700 tracking-wide text-sm">${name}</span>
+        </div>`; 
+    });
+    document.getElementById('chatsList').innerHTML = html;
     
-    if (isCurrentlyBookmarked) {
-        window.bookmarkedSet.delete(mid);
-        if (btn) { btn.classList.remove('bookmarked'); btn.innerHTML = '<i class="ti ti-bookmark"></i> Bookmark'; }
-        window.showCenterToast('Bookmark removed', 'fa-solid fa-info-circle', 'text-yellow-400');
-        await sb.from('bookmarks').delete().eq('user_id', window.currentUser.id).eq('message_id', mid);
-    } else {
-        window.bookmarkedSet = window.bookmarkedSet || new Set();
-        window.bookmarkedSet.add(mid);
-        if (btn) { btn.classList.add('bookmarked'); btn.innerHTML = '<i class="ti ti-bookmark-filled"></i> Bookmarked'; }
-        window.showCenterToast('Message Bookmarked');
-        await sb.from('bookmarks').insert({ user_id: window.currentUser.id, message_id: mid });
-    } 
-}
-
-window.initiateReply = function(parentId, text) {
-    window.currentlyReplyingTo = parentId;
-    const banner = document.getElementById('replyBanner');
-    const bannerText = document.getElementById('replyBannerText');
-    banner.classList.remove('hidden');
-    bannerText.innerText = text;
-    window.quillEditor.focus();
-};
-
-window.cancelReply = function() {
-    window.currentlyReplyingTo = null;
-    const banner = document.getElementById('replyBanner');
-    if(banner) banner.classList.add('hidden');
-};
-
-window.toggleDateFilter = function() {
-    const val = document.getElementById('taskFilter').value;
-    const dr = document.getElementById('dateRangeFilter');
-    if (val === 'date_range') dr.classList.remove('hidden');
-    else dr.classList.add('hidden');
-    window.loadTasksForPanel();
-}
-
-window.applyFilters = function() {
-    const search = document.getElementById('messageSearchBar').value.toLowerCase();
-    document.querySelectorAll('.row-sent, .row-rcvd').forEach(el => {
-        let show = true;
-        const text = el.innerText.toLowerCase();
-        if (search && !text.includes(search)) show = false;
-        el.style.display = show ? 'flex' : 'none';
+    document.querySelectorAll('.channel-item').forEach(el => { 
+        el.addEventListener('click', () => { 
+            window.currentRoom = el.dataset.room; 
+            localStorage.setItem('mpgs_current_room', el.dataset.room); 
+            document.querySelectorAll('.channel-item').forEach(item => { item.classList.remove('bg-gray-100', 'border-gray-200', 'font-bold', 'shadow-sm'); item.classList.add('border-transparent'); });
+            el.classList.remove('border-transparent');
+            el.classList.add('bg-gray-100', 'border-gray-200', 'font-bold', 'shadow-sm');
+            const titleSpan = document.getElementById('roomTitleDisplay');
+            if(titleSpan) titleSpan.innerText = el.dataset.name;
+            document.getElementById('chatShellContainer').innerHTML = '<div class="m-auto flex flex-col items-center opacity-50 pt-10"><i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3 text-gray-400"></i><p class="text-sm font-medium text-gray-500">Loading chat...</p></div>';
+            window.loadMessages(); 
+        }); 
     });
 }
 
@@ -674,8 +814,6 @@ window.ensureProfile = async function() {
     const {data:ex} = await sb.from('profiles').select('id').eq('id', window.currentUser.id).maybeSingle(); 
     if(!ex) await sb.from('profiles').insert({id: window.currentUser.id, email: window.currentUser.email, full_name: window.currentUser.email.split('@')[0], role: 'teacher'}); 
 };
-
-/* --- LOCKED BLOCK END: MAIN CHAT, BUBBLES, REPLIES & SCHEDULING --- */
 
 ;(async() => { 
     const {data: {session}} = await sb.auth.getSession(); 

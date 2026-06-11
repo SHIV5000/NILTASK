@@ -45,7 +45,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color: var(--text-secondary);">
-                        v1.42.0 - UI Restoration
+                        v1.43.0 - Bulletproof Trails
                     </div>
                 </div>
             </div>
@@ -255,14 +255,16 @@ window.renderMainApp = function() {
     if (typeof window.loadMessages === 'function') window.loadMessages(); 
     if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel(); 
 
-    // Intelligent DOM Observer
+    // STATE-AWARE DOM OBSERVER (v1.43.0)
     const tasksPanel = document.getElementById('tasksPanel');
     if (tasksPanel) {
         new MutationObserver(() => {
             document.querySelectorAll('[id^="trail-"], [id^="task-trail-"]').forEach(el => {
-                if (el.dataset.initialized !== 'true') {
-                    el.style.display = 'none'; 
-                    el.dataset.initialized = 'true';
+                let baseId = el.id.replace('task-trail-', '').replace('trail-', '');
+                if (window.expandedTrails && window.expandedTrails.has(baseId)) {
+                    el.style.setProperty('display', 'block', 'important');
+                } else {
+                    el.style.setProperty('display', 'none', 'important');
                 }
             });
         }).observe(tasksPanel, { childList: true, subtree: true });

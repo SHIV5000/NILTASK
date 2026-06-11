@@ -120,7 +120,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.23.2 - Stable App Boot
+                        v1.23.3 - Boot Fix
                     </div>
                 </div>
             </div>
@@ -307,8 +307,6 @@ window.renderMainApp = function() {
         }
     });
 
-    document.getElementById('scheduleMsgBtn').onclick = window.showScheduleModal;
-    // CRASH FIX: Added null check because search bar is not available inside some panels
     const searchBar = document.getElementById('messageSearchBar');
     if(searchBar) {
         searchBar.addEventListener('input', window.applyFilters);

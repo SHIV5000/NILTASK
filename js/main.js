@@ -10,6 +10,7 @@ let trailSubscription = null;
 window.currentTheme = localStorage.getItem('theme') || 'light';
 window.currentRoom = localStorage.getItem('mpgs_current_room') || 'general';
 window.pendingScrollId = null; 
+window.pendingFileUpload = null; // FIXED: Stores file while modal is open
 
 window.applyTheme = function() { 
     document.documentElement.setAttribute('data-theme', window.currentTheme); 
@@ -187,7 +188,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider text-gray-400 uppercase mt-1">
-                        v1.31.0 - File Links & Trail Fix
+                        v1.32.0 - Complete Edition
                     </div>
                 </div>
             </div>
@@ -240,8 +241,7 @@ window.renderMainApp = function() {
                            </div>
                         </div>
 
-                        <div id="toolbar-container" class="border-b border-gray-200 bg-gray-50 rounded-t-xl">
-                           </div>
+                        <div id="toolbar-container" class="border-b border-gray-200 bg-gray-50 rounded-t-xl"></div>
                         <div class="flex items-end gap-2 p-1.5 px-2">
                             <button onclick="window.toggleInputEmojiPicker()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Quick Emoji"><i class="ti ti-mood-smile text-xl"></i></button>
                             <button onclick="document.getElementById('fileAttachment').click()" class="p-2 text-gray-500 hover:text-[var(--accent)] transition-colors" title="Attach File"><i class="ti ti-paperclip text-xl"></i></button>
@@ -261,7 +261,8 @@ window.renderMainApp = function() {
             <div id="rightResizer" class="drag-resizer"></div>
 
             <div id="rightSidebar" class="right-sidebar border-l flex-col z-20 shadow-sm bg-gray-50 border-gray-200" style="display: ${rightDisplay}; width: ${rightWidth};">
-                <div class="w-full h-full flex flex-col min-w-0"> <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
+                <div class="w-full h-full flex flex-col min-w-0"> 
+                    <div class="p-3 border-b border-gray-200 flex flex-col gap-2 bg-white">
                         <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="fa-solid fa-filter text-[var(--accent)]"></i> Task Filters</h3>
                         <select id="taskFilter" onchange="window.toggleDateFilter()" class="text-xs px-2 py-2 rounded-lg border border-gray-200 font-medium text-gray-700 bg-gray-50 shadow-sm outline-none cursor-pointer w-full focus:ring-2 focus:ring-[var(--accent)] transition-all">
                             <option value="all">All Tasks</option>
@@ -281,6 +282,18 @@ window.renderMainApp = function() {
                         <input type="date" id="filterEndDate" onchange="window.loadTasksForPanel()" class="text-xs px-2 py-1.5 rounded w-full border border-gray-300 bg-gray-50 outline-none focus:border-[var(--accent)]">
                     </div>
                     <div id="tasksPanel" class="flex-1 overflow-y-auto p-4 bg-gray-50"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="fileRenameModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+            <div class="bg-white rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border border-gray-200">
+                <h3 class="text-xl font-bold mb-4 text-gray-800">Rename Attachment</h3>
+                <p class="text-xs text-gray-500 mb-2">You can optionally rename this file before uploading it to the secure server.</p>
+                <input type="text" id="newFileNameInput" class="w-full p-3 rounded-xl mb-6 border border-gray-300 bg-gray-50 outline-none focus:border-[var(--accent)] text-sm">
+                <div class="flex gap-3">
+                    <button onclick="window.cancelFileRename()" class="flex-1 py-2.5 rounded-xl font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">Cancel</button>
+                    <button onclick="window.confirmFileRename()" class="flex-1 py-2.5 rounded-xl font-bold bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white shadow-md transition-colors">Upload</button>
                 </div>
             </div>
         </div>
@@ -349,7 +362,6 @@ window.renderMainApp = function() {
         </div>
     `;
     
-    // CUSTOM QUILL INITIALIZATION WITH COLORS
     window.quillEditor = new Quill('#richEditor', { 
         theme: 'snow', 
         placeholder: 'Type a message...', 
@@ -357,7 +369,7 @@ window.renderMainApp = function() {
             toolbar: {
                 container: [
                     ['bold','italic','underline','strike'], 
-                    [{ 'color': ['#800000', '#006400', '#00008b'] }], // Maroon, Green, Blue
+                    [{ 'color': ['#800000', '#006400', '#00008b'] }], 
                     [{'list': 'ordered'}, {'list': 'bullet'}], 
                     ['clean']
                 ]
@@ -365,44 +377,23 @@ window.renderMainApp = function() {
         } 
     });
     
-    // Append the auto-generated toolbar into our styled wrapper
     const toolbar = document.querySelector('.ql-toolbar');
     document.getElementById('toolbar-container').appendChild(toolbar);
 
     window.quillEditor.root.addEventListener('keydown', (e) => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); window.sendMessage(); } });
     document.getElementById('sendBtn').onclick = window.sendMessage;
     
-    // FIXED: Fake HTTPS scheme to bypass Quill's link sanitizer
-    document.getElementById('fileAttachment').addEventListener('change', async (e) => {
+    // FIXED: Inline File Rename Flow
+    document.getElementById('fileAttachment').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        
         const lastDot = file.name.lastIndexOf('.');
         const baseName = lastDot !== -1 ? file.name.substring(0, lastDot) : file.name;
-        const ext = lastDot !== -1 ? file.name.substring(lastDot) : '';
         
-        let newName = prompt("Rename your file (optional):", baseName);
-        if (newName === null) { e.target.value = ''; return; }
-        
-        newName = newName.trim() || baseName;
-        const finalName = newName + ext;
-        
-        window.showCenterToast('Uploading secure file...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
-        const sizeKB = Math.round(file.size / 1024);
-        const safeName = finalName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-        const filePath = `chat/${Date.now()}_${safeName}`;
-        
-        const { error } = await sb.storage.from('task-proofs').upload(filePath, file);
-        if(error) { window.showCenterToast('Upload failed: ' + error.message, 'fa-solid fa-times', 'text-red-500'); return; }
-        
-        window.quillEditor.focus();
-        const range = window.quillEditor.getSelection();
-        const index = range ? range.index : window.quillEditor.getLength();
-        
-        // Trick Quill by passing a recognizable HTTP schema
-        window.quillEditor.insertText(index, `📁 Attached File: ${finalName} (${sizeKB} KB)\n`, 'link', `https://secure-file.local/${filePath}`);
-        window.showCenterToast('File securely attached!', 'fa-solid fa-check-circle', 'text-green-500');
-        e.target.value = ''; 
+        window.pendingFileUpload = file;
+        document.getElementById('newFileNameInput').value = baseName;
+        document.getElementById('fileRenameModal').classList.remove('hidden');
+        document.getElementById('fileRenameModal').classList.add('flex');
     });
     
     const searchBar = document.getElementById('messageSearchBar');
@@ -410,10 +401,8 @@ window.renderMainApp = function() {
         searchBar.addEventListener('input', window.applyFilters);
     }
     
-    // Bind click outside for dropdowns globally
     document.addEventListener('click', e => {
         if (!e.target.closest('.menu-wrap')) window.closeDropdowns();
-        
         const ep = document.getElementById('inputEmojiPicker');
         if (ep && !e.target.closest('#inputEmojiPicker') && !e.target.closest('[onclick="window.toggleInputEmojiPicker()"]')) {
             ep.classList.add('hidden');
@@ -421,28 +410,53 @@ window.renderMainApp = function() {
     });
 
     window.initResizers();
-    
-    if (typeof window.loadChatsList === 'function') {
-        window.loadChatsList(); 
-    }
+    if (typeof window.loadChatsList === 'function') window.loadChatsList(); 
     window.loadMessages(); 
-    if (typeof window.loadTasksForPanel === 'function') {
-        window.loadTasksForPanel(); 
-    }
-
-    // Global Mutation Observer to Force-Collapse Task Trails by Default
-    const tasksPanel = document.getElementById('tasksPanel');
-    if (tasksPanel) {
-        new MutationObserver(() => {
-            document.querySelectorAll('[id^="trail-"], [id^="task-trail-"]').forEach(el => {
-                if (el.dataset.initialized !== 'true') {
-                    el.style.setProperty('display', 'none', 'important');
-                    el.dataset.initialized = 'true';
-                }
-            });
-        }).observe(tasksPanel, { childList: true, subtree: true });
-    }
+    if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel(); 
 };
+
+// FIXED: Global Handlers for the File Rename Modal
+window.cancelFileRename = function() {
+    window.pendingFileUpload = null;
+    document.getElementById('fileAttachment').value = '';
+    document.getElementById('fileRenameModal').classList.add('hidden');
+    document.getElementById('fileRenameModal').classList.remove('flex');
+}
+
+window.confirmFileRename = async function() {
+    if (!window.pendingFileUpload) return;
+    const file = window.pendingFileUpload;
+    window.pendingFileUpload = null;
+    
+    document.getElementById('fileRenameModal').classList.add('hidden');
+    document.getElementById('fileRenameModal').classList.remove('flex');
+
+    const lastDot = file.name.lastIndexOf('.');
+    const ext = lastDot !== -1 ? file.name.substring(lastDot) : '';
+    
+    let newName = document.getElementById('newFileNameInput').value.trim();
+    if (!newName) {
+         newName = lastDot !== -1 ? file.name.substring(0, lastDot) : file.name;
+    }
+    const finalName = newName + ext;
+    
+    window.showCenterToast('Uploading secure file...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
+    const sizeKB = Math.round(file.size / 1024);
+    const safeName = finalName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const filePath = `chat/${Date.now()}_${safeName}`;
+    
+    const { error } = await sb.storage.from('task-proofs').upload(filePath, file);
+    if(error) { window.showCenterToast('Upload failed: ' + error.message, 'fa-solid fa-times', 'text-red-500'); return; }
+    
+    window.quillEditor.focus();
+    const range = window.quillEditor.getSelection();
+    const index = range ? range.index : window.quillEditor.getLength();
+    
+    // FIXED: Tricks Quill into accepting the URL by disguising it as HTTPS
+    window.quillEditor.insertText(index, `📁 Attached File: ${finalName} (${sizeKB} KB)\n`, 'link', `https://secure-file.local/${filePath}`);
+    window.showCenterToast('File securely attached!', 'fa-solid fa-check-circle', 'text-green-500');
+    document.getElementById('fileAttachment').value = ''; 
+}
 
 window.insertEmoji = function(char) {
     window.quillEditor.focus();
@@ -532,16 +546,10 @@ window.toggleReplies = function(id) {
     if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
 }
 
-// FIXED: Task Trail UI Toggles unconditionally overriding the hidden property
+// FIXED: Task Trail UI Toggles perfectly rely on the CSS class logic now.
 window.toggleTaskTrail = function(id) {
     const el = document.getElementById(id);
-    if (!el) return;
-    const isHidden = window.getComputedStyle(el).display === 'none';
-    if (isHidden) {
-        el.style.setProperty('display', 'block', 'important');
-    } else {
-        el.style.setProperty('display', 'none', 'important');
-    }
+    if (el) el.classList.toggle('active');
 };
 window.toggleTrail = window.toggleTaskTrail;
 
@@ -579,7 +587,7 @@ window.renderMessages = function(messages) {
         const time = window.getISTTime(msg.created_at);
         const snippetText = window.getSnippet(msg.text);
         
-        // FIXED: Regex updated to catch the fake https URL
+        // FIXED: The regex intercepts the fake "https://secure-file.local/" domain safely.
         let displayHtml = msg.text.replace(/href="https:\/\/secure-file\.local\/([^"]+)"/g, `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800 transition-colors"`);
 
         const rowClass = isSent ? 'row-sent' : 'row-rcvd';
@@ -816,7 +824,6 @@ window.applyFilters = function() {
     });
 }
 
-// RESTORED: Top Panel Functions (Scheduled, Bookmarks, Alerts)
 window.openTopPanel = async function(type) {
     document.querySelectorAll('.top-panel-dropdown').forEach(m => m.remove());
     const panel = document.createElement('div');

@@ -14,7 +14,7 @@ window.scrollToAndHighlight = function(elementId) {
     const element = document.getElementById(elementId);
     if (!element) {
         console.warn(`Element ${elementId} not found`);
-        window.showCenterToast('Message not found in current view', 'fa-solid fa-exclamation-triangle');
+        window.showCenterToast('Message not found in current view', 'fa-solid fa-exclamation-triangle', 'text-yellow-500');
         return;
     }
     
@@ -73,7 +73,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color: var(--text-secondary);">
-                        v1.50.0 - Full Stack Engine
+                        v1.50.0 - Frontend Anchor Hub
                     </div>
                 </div>
             </div>
@@ -88,6 +88,7 @@ window.renderMainApp = function() {
                     </div>
                     <div class="flex items-center gap-4 text-xl" style="color: var(--text-secondary);">
                         <i class="ti ti-clock cursor-pointer top-bar-icon hover:text-[var(--accent)] transition-colors" onclick="window.openTopPanel('scheduled')" title="Scheduled Messages"></i>
+                        <i class="fa-solid fa-stopwatch text-[18px] cursor-pointer top-bar-icon hover:text-[var(--accent)] transition-colors" onclick="window.openTopPanel('reminders')" title="Upcoming Reminders"></i>
                         <i class="ti ti-bookmark cursor-pointer top-bar-icon hover:text-[var(--accent)] transition-colors" onclick="window.openTopPanel('bookmarks')" title="Bookmarks"></i>
                         <i class="ti ti-bell cursor-pointer top-bar-icon hover:text-[var(--accent)] transition-colors" onclick="window.openTopPanel('alerts')" title="Notifications"></i>
                         <div class="border-l pl-4 ml-1 flex gap-3" style="border-color: var(--border-color);"><i class="ti ti-layout-sidebar-right cursor-pointer" onclick="window.toggleRightSidebar()" title="Toggle Task Panel"></i></div>

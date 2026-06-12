@@ -12,7 +12,7 @@
     --received-bg: #ffffff;
 }
 
-/* Strict GitHub Dark Palette */
+/* Strict GitHub Dark Palette (Original Dark) */
 [data-theme="dark"] {
     --bg-body: #0d1117;
     --bg-sidebar: #010409;
@@ -29,11 +29,28 @@
     --accent-danger: #da3633;
 }
 
+/* Sober Dark Mode – complete greyscale */
+[data-theme="sober-dark"] {
+    --bg-body: #111111;
+    --bg-sidebar: #1a1a1a;
+    --bg-chat: #0d0d0d;
+    --text-primary: #e0e0e0;
+    --text-secondary: #9a9a9a;
+    --border-color: #2a2a2a;
+    --accent: #5a5a5a;
+    --accent-hover: #6e6e6e;
+    --sent-bg: #1e1e1e;
+    --received-bg: #151515;
+    --chat-pattern: none;
+    --accent-success: #5a5a5a;
+    --accent-danger: #5a5a5a;
+}
+
 body, input, select, textarea, button, .jira-card { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
 body { background-color: var(--bg-body); color: var(--text-primary); transition: background-color 0.3s, color 0.3s; }
 
 /* Dark Mode Accessibility Tweaks */
-[data-theme="dark"] body {
+[data-theme="dark"] body, [data-theme="sober-dark"] body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     letter-spacing: 0.015em;
@@ -44,12 +61,19 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
     color: var(--text-primary);
 }
 
-[data-theme="dark"] img, [data-theme="dark"] video {
+[data-theme="sober-dark"] ::selection {
+    background-color: rgba(255, 255, 255, 0.15);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] img, [data-theme="dark"] video,
+[data-theme="sober-dark"] img, [data-theme="sober-dark"] video {
     opacity: 0.85;
     transition: opacity 0.3s ease;
 }
 
-[data-theme="dark"] img:hover, [data-theme="dark"] video:hover {
+[data-theme="dark"] img:hover, [data-theme="dark"] video:hover,
+[data-theme="sober-dark"] img:hover, [data-theme="sober-dark"] video:hover {
     opacity: 1;
 }
 
@@ -76,7 +100,7 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
     pointer-events: none;
     z-index: 0;
 }
-[data-theme="dark"] .chat-area::before { background-image: var(--wm-dark); }
+[data-theme="dark"] .chat-area::before, [data-theme="sober-dark"] .chat-area::before { background-image: var(--wm-dark); }
 
 .badge { padding: 4px 10px; border-radius: 9999px; font-weight: 700; font-size: 11px; letter-spacing: 0.5px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid rgba(0,0,0,0.05); }
 .badge-pending { background-color: #fef9c3; color: #854d0e; }
@@ -119,7 +143,7 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
     to { opacity: 1; transform: translateY(0); }
 }
 
-.bubble { max-width: 65%; width: fit-content; min-width: 40%; position: relative; overflow: visible; z-index: 2;}
+.bubble { max-width: 60%; width: fit-content; min-width: 250px; position: relative; overflow: visible; z-index: 2;}
 .bubble.sent { background: var(--sent-bg); border: 1px solid var(--accent); border-radius: 14px 2px 14px 14px; }
 .bubble.rcvd { background: var(--received-bg); border: 1px solid var(--accent); border-radius: 2px 14px 14px 14px; }
 
@@ -205,30 +229,68 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 }
 
 /* =========================================
-   TASK PANEL NORMALIZER - GITHUB EDITION
+   STRICT GITHUB DARK MODE OVERRIDES
 ========================================= */
 
+[data-theme="dark"] .bg-white { background-color: var(--bg-sidebar) !important; color: var(--text-primary) !important; }
+[data-theme="dark"] .bg-gray-50 { background-color: var(--bg-body) !important; color: var(--text-primary) !important; }
+[data-theme="dark"] .text-gray-800, [data-theme="dark"] .text-gray-700 { color: var(--text-primary) !important; }
+[data-theme="dark"] .text-gray-500 { color: var(--text-secondary) !important; }
+[data-theme="dark"] .border-gray-200, [data-theme="dark"] .border-gray-300 { border-color: var(--border-color) !important; }
+
+[data-theme="dark"] .bubble.sent { color: var(--text-primary); border-color: var(--border-color); }
+[data-theme="dark"] .bubble.rcvd { color: var(--text-primary); border-color: var(--border-color); }
+[data-theme="dark"] .b-footer { border-top-color: var(--border-color); }
+[data-theme="dark"] .b-header { border-bottom-color: var(--border-color); }
+[data-theme="dark"] .chat-shell { background: transparent; }
+
+[data-theme="dark"] .b-avatar.sent-av { background: var(--accent); color: #ffffff; }
+[data-theme="dark"] .b-avatar.rcvd-av { background: var(--border-color); color: var(--text-primary); }
+
+[data-theme="dark"] .bubble.sent .b-name,
+[data-theme="dark"] .bubble.sent .b-subject,
+[data-theme="dark"] .bubble.rcvd .b-name,
+[data-theme="dark"] .b-tick,
+[data-theme="dark"] .reply-name,
+[data-theme="dark"] .reply-badge { color: var(--accent); }
+
+[data-theme="dark"] .dot-btn:hover,
+[data-theme="dark"] .dd-item:hover,
+[data-theme="dark"] .act-btn:hover { background: rgba(47, 129, 247, 0.15); color: var(--accent); }
+[data-theme="dark"] .e-add:hover { border-color: var(--accent); color: var(--accent); }
+
+[data-theme="dark"] .act-btn.bookmarked {
+    background: var(--accent); color: #ffffff !important;
+    box-shadow: none; border: 1px solid var(--accent-hover); transform: translateY(-1px);
+}
+
+[data-theme="dark"] .e-chip { background: #21262d; border-color: var(--border-color); color: var(--text-primary); }
+[data-theme="dark"] .bubble.sent .e-chip { background: #161b22; border-color: var(--border-color); color: var(--text-secondary); }
+
+[data-theme="dark"] .reply-badge { background: rgba(47, 129, 247, 0.15); }
+[data-theme="dark"] .b-divider { background: var(--border-color); }
+[data-theme="dark"] .replies-label { color: var(--text-secondary); }
+[data-theme="dark"] .reply-item { border-left: 2px solid var(--border-color); }
+[data-theme="dark"] .reply-num { background: var(--border-color); color: var(--text-primary); }
+
+/* Task Panel GitHub Normalizer */
 [data-theme="dark"] #tasksPanel .bg-white,
 [data-theme="dark"] .task-card { 
     background-color: #161b22 !important; 
     border-color: var(--border-color) !important;
 }
-
 [data-theme="dark"] #tasksPanel .text-gray-900,
 [data-theme="dark"] #tasksPanel .text-gray-800,
 [data-theme="dark"] #tasksPanel .text-gray-700 { 
     color: var(--text-primary) !important; 
 }
-
 [data-theme="dark"] #tasksPanel .text-gray-600,
 [data-theme="dark"] #tasksPanel .text-gray-500 { 
     color: var(--text-secondary) !important; 
 }
-
 [data-theme="dark"] #tasksPanel i {
     color: var(--text-secondary);
 }
-
 [data-theme="dark"] #tasksPanel .bg-indigo-50,
 [data-theme="dark"] #tasksPanel .bg-blue-50,
 [data-theme="dark"] #tasksPanel .bg-green-50,
@@ -241,7 +303,6 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
     color: var(--text-primary) !important; 
     box-shadow: none !important;
 }
-
 [data-theme="dark"] #tasksPanel .bg-indigo-50 i,
 [data-theme="dark"] #tasksPanel .bg-blue-50 i,
 [data-theme="dark"] #tasksPanel .bg-green-50 i,
@@ -251,23 +312,86 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 [data-theme="dark"] #tasksPanel .bg-purple-50 i {
     color: var(--text-secondary) !important;
 }
-
 [data-theme="dark"] #tasksPanel .text-red-600,
-[data-theme="dark"] #tasksPanel .text-red-700 {
-    color: var(--accent-danger) !important;
-}
-
+[data-theme="dark"] #tasksPanel .text-red-700 { color: var(--accent-danger) !important; }
 [data-theme="dark"] #tasksPanel .text-green-700,
-[data-theme="dark"] #tasksPanel .text-green-800 {
-    color: var(--accent-success) !important;
-}
-
+[data-theme="dark"] #tasksPanel .text-green-800 { color: var(--accent-success) !important; }
 [data-theme="dark"] #tasksPanel button.bg-blue-600 {
     background-color: var(--accent-success) !important; 
     border-color: rgba(240, 246, 252, 0.1) !important;
     color: #ffffff !important;
 }
+[data-theme="dark"] #tasksPanel button.bg-blue-600:hover { background-color: #2ea043 !important; }
 
-[data-theme="dark"] #tasksPanel button.bg-blue-600:hover {
-    background-color: #2ea043 !important;
+/* =========================================
+   SOBER DARK MODE OVERRIDES
+========================================= */
+
+/* Force all coloured elements to become grey */
+[data-theme="sober-dark"] .badge-pending,
+[data-theme="sober-dark"] .badge-progress,
+[data-theme="sober-dark"] .badge-review,
+[data-theme="sober-dark"] .badge-changes,
+[data-theme="sober-dark"] .badge-done {
+    background-color: #2a2a2a !important;
+    color: #cccccc !important;
+    border: 1px solid #3a3a3a !important;
 }
+
+[data-theme="sober-dark"] button,
+[data-theme="sober-dark"] .btn-primary,
+[data-theme="sober-dark"] .btn-outline {
+    background-color: #2a2a2a !important;
+    color: #dddddd !important;
+    border-color: #3a3a3a !important;
+}
+
+[data-theme="sober-dark"] i {
+    color: #aaaaaa !important;
+}
+
+[data-theme="sober-dark"] .act-btn {
+    color: #aaaaaa !important;
+}
+
+[data-theme="sober-dark"] .act-btn.bookmarked {
+    background: #3a3a3a !important;
+    color: #ffffff !important;
+    box-shadow: none !important;
+}
+
+[data-theme="sober-dark"] .e-chip {
+    background: #2a2a2a !important;
+    border-color: #3a3a3a !important;
+    color: #cccccc !important;
+}
+
+[data-theme="sober-dark"] .ql-editor {
+    background-color: #0d0d0d !important;
+    color: #e0e0e0 !important;
+}
+
+[data-theme="sober-dark"] .bubble.sent {
+    border: 1px solid #3a3a3a;
+}
+
+[data-theme="sober-dark"] .bubble.rcvd {
+    border: 1px solid #2a2a2a;
+}
+
+[data-theme="sober-dark"] #tasksPanel .task-card,
+[data-theme="sober-dark"] #tasksPanel .bg-white {
+    background-color: #1a1a1a !important;
+    border-color: #2a2a2a !important;
+}
+
+[data-theme="sober-dark"] .bg-gray-50 {
+    background-color: var(--bg-body) !important;
+    color: var(--text-primary) !important;
+}
+
+/* =========================================
+   TASK TRAIL CONTAINERS
+========================================= */
+.trail-container { display: none; }
+.trail-container.active { display: block; }

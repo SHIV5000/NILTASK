@@ -35,6 +35,43 @@ window.scrollToAndHighlight = function(elementId) {
     document.querySelectorAll('.top-panel-dropdown').forEach(panel => panel.remove());
 };
 
+
+// ADD THIS BLOCK inside window.startSubscriptions, after trailSubscription block:
+
+let notificationSubscription = null;
+
+if(notificationSubscription) notificationSubscription.unsubscribe();
+notificationSubscription = sb.channel('notifications-changes')
+    .on('postgres_changes', {
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'notifications',
+        filter: `user_id=eq.${window.currentUser.id}`
+    }, (payload) => {
+        // Show toast immediately
+        if(payload.new.type === 'reminder') {
+            window.showCenterToast(
+                `⏰ ${payload.new.message}`, 
+                'fa-solid fa-stopwatch', 
+                'text-purple-400'
+            );
+        } else {
+            window.showCenterToast(payload.new.message, 'fa-solid fa-bell', 'text-yellow-400');
+        }
+        // Refresh badge count
+        if(typeof window.refreshNotificationBadge === 'function') {
+            window.refreshNotificationBadge();
+        }
+    })
+    .subscribe();
+
+
+
+
+
+
+
+
 window.renderMainApp = function() {
     if (typeof window.applyTheme === 'function') window.applyTheme();
     const userNameDisplay = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';

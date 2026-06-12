@@ -45,7 +45,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color: var(--text-secondary);">
-                        v1.47.0 - The v1.34.0 Restoration
+                        v1.48.0 - Native HTML Engine
                     </div>
                 </div>
             </div>
@@ -204,7 +204,6 @@ window.renderMainApp = function() {
         </div>
     `;
     
-    // Quill UI Initialization
     window.quillEditor = new Quill('#richEditor', { 
         theme: 'snow', 
         placeholder: 'Type a message...', 
@@ -226,7 +225,6 @@ window.renderMainApp = function() {
     window.quillEditor.root.addEventListener('keydown', (e) => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); if(typeof window.sendMessage === 'function') window.sendMessage(); } });
     document.getElementById('sendBtn').onclick = () => { if(typeof window.sendMessage === 'function') window.sendMessage(); };
     
-    // Modals
     document.getElementById('fileAttachment').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -254,19 +252,6 @@ window.renderMainApp = function() {
     if (typeof window.loadChatsList === 'function') window.loadChatsList(); 
     if (typeof window.loadMessages === 'function') window.loadMessages(); 
     if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel(); 
-
-    // THE v1.34.0 "RUN ONCE" OBSERVER
-    const tasksPanel = document.getElementById('tasksPanel');
-    if (tasksPanel) {
-        new MutationObserver(() => {
-            document.querySelectorAll('[id^="trail-"], [id^="task-trail-"]').forEach(el => {
-                if (el.dataset.initialized !== 'true') {
-                    el.style.display = 'none'; 
-                    el.dataset.initialized = 'true';
-                }
-            });
-        }).observe(tasksPanel, { childList: true, subtree: true });
-    }
 };
 
 window.loadChatsList = async function() {

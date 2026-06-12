@@ -225,6 +225,53 @@ window.openTopPanel = async function(type) {
     document.querySelector('.chat-area').appendChild(panel);
 };
 
+
+window.refreshNotificationBadge = async function() {
+    const { count } = await sb
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', window.currentUser.id)
+        .eq('is_read', false);
+
+    const bellIcon = document.querySelector('[onclick="window.openTopPanel(\'alerts\')"]');
+    if (!bellIcon) return;
+
+    // Remove existing badge if any
+    const existingBadge = bellIcon.parentElement.querySelector('.notif-badge');
+    if (existingBadge) existingBadge.remove();
+
+    if (count && count > 0) {
+        const badge = document.createElement('span');
+        badge.className = 'notif-badge';
+        badge.style.cssText = `
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: var(--accent);
+            color: white;
+            border-radius: 50%;
+            font-size: 9px;
+            font-weight: bold;
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        `;
+        badge.textContent = count > 9 ? '9+' : count;
+        // Bell icon's parent needs position:relative
+        bellIcon.style.position = 'relative';
+        bellIcon.parentElement.style.position = 'relative';
+        bellIcon.insertAdjacentElement('afterend', badge);
+    }
+};
+
+
+
+
+
+
 window.deleteScheduled = async function(id) {
     await sb.from('scheduled_messages').delete().eq('id', id);
     document.querySelectorAll('.top-panel-dropdown').forEach(m => m.remove());

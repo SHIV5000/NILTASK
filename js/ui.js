@@ -190,11 +190,27 @@ window.openTopPanel = async function(type) {
             </div>`;
         });
     } else if (type === 'reminders') {
-        panel.innerHTML = `<h4 class="font-bold border-b pb-3 mb-3 flex items-center gap-2" style="border-color: var(--border-color); color: var(--text-primary);"><i class="fa-solid fa-stopwatch text-purple-500"></i> Upcoming Reminders</h4>`;
-        const {data} = await sb.from('reminders').select('*, messages(text)').eq('user_id', window.currentUser.id).eq('triggered', false).order('reminder_time', {ascending: true});
-        if(!data || data.length===0) panel.innerHTML += `<p class="text-xs italic text-center py-4" style="color: var(--text-secondary);">No upcoming reminders.</p>`;
-        data?.forEach(d => {
-            panel.innerHTML += `<div class="mb-2 p-2.5 border rounded-xl text-sm flex justify-between items-center group/item transition-colors" style="background-color: var(--bg-body); border-color: var(--border-color);">
+    panel.innerHTML = `<h4 class="font-bold border-b pb-3 mb-3 flex items-center gap-2" style="border-color: var(--border-color); color: var(--text-primary);"><i class="fa-solid fa-stopwatch text-purple-500"></i> Reminders</h4>`;
+    
+    // Upcoming (not yet triggered)
+    const {data: upcoming} = await sb.from('reminders')
+        .select('*, messages(text)')
+        .eq('user_id', window.currentUser.id)
+        .eq('triggered', false)
+        .order('reminder_time', {ascending: true});
+
+    // Fired (from notifications table)
+    const {data: fired} = await sb.from('notifications')
+        .select('*')
+        .eq('user_id', window.currentUser.id)
+        .eq('type', 'reminder')
+        .order('created_at', {ascending: false})
+        .limit(5);
+
+    if (upcoming && upcoming.length > 0) {
+        panel.innerHTML += `<div class="text-[9px] font-black tracking-widest uppercase mb-2" style="color: var(--text-secondary);">Upcoming</div>`;
+        upcoming.forEach(d => {
+            panel.innerHTML += `<div class="mb-2 p-2.5 border rounded-xl text-sm flex justify-between items-center" style="background-color: var(--bg-body); border-color: var(--border-color);">
                 <div class="flex flex-col min-w-0 pr-2 cursor-pointer hover:opacity-80" onclick="window.scrollToAndHighlight('row-${d.message_id}')">
                     <span class="truncate w-48 font-medium" style="color: var(--text-primary);">${window.escapeHtml(d.messages?.text || 'Message...')}</span>
                     <span class="text-[9px]" style="color: var(--text-secondary);">${new Date(d.reminder_time).toLocaleString('en-IN')}</span>
@@ -202,7 +218,24 @@ window.openTopPanel = async function(type) {
                 <i class="fa-solid fa-times hover:text-red-500 cursor-pointer p-1 flex-shrink-0" style="color: var(--text-secondary);" onclick="window.deleteReminder('${d.id}')"></i>
             </div>`;
         });
-    } else if (type === 'bookmarks') {
+    } else {
+        panel.innerHTML += `<p class="text-xs italic text-center py-2" style="color: var(--text-secondary);">No upcoming reminders.</p>`;
+    }
+
+    if (fired && fired.length > 0) {
+        panel.innerHTML += `<div class="text-[9px] font-black tracking-widest uppercase mt-3 mb-2" style="color: var(--text-secondary);">Fired ✓</div>`;
+        fired.forEach(d => {
+            panel.innerHTML += `<div class="mb-2 p-2.5 border rounded-xl text-sm cursor-pointer hover:opacity-80" 
+                style="background-color: var(--bg-body); border-color: var(--border-color); opacity: ${d.is_read ? '0.5' : '1'};"
+                onclick="window.markNotifRead('${d.id}'); window.scrollToAndHighlight('row-${d.message_id}')">
+                <span class="block font-medium" style="color: var(--text-primary);">${window.escapeHtml(d.message)}</span>
+                <span class="text-[9px]" style="color: var(--text-secondary);">${new Date(d.created_at).toLocaleString('en-IN')}</span>
+            </div>`;
+        });
+    }
+        
+    
+    else if (type === 'bookmarks') {
         panel.innerHTML = `<h4 class="font-bold border-b pb-3 mb-3 flex items-center gap-2" style="border-color: var(--border-color); color: var(--text-primary);"><i class="fa-regular fa-bookmark text-orange-500"></i> Bookmarks</h4>`;
         const {data} = await sb.from('bookmarks').select('*, messages(text)').eq('user_id', window.currentUser.id);
         if(!data || data.length===0) panel.innerHTML += `<p class="text-xs italic text-center py-4" style="color: var(--text-secondary);">No bookmarks found.</p>`;

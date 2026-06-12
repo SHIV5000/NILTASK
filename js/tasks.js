@@ -211,11 +211,6 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
     window.loadTasksForPanel(); 
 }
 
-window.toggleTrail = function(taskId) {
-    const box = document.getElementById(`trail-${taskId}`);
-    if(box) box.classList.toggle('active');
-}
-
 window.loadTasksForPanel = async function() {
     const {data: tasks} = await sb.from('tasks').select('*, creator:profiles!assigned_by(full_name, email)').order('created_at', {ascending: false});
     if (!tasks) return;
@@ -432,7 +427,7 @@ window.loadTasksForPanel = async function() {
                     <button onclick="window.toggleTrail('${task.id}')" class="text-[12px] font-bold text-gray-500 hover:text-gray-800 flex items-center gap-1 transition-colors w-full text-left">
                         <i class="fa-solid fa-history"></i> Recent Trail (${trlList.length}) <i class="fa-solid fa-chevron-down ml-auto"></i>
                     </button>
-                    <div id="trail-${task.id}" class="task-trail-box bg-gray-50 p-3 rounded-lg mt-2 space-y-2">
+                    <div id="trail-${task.id}" class="task-trail-box bg-gray-50 p-3 rounded-lg mt-2 space-y-2" style="display: none;">
                         ${trailRows || '<div class="text-xs text-gray-400 italic">No activity yet.</div>'}
                     </div>
                 </div>

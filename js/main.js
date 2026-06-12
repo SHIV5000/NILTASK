@@ -79,7 +79,7 @@ window.renderMainApp = function() {
                         <div class="w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px]" style="background-color:var(--accent);">${userNameDisplay.charAt(0).toUpperCase()}</div>
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
-                    <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color:var(--text-secondary);">v1.52.0 - Notifications & Sort</div>
+                    <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color:var(--text-secondary);">v1.52.0 - DM Fix & Sounds</div>
                 </div>
             </div>
 
@@ -349,12 +349,14 @@ window.loadChatsList = async function() {
 
     window.globalUsersCache.filter(u => u.id !== window.currentUser.id).forEach(u => {
         const name = (typeof window.toSentenceCase === 'function') ? window.toSentenceCase(u.full_name || u.email.split('@')[0]) : (u.full_name || u.email.split('@')[0]);
-        const isCurrent = window.currentRoom === 'dm_' + u.id;
-        const unread = window.unreadCounts?.['dm_' + u.id] || 0;
+        // Use canonical DM room ID so both sides match
+        const dmRoomId = typeof window.getDmRoomId === 'function' ? window.getDmRoomId(u.id) : 'dm_' + u.id;
+        const isCurrent = window.currentRoom === dmRoomId;
+        const unread = window.unreadCounts?.[dmRoomId] || 0;
 
         html += `<div class="channel-item p-2.5 mx-2 mb-1 rounded-xl cursor-pointer flex items-center gap-3 transition-colors border"
             style="background-color:${isCurrent ? 'var(--bg-body)' : 'transparent'};border-color:${isCurrent ? 'var(--border-color)' : 'transparent'};font-weight:${isCurrent ? 'bold' : 'normal'};"
-            data-room="dm_${u.id}" data-name="${name}">
+            data-room="${dmRoomId}" data-name="${name}">
             <div class="relative flex-shrink-0">
                 <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm" style="background:var(--accent);">${name.charAt(0).toUpperCase()}</div>
                 ${unread > 0 ? `<span class="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full" style="background:#22c55e;"></span>
@@ -384,37 +386,86 @@ window.loadChatsList = async function() {
     }
 };
 
+// ─── DM ROOM KEY HELPER ────────────────────────────────────────────────────
+// Both sides of a DM must use the same room key.
+// We use "dm_<smaller_uuid>_<larger_uuid>" so it's identical for both users.
+window.getDmRoomId = function(otherUserId) {
+    const me = window.currentUser.id;
+    const ids = [me, otherUserId].sort();
+    return `dm_${ids[0]}_${ids[1]}`;
+};
+
+// ─── SOUNDS ────────────────────────────────────────────────────────────────
+window._soundLastPlayed = {};
+window.playSound = function(type) {
+    const now = Date.now();
+    // Debounce: same sound can't fire more than once per 2 seconds
+    if (window._soundLastPlayed[type] && now - window._soundLastPlayed[type] < 2000) return;
+    window._soundLastPlayed[type] = now;
+    const urls = {
+        message: 'https://apfymygzwkzjhhgmtkaj.supabase.co/storage/v1/object/sign/sounds/just-saying-593.mp3?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9iNWUyZGMwYy1lZDIwLTRlNTQtYTVkNS1hYTBmODFiN2MxNzkiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzb3VuZHMvanVzdC1zYXlpbmctNTkzLm1wMyIsInNjb3BlIjoiZG93bmxvYWQiLCJpYXQiOjE3ODEyNzg2ODgsImV4cCI6MTkzODk1ODY4OH0.NIpeQ5KadtgFTs4isNicayCmXoTcWWHFu2m3mS-9Txs',
+        reminder: 'https://apfymygzwkzjhhgmtkaj.supabase.co/storage/v1/object/sign/sounds/when-604.mp3?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9iNWUyZGMwYy1lZDIwLTRlNTQtYTVkNS1hYTBmODFiN2MxNzkiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzb3VuZHMvd2hlbi02MDQubXAzIiwic2NvcGUiOiJkb3dubG9hZCIsImlhdCI6MTc4MTI3ODc0MCwiZXhwIjoxOTM4OTU4NzQwfQ.Ic5nmchKsn-dVPkRjQiJ8tRavAUCvPgbpQ4xiwu6RCk',
+        task: 'https://apfymygzwkzjhhgmtkaj.supabase.co/storage/v1/object/sign/sounds/youve-been-informed-345.mp3?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9iNWUyZGMwYy1lZDIwLTRlNTQtYTVkNS1hYTBmODFiN2MxNzkiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzb3VuZHMveW91dmUtYmVlbi1pbmZvcm1lZC0zNDUubXAzIiwic2NvcGUiOiJkb3dubG9hZCIsImlhdCI6MTc4MTI3ODc5OSwiZXhwIjoxOTM4OTU4Nzk5fQ.w1dP5ECmZNfoGbD8fBSZBfnlJUeeQkdX7z3-bDv-Vbk'
+    };
+    const url = urls[type];
+    if (!url) return;
+    try {
+        const audio = new Audio(url);
+        audio.volume = 0.6;
+        audio.play().catch(() => {}); // ignore autoplay block
+    } catch (e) {}
+};
+
+// ─── DEBOUNCED loadTasksForPanel ────────────────────────────────────────────
+let _taskPanelTimer = null;
+window.debouncedLoadTasks = function() {
+    clearTimeout(_taskPanelTimer);
+    _taskPanelTimer = setTimeout(() => {
+        if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel();
+    }, 600); // 600ms — absorbs rapid multi-assignee bursts
+};
+
 // ─── SUBSCRIPTIONS ─────────────────────────────────────────────────────────
 window.startSubscriptions = function() {
     if (messageSubscription) messageSubscription.unsubscribe();
     messageSubscription = sb.channel('public:messages')
         .on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, (p) => {
-            if (p.new.room_id === window.currentRoom) {
+            const incomingRoom = p.new.room_id;
+            const isForMe = incomingRoom === window.currentRoom ||
+                // DM: check both orientations — sender used dm_<their_id>_<my_id> or dm_<my_id>_<their_id>
+                (incomingRoom.startsWith('dm_') && incomingRoom.includes(window.currentUser.id) && incomingRoom === window.currentRoom);
+
+            if (incomingRoom === window.currentRoom) {
                 if (typeof window.loadMessages === 'function') window.loadMessages();
+                // Play sound for received messages (not own)
+                if (p.new.sender_id !== window.currentUser.id) window.playSound('message');
             } else {
-                // Increment unread badge for the other room
                 window.unreadCounts = window.unreadCounts || {};
-                window.unreadCounts[p.new.room_id] = (window.unreadCounts[p.new.room_id] || 0) + 1;
+                window.unreadCounts[incomingRoom] = (window.unreadCounts[incomingRoom] || 0) + 1;
                 if (typeof window.loadChatsList === 'function') window.loadChatsList();
+                // Play sound for DM received in background
+                if (incomingRoom.startsWith('dm_') && incomingRoom.includes(window.currentUser.id) && p.new.sender_id !== window.currentUser.id) {
+                    window.playSound('message');
+                }
             }
         }).subscribe();
 
     if (taskSubscription) taskSubscription.unsubscribe();
     taskSubscription = sb.channel('tasks-changes')
         .on('postgres_changes', {event:'*', schema:'public', table:'tasks'}, () => {
-            if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel();
+            window.debouncedLoadTasks();
         }).subscribe();
 
     if (assigneeSubscription) assigneeSubscription.unsubscribe();
     assigneeSubscription = sb.channel('assignees-changes')
         .on('postgres_changes', {event:'*', schema:'public', table:'task_assignees'}, () => {
-            if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel();
+            window.debouncedLoadTasks();
         }).subscribe();
 
     if (trailSubscription) trailSubscription.unsubscribe();
     trailSubscription = sb.channel('trails-changes')
         .on('postgres_changes', {event:'*', schema:'public', table:'task_trails'}, () => {
-            if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel();
+            window.debouncedLoadTasks();
         }).subscribe();
 
     if (notificationSubscription) notificationSubscription.unsubscribe();
@@ -424,15 +475,34 @@ window.startSubscriptions = function() {
             filter: `user_id=eq.${window.currentUser.id}`
         }, (payload) => {
             const msg = window.stripHtml ? window.stripHtml(payload.new.message) : payload.new.message;
-            if (payload.new.type === 'reminder') {
+            const type = payload.new.type || 'general';
+            if (type === 'reminder') {
                 window.showCenterToast(`⏰ ${msg}`, 'fa-solid fa-stopwatch', 'text-purple-400');
+                window.playSound('reminder');
+            } else if (type === 'task') {
+                window.showCenterToast(msg, 'fa-solid fa-clipboard-check', 'text-blue-400');
+                window.playSound('task');
+            } else if (type === 'message') {
+                // DM toast — sound already played by message subscription
+                window.showCenterToast(msg, 'fa-solid fa-comment', 'text-green-400');
             } else {
                 window.showCenterToast(msg, 'fa-solid fa-bell', 'text-yellow-400');
             }
             if (typeof window.refreshNotificationBadge === 'function') window.refreshNotificationBadge();
+            // Animate bell icon
+            window.animateBell();
         }).subscribe();
 
     if (typeof window.refreshNotificationBadge === 'function') window.refreshNotificationBadge();
+};
+
+// Bell animation — pulses until user clicks it
+window.animateBell = function() {
+    const bell = document.querySelector('[onclick="window.openTopPanel('alerts')"]');
+    if (!bell) return;
+    bell.classList.add('bell-ring');
+    // Stop animation when user clicks bell
+    bell.addEventListener('click', () => bell.classList.remove('bell-ring'), { once: true });
 };
 
 // Boot Sequence

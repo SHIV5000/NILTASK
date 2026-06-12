@@ -10,8 +10,31 @@ window.sendMessage = async function() {
     const sendBtn = document.getElementById('sendBtn');
     if (sendBtn) sendBtn.innerHTML = '<i class="ti ti-loader fa-spin text-lg"></i>';
 
+    // ── Resolve the actual room_id to store.
+    // For DMs, currentRoom is "dm_<other_user_id>" (from clicking sidebar).
+    // We must resolve to canonical "dm_<sorted_ids>" so both parties share the same room.
+    let roomId = window.currentRoom;
+    let recipientId = null;
+    if (window.currentRoom.startsWith('dm_') && !window.currentRoom.includes('_', 3)) {
+        // Old format: dm_<single_uuid> — convert to canonical
+        recipientId = window.currentRoom.replace('dm_', '');
+        if (typeof window.getDmRoomId === 'function') {
+            roomId = window.getDmRoomId(recipientId);
+            window.currentRoom = roomId; // update current room to canonical
+            localStorage.setItem('mpgs_current_room', roomId);
+        }
+    } else if (window.currentRoom.startsWith('dm_')) {
+        // Already canonical dm_<id1>_<id2> — extract recipient
+        const parts = window.currentRoom.replace('dm_', '').split('_');
+        // parts has two UUIDs joined — find the one that is not current user
+        // UUIDs contain hyphens so split on _ won't work cleanly; use indexOf instead
+        const withoutPrefix = window.currentRoom.replace('dm_', '');
+        const meId = window.currentUser.id;
+        recipientId = withoutPrefix.replace(meId, '').replace(/^_|_$/g, '');
+    }
+
     let payload = {
-        room_id: window.currentRoom,
+        room_id: roomId,
         sender_id: window.currentUser.id,
         text,
         created_at: new Date().toISOString()
@@ -26,9 +49,8 @@ window.sendMessage = async function() {
 
     const { data: msgData } = await sb.from('messages').insert(payload).select().single();
 
-    // ── DM: notify the other user so they get toast + badge even if not in room
-    if (window.currentRoom.startsWith('dm_') && msgData) {
-        const recipientId = window.currentRoom.replace('dm_', '');
+    // ── DM: notify recipient so they get toast + badge + sound even if not in room
+    if (recipientId && msgData) {
         const senderName = window.currentUser?.user_metadata?.full_name ||
                            window.currentUser?.email?.split('@')[0] || 'Someone';
         const cleanText = window.stripHtml ? window.stripHtml(text) : text;
@@ -39,6 +61,9 @@ window.sendMessage = async function() {
             'message'
         );
     }
+
+    // Play sent sound
+    if (typeof window.playSound === 'function') window.playSound('message');
 
     window.quillEditor.root.innerHTML = '';
     window.cancelReply();

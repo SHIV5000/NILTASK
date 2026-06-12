@@ -337,3 +337,13 @@ window.saveScheduledMessage = async function() {
     window.quillEditor.root.innerHTML = '';
     window.showCenterToast('Message Scheduled Successfully!');
 };
+
+window.markNotifRead = async function(id) {
+    await sb.from('notifications').update({ is_read: true }).eq('id', id);
+    if(typeof window.refreshNotificationBadge === 'function') window.refreshNotificationBadge();
+};
+
+
+
+
+    

@@ -364,8 +364,7 @@ window.startSubscriptions = function() {
             filter: `user_id=eq.${window.currentUser.id}`
         }, (payload) => {
             if (payload.new.type === 'reminder') {
-                window.showCenterToast(
-                    `⏰ ${payload.new.message}`,
+                window.showCenterToast(`⏰ ${window.stripHtml(payload.new.message)}`, 
                     'fa-solid fa-stopwatch',
                     'text-purple-400'
                 );

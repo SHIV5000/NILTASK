@@ -79,7 +79,7 @@ window.renderMainApp = function() {
                         <div class="w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px]" style="background-color:var(--accent);">${userNameDisplay.charAt(0).toUpperCase()}</div>
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
-                    <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color:var(--text-secondary);">v1.51.0 - Departments & Staff Hub</div>
+                    <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color:var(--text-secondary);">v1.52.0 - Notifications & Sort</div>
                 </div>
             </div>
 
@@ -157,6 +157,12 @@ window.renderMainApp = function() {
                             <option value="delegated">Delegated</option>
                             <option value="transferred">Transferred</option>
                             <option value="date_range">Date Range</option>
+                        </select>
+                        <select id="taskSort" onchange="window.loadTasksForPanel()" class="text-xs px-2 py-2 rounded-lg border font-medium shadow-sm outline-none cursor-pointer w-full transition-all" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                            <option value="deadline_asc">⬆ Deadline: Earliest First</option>
+                            <option value="deadline_desc">⬇ Deadline: Latest First</option>
+                            <option value="created_desc">⬇ Created: Newest First</option>
+                            <option value="created_asc">⬆ Created: Oldest First</option>
                         </select>
                     </div>
                     <div id="dateRangeFilter" class="hidden px-3 pt-2 pb-3 border-b flex gap-2 items-center" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">

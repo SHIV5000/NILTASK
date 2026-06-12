@@ -32,7 +32,9 @@ window.renderMainApp = function() {
                         <i class="fa-solid fa-comments" style="color: var(--accent);"></i> Chats
                     </h2>
                     <div class="flex gap-2">
-                        <button onclick="window.toggleTheme()" class="w-8 h-8 rounded-full flex items-center justify-center transition-colors" style="color: var(--text-secondary);"><i class="fa-solid fa-moon text-sm"></i></button>
+                        <button onclick="window.toggleTheme()" class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors" title="Cycle theme: Light → Original Dark → Sober Dark" style="color: var(--text-secondary);">
+                            <i id="themeToggleIcon" class="fa-solid ${window.currentTheme === 'light' ? 'fa-sun' : (window.currentTheme === 'dark' ? 'fa-moon' : 'fa-cloud-moon')} text-sm"></i>
+                        </button>
                         <button onclick="window.logout()" class="w-8 h-8 rounded-full hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-colors" style="color: var(--text-secondary);"><i class="fa-solid fa-sign-out-alt text-sm"></i></button>
                     </div>
                 </div>
@@ -45,7 +47,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color: var(--text-secondary);">
-                        v1.48.0 - Native HTML Engine
+                        v1.49.0 - Tri-State Theme Engine
                     </div>
                 </div>
             </div>

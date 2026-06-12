@@ -178,7 +178,7 @@ window.openTopPanel = async function(type) {
     panel.className = 'top-panel-dropdown right-10 top-16 w-80 max-h-96 overflow-y-auto p-4 border shadow-2xl rounded-2xl z-50';
     panel.style.backgroundColor = 'var(--bg-sidebar)';
     panel.style.borderColor = 'var(--border-color)';
-    
+
     if (type === 'scheduled') {
         panel.innerHTML = `<h4 class="font-bold border-b pb-3 mb-3 flex items-center gap-2" style="border-color: var(--border-color); color: var(--text-primary);"><i class="fa-regular fa-clock text-blue-500"></i> Scheduled Messages</h4>`;
         const {data} = await sb.from('scheduled_messages').select('*').eq('sender_id', window.currentUser.id).eq('status', 'pending').order('scheduled_time', {ascending: true});
@@ -189,53 +189,51 @@ window.openTopPanel = async function(type) {
                 <i class="fa-solid fa-times hover:text-red-500 cursor-pointer p-1" style="color: var(--text-secondary);" onclick="window.deleteScheduled('${d.id}')"></i>
             </div>`;
         });
+
     } else if (type === 'reminders') {
-    panel.innerHTML = `<h4 class="font-bold border-b pb-3 mb-3 flex items-center gap-2" style="border-color: var(--border-color); color: var(--text-primary);"><i class="fa-solid fa-stopwatch text-purple-500"></i> Reminders</h4>`;
-    
-    // Upcoming (not yet triggered)
-    const {data: upcoming} = await sb.from('reminders')
-        .select('*, messages(text)')
-        .eq('user_id', window.currentUser.id)
-        .eq('triggered', false)
-        .order('reminder_time', {ascending: true});
+        panel.innerHTML = `<h4 class="font-bold border-b pb-3 mb-3 flex items-center gap-2" style="border-color: var(--border-color); color: var(--text-primary);"><i class="fa-solid fa-stopwatch text-purple-500"></i> Reminders</h4>`;
 
-    // Fired (from notifications table)
-    const {data: fired} = await sb.from('notifications')
-        .select('*')
-        .eq('user_id', window.currentUser.id)
-        .eq('type', 'reminder')
-        .order('created_at', {ascending: false})
-        .limit(5);
+        const {data: upcoming} = await sb.from('reminders')
+            .select('*, messages(text)')
+            .eq('user_id', window.currentUser.id)
+            .eq('triggered', false)
+            .order('reminder_time', {ascending: true});
 
-    if (upcoming && upcoming.length > 0) {
-        panel.innerHTML += `<div class="text-[9px] font-black tracking-widest uppercase mb-2" style="color: var(--text-secondary);">Upcoming</div>`;
-        upcoming.forEach(d => {
-            panel.innerHTML += `<div class="mb-2 p-2.5 border rounded-xl text-sm flex justify-between items-center" style="background-color: var(--bg-body); border-color: var(--border-color);">
-                <div class="flex flex-col min-w-0 pr-2 cursor-pointer hover:opacity-80" onclick="window.scrollToAndHighlight('row-${d.message_id}')">
-                    <span class="truncate w-48 font-medium" style="color: var(--text-primary);">${window.escapeHtml(d.messages?.text || 'Message...')}</span>
-                    <span class="text-[9px]" style="color: var(--text-secondary);">${new Date(d.reminder_time).toLocaleString('en-IN')}</span>
-                </div>
-                <i class="fa-solid fa-times hover:text-red-500 cursor-pointer p-1 flex-shrink-0" style="color: var(--text-secondary);" onclick="window.deleteReminder('${d.id}')"></i>
-            </div>`;
-        });
-    } else {
-        panel.innerHTML += `<p class="text-xs italic text-center py-2" style="color: var(--text-secondary);">No upcoming reminders.</p>`;
-    }
+        const {data: fired} = await sb.from('notifications')
+            .select('*')
+            .eq('user_id', window.currentUser.id)
+            .eq('type', 'reminder')
+            .order('created_at', {ascending: false})
+            .limit(5);
 
-    if (fired && fired.length > 0) {
-        panel.innerHTML += `<div class="text-[9px] font-black tracking-widest uppercase mt-3 mb-2" style="color: var(--text-secondary);">Fired ✓</div>`;
-        fired.forEach(d => {
-            panel.innerHTML += `<div class="mb-2 p-2.5 border rounded-xl text-sm cursor-pointer hover:opacity-80" 
-                style="background-color: var(--bg-body); border-color: var(--border-color); opacity: ${d.is_read ? '0.5' : '1'};"
-                onclick="window.markNotifRead('${d.id}'); window.scrollToAndHighlight('row-${d.message_id}')">
-                <span class="block font-medium" style="color: var(--text-primary);">${window.escapeHtml(d.message)}</span>
-                <span class="text-[9px]" style="color: var(--text-secondary);">${new Date(d.created_at).toLocaleString('en-IN')}</span>
-            </div>`;
-        });
-    }
-        
-    
-    else if (type === 'bookmarks') {
+        if (upcoming && upcoming.length > 0) {
+            panel.innerHTML += `<div class="text-[9px] font-black tracking-widest uppercase mb-2" style="color: var(--text-secondary);">Upcoming</div>`;
+            upcoming.forEach(d => {
+                panel.innerHTML += `<div class="mb-2 p-2.5 border rounded-xl text-sm flex justify-between items-center" style="background-color: var(--bg-body); border-color: var(--border-color);">
+                    <div class="flex flex-col min-w-0 pr-2 cursor-pointer hover:opacity-80" onclick="window.scrollToAndHighlight('row-${d.message_id}')">
+                        <span class="truncate w-48 font-medium" style="color: var(--text-primary);">${window.escapeHtml(d.messages?.text || 'Message...')}</span>
+                        <span class="text-[9px]" style="color: var(--text-secondary);">${new Date(d.reminder_time).toLocaleString('en-IN')}</span>
+                    </div>
+                    <i class="fa-solid fa-times hover:text-red-500 cursor-pointer p-1 flex-shrink-0" style="color: var(--text-secondary);" onclick="window.deleteReminder('${d.id}')"></i>
+                </div>`;
+            });
+        } else {
+            panel.innerHTML += `<p class="text-xs italic text-center py-2" style="color: var(--text-secondary);">No upcoming reminders.</p>`;
+        }
+
+        if (fired && fired.length > 0) {
+            panel.innerHTML += `<div class="text-[9px] font-black tracking-widest uppercase mt-3 mb-2" style="color: var(--text-secondary);">Fired ✓</div>`;
+            fired.forEach(d => {
+                panel.innerHTML += `<div class="mb-2 p-2.5 border rounded-xl text-sm cursor-pointer hover:opacity-80"
+                    style="background-color: var(--bg-body); border-color: var(--border-color); opacity: ${d.is_read ? '0.5' : '1'};"
+                    onclick="window.markNotifRead('${d.id}'); window.scrollToAndHighlight('row-${d.message_id}')">
+                    <span class="block font-medium" style="color: var(--text-primary);">${window.escapeHtml(d.message)}</span>
+                    <span class="text-[9px]" style="color: var(--text-secondary);">${new Date(d.created_at).toLocaleString('en-IN')}</span>
+                </div>`;
+            });
+        }
+
+    } else if (type === 'bookmarks') {
         panel.innerHTML = `<h4 class="font-bold border-b pb-3 mb-3 flex items-center gap-2" style="border-color: var(--border-color); color: var(--text-primary);"><i class="fa-regular fa-bookmark text-orange-500"></i> Bookmarks</h4>`;
         const {data} = await sb.from('bookmarks').select('*, messages(text)').eq('user_id', window.currentUser.id);
         if(!data || data.length===0) panel.innerHTML += `<p class="text-xs italic text-center py-4" style="color: var(--text-secondary);">No bookmarks found.</p>`;
@@ -244,20 +242,21 @@ window.openTopPanel = async function(type) {
                 <span class="truncate block" style="color: var(--text-primary);">${window.escapeHtml(d.messages?.text)}</span>
             </div>`;
         });
+
     } else if (type === 'alerts') {
         panel.innerHTML = `<h4 class="font-bold border-b pb-3 mb-3 flex items-center gap-2" style="border-color: var(--border-color); color: var(--text-primary);"><i class="fa-regular fa-bell text-yellow-500"></i> Notifications</h4>`;
         const {data} = await sb.from('notifications').select('*').eq('user_id', window.currentUser.id).order('created_at', {ascending: false}).limit(10);
         if(!data || data.length===0) panel.innerHTML += `<p class="text-xs italic text-center py-4" style="color: var(--text-secondary);">All caught up!</p>`;
         data?.forEach(d => {
-             panel.innerHTML += `<div class="mb-2 p-2.5 border rounded-xl text-sm cursor-pointer transition-colors group/item" style="background-color: var(--bg-body); border-color: var(--border-color);" onclick="window.scrollToAndHighlight('row-${d.message_id}')">
+            panel.innerHTML += `<div class="mb-2 p-2.5 border rounded-xl text-sm cursor-pointer transition-colors group/item" style="background-color: var(--bg-body); border-color: var(--border-color);" onclick="window.markNotifRead('${d.id}'); window.scrollToAndHighlight('row-${d.message_id}')">
                 <span class="block font-medium" style="color: var(--text-primary);">${window.escapeHtml(d.message)}</span>
                 <div class="text-[9px] mt-1" style="color: var(--text-secondary);">${window.getISTTime(d.created_at)}</div>
             </div>`;
         });
     }
-    document.querySelector('.chat-area').appendChild(panel);
-};
 
+    document.querySelector('.chat-area').appendChild(panel);
+}; // ← END of openTopPanel
 
 window.refreshNotificationBadge = async function() {
     const { count } = await sb
@@ -269,7 +268,6 @@ window.refreshNotificationBadge = async function() {
     const bellIcon = document.querySelector('[onclick="window.openTopPanel(\'alerts\')"]');
     if (!bellIcon) return;
 
-    // Remove existing badge if any
     const existingBadge = bellIcon.parentElement.querySelector('.notif-badge');
     if (existingBadge) existingBadge.remove();
 
@@ -293,17 +291,16 @@ window.refreshNotificationBadge = async function() {
             pointer-events: none;
         `;
         badge.textContent = count > 9 ? '9+' : count;
-        // Bell icon's parent needs position:relative
         bellIcon.style.position = 'relative';
         bellIcon.parentElement.style.position = 'relative';
         bellIcon.insertAdjacentElement('afterend', badge);
     }
 };
 
-
-
-
-
+window.markNotifRead = async function(id) {
+    await sb.from('notifications').update({ is_read: true }).eq('id', id);
+    if (typeof window.refreshNotificationBadge === 'function') window.refreshNotificationBadge();
+};
 
 window.deleteScheduled = async function(id) {
     await sb.from('scheduled_messages').delete().eq('id', id);
@@ -337,13 +334,3 @@ window.saveScheduledMessage = async function() {
     window.quillEditor.root.innerHTML = '';
     window.showCenterToast('Message Scheduled Successfully!');
 };
-
-window.markNotifRead = async function(id) {
-    await sb.from('notifications').update({ is_read: true }).eq('id', id);
-    if(typeof window.refreshNotificationBadge === 'function') window.refreshNotificationBadge();
-};
-
-
-
-
-    

@@ -1,19 +1,19 @@
 import { sb } from './shared.js';
 
-// STATE PERSISTENCE ENGINE (UI)
+// THEME STATES: 'light', 'dark', 'sober-dark'
 window.currentTheme = localStorage.getItem('theme') || 'light';
 window.currentRoom = localStorage.getItem('mpgs_current_room') || 'general';
 window.pendingScrollId = null; 
 window.pendingFileUpload = null;
 
-window.applyTheme = function() { 
-    document.documentElement.setAttribute('data-theme', window.currentTheme); 
-};
-
-window.toggleTheme = function() {
-    window.currentTheme = window.currentTheme === 'light' ? 'dark' : 'light';
-    localStorage.setItem('theme', window.currentTheme);
-    window.applyTheme();
+window.applyTheme = function() {
+    document.documentElement.setAttribute('data-theme', window.currentTheme);
+    const themeIcon = document.getElementById('themeToggleIcon');
+    if (themeIcon) {
+        if (window.currentTheme === 'light') themeIcon.className = 'fa-solid fa-sun text-sm';
+        else if (window.currentTheme === 'dark') themeIcon.className = 'fa-solid fa-moon text-sm';
+        else themeIcon.className = 'fa-solid fa-cloud-moon text-sm';
+    }
 };
 
 window.showCenterToast = function(msg, icon = 'fa-solid fa-check-circle', color = 'text-green-400') { 
@@ -23,6 +23,18 @@ window.showCenterToast = function(msg, icon = 'fa-solid fa-check-circle', color 
     document.body.appendChild(t); 
     setTimeout(() => t.classList.remove('opacity-0'), 10);
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 500); }, 3000); 
+};
+
+window.toggleTheme = function() {
+    if (window.currentTheme === 'light') window.currentTheme = 'dark';
+    else if (window.currentTheme === 'dark') window.currentTheme = 'sober-dark';
+    else window.currentTheme = 'light';
+    
+    localStorage.setItem('theme', window.currentTheme);
+    window.applyTheme();
+    
+    let modeName = window.currentTheme === 'light' ? 'Light' : (window.currentTheme === 'dark' ? 'Original Dark' : 'Sober Dark');
+    window.showCenterToast(`${modeName} mode activated`, 'fa-solid fa-palette');
 };
 
 window.openSecureFile = async function(path) {
@@ -86,15 +98,19 @@ window.closeDropdowns = function() {
     document.querySelectorAll('.bubble-dropdown').forEach(d => d.classList.remove('open'));
 };
 
-/* RESTORED V1.34.0 SIMPLE TOGGLE */
 window.toggleTaskTrail = function(id) {
     let el = document.getElementById(id) || document.getElementById('trail-' + id) || document.getElementById('task-trail-' + id);
     if (!el) return;
-    const isHidden = window.getComputedStyle(el).display === 'none' || el.style.display === 'none';
-    if (isHidden) { 
-        el.style.setProperty('display', 'block', 'important'); 
-    } else { 
-        el.style.setProperty('display', 'none', 'important'); 
+
+    // Check actual visibility state
+    const isHidden = el.style.display === 'none' || el.classList.contains('hidden') || window.getComputedStyle(el).display === 'none';
+
+    if (isHidden) {
+        el.classList.remove('hidden');
+        el.style.setProperty('display', 'block', 'important');
+    } else {
+        el.classList.add('hidden');
+        el.style.setProperty('display', 'none', 'important');
     }
 };
 window.toggleTrail = window.toggleTaskTrail;

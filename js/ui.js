@@ -102,7 +102,6 @@ window.toggleTaskTrail = function(id) {
     let el = document.getElementById(id) || document.getElementById('trail-' + id) || document.getElementById('task-trail-' + id);
     if (!el) return;
 
-    // Check actual visibility state
     const isHidden = el.style.display === 'none' || el.classList.contains('hidden') || window.getComputedStyle(el).display === 'none';
 
     if (isHidden) {
@@ -130,7 +129,7 @@ window.openTaskModal = async function(mid, text) {
     const list = document.getElementById('assigneeCheckboxList');
     list.innerHTML = filteredUsers.map(u => `
         <label class="assignee-item flex items-center gap-2 text-[13px] p-1.5 rounded-lg cursor-pointer transition-colors border border-transparent" style="hover:bg-color: var(--bg-body); hover:border-color: var(--border-color);">
-            <input type="checkbox" value="${u.id}" class="assignee-cb w-4 h-4 accent-indigo-600 rounded">
+            <input type="checkbox" value="${u.id}" class="assignee-cb w-4 h-4 accent-[var(--accent)] rounded">
             <span class="assignee-name font-semibold" style="color: var(--text-primary);">${window.escapeHtml(window.toSentenceCase(u.full_name || u.email.split('@')[0]))}</span>
         </label>
     `).join('');
@@ -182,12 +181,25 @@ window.openTopPanel = async function(type) {
     
     if (type === 'scheduled') {
         panel.innerHTML = `<h4 class="font-bold border-b pb-3 mb-3 flex items-center gap-2" style="border-color: var(--border-color); color: var(--text-primary);"><i class="fa-regular fa-clock text-blue-500"></i> Scheduled Messages</h4>`;
-        const {data} = await sb.from('scheduled_messages').select('*').eq('sender_id', window.currentUser.id).eq('status', 'pending');
+        const {data} = await sb.from('scheduled_messages').select('*').eq('sender_id', window.currentUser.id).eq('status', 'pending').order('scheduled_time', {ascending: true});
         if(!data || data.length===0) panel.innerHTML += `<p class="text-xs italic text-center py-4" style="color: var(--text-secondary);">No scheduled messages.</p>`;
         data?.forEach(d => {
             panel.innerHTML += `<div class="mb-2 p-2.5 border rounded-xl text-sm flex justify-between items-center group/item transition-colors" style="background-color: var(--bg-body); border-color: var(--border-color);">
                 <span class="truncate w-48" style="color: var(--text-primary);">${window.escapeHtml(d.message_text)}</span>
                 <i class="fa-solid fa-times hover:text-red-500 cursor-pointer p-1" style="color: var(--text-secondary);" onclick="window.deleteScheduled('${d.id}')"></i>
+            </div>`;
+        });
+    } else if (type === 'reminders') {
+        panel.innerHTML = `<h4 class="font-bold border-b pb-3 mb-3 flex items-center gap-2" style="border-color: var(--border-color); color: var(--text-primary);"><i class="fa-solid fa-stopwatch text-purple-500"></i> Upcoming Reminders</h4>`;
+        const {data} = await sb.from('reminders').select('*, messages(text)').eq('user_id', window.currentUser.id).eq('triggered', false).order('reminder_time', {ascending: true});
+        if(!data || data.length===0) panel.innerHTML += `<p class="text-xs italic text-center py-4" style="color: var(--text-secondary);">No upcoming reminders.</p>`;
+        data?.forEach(d => {
+            panel.innerHTML += `<div class="mb-2 p-2.5 border rounded-xl text-sm flex justify-between items-center group/item transition-colors" style="background-color: var(--bg-body); border-color: var(--border-color);">
+                <div class="flex flex-col min-w-0 pr-2 cursor-pointer hover:opacity-80" onclick="window.scrollToAndHighlight('row-${d.message_id}')">
+                    <span class="truncate w-48 font-medium" style="color: var(--text-primary);">${window.escapeHtml(d.messages?.text || 'Message...')}</span>
+                    <span class="text-[9px]" style="color: var(--text-secondary);">${new Date(d.reminder_time).toLocaleString('en-IN')}</span>
+                </div>
+                <i class="fa-solid fa-times hover:text-red-500 cursor-pointer p-1 flex-shrink-0" style="color: var(--text-secondary);" onclick="window.deleteReminder('${d.id}')"></i>
             </div>`;
         });
     } else if (type === 'bookmarks') {
@@ -217,6 +229,12 @@ window.deleteScheduled = async function(id) {
     await sb.from('scheduled_messages').delete().eq('id', id);
     document.querySelectorAll('.top-panel-dropdown').forEach(m => m.remove());
     window.showCenterToast('Scheduled message cancelled.', 'fa-solid fa-info-circle', 'text-yellow-400');
+};
+
+window.deleteReminder = async function(id) {
+    await sb.from('reminders').delete().eq('id', id);
+    document.querySelectorAll('.top-panel-dropdown').forEach(m => m.remove());
+    window.showCenterToast('Reminder cancelled.', 'fa-solid fa-info-circle', 'text-yellow-400');
 };
 
 window.showScheduleModal = function() {

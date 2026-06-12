@@ -16,34 +16,42 @@ window.stripHtml = function(html) {
 };
 
 // ─── UNIVERSAL SCROLL + HIGHLIGHT ─────────────────────────────────────────
-// Handles cross-room: if message not found in DOM, switches room then scrolls
+// Uses pendingScrollId so loadMessages() handles the actual scroll after render
 window.goToMessage = async function(messageId, notifId, roomId) {
     document.querySelectorAll('.top-panel-dropdown').forEach(p => p.remove());
     if (notifId && typeof window.markNotifRead === 'function') window.markNotifRead(notifId);
 
-    // If roomId supplied and different from current, switch room first
-    if (roomId && roomId !== window.currentRoom) {
+    // Set the pending scroll target BEFORE switching rooms
+    window.pendingScrollId = messageId;
+
+    if (roomId && roomId !== 'null' && roomId !== window.currentRoom) {
+        // Switch to the correct room — loadMessages will scroll after render
         window.currentRoom = roomId;
         localStorage.setItem('mpgs_current_room', roomId);
         const titleSpan = document.getElementById('roomTitleDisplay');
-        if (titleSpan) titleSpan.innerText = roomId.startsWith('dm_') ? 'Direct Message' : '# ' + roomId;
+        const displayName = roomId.startsWith('dm_')
+            ? (window.globalUsersCache?.find(u => u.id === roomId.replace('dm_', ''))?.full_name || 'Direct Message')
+            : roomId.charAt(0).toUpperCase() + roomId.slice(1);
+        if (titleSpan) titleSpan.innerText = displayName;
         if (typeof window.loadChatsList === 'function') window.loadChatsList();
-        if (typeof window.loadMessages === 'function') await window.loadMessages();
-        // Wait for DOM to render
-        await new Promise(r => setTimeout(r, 400));
-    }
-
-    const el = document.getElementById('row-' + messageId);
-    if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        const bubble = el.querySelector('.bubble');
-        if (bubble) {
-            bubble.classList.add('glow-target');
-            setTimeout(() => bubble.classList.add('active-glow'), 50);
-            setTimeout(() => bubble.classList.remove('glow-target', 'active-glow'), 3000);
-        }
+        if (typeof window.loadMessages === 'function') window.loadMessages();
+        // loadMessages will call scrollIntoView via pendingScrollId after 100ms
     } else {
-        window.showCenterToast('Message not found in current view', 'fa-solid fa-exclamation-triangle', 'text-yellow-500');
+        // Same room — scroll immediately
+        const el = document.getElementById('row-' + messageId);
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const bubble = el.querySelector('.bubble');
+            if (bubble) {
+                bubble.classList.add('glow-target');
+                setTimeout(() => bubble.classList.add('active-glow'), 50);
+                setTimeout(() => bubble.classList.remove('glow-target', 'active-glow'), 3000);
+            }
+            window.pendingScrollId = null;
+        } else {
+            window.showCenterToast('Message not found in current view', 'fa-solid fa-exclamation-triangle', 'text-yellow-500');
+            window.pendingScrollId = null;
+        }
     }
 };
 

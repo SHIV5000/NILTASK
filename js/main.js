@@ -8,6 +8,7 @@ let messageSubscription = null;
 let taskSubscription = null;
 let assigneeSubscription = null;
 let trailSubscription = null;
+let notificationSubscription = null;
 
 // Global Scroll & Highlight Engine
 window.scrollToAndHighlight = function(elementId) {
@@ -17,11 +18,7 @@ window.scrollToAndHighlight = function(elementId) {
         window.showCenterToast('Message not found in current view', 'fa-solid fa-exclamation-triangle', 'text-yellow-500');
         return;
     }
-    
-    // Smooth scroll to the message row
     element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    
-    // Apply temporary highlight effect
     const bubble = element.querySelector('.bubble');
     if (bubble) {
         bubble.classList.add('glow-target');
@@ -30,47 +27,8 @@ window.scrollToAndHighlight = function(elementId) {
             bubble.classList.remove('glow-target', 'active-glow');
         }, 3000);
     }
-    
-    // Close any open top panel after scrolling
     document.querySelectorAll('.top-panel-dropdown').forEach(panel => panel.remove());
 };
-
-
-// ADD THIS BLOCK inside window.startSubscriptions, after trailSubscription block:
-
-let notificationSubscription = null;
-
-if(notificationSubscription) notificationSubscription.unsubscribe();
-notificationSubscription = sb.channel('notifications-changes')
-    .on('postgres_changes', {
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'notifications',
-        filter: `user_id=eq.${window.currentUser.id}`
-    }, (payload) => {
-        // Show toast immediately
-        if(payload.new.type === 'reminder') {
-            window.showCenterToast(
-                `⏰ ${payload.new.message}`, 
-                'fa-solid fa-stopwatch', 
-                'text-purple-400'
-            );
-        } else {
-            window.showCenterToast(payload.new.message, 'fa-solid fa-bell', 'text-yellow-400');
-        }
-        // Refresh badge count
-        if(typeof window.refreshNotificationBadge === 'function') {
-            window.refreshNotificationBadge();
-        }
-    })
-    .subscribe();
-
-
-
-
-
-
-
 
 window.renderMainApp = function() {
     if (typeof window.applyTheme === 'function') window.applyTheme();
@@ -296,7 +254,6 @@ window.renderMainApp = function() {
         if (!file) return;
         const lastDot = file.name.lastIndexOf('.');
         const baseName = lastDot !== -1 ? file.name.substring(0, lastDot) : file.name;
-        
         window.pendingFileUpload = file;
         document.getElementById('newFileNameInput').value = baseName;
         document.getElementById('fileRenameModal').classList.remove('hidden');
@@ -306,15 +263,12 @@ window.renderMainApp = function() {
     const searchBar = document.getElementById('messageSearchBar');
     if(searchBar) searchBar.addEventListener('input', () => { if(typeof window.applyFilters === 'function') window.applyFilters(); });
     
-    // Global Panel Dismissal Listener
     document.addEventListener('click', function(e) {
         if (!e.target.closest('.menu-wrap')) { if(typeof window.closeDropdowns === 'function') window.closeDropdowns(); }
-        
         const ep = document.getElementById('inputEmojiPicker');
         if (ep && !e.target.closest('#inputEmojiPicker') && !e.target.closest('[onclick="window.toggleInputEmojiPicker()"]')) {
             ep.classList.add('hidden');
         }
-
         const panel = document.querySelector('.top-panel-dropdown');
         if (!panel) return;
         const isClickInsidePanel = panel.contains(e.target);
@@ -371,21 +325,60 @@ window.loadChatsList = async function() {
     }
 };
 
-window.startSubscriptions = function() { 
+window.startSubscriptions = function() {
+    // Messages
     if(messageSubscription) messageSubscription.unsubscribe();
-    messageSubscription = sb.channel('public:messages').on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, (p) => { if(p.new.room_id === window.currentRoom && typeof window.loadMessages === 'function') window.loadMessages(); }).subscribe();
-    
-    if(taskSubscription) taskSubscription.unsubscribe(); 
-    taskSubscription = sb.channel('tasks-changes').on('postgres_changes', {event:'*', schema:'public', table:'tasks'}, () => { if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel(); }).subscribe(); 
-    
-    if(assigneeSubscription) assigneeSubscription.unsubscribe(); 
-    assigneeSubscription = sb.channel('assignees-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_assignees'}, () => { if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel(); }).subscribe(); 
-    
-    if(trailSubscription) trailSubscription.unsubscribe(); 
-    trailSubscription = sb.channel('trails-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_trails'}, () => { if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel(); }).subscribe(); 
+    messageSubscription = sb.channel('public:messages')
+        .on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, (p) => {
+            if(p.new.room_id === window.currentRoom && typeof window.loadMessages === 'function') window.loadMessages();
+        }).subscribe();
 
+    // Tasks
+    if(taskSubscription) taskSubscription.unsubscribe(); 
+    taskSubscription = sb.channel('tasks-changes')
+        .on('postgres_changes', {event:'*', schema:'public', table:'tasks'}, () => {
+            if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel();
+        }).subscribe(); 
+
+    // Assignees
+    if(assigneeSubscription) assigneeSubscription.unsubscribe(); 
+    assigneeSubscription = sb.channel('assignees-changes')
+        .on('postgres_changes', {event:'*', schema:'public', table:'task_assignees'}, () => {
+            if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel();
+        }).subscribe(); 
+
+    // Task trails
+    if(trailSubscription) trailSubscription.unsubscribe(); 
+    trailSubscription = sb.channel('trails-changes')
+        .on('postgres_changes', {event:'*', schema:'public', table:'task_trails'}, () => {
+            if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel();
+        }).subscribe();
+
+    // Notifications (reminders + alerts — fires toast and refreshes badge)
+    if(notificationSubscription) notificationSubscription.unsubscribe();
+    notificationSubscription = sb.channel('notifications-changes')
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notifications',
+            filter: `user_id=eq.${window.currentUser.id}`
+        }, (payload) => {
+            if (payload.new.type === 'reminder') {
+                window.showCenterToast(
+                    `⏰ ${payload.new.message}`,
+                    'fa-solid fa-stopwatch',
+                    'text-purple-400'
+                );
+            } else {
+                window.showCenterToast(payload.new.message, 'fa-solid fa-bell', 'text-yellow-400');
+            }
+            if (typeof window.refreshNotificationBadge === 'function') {
+                window.refreshNotificationBadge();
+            }
+        }).subscribe();
+
+    // Load initial badge count on startup
     if (typeof window.refreshNotificationBadge === 'function') window.refreshNotificationBadge();
-    
 };
 
 // Boot Sequence

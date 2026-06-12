@@ -119,7 +119,7 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
     to { opacity: 1; transform: translateY(0); }
 }
 
-.bubble { max-width: 95%; width: fit-content; min-width: 250px; position: relative; overflow: visible; z-index: 2;}
+.bubble { max-width: 95%; width: fit-content; min-width: 60%; position: relative; overflow: visible; z-index: 2;}
 .bubble.sent { background: var(--sent-bg); border: 1px solid var(--accent); border-radius: 14px 2px 14px 14px; }
 .bubble.rcvd { background: var(--received-bg); border: 1px solid var(--accent); border-radius: 2px 14px 14px 14px; }
 

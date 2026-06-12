@@ -498,11 +498,11 @@ window.startSubscriptions = function() {
 
 // Bell animation — pulses until user clicks it
 window.animateBell = function() {
-    const bell = document.querySelector('[onclick="window.openTopPanel('alerts')"]');
+    const bell = document.querySelector(".bell-wrapper i.ti-bell, [onclick*=\"openTopPanel('alerts')\"]");
     if (!bell) return;
-    bell.classList.add('bell-ring');
-    // Stop animation when user clicks bell
-    bell.addEventListener('click', () => bell.classList.remove('bell-ring'), { once: true });
+    const target = bell.closest('.bell-wrapper') || bell;
+    target.classList.add('bell-ring');
+    target.addEventListener('click', () => target.classList.remove('bell-ring'), { once: true });
 };
 
 // Boot Sequence

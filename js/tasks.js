@@ -76,10 +76,6 @@ window.downloadTaskPDF = async function(taskId) {
     html2pdf().from(wrapper).set({ margin: 10, filename: `Task_Audit_${taskId}.pdf`, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).save().then(() => { window.showCenterToast('PDF Downloaded!', 'fa-solid fa-file-pdf', 'text-green-500'); });
 };
 
-/* ========================================================================================= */
-/* 🔒 LOCKED BLOCK START: TASK UI RENDERING & LOGIC 🔒                                       */
-/* ========================================================================================= */
-
 window.saveTaskMultiAssignee = async function() { 
     const title = document.getElementById('taskTitle').value; 
     const aids = Array.from(document.querySelectorAll('.assignee-cb:checked')).map(cb => cb.value);
@@ -410,7 +406,11 @@ window.loadTasksForPanel = async function() {
                     <div class="font-bold text-gray-800 text-[16px] flex items-start gap-2">
                         <i class="fa-solid fa-thumbtack text-gray-400 mt-1"></i> ${window.escapeHtml(task.title)}
                     </div>
-                    <i class="fa-solid fa-ellipsis-vertical text-gray-400 cursor-pointer hover:text-gray-600 task-menu-dots px-2" data-task-id="${task.id}"></i>
+                    <div class="flex gap-1 items-center">
+                        <button onclick="window.downloadTaskPDF('${task.id}')" title="Download Task Audit PDF" class="text-gray-400 hover:text-red-500 transition-colors p-1 rounded hover:bg-gray-100">
+                            <i class="fa-solid fa-file-pdf"></i>
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="text-[12px] text-gray-700 space-y-1.5 mb-4">
@@ -435,6 +435,3 @@ window.loadTasksForPanel = async function() {
         </div>`;
     }).join('');
 }
-/* ========================================================================================= */
-/* 🔒 LOCKED BLOCK END 🔒                                                                    */
-/* ========================================================================================= */

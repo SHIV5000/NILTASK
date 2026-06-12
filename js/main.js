@@ -4,7 +4,7 @@ import './auth.js';
 import './tasks.js';
 import './messages.js';
 
-// v1.51.0 - Departments/Staff sidebar, unread badges, search fix, cross-room scroll
+// v1.51.0 - Departments/Staff sidebar, unr ead badges, search fix, cross-room scroll
 
 let messageSubscription = null;
 let taskSubscription = null;

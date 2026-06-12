@@ -9,6 +9,32 @@ let taskSubscription = null;
 let assigneeSubscription = null;
 let trailSubscription = null;
 
+// Global Scroll & Highlight Engine
+window.scrollToAndHighlight = function(elementId) {
+    const element = document.getElementById(elementId);
+    if (!element) {
+        console.warn(`Element ${elementId} not found`);
+        window.showCenterToast('Message not found in current view', 'fa-solid fa-exclamation-triangle');
+        return;
+    }
+    
+    // Smooth scroll to the message row
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    
+    // Apply temporary highlight effect
+    const bubble = element.querySelector('.bubble');
+    if (bubble) {
+        bubble.classList.add('glow-target');
+        setTimeout(() => bubble.classList.add('active-glow'), 50);
+        setTimeout(() => {
+            bubble.classList.remove('glow-target', 'active-glow');
+        }, 3000);
+    }
+    
+    // Close any open top panel after scrolling
+    document.querySelectorAll('.top-panel-dropdown').forEach(panel => panel.remove());
+};
+
 window.renderMainApp = function() {
     if (typeof window.applyTheme === 'function') window.applyTheme();
     const userNameDisplay = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
@@ -47,7 +73,7 @@ window.renderMainApp = function() {
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
                     <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color: var(--text-secondary);">
-                        v1.49.0 - Tri-State Theme Engine
+                        v1.50.0 - Full Stack Engine
                     </div>
                 </div>
             </div>
@@ -61,9 +87,9 @@ window.renderMainApp = function() {
                         <span id="roomTitleDisplay" class="text-lg font-bold tracking-tight" style="color: var(--text-primary);"># ${window.currentRoom}</span>
                     </div>
                     <div class="flex items-center gap-4 text-xl" style="color: var(--text-secondary);">
-                        <i class="ti ti-clock cursor-pointer" onclick="window.openTopPanel('scheduled')" title="Scheduled Messages"></i>
-                        <i class="ti ti-bookmark cursor-pointer" onclick="window.openTopPanel('bookmarks')" title="Bookmarks"></i>
-                        <i class="ti ti-bell cursor-pointer" onclick="window.openTopPanel('alerts')" title="Notifications"></i>
+                        <i class="ti ti-clock cursor-pointer top-bar-icon hover:text-[var(--accent)] transition-colors" onclick="window.openTopPanel('scheduled')" title="Scheduled Messages"></i>
+                        <i class="ti ti-bookmark cursor-pointer top-bar-icon hover:text-[var(--accent)] transition-colors" onclick="window.openTopPanel('bookmarks')" title="Bookmarks"></i>
+                        <i class="ti ti-bell cursor-pointer top-bar-icon hover:text-[var(--accent)] transition-colors" onclick="window.openTopPanel('alerts')" title="Notifications"></i>
                         <div class="border-l pl-4 ml-1 flex gap-3" style="border-color: var(--border-color);"><i class="ti ti-layout-sidebar-right cursor-pointer" onclick="window.toggleRightSidebar()" title="Toggle Task Panel"></i></div>
                         <input type="text" id="messageSearchBar" placeholder="Search..." class="ui-input px-3 py-1 rounded-full text-sm w-48 outline-none ml-2">
                     </div>
@@ -242,11 +268,21 @@ window.renderMainApp = function() {
     const searchBar = document.getElementById('messageSearchBar');
     if(searchBar) searchBar.addEventListener('input', () => { if(typeof window.applyFilters === 'function') window.applyFilters(); });
     
-    document.addEventListener('click', e => {
+    // Global Panel Dismissal Listener
+    document.addEventListener('click', function(e) {
         if (!e.target.closest('.menu-wrap')) { if(typeof window.closeDropdowns === 'function') window.closeDropdowns(); }
+        
         const ep = document.getElementById('inputEmojiPicker');
         if (ep && !e.target.closest('#inputEmojiPicker') && !e.target.closest('[onclick="window.toggleInputEmojiPicker()"]')) {
             ep.classList.add('hidden');
+        }
+
+        const panel = document.querySelector('.top-panel-dropdown');
+        if (!panel) return;
+        const isClickInsidePanel = panel.contains(e.target);
+        const isClickOnTopBarIcon = e.target.closest('.top-bar-icon') !== null;
+        if (!isClickInsidePanel && !isClickOnTopBarIcon) {
+            panel.remove();
         }
     });
 

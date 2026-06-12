@@ -1,6 +1,28 @@
 import { sb } from './shared.js';
 
-// v1.51.0 - Departments/Staff sidebar, cross-room scroll fix, cancel notifications, clear all
+// v1.52.0 - DM fix, sounds, bell animation, badge fix
+
+// ─── BELL ANIMATION CSS (injected once) ────────────────────────────────────
+(function() {
+    if (document.getElementById('mpgs-bell-style')) return;
+    const style = document.createElement('style');
+    style.id = 'mpgs-bell-style';
+    style.textContent = `
+        @keyframes bell-ring {
+            0%,100% { transform: rotate(0deg); }
+            10%,30%,50%,70%,90% { transform: rotate(-12deg); }
+            20%,40%,60%,80% { transform: rotate(12deg); }
+        }
+        .bell-ring {
+            animation: bell-ring 0.6s ease infinite;
+            color: var(--accent) !important;
+            filter: drop-shadow(0 0 4px var(--accent));
+        }
+        .bell-wrapper { position: relative; display: inline-flex; align-items: center; }
+    `;
+    document.head.appendChild(style);
+})();
+
 
 window.currentTheme = localStorage.getItem('theme') || 'light';
 window.currentRoom = localStorage.getItem('mpgs_current_room') || 'general';
@@ -29,9 +51,17 @@ window.goToMessage = async function(messageId, notifId, roomId) {
         window.currentRoom = roomId;
         localStorage.setItem('mpgs_current_room', roomId);
         const titleSpan = document.getElementById('roomTitleDisplay');
-        const displayName = roomId.startsWith('dm_')
-            ? (window.globalUsersCache?.find(u => u.id === roomId.replace('dm_', ''))?.full_name || 'Direct Message')
-            : roomId.charAt(0).toUpperCase() + roomId.slice(1);
+        let displayName = roomId.charAt(0).toUpperCase() + roomId.slice(1);
+        if (roomId.startsWith('dm_')) {
+            // Extract other user's ID from canonical dm_<id1>_<id2>
+            const withoutPrefix = roomId.replace('dm_', '');
+            const meId = window.currentUser?.id || '';
+            // Find which user in cache matches either segment
+            const otherUser = window.globalUsersCache?.find(u => u.id !== meId && withoutPrefix.includes(u.id));
+            displayName = otherUser
+                ? (window.toSentenceCase ? window.toSentenceCase(otherUser.full_name || otherUser.email.split('@')[0]) : (otherUser.full_name || 'Direct Message'))
+                : 'Direct Message';
+        }
         if (titleSpan) titleSpan.innerText = displayName;
         if (typeof window.loadChatsList === 'function') window.loadChatsList();
         if (typeof window.loadMessages === 'function') window.loadMessages();

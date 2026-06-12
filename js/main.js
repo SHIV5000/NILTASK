@@ -383,6 +383,9 @@ window.startSubscriptions = function() {
     
     if(trailSubscription) trailSubscription.unsubscribe(); 
     trailSubscription = sb.channel('trails-changes').on('postgres_changes', {event:'*', schema:'public', table:'task_trails'}, () => { if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel(); }).subscribe(); 
+
+    if (typeof window.refreshNotificationBadge === 'function') window.refreshNotificationBadge();
+    
 };
 
 // Boot Sequence

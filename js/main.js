@@ -53,7 +53,7 @@ window.renderMainApp = function() {
             <div id="leftSidebar" class="left-sidebar flex-col border-r z-20 shadow-sm" style="display:${leftDisplay};width:${leftWidth};background-color:var(--bg-sidebar);border-color:var(--border-color);">
                 <div class="p-4 flex justify-between items-center border-b" style="border-color:var(--border-color);">
                     <h2 class="text-xl font-bold tracking-tight flex items-center gap-2" style="color:var(--text-primary);">
-                        <i class="fa-solid fa-comments" style="color:var(--accent);"></i> Chats
+                        <i class="fa-solid fa-comments" style="color:var(--accent);"></i> Conversations
                     </h2>
                     <div class="flex gap-2">
                         <button onclick="window.toggleTheme()" class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors" title="Toggle Theme" style="color:var(--text-secondary);">
@@ -278,6 +278,58 @@ window.renderMainApp = function() {
             </div>
         </div>
 
+        <!-- Settings Modal -->
+        <div id="settingsModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+            <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+                <div class="flex items-center justify-between mb-5">
+                    <h3 class="text-lg font-bold flex items-center gap-2" style="color:var(--text-primary);">
+                        <i class="fa-solid fa-gear" style="color:var(--accent);"></i> Profile Settings
+                    </h3>
+                    <button onclick="window.closeSettings()" class="w-7 h-7 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors" style="color:var(--text-secondary);">
+                        <i class="fa-solid fa-times text-sm"></i>
+                    </button>
+                </div>
+                <!-- Photo -->
+                <div class="flex flex-col items-center mb-5">
+                    <div class="relative mb-3">
+                        <img id="settingsPhotoPreview" src="" alt="Profile" style="display:none;width:72px;height:72px;border-radius:50%;object-fit:cover;border:3px solid var(--accent);">
+                        <div id="settingsPhotoPlaceholder" class="w-18 h-18 rounded-full flex items-center justify-center text-white text-2xl font-bold" style="width:72px;height:72px;border-radius:50%;background:var(--accent);">${userNameDisplay.charAt(0).toUpperCase()}</div>
+                    </div>
+                    <label class="cursor-pointer text-xs font-bold px-3 py-1.5 rounded-full border transition-colors hover:opacity-80" style="color:var(--accent);border-color:var(--accent);">
+                        <i class="fa-solid fa-camera text-[10px] mr-1"></i> Change Photo
+                        <input type="file" id="settingsPhotoInput" class="hidden" accept="image/*" onchange="window.previewSettingsPhoto(this)">
+                    </label>
+                </div>
+                <!-- Fields -->
+                <div class="mb-3">
+                    <label class="text-xs font-bold mb-1 block" style="color:var(--text-secondary);">Display Name</label>
+                    <input type="text" id="settingsName" class="w-full p-2.5 rounded-xl border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                </div>
+                <div class="mb-5">
+                    <label class="text-xs font-bold mb-1 block" style="color:var(--text-secondary);">Email (read-only)</label>
+                    <input type="email" id="settingsEmail" disabled class="w-full p-2.5 rounded-xl border outline-none text-sm opacity-60" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="window.closeSettings()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
+                    <button onclick="window.saveSettings()" class="flex-1 py-2.5 rounded-xl font-bold text-white shadow-md" style="background-color:var(--accent);">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Forward Message Modal -->
+        <div id="forwardModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+            <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+                <h3 class="text-lg font-bold mb-1" style="color:var(--text-primary);">Forward Message</h3>
+                <p class="text-xs mb-3" style="color:var(--text-secondary);">Select a department or staff member to forward to:</p>
+                <div class="border p-3 rounded-xl mb-4 italic text-xs" id="forwardPreview" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-secondary);max-height:60px;overflow:hidden;"></div>
+                <select id="forwardRoomSelect" class="w-full p-2.5 rounded-xl border outline-none text-sm mb-5" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);"></select>
+                <div class="flex gap-3">
+                    <button onclick="window.closeForwardModal()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
+                    <button onclick="window.sendForwardedMessage()" class="flex-1 py-2.5 rounded-xl font-bold text-white shadow-md" style="background-color:var(--accent);">Forward</button>
+                </div>
+            </div>
+        </div>
+
         <div id="reminderModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
             <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
                 <h3 class="text-xl font-bold mb-4" style="color:var(--text-primary);">Set Reminder</h3>
@@ -494,23 +546,19 @@ window.startSubscriptions = function() {
     messageSubscription = sb.channel('public:messages')
         .on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, (p) => {
             const incomingRoom = p.new.room_id;
-            const isForMe = incomingRoom === window.currentRoom ||
-                // DM: check both orientations — sender used dm_<their_id>_<my_id> or dm_<my_id>_<their_id>
-                (incomingRoom.startsWith('dm_') && incomingRoom.includes(window.currentUser.id) && incomingRoom === window.currentRoom);
-
             if (incomingRoom === window.currentRoom) {
                 if (typeof window.loadMessages === 'function') window.loadMessages();
-                // Play sound for received messages (not own)
                 if (p.new.sender_id !== window.currentUser.id) window.playSound('message');
             } else {
                 window.unreadCounts = window.unreadCounts || {};
                 window.unreadCounts[incomingRoom] = (window.unreadCounts[incomingRoom] || 0) + 1;
                 if (typeof window.loadChatsList === 'function') window.loadChatsList();
-                // Play sound for DM received in background
                 if (incomingRoom.startsWith('dm_') && incomingRoom.includes(window.currentUser.id) && p.new.sender_id !== window.currentUser.id) {
                     window.playSound('message');
                 }
             }
+            // Refresh activity feed if open
+            if (window._activityFeedOpen && typeof window.refreshActivityFeed === 'function') window.refreshActivityFeed();
         }).subscribe();
 
     // Reactions real-time — update other viewers' DOM when a reaction is added
@@ -530,9 +578,9 @@ window.startSubscriptions = function() {
     let scheduledSubscription = null;
     if (scheduledSubscription) scheduledSubscription.unsubscribe();
     scheduledSubscription = sb.channel('scheduled-changes')
-        .on('postgres_changes', {event:'UPDATE', schema:'public', table:'scheduled_messages',
-            filter: `sender_id=eq.${window.currentUser.id}`}, (p) => {
-            if (p.new.status === 'sent') {
+        .on('postgres_changes', {event:'UPDATE', schema:'public', table:'scheduled_messages'}, (p) => {
+            // Check sender_id manually since Supabase RT filter on UPDATE is unreliable
+            if (p.new.status === 'sent' && p.new.sender_id === window.currentUser.id) {
                 const msg = window.stripHtml ? window.stripHtml(p.new.message_text) : p.new.message_text;
                 window.showCenterToast(`📨 Scheduled message sent: ${msg.substring(0,50)}`, 'fa-solid fa-clock', 'text-blue-400');
                 window.playSound('message');
@@ -556,6 +604,8 @@ window.startSubscriptions = function() {
     trailSubscription = sb.channel('trails-changes')
         .on('postgres_changes', {event:'*', schema:'public', table:'task_trails'}, () => {
             window.debouncedLoadTasks();
+            // Refresh activity feed if open
+            if (window._activityFeedOpen && typeof window.refreshActivityFeed === 'function') window.refreshActivityFeed();
         }).subscribe();
 
     if (notificationSubscription) notificationSubscription.unsubscribe();

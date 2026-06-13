@@ -1,6 +1,6 @@
 import { sb } from './shared.js';
 
-// v1.54.0 - Cross-scroll DB lookup, activity feed fix, clear fix, reactions fix, link pill, no rename modal
+// v1.55.0 - Link button, feed full height, task scroll fix, READ tag, activity feed fix, clear fix, reactions fix, link pill, no rename modal
 
 // ─── CSS ───────────────────────────────────────────────────────────────────
 (function() {
@@ -35,33 +35,55 @@ window.stripHtml = function(html) {
 // ─── SCROLL TO TASK CARD ───────────────────────────────────────────────────
 window.goToTask = async function(taskId, notifId) {
     document.querySelectorAll('.top-panel-dropdown').forEach(p => p.remove());
-    if (notifId && notifId !== 'null') window.markNotifRead(notifId);
+    if (notifId && notifId !== 'null' && notifId !== 'undefined') {
+        window.markNotifRead(notifId);
+        // Mark READ visually in DOM if notification item exists
+        const notifEl = document.getElementById('notif-' + notifId) || document.getElementById('feed-notif-' + notifId);
+        if (notifEl) {
+            notifEl.style.opacity = '0.6';
+            const readBadge = document.createElement('span');
+            readBadge.style.cssText = 'font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:rgba(34,197,94,0.12);color:#16a34a;margin-left:4px;';
+            readBadge.textContent = 'READ ✓';
+            notifEl.querySelector('.flex')?.appendChild(readBadge);
+        }
+    }
     // Ensure right sidebar visible
     const rs = document.getElementById('rightSidebar');
     if (rs && window.getComputedStyle(rs).display === 'none') {
         rs.style.setProperty('display', 'flex', 'important');
         localStorage.setItem('mpgs_right_sidebar_state', 'flex');
     }
-    // Close activity feed, restore tasks panel
+    // Close activity feed & restore tasks panel + filters
     const af = document.getElementById('activityFeedPanel');
     if (af) {
         af.remove();
-        document.getElementById('tasksPanel')?.style.removeProperty('display');
         document.getElementById('rightSidebarFilters')?.style.removeProperty('display');
     }
-    // Ensure filter is 'all' so task is visible
+    document.getElementById('tasksPanel')?.style.removeProperty('display');
+    // Set filter to 'all' so the task card is definitely rendered
     const tf = document.getElementById('taskFilter');
-    if (tf && tf.value !== 'all') { tf.value = 'all'; }
+    if (tf) tf.value = 'all';
+    // Reload task panel fresh
     if (typeof window.loadTasksForPanel === 'function') await window.loadTasksForPanel();
-    await new Promise(r => setTimeout(r, 350));
-    const card = document.querySelector(`.jira-card[data-task-id="${taskId}"]`);
+    // Wait for DOM to fully paint
+    await new Promise(r => setTimeout(r, 400));
+
+    if (!taskId || taskId === 'null' || taskId === 'undefined') {
+        // No task_id available (column not yet added) — just show tasks panel
+        window.showCenterToast('Task Hub opened — find your task above', 'fa-solid fa-tasks', 'text-blue-400');
+        document.getElementById('tasksPanel')?.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+    }
+
+    const tasksContainer = document.getElementById('tasksPanel');
+    const card = tasksContainer?.querySelector(`.jira-card[data-task-id="${taskId}"]`);
     if (card) {
         card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        card.style.transition = 'box-shadow 0.4s';
-        card.style.boxShadow = '0 0 0 3px var(--accent)';
-        setTimeout(() => { card.style.boxShadow = ''; }, 2500);
+        card.style.transition = 'box-shadow 0.4s ease';
+        card.style.boxShadow = '0 0 0 3px var(--accent), 0 4px 20px rgba(0,0,0,0.15)';
+        setTimeout(() => { card.style.boxShadow = ''; card.style.transition = ''; }, 2500);
     } else {
-        window.showCenterToast('Task not found in panel', 'fa-solid fa-exclamation-triangle', 'text-yellow-500');
+        window.showCenterToast('Task not found — may be filtered out', 'fa-solid fa-exclamation-triangle', 'text-yellow-500');
     }
 };
 
@@ -258,14 +280,17 @@ window.closeLinkModal = function() {
 window.insertLinkPill = function() {
     const name = document.getElementById('linkPillName').value.trim();
     const url  = document.getElementById('linkPillUrl').value.trim();
-    if (!name || !url) { window.showCenterToast('Both name and URL are required', 'fa-solid fa-times', 'text-red-500'); return; }
-    // Encode the URL so it's hidden in the display but present in the href
-    const pillHtml = `<a href="${window.escapeHtml(url)}" class="link-pill" onclick="event.preventDefault();window.open('${window.escapeHtml(url)}','_blank')"><i class="fa-solid fa-link"></i>${window.escapeHtml(name)}</a>`;
+    if (!name || !url) { window.showCenterToast('Both name and URL are required','fa-solid fa-times','text-red-500'); return; }
     if (window.quillEditor && window._linkTargetEditor === 'main') {
         window.quillEditor.focus();
-        const range = window.quillEditor.getSelection() || { index: window.quillEditor.getLength(), length: 0 };
-        window.quillEditor.clipboard.dangerouslyPasteHTML(range.index, pillHtml);
-        window.quillEditor.setSelection(range.index + 1);
+        const range = window.quillEditor.getSelection() || { index: window.quillEditor.getLength() - 1, length: 0 };
+        // Store as Quill native link: display name visible, URL encoded in href
+        // renderMessages transforms https://link-pill.local/... into a styled button
+        const encoded = encodeURIComponent(name + '|||' + url);
+        const pillUrl = `https://link-pill.local/${encoded}`;
+        window.quillEditor.insertText(range.index, name, 'link', pillUrl);
+        window.quillEditor.insertText(range.index + name.length, ' '); // space after pill
+        window.quillEditor.setSelection(range.index + name.length + 1);
     }
     window.closeLinkModal();
 };
@@ -386,17 +411,24 @@ window.openTopPanel = async function(type) {
                 const t=new Date(d.created_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
                 const tp=d.type||'general';
                 const ic=iconMap[tp]||'fa-bell', co=colorMap[tp]||'#f59e0b';
-                // Task with task_id → scroll to task card; message/reminder → scroll to message
-                const clickFn=(tp==='task'&&d.task_id)
-                    ? `window.goToTask('${d.task_id}','${d.id}')`
+                // Task type → always go to task card (goToTask handles null taskId gracefully)
+                // Message/reminder → scroll to message
+                const clickFn = tp === 'task'
+                    ? `window.goToTask('${d.task_id||''}','${d.id}')`
                     : `window.goToMessage('${d.message_id}','${d.id}')`;
+                const readTag = d.is_read
+                    ? `<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;background:rgba(34,197,94,0.1);color:#16a34a;flex-shrink:0;">READ ✓</span>`
+                    : `<span class="w-1.5 h-1.5 rounded-full flex-shrink-0" style="background:${co};margin-top:2px;"></span>`;
                 panel.innerHTML+=`<div class="mb-2 rounded-xl border overflow-hidden" id="notif-${d.id}" style="border-color:var(--border-color);opacity:${d.is_read?'0.6':'1'};">
-                    <div class="p-2.5 flex items-start gap-2 cursor-pointer hover:opacity-80" style="background-color:var(--bg-body);" onclick="${clickFn}">
-                        ${!d.is_read?`<span class="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style="background:${co};"></span>`:'<span class="w-1.5 flex-shrink-0"></span>'}
+                    <div class="p-2.5 flex items-start gap-2 cursor-pointer hover:opacity-80" style="background-color:var(--bg-body);" onclick="${clickFn}; document.getElementById('notif-${d.id}').style.opacity='0.6';">
+                        ${readTag}
                         <i class="fa-solid ${ic} mt-0.5 flex-shrink-0" style="color:${co};font-size:13px;"></i>
                         <div class="min-w-0 flex-1">
                             <p class="text-xs font-semibold line-clamp-2" style="color:var(--text-primary);">${window.escapeHtml(msg.substring(0,120))}</p>
-                            <span class="text-[10px] mt-0.5 block" style="color:var(--text-secondary);">${t}</span>
+                            <div class="flex items-center gap-2 mt-1 flex-wrap">
+                                <span class="text-[9px] px-1.5 py-0.5 rounded-full font-bold capitalize" style="background:${co}18;color:${co};">${tp}</span>
+                                <span class="text-[10px]" style="color:var(--text-secondary);">${t}</span>
+                            </div>
                         </div>
                         <button onclick="event.stopPropagation();window.dismissNotif('${d.id}')" class="flex-shrink-0 ml-1 p-1.5 rounded hover:bg-red-50 hover:text-red-500 transition-colors" style="color:var(--text-secondary);" title="Dismiss"><i class="fa-solid fa-times" style="font-size:10px;"></i></button>
                     </div>
@@ -499,9 +531,13 @@ window.openActivityFeed = async function() {
         document.getElementById('rightSidebarFilters')?.style.removeProperty('display');
         return;
     }
-    // Hide tasks panel (keep filter bar visible)
+    // Hide BOTH filter bar AND tasks panel so feed stretches full height
     const tasksPanelEl = document.getElementById('tasksPanel');
     if (tasksPanelEl) tasksPanelEl.style.display = 'none';
+    const filtersEl = document.getElementById('rightSidebarFilters');
+    if (filtersEl) filtersEl.style.display = 'none';
+    const dateRangeEl = document.getElementById('dateRangeFilter');
+    if (dateRangeEl) dateRangeEl.style.display = 'none';
 
     // Fetch data
     const [{ data: msgs }, { data: notifs }] = await Promise.all([
@@ -572,8 +608,8 @@ window.openActivityFeed = async function() {
             const msg = window.stripHtml(n.message).substring(0, 90);
             const tp = n.type || 'general';
             const ic = iconMap[tp] || 'fa-bell', co = colorMap[tp] || '#f59e0b';
-            const clickFn = (tp === 'task' && n.task_id)
-                ? `window.goToTask('${n.task_id}','${n.id}')`
+            const clickFn = tp === 'task'
+                ? `window.goToTask('${n.task_id||''}','${n.id}')`
                 : `window.goToMessage('${n.message_id}','${n.id}')`;
             return `<div class="mb-2 p-2.5 rounded-xl border cursor-pointer hover:opacity-80 transition-opacity" style="background-color:var(--bg-sidebar);border-color:var(--border-color);opacity:${n.is_read?'0.6':'1'};" onclick="${clickFn}">
                 <div class="flex items-center gap-2 mb-1.5">
@@ -594,6 +630,9 @@ window.closeActivityFeed = function() {
     document.getElementById('activityFeedPanel')?.remove();
     const tp = document.getElementById('tasksPanel');
     if (tp) tp.style.removeProperty('display');
+    const fi = document.getElementById('rightSidebarFilters');
+    if (fi) fi.style.removeProperty('display');
+    // dateRangeFilter stays hidden (controlled by its own toggle)
 };
 
 // ─── SCHEDULE MODAL ────────────────────────────────────────────────────────

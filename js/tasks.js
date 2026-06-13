@@ -1,6 +1,6 @@
 import { sb } from './shared.js';
 
-// v1.58.0 - rich text update box, notif improvements, data-task-id on cards, task sort by deadline, notifications for all actions
+// v1.58.0 - Rich text update input, task sort, data-task-id cards
 
 // ─── UNIVERSAL NOTIFY HELPER ───────────────────────────────────────────────
 // type: 'message' | 'task' | 'reminder' | 'general'

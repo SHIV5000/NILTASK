@@ -151,7 +151,7 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
     } else if (action === 'update') {
         const el = document.getElementById(`update-txt-${taskId}-${assigneeId}`);
         // Support both contenteditable div (rich text) and plain input
-        comment = el ? (el.contentEditable === 'true' ? (el.innerText || el.textContent || '').trim()()) : '';
+        comment = el ? (el.contentEditable === 'true' ? (el.innerText || el.textContent || '').trim() : (el.value || '').trim()) : '';
         if (!comment || comment === '<br>' || comment === '<div><br></div>') return window.showCenterToast('Comment cannot be empty', 'fa-solid fa-times', 'text-red-500');
         const commentPlain = window.stripHtml ? window.stripHtml(comment) : comment;
         actionText = 'UPDATE';

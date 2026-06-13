@@ -4,7 +4,7 @@ import './auth.js';
 import './tasks.js';
 import './messages.js';
 
-// v1.51.0 - Departments/Staff sidebar, unr ead badges, search fix, cross-room scroll
+// v1.51.0 - Departments/Staff sidebar, unread badges, search fix, cross-room scroll
 
 let messageSubscription = null;
 let taskSubscription = null;
@@ -79,7 +79,7 @@ window.renderMainApp = function() {
                         <div class="w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px]" style="background-color:var(--accent);">${userNameDisplay.charAt(0).toUpperCase()}</div>
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
-                    <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color:var(--text-secondary);">v1.52.0 - DM Fix & Sounds</div>
+                    <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color:var(--text-secondary);">v1.53.0 - Activity Feed, Reactions RT, All fixes</div>
                 </div>
             </div>
 
@@ -97,6 +97,7 @@ window.renderMainApp = function() {
                         <i class="fa-solid fa-stopwatch text-[18px] cursor-pointer top-bar-icon hover:text-[var(--accent)] transition-colors" onclick="window.openTopPanel('reminders')" title="Reminders"></i>
                         <i class="ti ti-bookmark cursor-pointer top-bar-icon hover:text-[var(--accent)] transition-colors" onclick="window.openTopPanel('bookmarks')" title="Bookmarks"></i>
                         <i class="ti ti-bell cursor-pointer top-bar-icon hover:text-[var(--accent)] transition-colors" onclick="window.openTopPanel('alerts')" title="Notifications"></i>
+                        <i class="fa-solid fa-bolt text-[16px] cursor-pointer top-bar-icon hover:text-[var(--accent)] transition-colors" onclick="window.openActivityFeed()" title="Activity Feed"></i>
                         <div class="border-l pl-4 ml-1 flex gap-3" style="border-color:var(--border-color);">
                             <i class="ti ti-layout-sidebar-right cursor-pointer" onclick="window.toggleRightSidebar()" title="Toggle Task Panel"></i>
                         </div>
@@ -447,6 +448,20 @@ window.startSubscriptions = function() {
                 if (incomingRoom.startsWith('dm_') && incomingRoom.includes(window.currentUser.id) && p.new.sender_id !== window.currentUser.id) {
                     window.playSound('message');
                 }
+            }
+        }).subscribe();
+
+    // Scheduled messages: notify sender when status changes to 'sent'
+    let scheduledSubscription = null;
+    if (scheduledSubscription) scheduledSubscription.unsubscribe();
+    scheduledSubscription = sb.channel('scheduled-changes')
+        .on('postgres_changes', {event:'UPDATE', schema:'public', table:'scheduled_messages',
+            filter: `sender_id=eq.${window.currentUser.id}`}, (p) => {
+            if (p.new.status === 'sent') {
+                const msg = window.stripHtml ? window.stripHtml(p.new.message_text) : p.new.message_text;
+                window.showCenterToast(`📨 Scheduled message sent: ${msg.substring(0,50)}`, 'fa-solid fa-clock', 'text-blue-400');
+                window.playSound('message');
+                window.notifyUser(window.currentUser.id, `📨 Scheduled message sent: ${msg.substring(0,50)}`, null, 'message');
             }
         }).subscribe();
 

@@ -319,7 +319,7 @@ window.renderMessages = function(messages) {
                 <div class="bubble-dropdown" id="dd-${msg.id}">${ddItems}</div>
               </div>
             </div>
-            <div class="b-text ql-editor" style="padding:0;">${displayHtml}</div>
+            <div class="b-text">${displayHtml}</div>
             <div class="b-footer" id="footer-${msg.id}">
               ${persistedReactionsHTML}
               <div class="relative inline-block group/reaction z-50">
@@ -356,12 +356,29 @@ window.renderMessages = function(messages) {
     c.innerHTML = dateLabel + topLevel.map(msg => buildMsgHTML(msg)).join('');
 };
 
-// Apply reaction — DOM update only; writes to reactions table if it exists.
-// Does NOT call loadMessages() — that would wipe all DOM reactions.
+// Apply reaction — updates DOM immediately, broadcasts to all users, optionally persists.
 window.applyReaction = async function(msgId, value, type) {
-    // 1. Update DOM immediately — permanent for this session
+    // 1. Update DOM immediately for the user who clicked
     window.applyReactionDOM(msgId, value, type);
-    // 2. Persist to DB (reactions table optional — create if you want cross-user RT)
+
+    // 2. Broadcast to ALL other connected users via Supabase Broadcast
+    //    This works with ZERO schema changes — no reactions table needed.
+    try {
+        if (window._reactionsBroadcast) {
+            await window._reactionsBroadcast.send({
+                type: 'broadcast',
+                event: 'reaction',
+                payload: {
+                    message_id: msgId,
+                    value,
+                    type,
+                    user_id: window.currentUser.id
+                }
+            });
+        }
+    } catch(e) { /* broadcast channel not ready yet */ }
+
+    // 3. Also persist to reactions table if it exists (for page-reload persistence)
     try {
         const { data: existing } = await sb.from('reactions')
             .select('id, count').eq('message_id', msgId).eq('value', value)
@@ -369,13 +386,17 @@ window.applyReaction = async function(msgId, value, type) {
         if (existing) {
             await sb.from('reactions').update({ count: (existing.count||1)+1 }).eq('id', existing.id);
         } else {
-            await sb.from('reactions').insert({ message_id: msgId, user_id: window.currentUser.id, value, type, count: 1 });
+            await sb.from('reactions').insert({
+                message_id: msgId, user_id: window.currentUser.id,
+                value, type, count: 1
+            });
         }
-        // NOTE: Do NOT call loadMessages() here — it would wipe all DOM reactions
-        // For cross-user real-time, subscribe to reactions table in startSubscriptions
     } catch(e) {
-        // Reactions table doesn't exist yet — that's fine, local only
-        // Run: CREATE TABLE reactions (id uuid default gen_random_uuid() primary key, message_id uuid, user_id uuid, value text, type text, count int default 1, created_at timestamptz default now());
+        // Reactions table doesn't exist — broadcast still handled real-time above.
+        // To persist reactions across page reloads, run:
+        // CREATE TABLE reactions (id uuid default gen_random_uuid() primary key,
+        //   message_id uuid, user_id uuid, value text, type text,
+        //   count int default 1, created_at timestamptz default now());
     }
 };
 
@@ -430,7 +451,8 @@ window.saveEditMessage = async function(msgId) {
     if (!area) return;
     const newText = area.value.trim();
     if (!newText) { window.showCenterToast('Message cannot be empty','fa-solid fa-times','text-red-500'); return; }
-    const wrapped = `<p>${newText.replace(/\n/g,'</p><p>')}</p>`;
+    const wrapped = `<p>${newText.replace(/
+/g,'</p><p>')}</p>`;
     const { error } = await sb.from('messages').update({ text: wrapped }).eq('id', msgId).eq('sender_id', window.currentUser.id);
     if (error) { window.showCenterToast('Edit failed: '+error.message,'fa-solid fa-times','text-red-500'); return; }
     window.showCenterToast('Message updated','fa-solid fa-check','text-green-400');

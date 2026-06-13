@@ -26,9 +26,10 @@ import { sb } from './shared.js';
         .chat-scroll-btn { position:absolute;right:14px;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:10;border:1px solid var(--border-color);transition:all 0.2s;box-shadow:0 2px 8px rgba(0,0,0,0.12); }
         .chat-scroll-btn:hover { transform:scale(1.1); }
         /* Top bar icon labels */
-        .topbar-icon-btn { display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;color:var(--text-secondary);transition:color 0.18s; }
-        .topbar-icon-btn:hover { color:var(--accent); }
-        .topbar-icon-btn span { font-size:7px;font-weight:800;letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap; }
+        .topbar-icon-btn { display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;color:var(--text-secondary);transition:color 0.18s;padding:2px 6px;border-radius:8px; }
+        .topbar-icon-btn:hover { color:var(--accent);background:rgba(var(--accent-rgb,99,102,241),0.08); }
+        .topbar-icon-btn span { font-size:8px;font-weight:800;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap; }
+        .topbar-icon-btn i { font-size:1.25rem; }
         /* File card in bubbles */
         .file-card { display:inline-flex;align-items:center;gap:10px;border-radius:12px;padding:8px 14px;cursor:pointer;margin:4px 0;max-width:280px;transition:opacity 0.2s; }
         .file-card:hover { opacity:0.8; }
@@ -769,13 +770,19 @@ window.renderActivityFeedItems = function(items, list) {
 // ─── SETTINGS ──────────────────────────────────────────────────────────────
 window.openSettings = async function() {
     const modal = document.getElementById('settingsModal'); if (!modal) return;
-    // Pre-fill current values
     const { data: profile } = await sb.from('profiles').select('*').eq('id', window.currentUser.id).single();
     document.getElementById('settingsName').value = profile?.full_name || window.currentUser?.user_metadata?.full_name || '';
     document.getElementById('settingsEmail').value = window.currentUser?.email || '';
     const photoEl = document.getElementById('settingsPhotoPreview');
-    if (profile?.avatar_url) { photoEl.src = profile.avatar_url; photoEl.style.display = 'block'; }
-    else { photoEl.style.display = 'none'; }
+    const placeholderEl = document.getElementById('settingsPhotoPlaceholder');
+    const avatarUrl = profile?.avatar_url || window._userAvatarUrl || null;
+    if (avatarUrl) {
+        photoEl.src = avatarUrl; photoEl.style.display = 'block';
+        if (placeholderEl) placeholderEl.style.display = 'none';
+    } else {
+        photoEl.style.display = 'none';
+        if (placeholderEl) placeholderEl.style.display = 'flex';
+    }
     modal.classList.remove('hidden'); modal.classList.add('flex');
 };
 window.closeSettings = function() {
@@ -812,6 +819,12 @@ window.saveSettings = async function() {
     await sb.auth.updateUser({ data: { full_name: name } });
     window.showCenterToast('Settings saved ✓','fa-solid fa-check-circle','text-green-400');
     window.closeSettings();
+    // Update sidebar avatar immediately without full re-render
+    if (avatarUrl) {
+        window._userAvatarUrl = avatarUrl;
+        const sidebarAv = document.getElementById('sidebarAvatar');
+        if (sidebarAv) sidebarAv.innerHTML = `<img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+    }
     if (typeof window.loadChatsList === 'function') window.loadChatsList();
 };
 
@@ -828,8 +841,12 @@ window.closeDashboard = function() {
 };
 
 window.downloadDashboardPDF = function() {
-    const el = document.getElementById('dashboardPrintArea');
-    if (!el || typeof html2pdf === 'undefined') { window.showCenterToast('PDF library not loaded','fa-solid fa-times','text-red-500'); return; }
+    if (typeof html2pdf === 'undefined') {
+        window.showCenterToast('PDF not available — html2pdf not loaded','fa-solid fa-exclamation-triangle','text-yellow-500');
+        return;
+    }
+    const el = document.getElementById('dashboardPrintArea') || document.getElementById('dashboardReport');
+    if (!el) { window.showCenterToast('Open dashboard first','fa-solid fa-info-circle','text-blue-400'); return; }
     const userName = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
     const wrapper = document.createElement('div');
     wrapper.style.cssText = 'padding:24px;font-family:Inter,sans-serif;background:#fff;color:#111;';
@@ -848,15 +865,20 @@ window.downloadDashboardPDF = function() {
 // ─── GROUP SETTINGS ─────────────────────────────────────────────────────────
 window._selectedGroupColor = null;
 
-window.openGroupSettings = function(groupId, currentName, currentColor) {
+window.openGroupSettings = function(groupId) {
     const modal = document.getElementById('groupSettingsModal'); if (!modal) return;
+    const deptDefaults = { general:'General', math:'Math', science:'Science', leadership:'Leadership' };
+    const deptColors   = { general:'#6366f1', math:'#0ea5e9', science:'#10b981', leadership:'#f59e0b' };
+    const currentName  = localStorage.getItem('dept_name_' + groupId) || deptDefaults[groupId] || groupId;
+    const currentColor = localStorage.getItem('dept_color_' + groupId) || deptColors[groupId] || '#6366f1';
     document.getElementById('groupSettingsId').value = groupId;
     document.getElementById('groupSettingsName').value = currentName;
     window._selectedGroupColor = currentColor;
-    // Highlight current color
     document.querySelectorAll('#groupColorPicker button').forEach(b => {
-        b.style.borderColor = b.dataset.color === currentColor ? '#fff' : 'transparent';
-        b.style.boxShadow  = b.dataset.color === currentColor ? '0 0 0 2px '+currentColor : 'none';
+        const isActive = b.dataset.color === currentColor;
+        b.style.borderColor = isActive ? '#fff' : 'transparent';
+        b.style.boxShadow  = isActive ? '0 0 0 2px '+currentColor : 'none';
+        b.style.transform  = isActive ? 'scale(1.15)' : 'scale(1)';
     });
     modal.classList.remove('hidden'); modal.classList.add('flex');
 };

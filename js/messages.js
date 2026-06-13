@@ -1,6 +1,6 @@
 import { sb } from './shared.js';
 
-// v1.56.0 - File icons, URL blocking, no reload, link pill, cross-room scroll via pendingScrollId
+// v1.57.0 - Reactions persist, edit/forward/delete, ql-editor class, no reload, link pill, cross-room scroll via pendingScrollId
 
 window.sendMessage = async function() {
     let text = window.quillEditor.root.innerHTML.trim();
@@ -89,6 +89,19 @@ window.loadMessages = async function() {
         .select('message_id')
         .eq('user_id', window.currentUser.id);
     window.bookmarkedSet = new Set(bms?.map(b => b.message_id) || []);
+
+    // ── Fetch reactions so they survive re-renders ──────────────────────────
+    const msgIds = msgs?.map(m => m.id) || [];
+    window.reactionsCache = {};
+    if (msgIds.length) {
+        try {
+            const { data: rData } = await sb.from('reactions').select('*').in('message_id', msgIds);
+            (rData || []).forEach(r => {
+                if (!window.reactionsCache[r.message_id]) window.reactionsCache[r.message_id] = [];
+                window.reactionsCache[r.message_id].push(r);
+            });
+        } catch(e) { /* reactions table may not exist yet */ }
+    }
 
     const c = document.getElementById('messagesContainer');
     const isNearBottom = c ? (c.scrollHeight - c.scrollTop - c.clientHeight < 150) : false;
@@ -237,9 +250,12 @@ window.renderMessages = function(messages) {
         const ddItems = isSent
             ? `<button class="dd-item" onclick="window.closeDropdowns(); window.openTaskModal('${msg.id}', '${window.escapeHtml(msg.text)}')"><i class="ti ti-clipboard-check"></i>Create Task</button>
                <button class="dd-item" onclick="window.closeDropdowns(); window.showReminderModal('${msg.id}', '${snippetText}')"><i class="ti ti-bell"></i>Reminder</button>
-               <button class="dd-item danger" onclick="window.closeDropdowns()"><i class="ti ti-trash"></i>Delete</button>`
+               <button class="dd-item" onclick="window.closeDropdowns(); window.startEditMessage('${msg.id}', \`${msg.text.replace(/`/g,"'")}\`)"><i class="ti ti-edit"></i>Edit</button>
+               <button class="dd-item" onclick="window.closeDropdowns(); window.openForwardModal('${msg.id}', '${snippetText}', '${window.escapeHtml(senderName)}')"><i class="ti ti-share"></i>Forward</button>
+               <button class="dd-item danger" onclick="window.closeDropdowns(); window.deleteMessage('${msg.id}')"><i class="ti ti-trash"></i>Delete</button>`
             : `<button class="dd-item" onclick="window.closeDropdowns(); window.openTaskModal('${msg.id}', '${window.escapeHtml(msg.text)}')"><i class="ti ti-clipboard-check"></i>Create Task</button>
-               <button class="dd-item" onclick="window.closeDropdowns(); window.showReminderModal('${msg.id}', '${snippetText}')"><i class="ti ti-bell"></i>Reminder</button>`;
+               <button class="dd-item" onclick="window.closeDropdowns(); window.showReminderModal('${msg.id}', '${snippetText}')"><i class="ti ti-bell"></i>Reminder</button>
+               <button class="dd-item" onclick="window.closeDropdowns(); window.openForwardModal('${msg.id}', '${snippetText}', '${window.escapeHtml(senderName)}')"><i class="ti ti-share"></i>Forward</button>`;
 
         let repliesHTML = '';
         if (replyCount > 0) {
@@ -267,6 +283,28 @@ window.renderMessages = function(messages) {
             </div>`;
         }
 
+        // Build persisted reactions HTML from cache (survives re-renders)
+        const msgReactions = window.reactionsCache?.[msg.id] || [];
+        const rGroups = {};
+        msgReactions.forEach(r => {
+            if (!rGroups[r.value]) rGroups[r.value] = { count:0, type:r.type };
+            rGroups[r.value].count += (r.count||1);
+        });
+        const tagColorMap = {
+            'Thank You':'bg-green-50 text-green-700 border-green-200',
+            'Noted':'bg-blue-50 text-blue-700 border-blue-200',
+            'Copied':'bg-purple-50 text-purple-700 border-purple-200',
+            'Yes Sir':'bg-orange-50 text-orange-700 border-orange-200',
+            'Yes Madam':'bg-pink-50 text-pink-700 border-pink-200'
+        };
+        const persistedReactionsHTML = Object.entries(rGroups).map(([val, info]) => {
+            if (info.type === 'emoji') {
+                return `<button class="e-chip active" data-emoji="${val}">${val} <span class="e-cnt">${info.count}</span></button>`;
+            } else {
+                return `<span class="${tagColorMap[val]||'bg-blue-50 text-blue-700 border-blue-200'} px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ml-1" data-tag="${val}">${val}</span>`;
+            }
+        }).join('');
+
         return `
         <div class="${rowClass} transition-colors" id="row-${msg.id}">
           <div class="${bubbleClass}">
@@ -279,8 +317,9 @@ window.renderMessages = function(messages) {
                 <div class="bubble-dropdown" id="dd-${msg.id}">${ddItems}</div>
               </div>
             </div>
-            <div class="b-text">${displayHtml}</div>
-            <div class="b-footer">
+            <div class="b-text ql-editor" style="padding:0;">${displayHtml}</div>
+            <div class="b-footer" id="footer-${msg.id}">
+              ${persistedReactionsHTML}
               <div class="relative inline-block group/reaction z-50">
                   <button class="e-add" title="Add reaction"><i class="ti ti-mood-smile"></i></button>
                   <div class="absolute bottom-full ${isSent ? 'right-0' : 'left-0'} pb-1.5 hidden group-hover/reaction:block cursor-default z-[100]">
@@ -356,6 +395,88 @@ window.applyReactionDOM = function(msgId, value, type) {
     }
     const hoverMenu = row.querySelector('.group\\/reaction .absolute');
     if (hoverMenu) { hoverMenu.style.display='none'; setTimeout(() => hoverMenu.style.display='', 300); }
+};
+
+// ── EDIT MESSAGE ─────────────────────────────────────────────────────────────
+window.startEditMessage = function(msgId, currentHtml) {
+    const textDiv = document.querySelector(`#row-${msgId} .b-text`);
+    if (!textDiv) return;
+    const plainText = window.stripHtml(currentHtml);
+    textDiv.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:6px;">
+            <textarea id="edit-area-${msgId}" style="width:100%;min-height:60px;padding:8px;border-radius:8px;border:1px solid var(--border-color);font-size:13px;background:var(--bg-body);color:var(--text-primary);resize:vertical;font-family:inherit;outline:none;">${plainText}</textarea>
+            <div style="display:flex;gap:6px;justify-content:flex-end;">
+                <button onclick="window.cancelEditMessage('${msgId}', \`${currentHtml.replace(/`/g,"'")}\`)"
+                    style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-secondary);cursor:pointer;">Cancel</button>
+                <button onclick="window.saveEditMessage('${msgId}')"
+                    style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;">Save</button>
+            </div>
+        </div>`;
+};
+window.cancelEditMessage = function(msgId, originalHtml) {
+    const textDiv = document.querySelector(`#row-${msgId} .b-text`);
+    if (textDiv) textDiv.innerHTML = originalHtml;
+};
+window.saveEditMessage = async function(msgId) {
+    const area = document.getElementById(`edit-area-${msgId}`);
+    if (!area) return;
+    const newText = area.value.trim();
+    if (!newText) { window.showCenterToast('Message cannot be empty','fa-solid fa-times','text-red-500'); return; }
+    const wrapped = `<p>${newText.replace(/
+/g,'</p><p>')}</p>`;
+    const { error } = await sb.from('messages').update({ text: wrapped }).eq('id', msgId).eq('sender_id', window.currentUser.id);
+    if (error) { window.showCenterToast('Edit failed: '+error.message,'fa-solid fa-times','text-red-500'); return; }
+    window.showCenterToast('Message updated','fa-solid fa-check','text-green-400');
+    if (typeof window.loadMessages === 'function') window.loadMessages();
+};
+
+// ── DELETE MESSAGE ────────────────────────────────────────────────────────────
+window.deleteMessage = async function(msgId) {
+    if (!confirm('Delete this message?')) return;
+    await sb.from('messages').delete().eq('id', msgId).eq('sender_id', window.currentUser.id);
+    if (typeof window.loadMessages === 'function') window.loadMessages();
+};
+
+// ── FORWARD MESSAGE ───────────────────────────────────────────────────────────
+window.openForwardModal = function(msgId, snippet, fromName) {
+    window._fwdMsgId = msgId;
+    window._fwdSnippet = snippet;
+    window._fwdFrom = fromName;
+    // Build room list in modal
+    const sel = document.getElementById('forwardRoomSelect');
+    if (!sel) return;
+    sel.innerHTML = '';
+    // Departments
+    ['general','math','science','leadership'].forEach(g => {
+        const opt = document.createElement('option');
+        opt.value = g; opt.textContent = '# ' + g.charAt(0).toUpperCase() + g.slice(1);
+        sel.appendChild(opt);
+    });
+    // DMs
+    (window.globalUsersCache||[]).filter(u=>u.id!==window.currentUser.id).forEach(u => {
+        const name = window.toSentenceCase?.(u.full_name||u.email.split('@')[0])||u.email;
+        const dmRoom = typeof window.getDmRoomId==='function' ? window.getDmRoomId(u.id) : 'dm_'+u.id;
+        const opt = document.createElement('option');
+        opt.value = dmRoom; opt.textContent = '💬 ' + name;
+        sel.appendChild(opt);
+    });
+    document.getElementById('forwardPreview').textContent = snippet;
+    const modal = document.getElementById('forwardModal');
+    if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+};
+window.closeForwardModal = function() {
+    const modal = document.getElementById('forwardModal');
+    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+};
+window.sendForwardedMessage = async function() {
+    const sel = document.getElementById('forwardRoomSelect');
+    if (!sel?.value) return;
+    const { data: orig } = await sb.from('messages').select('text').eq('id', window._fwdMsgId).single();
+    if (!orig) return;
+    const forwardText = `<p style="font-size:11px;color:#6b7280;border-left:3px solid #6366f1;padding-left:8px;margin-bottom:6px;">↪ Forwarded from ${window.escapeHtml(window._fwdFrom)}</p>${orig.text}`;
+    await sb.from('messages').insert({ room_id: sel.value, sender_id: window.currentUser.id, text: forwardText });
+    window.closeForwardModal();
+    window.showCenterToast('Message forwarded','fa-solid fa-share','text-indigo-400');
 };
 
 window.toggleReplies = function(id) {

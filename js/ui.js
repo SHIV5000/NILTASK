@@ -1,6 +1,6 @@
 import { sb } from './shared.js';
 
-// v1.56.0 - File icons, URL block, top labels, modern filters, scroll arrows, completed opacity, task scroll fix, READ tag, activity feed fix, clear fix, reactions fix, link pill, no rename modal
+// v1.57.0 - IST fix, RT feed, beautify, settings, filter wrap, top labels, modern filters, scroll arrows, completed opacity, task scroll fix, READ tag, activity feed fix, clear fix, reactions fix, link pill, no rename modal
 
 // ─── CSS ───────────────────────────────────────────────────────────────────
 (function() {
@@ -584,6 +584,7 @@ window.openActivityFeed = async function() {
     const dateRangeEl = document.getElementById('dateRangeFilter');
     if (dateRangeEl) dateRangeEl.style.display = 'none';
 
+    window._activityFeedOpen = true;
     // Fetch data — Activity Feed = raw activity (messages + task trails). NOT notifications table.
     const [{ data: msgs }, { data: trails }] = await Promise.all([
         sb.from('messages').select('*, profiles(full_name, email)').order('created_at', {ascending: false}).limit(40),
@@ -627,7 +628,9 @@ window.openActivityFeed = async function() {
     }
 
     list.innerHTML = items.map(item => {
-        const t = new Date(item.time).toLocaleString('en-IN', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'});
+        const t = typeof window.getISTTime === 'function'
+            ? window.getISTTime(item.time)
+            : new Date(item.time).toLocaleString('en-IN', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata',hour12:true});
         if (item.kind === 'message') {
             const m = item.data;
             const isMine = m.sender_id === window.currentUser.id;
@@ -636,14 +639,16 @@ window.openActivityFeed = async function() {
             const roomLabel = m.room_id?.startsWith('dm_') ? '💬 DM' : `# ${m.room_id}`;
             const av = name.charAt(0).toUpperCase();
             const bgAv = isMine ? 'var(--accent)' : '#6366f1';
-            return `<div class="mb-2 p-2.5 rounded-xl border cursor-pointer hover:opacity-80 transition-opacity" style="background-color:var(--bg-sidebar);border-color:var(--border-color);" onclick="window.goToMessage('${m.id}',null,'${m.room_id}')">
-                <div class="flex items-center gap-2 mb-1">
-                    <div class="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0" style="background:${bgAv};">${av}</div>
-                    <span class="text-[11px] font-bold truncate flex-1" style="color:var(--text-primary);">${window.escapeHtml(name)}</span>
-                    <span class="text-[9px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0" style="background:rgba(99,102,241,0.1);color:#6366f1;">${roomLabel}</span>
-                    <span class="text-[9px] flex-shrink-0 whitespace-nowrap" style="color:var(--text-secondary);">${t}</span>
+            return `<div class="mb-2 rounded-xl overflow-hidden border cursor-pointer group transition-all hover:shadow-md" style="border-color:var(--border-color);border-left:3px solid ${bgAv};" onclick="window.goToMessage('${m.id}',null,'${m.room_id}')">
+                <div class="p-2.5" style="background-color:var(--bg-sidebar);">
+                    <div class="flex items-center gap-2 mb-1.5">
+                        <div class="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 shadow-sm" style="background:${bgAv};">${av}</div>
+                        <span class="text-[11px] font-bold truncate flex-1" style="color:var(--text-primary);">${window.escapeHtml(name)}</span>
+                        <span class="text-[9px] px-2 py-0.5 rounded-full font-bold flex-shrink-0" style="background:rgba(99,102,241,0.1);color:#6366f1;">${roomLabel}</span>
+                        <span class="text-[9px] flex-shrink-0 whitespace-nowrap" style="color:var(--text-secondary);">${t}</span>
+                    </div>
+                    <p class="text-[11px] line-clamp-2 pl-8 leading-relaxed" style="color:var(--text-secondary);">${window.escapeHtml(txt)}</p>
                 </div>
-                <p class="text-[11px] line-clamp-2 pl-8" style="color:var(--text-secondary);">${window.escapeHtml(txt)}</p>
             </div>`;
         } else {
             // Task trail entry
@@ -654,28 +659,150 @@ window.openActivityFeed = async function() {
             const comment = tr.comment ? ` — ${tr.comment.split('|')[0]}` : '';
             const actionColors = { FILE:'#10b981', UPDATE:'#3b82f6', CREATE:'#6366f1' };
             const co = actionColors[action] || '#6b7280';
-            return `<div class="mb-2 p-2.5 rounded-xl border cursor-pointer hover:opacity-80 transition-opacity" style="background-color:var(--bg-sidebar);border-color:var(--border-color);" onclick="window.goToTask('${tr.task_id||''}')">
-                <div class="flex items-center gap-2 mb-1">
-                    <div class="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${co}18;">
-                        <i class="fa-solid ${action==='FILE'?'fa-paperclip':action==='CREATE'?'fa-plus':'fa-tasks'}" style="color:${co};font-size:10px;"></i>
+            return `<div class="mb-2 rounded-xl overflow-hidden border cursor-pointer group transition-all hover:shadow-md" style="border-color:var(--border-color);border-left:3px solid ${co};" onclick="window.goToTask('${tr.task_id||''}')">
+                <div class="p-2.5" style="background-color:var(--bg-sidebar);">
+                    <div class="flex items-center gap-2 mb-1.5">
+                        <div class="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm" style="background:${co}18;">
+                            <i class="fa-solid ${action==='FILE'?'fa-paperclip':action==='CREATE'?'fa-plus':'fa-tasks'}" style="color:${co};font-size:10px;"></i>
+                        </div>
+                        <span class="text-[11px] font-bold truncate flex-1" style="color:var(--text-primary);">${window.escapeHtml(tName)}</span>
+                        <span class="text-[9px] px-2 py-0.5 rounded-full font-bold flex-shrink-0" style="background:${co}15;color:${co};">${action}</span>
+                        <span class="text-[9px] flex-shrink-0 whitespace-nowrap" style="color:var(--text-secondary);">${t}</span>
                     </div>
-                    <span class="text-[11px] font-bold truncate flex-1" style="color:var(--text-primary);">${window.escapeHtml(tName)}</span>
-                    <span class="text-[9px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0" style="background:${co}18;color:${co};">${action}</span>
-                    <span class="text-[9px] flex-shrink-0 whitespace-nowrap" style="color:var(--text-secondary);">${t}</span>
+                    <p class="text-[11px] line-clamp-2 pl-8 leading-relaxed" style="color:var(--text-secondary);">📋 ${window.escapeHtml(taskTitle)}${window.escapeHtml(comment)}</p>
                 </div>
-                <p class="text-[11px] line-clamp-2 pl-8" style="color:var(--text-secondary);">📋 ${window.escapeHtml(taskTitle)}${window.escapeHtml(comment)}</p>
             </div>`;
         }
     }).join('');
 };
 
 window.closeActivityFeed = function() {
+    window._activityFeedOpen = false;
     document.getElementById('activityFeedPanel')?.remove();
     const tp = document.getElementById('tasksPanel');
     if (tp) tp.style.removeProperty('display');
     const fi = document.getElementById('rightSidebarFilters');
     if (fi) fi.style.removeProperty('display');
-    // dateRangeFilter stays hidden (controlled by its own toggle)
+};
+
+// Called by subscriptions when feed is open — refresh items list only
+window.refreshActivityFeed = async function() {
+    if (!window._activityFeedOpen) return;
+    const list = document.getElementById('activityFeedList');
+    if (!list) return;
+    const [{ data: msgs }, { data: trails }] = await Promise.all([
+        sb.from('messages').select('*, profiles(full_name, email)').order('created_at', {ascending: false}).limit(40),
+        sb.from('task_trails').select('*, profiles(full_name, email), tasks(title)').order('created_at', {ascending: false}).limit(20)
+    ]);
+    const items = [];
+    msgs?.forEach(m => items.push({ kind: 'message', time: m.created_at, data: m }));
+    trails?.forEach(t => items.push({ kind: 'trail', time: t.created_at, data: t }));
+    items.sort((a, b) => new Date(b.time) - new Date(a.time));
+    // Update count badge
+    const badge = document.querySelector('#activityFeedPanel .text-\[10px\]');
+    if (badge) badge.textContent = items.length + ' items';
+    // Re-render list (trigger openActivityFeed logic by calling the render part)
+    window._activityFeedItems = items;
+    window.renderActivityFeedItems(items, list);
+};
+
+window.renderActivityFeedItems = function(items, list) {
+    if (!list) return;
+    if (!items.length) { list.innerHTML = '<p class="text-xs italic text-center py-8" style="color:var(--text-secondary);">No recent activity.</p>'; return; }
+    list.innerHTML = items.map(item => {
+        const t = typeof window.getISTTime === 'function'
+            ? window.getISTTime(item.time)
+            : new Date(item.time).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata',hour12:true});
+        if (item.kind === 'message') {
+            const m = item.data;
+            const isMine = m.sender_id === window.currentUser.id;
+            const name = isMine ? 'You' : (window.toSentenceCase?.(m.profiles?.full_name || m.profiles?.email?.split('@')[0] || 'Unknown') || 'Unknown');
+            const txt = window.stripHtml(m.text).substring(0, 90) || '📎 Attachment';
+            const roomLabel = m.room_id?.startsWith('dm_') ? '💬 DM' : `# ${m.room_id}`;
+            const av = name.charAt(0).toUpperCase();
+            const bgAv = isMine ? 'var(--accent)' : '#6366f1';
+            return `<div class="mb-2 rounded-xl overflow-hidden border cursor-pointer group transition-all hover:shadow-md" style="border-color:var(--border-color);border-left:3px solid ${bgAv};" onclick="window.goToMessage('${m.id}',null,'${m.room_id}')">
+                <div class="p-2.5" style="background-color:var(--bg-sidebar);">
+                    <div class="flex items-center gap-2 mb-1.5">
+                        <div class="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 shadow-sm" style="background:${bgAv};">${av}</div>
+                        <span class="text-[11px] font-bold truncate flex-1" style="color:var(--text-primary);">${window.escapeHtml(name)}</span>
+                        <span class="text-[9px] px-2 py-0.5 rounded-full font-bold flex-shrink-0" style="background:rgba(99,102,241,0.1);color:#6366f1;">${roomLabel}</span>
+                        <span class="text-[9px] flex-shrink-0 whitespace-nowrap" style="color:var(--text-secondary);">${t}</span>
+                    </div>
+                    <p class="text-[11px] line-clamp-2 pl-8 leading-relaxed" style="color:var(--text-secondary);">${window.escapeHtml(txt)}</p>
+                </div>
+            </div>`;
+        } else {
+            const tr = item.data;
+            const tName = window.toSentenceCase?.(tr.profiles?.full_name || tr.profiles?.email?.split('@')[0] || 'Unknown') || 'Unknown';
+            const taskTitle = tr.tasks?.title || 'Task';
+            const action = tr.action || 'UPDATE';
+            const comment = tr.comment ? ` — ${tr.comment.split('|')[0]}` : '';
+            const co = ({FILE:'#10b981',UPDATE:'#3b82f6',CREATE:'#6366f1'})[action] || '#6b7280';
+            return `<div class="mb-2 rounded-xl overflow-hidden border cursor-pointer group transition-all hover:shadow-md" style="border-color:var(--border-color);border-left:3px solid ${co};" onclick="window.goToTask('${tr.task_id||''}')">
+                <div class="p-2.5" style="background-color:var(--bg-sidebar);">
+                    <div class="flex items-center gap-2 mb-1.5">
+                        <div class="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm" style="background:${co}18;">
+                            <i class="fa-solid ${action==='FILE'?'fa-paperclip':action==='CREATE'?'fa-plus':'fa-tasks'}" style="color:${co};font-size:10px;"></i>
+                        </div>
+                        <span class="text-[11px] font-bold truncate flex-1" style="color:var(--text-primary);">${window.escapeHtml(tName)}</span>
+                        <span class="text-[9px] px-2 py-0.5 rounded-full font-bold flex-shrink-0" style="background:${co}15;color:${co};">${action}</span>
+                        <span class="text-[9px] flex-shrink-0 whitespace-nowrap" style="color:var(--text-secondary);">${t}</span>
+                    </div>
+                    <p class="text-[11px] line-clamp-2 pl-8 leading-relaxed" style="color:var(--text-secondary);">📋 ${window.escapeHtml(taskTitle)}${window.escapeHtml(comment)}</p>
+                </div>
+            </div>`;
+        }
+    }).join('');
+};
+
+// ─── SETTINGS ──────────────────────────────────────────────────────────────
+window.openSettings = async function() {
+    const modal = document.getElementById('settingsModal'); if (!modal) return;
+    // Pre-fill current values
+    const { data: profile } = await sb.from('profiles').select('*').eq('id', window.currentUser.id).single();
+    document.getElementById('settingsName').value = profile?.full_name || window.currentUser?.user_metadata?.full_name || '';
+    document.getElementById('settingsEmail').value = window.currentUser?.email || '';
+    const photoEl = document.getElementById('settingsPhotoPreview');
+    if (profile?.avatar_url) { photoEl.src = profile.avatar_url; photoEl.style.display = 'block'; }
+    else { photoEl.style.display = 'none'; }
+    modal.classList.remove('hidden'); modal.classList.add('flex');
+};
+window.closeSettings = function() {
+    const modal = document.getElementById('settingsModal');
+    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+};
+window.previewSettingsPhoto = function(input) {
+    const file = input.files[0]; if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { window.showCenterToast('Photo must be under 2MB','fa-solid fa-ban','text-red-500'); input.value=''; return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+        const prev = document.getElementById('settingsPhotoPreview');
+        prev.src = e.target.result; prev.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+};
+window.saveSettings = async function() {
+    const name = document.getElementById('settingsName').value.trim();
+    if (!name) { window.showCenterToast('Name cannot be empty','fa-solid fa-times','text-red-500'); return; }
+    const photoInput = document.getElementById('settingsPhotoInput');
+    let avatarUrl = null;
+    if (photoInput.files[0]) {
+        const file = photoInput.files[0];
+        const path = `avatars/${window.currentUser.id}_${Date.now()}.${file.name.split('.').pop()}`;
+        const { error: upErr } = await sb.storage.from('task-proofs').upload(path, file, { upsert: true });
+        if (!upErr) {
+            const { data: urlData } = sb.storage.from('task-proofs').getPublicUrl(path);
+            avatarUrl = urlData?.publicUrl;
+        }
+    }
+    const updatePayload = { full_name: name };
+    if (avatarUrl) updatePayload.avatar_url = avatarUrl;
+    await sb.from('profiles').update(updatePayload).eq('id', window.currentUser.id);
+    await sb.auth.updateUser({ data: { full_name: name } });
+    window.showCenterToast('Settings saved ✓','fa-solid fa-check-circle','text-green-400');
+    window.closeSettings();
+    if (typeof window.loadChatsList === 'function') window.loadChatsList();
 };
 
 // ─── SCHEDULE MODAL ────────────────────────────────────────────────────────

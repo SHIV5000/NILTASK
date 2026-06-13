@@ -1,53 +1,106 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+/**
+ * Supabase Edge Function: send-scheduled-messages
+ * ─────────────────────────────────────────────────
+ * Runs on a cron schedule (every 1 minute via pg_cron or Supabase cron).
+ * 
+ * Processes:
+ *  1. Fired reminders → insert notification row (bell icon)
+ *  2. Pending scheduled messages → insert into messages + insert notification
+ *
+ * The KEY FIX: we insert a notification row when a scheduled message is sent.
+ * The client-side 'notificationSubscription' listens to notifications table INSERT
+ * (which IS reliable). This avoids needing realtime on scheduled_messages.
+ */
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-serve(async (req) => {
-    // Initialize Supabase with the powerful Service Role Key to bypass RLS
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseKey)
+Deno.serve(async (req) => {
+  // Security: simple shared-secret header check
+  const auth = req.headers.get('RUPABASE_ANON_KEY')
+  if (auth !== Deno.env.get('RUPABASE_ANON_KEY')) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
+  }
 
-    // 1. Fetch pending messages that are past their scheduled time
-    const { data: messages, error: fetchError } = await supabase
-        .from('scheduled_messages')
-        .select('*')
-        .eq('status', 'pending')
-        .lte('scheduled_time', new Date().toISOString())
+  const supabase = createClient(
+    Deno.env.get('RUPABASE_URL')!,
+    Deno.env.get('RUPABASE_SERVICE_ROLE_KEY')!
+  )
 
-    if (fetchError) {
-        return new Response(JSON.stringify({ error: fetchError.message }), { status: 500 })
-    }
+  const now = new Date().toISOString()
+  const results: string[] = []
 
-    if (!messages || messages.length === 0) {
-        return new Response(JSON.stringify({ message: "No scheduled messages pending." }), { status: 200 })
-    }
+  // ── 1. Process reminders that have fired ─────────────────────────────────────
+  const { data: reminders } = await supabase
+    .from('reminders')
+    .select('*')
+    .lte('reminder_time', now)
+    .eq('triggered', false)
 
-    let sentCount = 0;
+  if (reminders?.length) {
+    await Promise.all(reminders.map(async (r) => {
+      // Mark reminder as triggered
+      await supabase.from('reminders').update({ triggered: true }).eq('id', r.id)
 
-    // 2. Loop through and officially "send" each message
-    for (const msg of messages) {
-        const { error: insertError } = await supabase
-            .from('messages')
-            .insert({
-                room_id: msg.room_id,
-                sender_id: msg.sender_id,
-                text: msg.message_text,
-                created_at: new Date().toISOString()
-            })
+      // Insert notification so it appears in bell icon + plays sound on client
+      await supabase.from('notifications').insert({
+        user_id:    r.user_id,
+        type:       'reminder',
+        message:    '⏰ Reminder: Your scheduled reminder has fired.',
+        message_id: r.message_id,
+        is_read:    false
+      })
+      results.push(`reminder:${r.id}`)
+    }))
+  }
 
-        if (!insertError) {
-            // 3. Mark the scheduled tracker as 'sent'
-            await supabase
-                .from('scheduled_messages')
-                .update({ status: 'sent' })
-                .eq('id', msg.id)
-            
-            sentCount++;
-        }
-    }
+  // ── 2. Process pending scheduled messages ─────────────────────────────────────
+  const { data: scheduled } = await supabase
+    .from('scheduled_messages')
+    .select('*')
+    .lte('scheduled_time', now)
+    .eq('status', 'pending')
 
-    return new Response(
-        JSON.stringify({ message: `Successfully executed ${sentCount} scheduled messages.` }), 
-        { headers: { "Content-Type": "application/json" }, status: 200 }
-    )
+  if (scheduled?.length) {
+    await Promise.all(scheduled.map(async (m) => {
+      // Insert message into the messages table (makes it appear in chat)
+      const { data: msgData, error: msgErr } = await supabase
+        .from('messages')
+        .insert({
+          room_id:   m.room_id,
+          sender_id: m.sender_id,
+          text:      m.message_text
+        })
+        .select('id')
+        .single()
+
+      // Update status
+      const newStatus = msgErr ? 'failed' : 'sent'
+      await supabase.from('scheduled_messages').update({ status: newStatus }).eq('id', m.id)
+
+      // ── THE FIX: Insert notification so client bell icon lights up ─────────────
+      // This uses the notifications table which HAS realtime enabled.
+      // The client's notificationSubscription will pick this up instantly.
+      if (!msgErr) {
+        const textPreview = (m.message_text || '')
+          .replace(/<[^>]+>/g, '')   // strip HTML tags
+          .replace(/\s+/g, ' ')
+          .trim()
+          .substring(0, 60)
+
+        await supabase.from('notifications').insert({
+          user_id:    m.sender_id,
+          type:       'message',
+          message:    `📨 Scheduled message sent: ${textPreview}`,
+          message_id: msgData?.id || null,
+          is_read:    false
+        })
+        results.push(`scheduled:${m.id}`)
+      }
+    }))
+  }
+
+  return new Response(
+    JSON.stringify({ success: true, processed: results }),
+    { headers: { 'Content-Type': 'application/json' } }
+  )
 })

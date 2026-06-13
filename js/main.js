@@ -78,9 +78,9 @@ window.renderMainApp = function() {
                     <div class="flex items-center gap-2 w-full">
                         <div class="flex-1 text-[12px] font-bold flex items-center gap-2 border shadow-sm px-2 py-1.5 rounded-full justify-center min-w-0" style="color:var(--text-primary);border-color:var(--border-color);background-color:var(--bg-sidebar);">
                             <div id="sidebarAvatar" class="w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px] flex-shrink-0 overflow-hidden" style="background-color:var(--accent);">
-                                ${window._userAvatarUrl ? `<img src="${window._userAvatarUrl}" style="width:100%;height:100%;object-fit:cover;">` : userNameDisplay.charAt(0).toUpperCase()}
+                                ${(window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + (window.currentUser?.id||''))) ? `<img src="${window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + (window.currentUser?.id||''))}" style="width:100%;height:100%;object-fit:cover;">` : userNameDisplay.charAt(0).toUpperCase()}
                             </div>
-                            <span class="truncate">${window.escapeHtml(userNameDisplay.toUpperCase())}</span>
+                            <span class="truncate" id="sidebarNameDisplay">${window.escapeHtml(userNameDisplay.toUpperCase())}</span>
                         </div>
                         <button onclick="window.openSettings()" title="Profile Settings"
                             class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border hover:bg-gray-100 transition-colors"
@@ -321,33 +321,50 @@ window.renderMainApp = function() {
             </div>
         </div>
 
-        <!-- Group Settings Modal -->
+        <!-- Group Settings Modal — Name, Colour, Members, Admins -->
         <div id="groupSettingsModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
-            <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-bold flex items-center gap-2" style="color:var(--text-primary);">
+            <div class="rounded-2xl w-full max-w-sm mx-4 shadow-2xl border flex flex-col max-h-[90vh]" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+                <!-- Header -->
+                <div class="p-5 border-b flex items-center justify-between flex-shrink-0" style="border-color:var(--border-color);">
+                    <h3 class="text-base font-bold flex items-center gap-2" style="color:var(--text-primary);">
                         <i class="fa-solid fa-users-gear" style="color:var(--accent);"></i> Group Settings
                     </h3>
                     <button onclick="window.closeGroupSettings()" class="w-7 h-7 rounded-full flex items-center justify-center hover:bg-gray-100" style="color:var(--text-secondary);">
                         <i class="fa-solid fa-times text-sm"></i>
                     </button>
                 </div>
-                <input type="hidden" id="groupSettingsId">
-                <div class="mb-3">
-                    <label class="text-xs font-bold mb-1 block" style="color:var(--text-secondary);">Display Name</label>
-                    <input type="text" id="groupSettingsName" class="w-full p-2.5 rounded-xl border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
-                </div>
-                <div class="mb-5">
-                    <label class="text-xs font-bold mb-1 block" style="color:var(--text-secondary);">Avatar Colour</label>
-                    <div class="flex gap-2 flex-wrap" id="groupColorPicker">
-                        ${['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6'].map(c =>
-                            `<button type="button" onclick="window.selectGroupColor('${c}')" data-color="${c}"
-                                class="w-8 h-8 rounded-lg border-2 border-transparent hover:scale-110 transition-transform"
-                                style="background:${c};" title="${c}"></button>`
-                        ).join('')}
+                <!-- Scrollable body -->
+                <div class="flex-1 overflow-y-auto p-5">
+                    <input type="hidden" id="groupSettingsId">
+                    <!-- Display Name -->
+                    <div class="mb-4">
+                        <label class="text-[10px] font-black tracking-wider uppercase mb-1.5 block" style="color:var(--text-secondary);">Display Name</label>
+                        <input type="text" id="groupSettingsName" class="w-full p-2.5 rounded-xl border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                    </div>
+                    <!-- Avatar Colour -->
+                    <div class="mb-4">
+                        <label class="text-[10px] font-black tracking-wider uppercase mb-1.5 block" style="color:var(--text-secondary);">Avatar Colour</label>
+                        <div class="flex gap-2 flex-wrap" id="groupColorPicker">
+                            ${['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6'].map(c =>
+                                `<button type="button" onclick="window.selectGroupColor('${c}')" data-color="${c}"
+                                    class="w-9 h-9 rounded-lg border-2 border-transparent hover:scale-110 transition-transform shadow-sm"
+                                    style="background:${c};" title="${c}"></button>`
+                            ).join('')}
+                        </div>
+                    </div>
+                    <!-- Members & Admins -->
+                    <div>
+                        <div class="text-[10px] font-black tracking-wider uppercase mb-1.5 flex items-center justify-between" style="color:var(--text-secondary);">
+                            <span>Members & Admins</span>
+                            <span class="text-[9px] normal-case font-normal" style="color:var(--text-secondary);">☑ = Member &nbsp;★ = Admin</span>
+                        </div>
+                        <div id="groupMembersList" class="border rounded-xl overflow-hidden" style="border-color:var(--border-color);background-color:var(--bg-body);">
+                            <p class="text-xs italic p-3" style="color:var(--text-secondary);">Loading members...</p>
+                        </div>
                     </div>
                 </div>
-                <div class="flex gap-3">
+                <!-- Footer -->
+                <div class="p-4 border-t flex gap-3 flex-shrink-0" style="border-color:var(--border-color);">
                     <button onclick="window.closeGroupSettings()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
                     <button onclick="window.saveGroupSettings()" class="flex-1 py-2.5 rounded-xl font-bold text-white" style="background-color:var(--accent);">Save</button>
                 </div>

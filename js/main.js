@@ -4,7 +4,7 @@ import './auth.js';
 import './tasks.js';
 import './messages.js';
 
-// v1.51.0 - Departments/Staff sidebar, unread badges, search fix, cross-room scroll
+// v1.52.0 - Avatar cloud sync updates, universal true reaction toggles incorporated.
 
 let messageSubscription = null;
 let taskSubscription = null;
@@ -12,7 +12,6 @@ let assigneeSubscription = null;
 let trailSubscription = null;
 let notificationSubscription = null;
 
-// Unread counts per room
 window.unreadCounts = {};
 
 window.scrollToAndHighlight = function(elementId) {
@@ -46,10 +45,12 @@ window.renderMainApp = function() {
     document.documentElement.style.setProperty('--wm-light', `url('data:image/svg+xml;utf8,${svgL}')`);
     document.documentElement.style.setProperty('--wm-dark', `url('data:image/svg+xml;utf8,${svgD}')`);
 
+    // Cleaned Avatar fetch (No localStorage dependency)
+    const userAvatar = window._userAvatarUrl || window.currentUser?.user_metadata?.avatar_url || null;
+
     document.getElementById('root').innerHTML = `
         <div class="flex h-full w-full" style="background-color:var(--bg-body);">
 
-            <!-- LEFT SIDEBAR -->
             <div id="leftSidebar" class="left-sidebar flex-col border-r z-20 shadow-sm" style="display:${leftDisplay};width:${leftWidth};background-color:var(--bg-sidebar);border-color:var(--border-color);">
                 <div class="p-4 flex justify-between items-center border-b" style="border-color:var(--border-color);">
                     <h2 class="text-xl font-bold tracking-tight flex items-center gap-2" style="color:var(--text-primary);">
@@ -65,7 +66,6 @@ window.renderMainApp = function() {
                     </div>
                 </div>
 
-                <!-- SEARCH BAR -->
                 <div class="p-3">
                     <input type="text" id="sidebarSearch" placeholder="Search departments & staff..."
                         class="ui-input w-full p-2 rounded-xl text-sm outline-none"
@@ -78,7 +78,7 @@ window.renderMainApp = function() {
                     <div class="flex items-center gap-2 w-full">
                         <div class="flex-1 text-[12px] font-bold flex items-center gap-2 border shadow-sm px-2 py-1.5 rounded-full justify-center min-w-0" style="color:var(--text-primary);border-color:var(--border-color);background-color:var(--bg-sidebar);">
                             <div id="sidebarAvatar" class="w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px] flex-shrink-0 overflow-hidden" style="background-color:var(--accent);">
-                                ${(window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + (window.currentUser?.id||''))) ? `<img src="${window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + (window.currentUser?.id||''))}" style="width:100%;height:100%;object-fit:cover;">` : userNameDisplay.charAt(0).toUpperCase()}
+                                ${userAvatar ? `<img src="${userAvatar}" style="width:100%;height:100%;object-fit:cover;">` : userNameDisplay.charAt(0).toUpperCase()}
                             </div>
                             <span class="truncate" id="sidebarNameDisplay">${window.escapeHtml(userNameDisplay.toUpperCase())}</span>
                         </div>
@@ -93,13 +93,12 @@ window.renderMainApp = function() {
                             <i class="fa-solid fa-chart-bar text-sm"></i>
                         </button>
                     </div>
-                    <div class="text-[9px] font-bold tracking-wider uppercase text-center" style="color:var(--text-secondary);">VER 1.60.0</div>
+                    <div class="text-[9px] font-bold tracking-wider uppercase text-center" style="color:var(--text-secondary);">VER 1.61.0</div>
                 </div>
             </div>
 
             <div id="leftResizer" class="drag-resizer"></div>
 
-            <!-- CHAT AREA -->
             <div class="flex-1 flex flex-col relative min-w-0 chat-area">
                 <div class="p-4 border-b z-10 flex justify-between items-center shadow-sm backdrop-blur" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
                     <div class="flex items-center gap-3">
@@ -112,7 +111,7 @@ window.renderMainApp = function() {
                         </button>
                     </div>
                     <div class="flex items-center gap-4" style="color:var(--text-secondary);">
-                        <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('scheduled')" title="Scheduled Messages">
+                        <div class="topbar-icon-btn top-bar-icon" onclick="window.showScheduleModal()" title="Scheduled Messages">
                             <i class="ti ti-clock text-xl"></i><span>Schedule</span>
                         </div>
                         <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('reminders')" title="Reminders">
@@ -175,11 +174,9 @@ window.renderMainApp = function() {
 
             <div id="rightResizer" class="drag-resizer"></div>
 
-            <!-- RIGHT SIDEBAR -->
             <div id="rightSidebar" class="right-sidebar border-l flex-col z-20 shadow-sm" style="display:${rightDisplay};width:${rightWidth};background-color:var(--bg-sidebar);border-color:var(--border-color);">
                 <div class="w-full h-full flex flex-col min-w-0">
                     <div id="rightSidebarFilters" class="border-b" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
-                        <!-- Hidden selects for backwards compat with tasks.js -->
                         <select id="taskFilter" class="hidden" onchange="window.loadTasksForPanel()">
                             <option value="all">All Tasks</option><option value="today">Today</option>
                             <option value="pending">Pending</option><option value="completed">Completed</option>
@@ -191,7 +188,6 @@ window.renderMainApp = function() {
                             <option value="deadline_asc">deadline_asc</option><option value="deadline_desc">deadline_desc</option>
                             <option value="created_desc">created_desc</option><option value="created_asc">created_asc</option>
                         </select>
-                        <!-- Pill filter row -->
                         <div class="px-3 pt-2.5 pb-1">
                             <div class="text-[9px] font-black tracking-widest uppercase mb-1.5 flex items-center gap-1" style="color:var(--text-secondary);">
                                 <i class="fa-solid fa-filter" style="font-size:8px;color:var(--accent);"></i> Filter
@@ -208,7 +204,6 @@ window.renderMainApp = function() {
                                 <button class="filter-pill" data-filter="date_range" onclick="window.setTaskFilter('date_range')">Date Range</button>
                             </div>
                         </div>
-                        <!-- Sort row -->
                         <div class="px-3 pb-2.5">
                             <div class="text-[9px] font-black tracking-widest uppercase mb-1.5" style="color:var(--text-secondary);">Sort by</div>
                             <div class="flex gap-1 flex-wrap">
@@ -229,18 +224,6 @@ window.renderMainApp = function() {
             </div>
         </div>
 
-        <!-- MODALS -->
-        <div id="fileRenameModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
-            <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
-                <h3 class="text-xl font-bold mb-4" style="color:var(--text-primary);">Rename Attachment</h3>
-                <input type="text" id="newFileNameInput" class="w-full p-3 rounded-xl mb-6 border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
-                <div class="flex gap-3">
-                    <button onclick="window.cancelFileRename()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
-                    <button onclick="window.confirmFileRename()" class="flex-1 py-2.5 rounded-xl font-bold text-white shadow-md" style="background-color:var(--accent);">Upload</button>
-                </div>
-            </div>
-        </div>
-
         <div id="scheduleModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
             <div class="rounded-2xl p-6 w-full max-w-sm mx-4 text-center shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
                 <i class="fa-regular fa-clock text-4xl mb-4" style="color:var(--accent);"></i>
@@ -253,51 +236,6 @@ window.renderMainApp = function() {
             </div>
         </div>
 
-        <div id="taskModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
-            <div class="rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
-                <h3 class="text-xl font-bold mb-4" style="color:var(--text-primary);">Create Task</h3>
-                <input id="taskTitle" class="w-full p-3 rounded-xl mb-3 border outline-none text-sm font-medium" placeholder="Task Title" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
-                <p class="text-xs font-bold mb-1 ml-1" style="color:var(--text-secondary);">Assigned To:</p>
-                <div class="border rounded-xl mb-3 overflow-hidden" style="border-color:var(--border-color);">
-                    <input type="text" id="assigneeSearch" onkeyup="window.filterAssignees()" placeholder="Search users..." class="w-full p-2.5 text-xs border-b outline-none font-medium" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
-                    <div id="assigneeCheckboxList" class="max-h-32 overflow-y-auto p-2 flex flex-col gap-1" style="background-color:var(--bg-sidebar);"></div>
-                </div>
-                <div class="grid grid-cols-2 gap-3 mb-3">
-                    <div>
-                        <p class="text-xs font-bold mb-1 ml-1" style="color:var(--text-secondary);">Deadline:</p>
-                        <input type="date" id="taskDeadline" class="w-full p-2.5 rounded-xl border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
-                    </div>
-                    <div>
-                        <p class="text-xs font-bold mb-1 ml-1" style="color:var(--text-secondary);">Priority:</p>
-                        <select id="taskPriority" class="w-full p-2.5 rounded-xl border outline-none text-sm font-medium" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
-                            <option value="Low">Low</option>
-                            <option value="Medium" selected>Medium</option>
-                            <option value="High">High</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="flex gap-3 mt-4 pt-2">
-                    <button onclick="window.closeTaskModal()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
-                    <button onclick="window.saveTaskMultiAssignee()" class="flex-1 py-2.5 rounded-xl text-white font-bold shadow-md" style="background-color:var(--accent);">Create Ticket</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Link Pill Modal -->
-        <div id="linkPillModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
-            <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
-                <h3 class="text-lg font-bold mb-1" style="color:var(--text-primary);">Insert Link</h3>
-                <p class="text-xs mb-4" style="color:var(--text-secondary);">URL is hidden — only the name appears as a pill to recipients.</p>
-                <input type="text" id="linkPillName" placeholder="Display name (e.g. View Report)" class="w-full p-3 rounded-xl mb-3 border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
-                <input type="url" id="linkPillUrl" placeholder="https://..." class="w-full p-3 rounded-xl mb-5 border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
-                <div class="flex gap-3">
-                    <button onclick="window.closeLinkModal()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
-                    <button onclick="window.insertLinkPill()" class="flex-1 py-2.5 rounded-xl font-bold text-white shadow-md" style="background-color:var(--accent);">Insert Pill</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Dashboard Modal -->
         <div id="dashboardModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
             <div class="rounded-2xl w-full max-w-2xl shadow-2xl border flex flex-col max-h-[90vh]" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
                 <div class="p-5 border-b flex items-center justify-between flex-shrink-0" style="border-color:var(--border-color);">
@@ -313,7 +251,6 @@ window.renderMainApp = function() {
                         </button>
                     </div>
                 </div>
-                <!-- Period tabs -->
                 <div class="flex gap-1 p-4 pb-0 flex-shrink-0">
                     ${['today','week','month','all'].map(p => `<button class="dash-tab px-3 py-1.5 rounded-lg text-xs font-bold border transition-all" data-period="${p}" onclick="window.loadDashboard('${p}')" style="border-color:var(--border-color);color:var(--text-secondary);background:var(--bg-body);">${p==='all'?'All Time':p.charAt(0).toUpperCase()+p.slice(1)}</button>`).join('')}
                 </div>
@@ -321,121 +258,13 @@ window.renderMainApp = function() {
             </div>
         </div>
 
-        <!-- Group Settings Modal — Name, Colour, Members, Admins -->
-        <div id="groupSettingsModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
-            <div class="rounded-2xl w-full max-w-sm mx-4 shadow-2xl border flex flex-col max-h-[90vh]" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
-                <!-- Header -->
-                <div class="p-5 border-b flex items-center justify-between flex-shrink-0" style="border-color:var(--border-color);">
-                    <h3 class="text-base font-bold flex items-center gap-2" style="color:var(--text-primary);">
-                        <i class="fa-solid fa-users-gear" style="color:var(--accent);"></i> Group Settings
-                    </h3>
-                    <button onclick="window.closeGroupSettings()" class="w-7 h-7 rounded-full flex items-center justify-center hover:bg-gray-100" style="color:var(--text-secondary);">
-                        <i class="fa-solid fa-times text-sm"></i>
-                    </button>
-                </div>
-                <!-- Scrollable body -->
-                <div class="flex-1 overflow-y-auto p-5">
-                    <input type="hidden" id="groupSettingsId">
-                    <!-- Display Name -->
-                    <div class="mb-4">
-                        <label class="text-[10px] font-black tracking-wider uppercase mb-1.5 block" style="color:var(--text-secondary);">Display Name</label>
-                        <input type="text" id="groupSettingsName" class="w-full p-2.5 rounded-xl border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
-                    </div>
-                    <!-- Avatar Colour -->
-                    <div class="mb-4">
-                        <label class="text-[10px] font-black tracking-wider uppercase mb-1.5 block" style="color:var(--text-secondary);">Avatar Colour</label>
-                        <div class="flex gap-2 flex-wrap" id="groupColorPicker">
-                            ${['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6'].map(c =>
-                                `<button type="button" onclick="window.selectGroupColor('${c}')" data-color="${c}"
-                                    class="w-9 h-9 rounded-lg border-2 border-transparent hover:scale-110 transition-transform shadow-sm"
-                                    style="background:${c};" title="${c}"></button>`
-                            ).join('')}
-                        </div>
-                    </div>
-                    <!-- Members & Admins -->
-                    <div>
-                        <div class="text-[10px] font-black tracking-wider uppercase mb-1.5 flex items-center justify-between" style="color:var(--text-secondary);">
-                            <span>Members & Admins</span>
-                            <span class="text-[9px] normal-case font-normal" style="color:var(--text-secondary);">☑ = Member &nbsp;★ = Admin</span>
-                        </div>
-                        <div id="groupMembersList" class="border rounded-xl overflow-hidden" style="border-color:var(--border-color);background-color:var(--bg-body);">
-                            <p class="text-xs italic p-3" style="color:var(--text-secondary);">Loading members...</p>
-                        </div>
-                    </div>
-                </div>
-                <!-- Footer -->
-                <div class="p-4 border-t flex gap-3 flex-shrink-0" style="border-color:var(--border-color);">
-                    <button onclick="window.closeGroupSettings()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
-                    <button onclick="window.saveGroupSettings()" class="flex-1 py-2.5 rounded-xl font-bold text-white" style="background-color:var(--accent);">Save</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Settings Modal -->
-        <div id="settingsModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
-            <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
-                <div class="flex items-center justify-between mb-5">
-                    <h3 class="text-lg font-bold flex items-center gap-2" style="color:var(--text-primary);">
-                        <i class="fa-solid fa-gear" style="color:var(--accent);"></i> Profile Settings
-                    </h3>
-                    <button onclick="window.closeSettings()" class="w-7 h-7 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors" style="color:var(--text-secondary);">
-                        <i class="fa-solid fa-times text-sm"></i>
-                    </button>
-                </div>
-                <!-- Photo -->
-                <div class="flex flex-col items-center mb-5">
-                    <div class="relative mb-3">
-                        <img id="settingsPhotoPreview" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="Profile" style="display:none;width:72px;height:72px;border-radius:50%;object-fit:cover;border:3px solid var(--accent);">
-                        <div id="settingsPhotoPlaceholder" class="w-18 h-18 rounded-full flex items-center justify-center text-white text-2xl font-bold" style="width:72px;height:72px;border-radius:50%;background:var(--accent);">${userNameDisplay.charAt(0).toUpperCase()}</div>
-                    </div>
-                    <label class="cursor-pointer text-xs font-bold px-3 py-1.5 rounded-full border transition-colors hover:opacity-80" style="color:var(--accent);border-color:var(--accent);">
-                        <i class="fa-solid fa-camera text-[10px] mr-1"></i> Change Photo
-                        <input type="file" id="settingsPhotoInput" class="hidden" accept="image/*" onchange="window.previewSettingsPhoto(this)">
-                    </label>
-                </div>
-                <!-- Fields -->
-                <div class="mb-3">
-                    <label class="text-xs font-bold mb-1 block" style="color:var(--text-secondary);">Display Name</label>
-                    <input type="text" id="settingsName" class="w-full p-2.5 rounded-xl border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
-                </div>
-                <div class="mb-5">
-                    <label class="text-xs font-bold mb-1 block" style="color:var(--text-secondary);">Email (read-only)</label>
-                    <input type="email" id="settingsEmail" disabled class="w-full p-2.5 rounded-xl border outline-none text-sm opacity-60" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
-                </div>
-                <div class="flex gap-3">
-                    <button onclick="window.closeSettings()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
-                    <button onclick="window.saveSettings()" class="flex-1 py-2.5 rounded-xl font-bold text-white shadow-md" style="background-color:var(--accent);">Save</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Forward Message Modal -->
-        <div id="forwardModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
-            <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
-                <h3 class="text-lg font-bold mb-1" style="color:var(--text-primary);">Forward Message</h3>
-                <p class="text-xs mb-3" style="color:var(--text-secondary);">Select a department or staff member to forward to:</p>
-                <div class="border p-3 rounded-xl mb-4 italic text-xs" id="forwardPreview" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-secondary);max-height:60px;overflow:hidden;"></div>
-                <select id="forwardRoomSelect" class="w-full p-2.5 rounded-xl border outline-none text-sm mb-5" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);"></select>
-                <div class="flex gap-3">
-                    <button onclick="window.closeForwardModal()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
-                    <button onclick="window.sendForwardedMessage()" class="flex-1 py-2.5 rounded-xl font-bold text-white shadow-md" style="background-color:var(--accent);">Forward</button>
-                </div>
-            </div>
-        </div>
-
-        <div id="reminderModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
-            <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
-                <h3 class="text-xl font-bold mb-4" style="color:var(--text-primary);">Set Reminder</h3>
-                <div class="border p-3 rounded-xl mb-4" style="background-color:var(--bg-body);border-color:var(--border-color);">
-                    <p id="reminderMessagePreview" class="text-xs line-clamp-2 italic font-medium" style="color:var(--text-secondary);"></p>
-                </div>
-                <input type="datetime-local" id="reminderDateTime" class="w-full p-3 rounded-xl mb-6 border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
-                <div class="flex gap-3">
-                    <button onclick="window.closeReminderModal()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
-                    <button onclick="window.saveReminder()" class="flex-1 py-2.5 rounded-xl text-white font-bold shadow-md" style="background-color:var(--accent);">Set Alarm</button>
-                </div>
-            </div>
-        </div>
+        <div id="fileRenameModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">...</div>
+        <div id="taskModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">...</div>
+        <div id="linkPillModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">...</div>
+        <div id="groupSettingsModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">...</div>
+        <div id="settingsModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">...</div>
+        <div id="forwardModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">...</div>
+        <div id="reminderModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">...</div>
     `;
 
     window.quillEditor = new Quill('#richEditor', {
@@ -461,7 +290,6 @@ window.renderMainApp = function() {
     });
     document.getElementById('sendBtn').onclick = () => { if (typeof window.sendMessage === 'function') window.sendMessage(); };
 
-    // File attachment — direct upload, no rename modal
     document.getElementById('fileAttachment').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -475,8 +303,7 @@ window.renderMainApp = function() {
             window.quillEditor.focus();
             const range = window.quillEditor.getSelection();
             const index = range ? range.index : window.quillEditor.getLength();
-            window.quillEditor.insertText(index, `📁 ${file.name} (${sizeKB} KB)
-`, 'link', `https://secure-file.local/${filePath}`);
+            window.quillEditor.insertText(index, `📁 ${file.name} (${sizeKB} KB)\n`, 'link', `https://secure-file.local/${filePath}`);
         }
         window.showCenterToast('File attached!', 'fa-solid fa-check-circle', 'text-green-500');
         e.target.value = '';
@@ -500,14 +327,12 @@ window.renderMainApp = function() {
     if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel();
 };
 
-// ─── SIDEBAR SEARCH ────────────────────────────────────────────────────────
 window.filterSidebar = function(term) {
     const t = term.toLowerCase().trim();
     document.querySelectorAll('.channel-item').forEach(el => {
         const name = (el.dataset.name || '').toLowerCase();
         el.style.display = (!t || name.includes(t)) ? 'flex' : 'none';
     });
-    // Show/hide section labels based on whether any items visible
     document.querySelectorAll('.sidebar-section-label').forEach(label => {
         const nextItems = [];
         let next = label.nextElementSibling;
@@ -517,13 +342,12 @@ window.filterSidebar = function(term) {
     });
 };
 
-// ─── LOAD CHATS LIST (Departments + Staff Members) ─────────────────────────
 window.loadChatsList = async function() {
     const departments = ['general', 'math', 'science', 'leadership'];
-    const {data: users} = await sb.from('profiles').select('id, email, full_name');
+    // Added avatar_url mapping request so channel-list shows photos globally!
+    const {data: users} = await sb.from('profiles').select('id, email, full_name, avatar_url');
     window.globalUsersCache = users || [];
 
-    // Department label colours for avatars
     const deptColors = { general: '#6366f1', math: '#0ea5e9', science: '#10b981', leadership: '#f59e0b' };
     const deptInitials = { general: 'GN', math: 'MA', science: 'SC', leadership: 'LD' };
 
@@ -536,7 +360,6 @@ window.loadChatsList = async function() {
         const initials = deptInitials[g] || g.substring(0,2).toUpperCase();
         const displayName = g.charAt(0).toUpperCase() + g.slice(1);
 
-        // Check for stored group display name
         const storedName = localStorage.getItem('dept_name_' + g) || displayName;
         const storedColor = localStorage.getItem('dept_color_' + g) || bgColor;
         html += `<div class="channel-item group/dept p-2.5 mx-2 mb-1 rounded-xl cursor-pointer flex items-center gap-3 transition-colors border"
@@ -561,16 +384,19 @@ window.loadChatsList = async function() {
 
     window.globalUsersCache.filter(u => u.id !== window.currentUser.id).forEach(u => {
         const name = (typeof window.toSentenceCase === 'function') ? window.toSentenceCase(u.full_name || u.email.split('@')[0]) : (u.full_name || u.email.split('@')[0]);
-        // Use canonical DM room ID so both sides match
         const dmRoomId = typeof window.getDmRoomId === 'function' ? window.getDmRoomId(u.id) : 'dm_' + u.id;
         const isCurrent = window.currentRoom === dmRoomId;
         const unread = window.unreadCounts?.[dmRoomId] || 0;
+
+        const avHtml = u.avatar_url 
+            ? `<img src="${u.avatar_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+            : name.charAt(0).toUpperCase();
 
         html += `<div class="channel-item p-2.5 mx-2 mb-1 rounded-xl cursor-pointer flex items-center gap-3 transition-colors border"
             style="background-color:${isCurrent ? 'var(--bg-body)' : 'transparent'};border-color:${isCurrent ? 'var(--border-color)' : 'transparent'};font-weight:${isCurrent ? 'bold' : 'normal'};"
             data-room="${dmRoomId}" data-name="${name}">
             <div class="relative flex-shrink-0">
-                <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm" style="background:var(--accent);">${name.charAt(0).toUpperCase()}</div>
+                <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm overflow-hidden" style="background:var(--accent);">${avHtml}</div>
                 ${unread > 0 ? `<span class="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full" style="background:#22c55e;"></span>
                     <span class="absolute -top-1 -right-1 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center" style="background:#22c55e;">${unread > 9 ? '9+' : unread}</span>` : ''}
             </div>
@@ -578,7 +404,6 @@ window.loadChatsList = async function() {
         </div>`;
     });
 
-    // Update top bar room title now that we have user data
     const titleSpanEl = document.getElementById('roomTitleDisplay');
     if (titleSpanEl) titleSpanEl.innerText = window.getRoomDisplayName ? window.getRoomDisplayName(window.currentRoom) : window.currentRoom;
 
@@ -589,7 +414,6 @@ window.loadChatsList = async function() {
             el.addEventListener('click', () => {
                 window.currentRoom = el.dataset.room;
                 localStorage.setItem('mpgs_current_room', el.dataset.room);
-                // Clear unread for this room
                 if (window.unreadCounts) window.unreadCounts[el.dataset.room] = 0;
                 window.loadChatsList();
                 const titleSpan = document.getElementById('roomTitleDisplay');
@@ -602,46 +426,39 @@ window.loadChatsList = async function() {
     }
 };
 
-// ─── DM ROOM KEY HELPER ────────────────────────────────────────────────────
-// Both sides of a DM must use the same room key.
-// We use "dm_<smaller_uuid>_<larger_uuid>" so it's identical for both users.
 window.getDmRoomId = function(otherUserId) {
     const me = window.currentUser.id;
     const ids = [me, otherUserId].sort();
     return `dm_${ids[0]}_${ids[1]}`;
 };
 
-// ─── SOUNDS ────────────────────────────────────────────────────────────────
 window._soundLastPlayed = {};
 window.playSound = function(type) {
     const now = Date.now();
-    // Debounce: same sound can't fire more than once per 2 seconds
     if (window._soundLastPlayed[type] && now - window._soundLastPlayed[type] < 2000) return;
     window._soundLastPlayed[type] = now;
     const urls = {
-        message: 'https://apfymygzwkzjhhgmtkaj.supabase.co/storage/v1/object/sign/sounds/just-saying-593.mp3?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9iNWUyZGMwYy1lZDIwLTRlNTQtYTVkNS1hYTBmODFiN2MxNzkiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzb3VuZHMvanVzdC1zYXlpbmctNTkzLm1wMyIsInNjb3BlIjoiZG93bmxvYWQiLCJpYXQiOjE3ODEyNzg2ODgsImV4cCI6MTkzODk1ODY4OH0.NIpeQ5KadtgFTs4isNicayCmXoTcWWHFu2m3mS-9Txs',
-        reminder: 'https://apfymygzwkzjhhgmtkaj.supabase.co/storage/v1/object/sign/sounds/when-604.mp3?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9iNWUyZGMwYy1lZDIwLTRlNTQtYTVkNS1hYTBmODFiN2MxNzkiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzb3VuZHMvd2hlbi02MDQubXAzIiwic2NvcGUiOiJkb3dubG9hZCIsImlhdCI6MTc4MTI3ODc0MCwiZXhwIjoxOTM4OTU4NzQwfQ.Ic5nmchKsn-dVPkRjQiJ8tRavAUCvPgbpQ4xiwu6RCk',
-        task: 'https://apfymygzwkzjhhgmtkaj.supabase.co/storage/v1/object/sign/sounds/youve-been-informed-345.mp3?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9iNWUyZGMwYy1lZDIwLTRlNTQtYTVkNS1hYTBmODFiN2MxNzkiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzb3VuZHMveW91dmUtYmVlbi1pbmZvcm1lZC0zNDUubXAzIiwic2NvcGUiOiJkb3dubG9hZCIsImlhdCI6MTc4MTI3ODc5OSwiZXhwIjoxOTM4OTU4Nzk5fQ.w1dP5ECmZNfoGbD8fBSZBfnlJUeeQkdX7z3-bDv-Vbk'
+        message: 'https://apfymygzwkzjhhgmtkaj.supabase.co/storage/v1/object/sign/sounds/just-saying-593.mp3?token=...',
+        reminder: 'https://apfymygzwkzjhhgmtkaj.supabase.co/storage/v1/object/sign/sounds/when-604.mp3?token=...',
+        task: 'https://apfymygzwkzjhhgmtkaj.supabase.co/storage/v1/object/sign/sounds/youve-been-informed-345.mp3?token=...'
     };
     const url = urls[type];
     if (!url) return;
     try {
         const audio = new Audio(url);
         audio.volume = 0.6;
-        audio.play().catch(() => {}); // ignore autoplay block
+        audio.play().catch(() => {});
     } catch (e) {}
 };
 
-// ─── DEBOUNCED loadTasksForPanel ────────────────────────────────────────────
 let _taskPanelTimer = null;
 window.debouncedLoadTasks = function() {
     clearTimeout(_taskPanelTimer);
     _taskPanelTimer = setTimeout(() => {
         if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel();
-    }, 600); // 600ms — absorbs rapid multi-assignee bursts
+    }, 600); 
 };
 
-// ─── SUBSCRIPTIONS ─────────────────────────────────────────────────────────
 window.startSubscriptions = function() {
     if (messageSubscription) messageSubscription.unsubscribe();
     messageSubscription = sb.channel('public:messages')
@@ -658,18 +475,14 @@ window.startSubscriptions = function() {
                     window.playSound('message');
                 }
             }
-            // Refresh activity feed if open
             if (window._activityFeedOpen && typeof window.refreshActivityFeed === 'function') window.refreshActivityFeed();
         }).subscribe();
 
-    // Reactions real-time via BROADCAST — works instantly, zero schema requirements.
-    // No reactions table needed. All connected users receive the reaction immediately.
     if (window._reactionsBroadcast) {
         try { window._reactionsBroadcast.unsubscribe(); } catch(e) {}
     }
     window._reactionsBroadcast = sb.channel('mpgs-reactions-v1');
     window._reactionsBroadcast
-        // Handle reaction ADD from other users
         .on('broadcast', { event: 'reaction' }, (payload) => {
             const p = payload.payload;
             if (p && p.user_id !== window.currentUser.id) {
@@ -678,7 +491,6 @@ window.startSubscriptions = function() {
                 }
             }
         })
-        // Handle reaction REMOVE from other users (toggle off)
         .on('broadcast', { event: 'reaction_remove' }, (payload) => {
             const p = payload.payload;
             if (p && p.user_id !== window.currentUser.id) {
@@ -692,24 +504,19 @@ window.startSubscriptions = function() {
         })
         .subscribe();
 
-    // Scheduled messages: notify sender when status changes to 'sent'
     let scheduledSubscription = null;
     if (scheduledSubscription) scheduledSubscription.unsubscribe();
     scheduledSubscription = sb.channel('scheduled-changes')
         .on('postgres_changes', {event:'UPDATE', schema:'public', table:'scheduled_messages'}, (p) => {
-            // Check sender_id manually since Supabase RT filter on UPDATE is unreliable
             if (p.new.status === 'sent' && p.new.sender_id === window.currentUser.id) {
                 const msg = window.stripHtml ? window.stripHtml(p.new.message_text) : p.new.message_text;
                 const preview = msg.substring(0, 60);
                 window.showCenterToast(`📨 Scheduled: ${preview}`, 'fa-solid fa-clock', 'text-blue-400');
                 window.playSound('message');
-                // Insert into notifications table so it appears in bell icon
                 if (typeof window.notifyUser === 'function') {
                     window.notifyUser(window.currentUser.id, `📨 Scheduled message sent: ${preview}`, null, 'task');
                 }
-                // Refresh badge
                 if (typeof window.refreshNotificationBadge === 'function') window.refreshNotificationBadge();
-                // Also reload messages if the scheduled message is for current room
                 if (p.new.room_id === window.currentRoom && typeof window.loadMessages === 'function') {
                     window.loadMessages();
                 }
@@ -732,7 +539,6 @@ window.startSubscriptions = function() {
     trailSubscription = sb.channel('trails-changes')
         .on('postgres_changes', {event:'*', schema:'public', table:'task_trails'}, () => {
             window.debouncedLoadTasks();
-            // Refresh activity feed if open
             if (window._activityFeedOpen && typeof window.refreshActivityFeed === 'function') window.refreshActivityFeed();
         }).subscribe();
 
@@ -746,7 +552,6 @@ window.startSubscriptions = function() {
             const msg = window.stripHtml ? window.stripHtml(n.message) : n.message;
             const type = n.type || 'general';
 
-            // ── Every notification type: toast + sound + badge + bell animation
             const toastConfig = {
                 reminder: { icon:'fa-solid fa-stopwatch',       color:'text-purple-400', sound:'reminder' },
                 task:     { icon:'fa-solid fa-clipboard-check', color:'text-blue-400',   sound:'task'     },
@@ -765,7 +570,6 @@ window.startSubscriptions = function() {
     if (typeof window.refreshNotificationBadge === 'function') window.refreshNotificationBadge();
 };
 
-// Bell animation — pulses until user clicks it
 window.animateBell = function() {
     const bell = document.querySelector(".bell-wrapper i.ti-bell, [onclick*=\"openTopPanel('alerts')\"]");
     if (!bell) return;
@@ -774,7 +578,6 @@ window.animateBell = function() {
     target.addEventListener('click', () => target.classList.remove('bell-ring'), { once: true });
 };
 
-// ─── FILTER/SORT PILL HELPERS ─────────────────────────────────────────────
 window.setTaskFilter = function(val) {
     const sel = document.getElementById('taskFilter');
     if (sel) sel.value = val;
@@ -790,7 +593,6 @@ window.setTaskSort = function(val) {
     if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel();
 };
 
-// ─── SCROLL ARROWS ─────────────────────────────────────────────────────────
 window.initScrollArrows = function() {
     const mc = document.getElementById('messagesContainer');
     if (!mc || document.getElementById('scrollTopBtn')) return;
@@ -819,7 +621,6 @@ window.initScrollArrows = function() {
     });
 };
 
-// ─── ROOM DISPLAY NAME RESOLVER ────────────────────────────────────────────
 window.getRoomDisplayName = function(roomId) {
     if (!roomId) return 'Chat';
     if (roomId.startsWith('dm_')) {

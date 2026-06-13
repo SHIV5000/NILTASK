@@ -1,6 +1,6 @@
 import { sb } from './shared.js';
 
-// v1.54.0 - Reactions stable DOM, no reload, link pill, cross-room scroll via pendingScrollId
+// v1.55.0 - Link pill button rendering, no reload, link pill, cross-room scroll via pendingScrollId
 
 window.sendMessage = async function() {
     let text = window.quillEditor.root.innerHTML.trim();
@@ -151,6 +151,36 @@ window.renderMessages = function(messages) {
         let displayHtml = msg.text.replace(
             /href="https:\/\/secure-file\.local\/([^"]+)"/g,
             `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800 transition-colors"`
+        );
+
+        // ── Transform link-pill URLs into beautiful styled buttons ────────────
+        // Quill stores these as <a href="https://link-pill.local/ENCODED">NAME</a>
+        displayHtml = displayHtml.replace(
+            /<a\s+href="https:\/\/link-pill\.local\/([^"]+)"[^>]*>([^<]*)<\/a>/g,
+            (match, encoded, anchorText) => {
+                try {
+                    const decoded = decodeURIComponent(encoded);
+                    const sepIdx  = decoded.indexOf('|||');
+                    const name    = sepIdx > -1 ? decoded.substring(0, sepIdx) : (anchorText || decoded);
+                    const url     = sepIdx > -1 ? decoded.substring(sepIdx + 3) : decoded;
+                    // Detect file vs web link
+                    const fileExts = /\.(pdf|doc|docx|xlsx|xls|ppt|pptx|zip|rar|png|jpg|jpeg|gif|mp4|mp3)$/i;
+                    const isFile   = fileExts.test(url.split('?')[0]);
+                    const label    = isFile ? 'Click to Download' : 'Click to Visit';
+                    const icon     = isFile ? 'fa-download' : 'fa-arrow-up-right-from-square';
+                    const safeUrl  = url.replace(/'/g, '%27');
+                    return `<a href="javascript:void(0);"
+                        onclick="window.open('${safeUrl}','_blank')"
+                        title="${url}"
+                        style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;text-decoration:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,0.35);white-space:nowrap;vertical-align:middle;">
+                        <i class="fa-solid ${icon}" style="font-size:9px;"></i>
+                        <span>${name}</span>
+                        <span style="font-size:9px;opacity:0.75;border-left:1px solid rgba(255,255,255,0.35);padding-left:7px;margin-left:3px;">${label}</span>
+                    </a>`;
+                } catch(e) {
+                    return match; // fallback to original if decode fails
+                }
+            }
         );
 
         const rowClass = isSent ? 'row-sent' : 'row-rcvd';

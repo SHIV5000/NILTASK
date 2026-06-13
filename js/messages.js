@@ -1,6 +1,6 @@
 import { sb } from './shared.js';
 
-// v1.57.0 - Reactions persist, edit/forward/delete, ql-editor class, no reload, link pill, cross-room scroll via pendingScrollId
+// v1.58.0 - Edit fix, reaction/reply notifs, edit/forward/delete, ql-editor class, no reload, link pill, cross-room scroll via pendingScrollId
 
 window.sendMessage = async function() {
     let text = window.quillEditor.root.innerHTML.trim();
@@ -60,6 +60,18 @@ window.sendMessage = async function() {
 
     const { data: msgData } = await sb.from('messages').insert(payload).select().single();
 
+    // ── Notify original author when someone replies to their message
+    if (window.currentlyReplyingTo && msgData) {
+        try {
+            const { data: parentMsg } = await sb.from('messages').select('sender_id').eq('id', window.currentlyReplyingTo).single();
+            if (parentMsg && parentMsg.sender_id !== window.currentUser.id) {
+                const myName = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'Someone';
+                const cleanReply = window.stripHtml ? window.stripHtml(text).substring(0,60) : text.substring(0,60);
+                await window.notifyUser(parentMsg.sender_id, `↩ Reply from ${myName}: ${cleanReply}`, msgData.id, 'message');
+            }
+        } catch(e) {}
+    }
+
     // ── DM: notify recipient so they get toast + badge + sound even if not in room
     if (recipientId && msgData) {
         const senderName = window.currentUser?.user_metadata?.full_name ||
@@ -75,6 +87,18 @@ window.sendMessage = async function() {
 
     // Play sent sound
     if (typeof window.playSound === 'function') window.playSound('message');
+
+    // ── Notify the original message sender when replying
+    if (window.currentlyReplyingTo && msgData) {
+        try {
+            const { data: parentMsg } = await sb.from('messages').select('sender_id').eq('id', window.currentlyReplyingTo).single();
+            if (parentMsg && parentMsg.sender_id !== window.currentUser.id) {
+                const myName = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'Someone';
+                await window.notifyUser(parentMsg.sender_id,
+                    `↩️ ${myName} replied to your message`, msgData.id, 'reply');
+            }
+        } catch(e) {}
+    }
 
     window.quillEditor.root.innerHTML = '';
     window.cancelReply();
@@ -378,7 +402,7 @@ window.applyReaction = async function(msgId, value, type) {
         }
     } catch(e) { /* broadcast channel not ready yet */ }
 
-    // 3. Also persist to reactions table if it exists (for page-reload persistence)
+    // 3. Also persist to reactions table + notify message owner
     try {
         const { data: existing } = await sb.from('reactions')
             .select('id, count').eq('message_id', msgId).eq('value', value)
@@ -391,13 +415,17 @@ window.applyReaction = async function(msgId, value, type) {
                 value, type, count: 1
             });
         }
-    } catch(e) {
-        // Reactions table doesn't exist — broadcast still handled real-time above.
-        // To persist reactions across page reloads, run:
-        // CREATE TABLE reactions (id uuid default gen_random_uuid() primary key,
-        //   message_id uuid, user_id uuid, value text, type text,
-        //   count int default 1, created_at timestamptz default now());
-    }
+    } catch(e) { /* reactions table may not exist yet */ }
+
+    // 4. Notify the message owner about the reaction (not yourself)
+    try {
+        const { data: msgRow } = await sb.from('messages').select('sender_id').eq('id', msgId).single();
+        if (msgRow && msgRow.sender_id !== window.currentUser.id) {
+            const myName = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'Someone';
+            const label = type === 'emoji' ? value : value;
+            await window.notifyUser(msgRow.sender_id, `${label} ${myName} reacted to your message`, msgId, 'reaction');
+        }
+    } catch(e) {}
 };
 
 // DOM-only update — called by applyReaction and can be called by real-time subscription
@@ -426,18 +454,34 @@ window._editCache = {};  // store original HTML per msgId
 window.startEditMessage = function(msgId) {
     const textDiv = document.querySelector('#row-' + msgId + ' .b-text');
     if (!textDiv) return;
-    // Store original HTML so Cancel can restore it
     window._editCache[msgId] = textDiv.innerHTML;
     const plainText = window.stripHtml(textDiv.innerHTML);
-    textDiv.innerHTML =
-        '<div style="display:flex;flex-direction:column;gap:6px;">' +
-        '<textarea id="edit-area-' + msgId + '" style="width:100%;min-height:60px;padding:8px;border-radius:8px;border:1px solid var(--border-color);font-size:13px;background:var(--bg-body);color:var(--text-primary);resize:vertical;font-family:inherit;outline:none;">' + plainText + '</textarea>' +
-        '<div style="display:flex;gap:6px;justify-content:flex-end;">' +
-        '<button onclick="window.cancelEditMessage(' + JSON.stringify(msgId) + ')" ' +
-        'style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-secondary);cursor:pointer;">Cancel</button>' +
-        '<button onclick="window.saveEditMessage(' + JSON.stringify(msgId) + ')" ' +
-        'style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;">Save</button>' +
-        '</div></div>';
+    // Use data-* attributes so no quoting conflicts with onclick="" strings
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+    const ta = document.createElement('textarea');
+    ta.id = 'edit-area-' + msgId;
+    ta.value = plainText;
+    ta.style.cssText = 'width:100%;min-height:60px;padding:8px;border-radius:8px;border:1px solid var(--border-color);font-size:13px;background:var(--bg-body);color:var(--text-primary);resize:vertical;font-family:inherit;outline:none;';
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:6px;justify-content:flex-end;';
+    const btnCancel = document.createElement('button');
+    btnCancel.textContent = 'Cancel';
+    btnCancel.style.cssText = 'font-size:11px;font-weight:700;padding:4px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-secondary);cursor:pointer;';
+    btnCancel.type = 'button';
+    btnCancel.addEventListener('click', (e) => { e.stopPropagation(); window.cancelEditMessage(msgId); });
+    const btnSave = document.createElement('button');
+    btnSave.textContent = 'Save';
+    btnSave.type = 'button';
+    btnSave.style.cssText = 'font-size:11px;font-weight:700;padding:4px 12px;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;';
+    btnSave.addEventListener('click', (e) => { e.stopPropagation(); window.saveEditMessage(msgId); });
+    btnRow.appendChild(btnCancel);
+    btnRow.appendChild(btnSave);
+    wrap.appendChild(ta);
+    wrap.appendChild(btnRow);
+    textDiv.innerHTML = '';
+    textDiv.appendChild(wrap);
+    ta.focus();
 };
 window.cancelEditMessage = function(msgId) {
     const textDiv = document.querySelector('#row-' + msgId + ' .b-text');

@@ -496,9 +496,21 @@ window.saveEditMessage = async function(msgId) {
     const newText = area.value.trim();
     if (!newText) { window.showCenterToast('Message cannot be empty','fa-solid fa-times','text-red-500'); return; }
     const wrapped = `<p>${newText.replace(/\n/g,'</p><p>')}</p>`;
-    const { error } = await sb.from('messages').update({ text: wrapped }).eq('id', msgId).eq('sender_id', window.currentUser.id);
-    if (error) { window.showCenterToast('Edit failed: '+error.message,'fa-solid fa-times','text-red-500'); return; }
-    window.showCenterToast('Message updated','fa-solid fa-check','text-green-400');
+    const { error, data: updData } = await sb.from('messages')
+        .update({ text: wrapped })
+        .eq('id', msgId)
+        .select();
+    if (error) {
+        window.showCenterToast('Edit failed — check RLS: messages UPDATE policy needed', 'fa-solid fa-lock', 'text-red-500');
+        console.error('Edit error:', error);
+        // SQL needed: CREATE POLICY "users update own messages" ON messages FOR UPDATE USING (auth.uid()=sender_id);
+        return;
+    }
+    if (!updData || updData.length === 0) {
+        window.showCenterToast('Not saved — you may not be the sender', 'fa-solid fa-ban', 'text-orange-500');
+        return;
+    }
+    window.showCenterToast('Message updated ✓', 'fa-solid fa-check', 'text-green-400');
     if (typeof window.loadMessages === 'function') window.loadMessages();
 };
 

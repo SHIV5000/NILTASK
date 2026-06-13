@@ -1,6 +1,6 @@
 import { sb } from './shared.js';
 
-// v1.53.0 - task_id in notifications, data-task-id on cards, task sort by deadline, notifications for all actions
+// v1.56.0 - completed task opacity, data-task-id on cards, task sort by deadline, notifications for all actions
 
 // ─── UNIVERSAL NOTIFY HELPER ───────────────────────────────────────────────
 // type: 'message' | 'task' | 'reminder' | 'general'
@@ -430,8 +430,10 @@ window.loadTasksForPanel = async function() {
             </div>`;
         }).join('');
 
+        // Completed tasks get 60% opacity
+        const cardOpacity = globalState === 'accepted' ? '0.6' : '1';
         return `
-        <div class="jira-card bg-white rounded-2xl shadow-sm border border-gray-200 mb-4 overflow-hidden relative" data-task-id="${task.id}" style="border-left-width:6px;border-left-style:solid;border-left-color:${borderClass};">
+        <div class="jira-card bg-white rounded-2xl shadow-sm border border-gray-200 mb-4 overflow-hidden relative" data-task-id="${task.id}" style="border-left-width:6px;border-left-style:solid;border-left-color:${borderClass};opacity:${cardOpacity};transition:opacity 0.3s;">
             <div class="p-4">
                 <div class="flex justify-between items-start mb-3">
                     <div class="font-bold text-gray-800 text-[16px] flex items-start gap-2">

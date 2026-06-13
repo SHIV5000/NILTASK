@@ -1,9 +1,23 @@
 import { sb } from './shared.js';
 
-// v1.56.0 - completed task opacity, data-task-id on cards, task sort by deadline, notifications for all actions
+// v1.58.0 - rich text update box, notif improvements, data-task-id on cards, task sort by deadline, notifications for all actions
 
 // ─── UNIVERSAL NOTIFY HELPER ───────────────────────────────────────────────
 // type: 'message' | 'task' | 'reminder' | 'general'
+// ─── RICH TEXT HELPERS FOR TASK UPDATE BOX ────────────────────────────────
+window.taskFmtCmd = function(cmd, boxId) {
+    const el = document.getElementById('update-txt-' + boxId);
+    if (!el) return;
+    el.focus();
+    document.execCommand(cmd, false, null);
+};
+window.taskFmtList = function(listType, boxId) {
+    const el = document.getElementById('update-txt-' + boxId);
+    if (!el) return;
+    el.focus();
+    document.execCommand(listType === 'ul' ? 'insertUnorderedList' : 'insertOrderedList', false, null);
+};
+
 window.notifyUser = async function(userId, message, messageId = null, type = 'task', taskId = null) {
     if (!userId || !message) return;
     try {
@@ -136,11 +150,13 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
         await window.notifyUser(creatorId, `✅ Task Acknowledged: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
     } else if (action === 'update') {
         const el = document.getElementById(`update-txt-${taskId}-${assigneeId}`);
-        comment = el.value;
-        if (!comment) return window.showCenterToast('Comment cannot be empty', 'fa-solid fa-times', 'text-red-500');
+        // Support both contenteditable div (rich text) and plain input
+        comment = el ? (el.contentEditable === 'true' ? (el.innerHTML || '').trim() : (el.value || '').trim()) : '';
+        if (!comment || comment === '<br>' || comment === '<div><br></div>') return window.showCenterToast('Comment cannot be empty', 'fa-solid fa-times', 'text-red-500');
+        const commentPlain = window.stripHtml ? window.stripHtml(comment) : comment;
         actionText = 'UPDATE';
-        await window.notifyUser(creatorId, `💬 Task Update: ${taskData.title} — ${comment.substring(0, 60)}`, taskData.original_message_id, 'task', taskId);
-        el.value = '';
+        await window.notifyUser(creatorId, `💬 Task Update: ${taskData.title} — ${commentPlain.substring(0, 60)}`, taskData.original_message_id, 'task', taskId);
+        if (el.contentEditable === 'true') { el.innerHTML = ''; } else { el.value = ''; }
         document.getElementById(`comment-box-${taskId}-${assigneeId}`)?.classList.add('hidden');
     } else if (action === 'upload') {
         const el = document.getElementById(`upload-box-${taskId}-${assigneeId}`);
@@ -368,9 +384,27 @@ window.loadTasksForPanel = async function() {
                     <button onclick="document.getElementById('delegate-box-${task.id}-${uId}').classList.toggle('hidden')" class="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-lg text-xs font-semibold border border-purple-100"><i class="fa-solid fa-user-plus"></i> Delegate</button>
                     <button onclick="window.taskAction('${task.id}', '${uId}', 'submit', ${task.require_proof})" class="btn-primary ${st === 'needs_review' ? 'bg-orange-600' : 'bg-blue-600'} text-white ml-auto">${st === 'needs_review' ? 'Resubmit' : 'Submit for Review'}</button>
                 </div>
-                <div id="comment-box-${task.id}-${uId}" class="hidden flex gap-2 mt-2">
-                    <input type="text" id="update-txt-${task.id}-${uId}" placeholder="Type update..." class="ui-input flex-1 text-xs px-2 py-1 rounded">
-                    <button onclick="window.taskAction('${task.id}', '${uId}', 'update')" class="btn-primary">Post</button>
+                <div id="comment-box-${task.id}-${uId}" class="hidden flex-col gap-2 mt-2">
+                    <div class="border rounded-xl overflow-hidden" style="border-color:var(--border-color);">
+                        <div class="flex gap-1 px-2 pt-2 pb-1 border-b flex-wrap" style="border-color:var(--border-color);background:var(--bg-body);">
+                            <button type="button" onclick="window.taskFmtCmd('bold','${task.id}-${uId}')" class="w-6 h-6 rounded text-xs font-black hover:bg-gray-100 flex items-center justify-center transition-colors" title="Bold"><b>B</b></button>
+                            <button type="button" onclick="window.taskFmtCmd('italic','${task.id}-${uId}')" class="w-6 h-6 rounded text-xs font-black hover:bg-gray-100 flex items-center justify-center transition-colors" title="Italic"><i>I</i></button>
+                            <button type="button" onclick="window.taskFmtCmd('underline','${task.id}-${uId}')" class="w-6 h-6 rounded text-xs font-black hover:bg-gray-100 flex items-center justify-center transition-colors" title="Underline"><u>U</u></button>
+                            <span class="w-px bg-gray-200 mx-1 self-stretch"></span>
+                            <button type="button" onclick="window.taskFmtList('ul','${task.id}-${uId}')" class="w-6 h-6 rounded text-xs hover:bg-gray-100 flex items-center justify-center transition-colors" title="Bullet list"><i class="fa-solid fa-list-ul" style="font-size:9px;"></i></button>
+                            <button type="button" onclick="window.taskFmtList('ol','${task.id}-${uId}')" class="w-6 h-6 rounded text-xs hover:bg-gray-100 flex items-center justify-center transition-colors" title="Numbered list"><i class="fa-solid fa-list-ol" style="font-size:9px;"></i></button>
+                        </div>
+                        <div id="update-txt-${task.id}-${uId}" contenteditable="true"
+                            data-placeholder="Type update..."
+                            style="min-height:48px;padding:8px 10px;font-size:12px;outline:none;color:var(--text-primary);background:var(--bg-body);"
+                            onkeydown="if(event.key==='Enter'&&event.ctrlKey){window.taskAction('${task.id}','${uId}','update');}"
+                        ></div>
+                    </div>
+                    <div class="flex gap-2 justify-end">
+                        <button onclick="document.getElementById('comment-box-${task.id}-${uId}').classList.add('hidden');document.getElementById('comment-box-${task.id}-${uId}').classList.remove('flex');" class="text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors" style="color:var(--text-secondary);border-color:var(--border-color);">Cancel</button>
+                        <button onclick="window.taskAction('${task.id}', '${uId}', 'update')" class="text-xs font-bold px-3 py-1.5 rounded-lg text-white" style="background:var(--accent);">Post Update</button>
+                    </div>
+                    <p class="text-[9px]" style="color:var(--text-secondary);">Ctrl+Enter to post</p>
                 </div>
                 <input type="file" id="upload-box-${task.id}-${uId}" class="hidden" onchange="window.taskAction('${task.id}', '${uId}', 'upload')">
                 <div id="upload-progress-container-${task.id}-${uId}" class="hidden w-full mt-2 bg-white p-2 rounded border border-gray-200">

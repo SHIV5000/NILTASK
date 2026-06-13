@@ -1,6 +1,6 @@
 import { sb } from './shared.js';
 
-// v1.52.0 - DM notification fix, cross-room scroll via pendingScrollId
+// v1.53.0 - Reactions real-time, DM fix, cross-room scroll via pendingScrollId
 
 window.sendMessage = async function() {
     let text = window.quillEditor.root.innerHTML.trim();
@@ -243,20 +243,50 @@ window.renderMessages = function(messages) {
     c.innerHTML = dateLabel + topLevel.map(msg => buildMsgHTML(msg)).join('');
 };
 
+// Apply reaction — writes to DB so all viewers get real-time update
 window.applyReaction = async function(msgId, value, type) {
+    // Update DOM immediately for the sender
+    window.applyReactionDOM(msgId, value, type);
+    // Write to DB — real-time subscription on messages table will reload for others
+    try {
+        const { data: existing } = await sb.from('reactions')
+            .select('id, count').eq('message_id', msgId).eq('value', value)
+            .eq('user_id', window.currentUser.id).maybeSingle();
+        if (existing) {
+            await sb.from('reactions').update({ count: (existing.count||1)+1 }).eq('id', existing.id);
+        } else {
+            await sb.from('reactions').insert({ message_id: msgId, user_id: window.currentUser.id, value, type, count: 1 });
+        }
+        // Trigger a lightweight reload of the current message to sync all users
+        // We do this by inserting a sentinel update to the message row — or just reload
+        // Simpler: reload messages (debounced so not too heavy)
+        clearTimeout(window._reactionReloadTimer);
+        window._reactionReloadTimer = setTimeout(() => {
+            if (typeof window.loadMessages === 'function') window.loadMessages();
+        }, 800);
+    } catch(e) {
+        console.warn('Reactions DB write failed (table may not exist):', e.message);
+    }
+};
+
+// DOM-only update — called by applyReaction and can be called by real-time subscription
+window.applyReactionDOM = function(msgId, value, type) {
     const row = document.getElementById(`row-${msgId}`);
     if (!row) return;
     const footer = row.querySelector('.b-footer');
     if (!footer) return;
+    const colorMap = { 'Thank You':'bg-green-50 text-green-700 border-green-200', 'Noted':'bg-blue-50 text-blue-700 border-blue-200', 'Copied':'bg-purple-50 text-purple-700 border-purple-200', 'Yes Sir':'bg-orange-50 text-orange-700 border-orange-200', 'Yes Madam':'bg-pink-50 text-pink-700 border-pink-200' };
     if (type === 'emoji') {
-        const reactionMenu = footer.querySelector('.group\\/reaction');
-        reactionMenu.insertAdjacentHTML('beforebegin', `<button class="e-chip active">${value} <span class="e-cnt">1</span></button>`);
+        const existing = Array.from(footer.querySelectorAll('.e-chip')).find(c => c.textContent.trim().startsWith(value));
+        if (existing) { const cnt = existing.querySelector('.e-cnt'); if(cnt) cnt.textContent = parseInt(cnt.textContent||'1')+1; }
+        else { const rm = footer.querySelector('.group\\/reaction'); rm?.insertAdjacentHTML('beforebegin', `<button class="e-chip active">${value} <span class="e-cnt">1</span></button>`); }
     } else {
-        const colorMap = { 'Thank You':'bg-green-50 text-green-700 border-green-200', 'Noted':'bg-blue-50 text-blue-700 border-blue-200', 'Copied':'bg-purple-50 text-purple-700 border-purple-200', 'Yes Sir':'bg-orange-50 text-orange-700 border-orange-200', 'Yes Madam':'bg-pink-50 text-pink-700 border-pink-200' };
-        footer.insertAdjacentHTML('beforeend', `<span class="${colorMap[value] || 'bg-blue-50 text-blue-700 border-blue-200'} px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ml-1">${value}</span>`);
+        if (!footer.querySelector(`[data-tag="${value}"]`)) {
+            footer.insertAdjacentHTML('beforeend', `<span class="${colorMap[value]||'bg-blue-50 text-blue-700 border-blue-200'} px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ml-1" data-tag="${value}">${value}</span>`);
+        }
     }
     const hoverMenu = row.querySelector('.group\\/reaction .absolute');
-    if (hoverMenu) { hoverMenu.style.display = 'none'; setTimeout(() => { hoverMenu.style.display = ''; }, 300); }
+    if (hoverMenu) { hoverMenu.style.display='none'; setTimeout(() => hoverMenu.style.display='', 300); }
 };
 
 window.toggleReplies = function(id) {

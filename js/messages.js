@@ -430,8 +430,7 @@ window.saveEditMessage = async function(msgId) {
     if (!area) return;
     const newText = area.value.trim();
     if (!newText) { window.showCenterToast('Message cannot be empty','fa-solid fa-times','text-red-500'); return; }
-    const wrapped = `<p>${newText.replace(/
-/g,'</p><p>')}</p>`;
+    const wrapped = `<p>${newText.replace(/\n/g,'</p><p>')}</p>`;
     const { error } = await sb.from('messages').update({ text: wrapped }).eq('id', msgId).eq('sender_id', window.currentUser.id);
     if (error) { window.showCenterToast('Edit failed: '+error.message,'fa-solid fa-times','text-red-500'); return; }
     window.showCenterToast('Message updated','fa-solid fa-check','text-green-400');

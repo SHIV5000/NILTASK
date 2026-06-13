@@ -79,7 +79,7 @@ window.renderMainApp = function() {
                         <div class="w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px]" style="background-color:var(--accent);">${userNameDisplay.charAt(0).toUpperCase()}</div>
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
-                    <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color:var(--text-secondary);">v1.55.0 - Filter section id, feed full height, reactions RT, cross-scroll DB lookup</div>
+                    <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color:var(--text-secondary);">v1.56.0 - All 10 fixes applied, feed full height, reactions RT, cross-scroll DB lookup</div>
                 </div>
             </div>
 
@@ -90,18 +90,30 @@ window.renderMainApp = function() {
                 <div class="p-4 border-b z-10 flex justify-between items-center shadow-sm backdrop-blur" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
                     <div class="flex items-center gap-3">
                         <i class="ti ti-layout-sidebar-left cursor-pointer pr-3 border-r" onclick="window.toggleLeftSidebar()" title="Toggle Sidebar" style="color:var(--text-secondary);border-color:var(--border-color);"></i>
-                        <span id="roomTitleDisplay" class="text-lg font-bold tracking-tight" style="color:var(--text-primary);">${window.currentRoom}</span>
+                        <span id="roomTitleDisplay" class="text-lg font-bold tracking-tight" style="color:var(--text-primary);">Loading...</span>
                     </div>
-                    <div class="flex items-center gap-4 text-xl" style="color:var(--text-secondary);">
-                        <i class="ti ti-clock cursor-pointer top-bar-icon hover:text-[var(--accent)] transition-colors" onclick="window.openTopPanel('scheduled')" title="Scheduled Messages"></i>
-                        <i class="fa-solid fa-stopwatch text-[18px] cursor-pointer top-bar-icon hover:text-[var(--accent)] transition-colors" onclick="window.openTopPanel('reminders')" title="Reminders"></i>
-                        <i class="ti ti-bookmark cursor-pointer top-bar-icon hover:text-[var(--accent)] transition-colors" onclick="window.openTopPanel('bookmarks')" title="Bookmarks"></i>
-                        <i class="ti ti-bell cursor-pointer top-bar-icon hover:text-[var(--accent)] transition-colors" onclick="window.openTopPanel('alerts')" title="Notifications"></i>
-                        <i class="fa-solid fa-bolt text-[16px] cursor-pointer top-bar-icon hover:text-[var(--accent)] transition-colors" onclick="window.openActivityFeed()" title="Activity Feed"></i>
-                        <div class="border-l pl-4 ml-1 flex gap-3" style="border-color:var(--border-color);">
-                            <i class="ti ti-layout-sidebar-right cursor-pointer" onclick="window.toggleRightSidebar()" title="Toggle Task Panel"></i>
+                    <div class="flex items-center gap-3" style="color:var(--text-secondary);">
+                        <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('scheduled')" title="Scheduled Messages">
+                            <i class="ti ti-clock text-lg"></i><span>Schedule</span>
                         </div>
-                        <input type="text" id="messageSearchBar" placeholder="Search..." class="ui-input px-3 py-1 rounded-full text-sm w-48 outline-none ml-2">
+                        <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('reminders')" title="Reminders">
+                            <i class="fa-solid fa-stopwatch text-[15px]"></i><span>Remind</span>
+                        </div>
+                        <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('bookmarks')" title="Bookmarks">
+                            <i class="ti ti-bookmark text-lg"></i><span>Saved</span>
+                        </div>
+                        <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('alerts')" title="Notifications">
+                            <i class="ti ti-bell text-lg"></i><span>Alerts</span>
+                        </div>
+                        <div class="topbar-icon-btn top-bar-icon" onclick="window.openActivityFeed()" title="Activity Feed">
+                            <i class="fa-solid fa-bolt text-[14px]"></i><span>Activity</span>
+                        </div>
+                        <div class="border-l pl-3 ml-1 flex gap-2" style="border-color:var(--border-color);">
+                            <div class="topbar-icon-btn" onclick="window.toggleRightSidebar()" title="Toggle Task Panel">
+                                <i class="ti ti-layout-sidebar-right text-lg"></i><span>Tasks</span>
+                            </div>
+                        </div>
+                        <input type="text" id="messageSearchBar" placeholder="Search messages..." class="ui-input px-3 py-1 rounded-full text-sm w-40 outline-none ml-1">
                     </div>
                 </div>
 
@@ -147,25 +159,46 @@ window.renderMainApp = function() {
             <!-- RIGHT SIDEBAR -->
             <div id="rightSidebar" class="right-sidebar border-l flex-col z-20 shadow-sm" style="display:${rightDisplay};width:${rightWidth};background-color:var(--bg-sidebar);border-color:var(--border-color);">
                 <div class="w-full h-full flex flex-col min-w-0">
-                    <div id="rightSidebarFilters" class="p-3 border-b flex flex-col gap-2" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
-                        <h3 class="font-bold flex items-center gap-2" style="color:var(--text-primary);"><i class="fa-solid fa-filter" style="color:var(--accent);"></i> Task Filters</h3>
-                        <select id="taskFilter" onchange="window.toggleDateFilter()" class="text-xs px-2 py-2 rounded-lg border font-medium shadow-sm outline-none cursor-pointer w-full transition-all" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
-                            <option value="all">All Tasks</option>
-                            <option value="today">Today</option>
-                            <option value="pending">Pending</option>
-                            <option value="completed">Completed</option>
-                            <option value="allotted_by_me">Allotted by Me</option>
-                            <option value="allotted_to_me">Allotted to Me</option>
-                            <option value="delegated">Delegated</option>
-                            <option value="transferred">Transferred</option>
+                    <div id="rightSidebarFilters" class="border-b" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+                        <!-- Hidden selects for backwards compat with tasks.js -->
+                        <select id="taskFilter" class="hidden" onchange="window.loadTasksForPanel()">
+                            <option value="all">All Tasks</option><option value="today">Today</option>
+                            <option value="pending">Pending</option><option value="completed">Completed</option>
+                            <option value="allotted_by_me">Allotted by Me</option><option value="allotted_to_me">Allotted to Me</option>
+                            <option value="delegated">Delegated</option><option value="transferred">Transferred</option>
                             <option value="date_range">Date Range</option>
                         </select>
-                        <select id="taskSort" onchange="window.loadTasksForPanel()" class="text-xs px-2 py-2 rounded-lg border font-medium shadow-sm outline-none cursor-pointer w-full transition-all" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
-                            <option value="deadline_asc">⬆ Deadline: Earliest First</option>
-                            <option value="deadline_desc">⬇ Deadline: Latest First</option>
-                            <option value="created_desc">⬇ Created: Newest First</option>
-                            <option value="created_asc">⬆ Created: Oldest First</option>
+                        <select id="taskSort" class="hidden" onchange="window.loadTasksForPanel()">
+                            <option value="deadline_asc">deadline_asc</option><option value="deadline_desc">deadline_desc</option>
+                            <option value="created_desc">created_desc</option><option value="created_asc">created_asc</option>
                         </select>
+                        <!-- Pill filter row -->
+                        <div class="px-3 pt-2.5 pb-1">
+                            <div class="text-[9px] font-black tracking-widest uppercase mb-1.5 flex items-center gap-1" style="color:var(--text-secondary);">
+                                <i class="fa-solid fa-filter" style="font-size:8px;color:var(--accent);"></i> Filter
+                            </div>
+                            <div class="flex gap-1 overflow-x-auto pb-1.5" style="scrollbar-width:none;">
+                                <button class="filter-pill fp-active" data-filter="all" onclick="window.setTaskFilter('all')">All</button>
+                                <button class="filter-pill" data-filter="today" onclick="window.setTaskFilter('today')">Today</button>
+                                <button class="filter-pill" data-filter="pending" onclick="window.setTaskFilter('pending')">Pending</button>
+                                <button class="filter-pill" data-filter="completed" onclick="window.setTaskFilter('completed')">Done</button>
+                                <button class="filter-pill" data-filter="allotted_by_me" onclick="window.setTaskFilter('allotted_by_me')">By Me</button>
+                                <button class="filter-pill" data-filter="allotted_to_me" onclick="window.setTaskFilter('allotted_to_me')">To Me</button>
+                                <button class="filter-pill" data-filter="delegated" onclick="window.setTaskFilter('delegated')">Delegated</button>
+                                <button class="filter-pill" data-filter="transferred" onclick="window.setTaskFilter('transferred')">Transferred</button>
+                                <button class="filter-pill" data-filter="date_range" onclick="window.setTaskFilter('date_range')">Date Range</button>
+                            </div>
+                        </div>
+                        <!-- Sort row -->
+                        <div class="px-3 pb-2.5">
+                            <div class="text-[9px] font-black tracking-widest uppercase mb-1.5" style="color:var(--text-secondary);">Sort by</div>
+                            <div class="flex gap-1.5">
+                                <button class="filter-pill fp-active" data-sort="deadline_asc" onclick="window.setTaskSort('deadline_asc')" title="Deadline: Earliest"><i class="fa-solid fa-arrow-up text-[8px]"></i> Deadline ↑</button>
+                                <button class="filter-pill" data-sort="deadline_desc" onclick="window.setTaskSort('deadline_desc')" title="Deadline: Latest"><i class="fa-solid fa-arrow-down text-[8px]"></i> Deadline ↓</button>
+                                <button class="filter-pill" data-sort="created_desc" onclick="window.setTaskSort('created_desc')" title="Newest first">Newest</button>
+                                <button class="filter-pill" data-sort="created_asc" onclick="window.setTaskSort('created_asc')" title="Oldest first">Oldest</button>
+                            </div>
+                        </div>
                     </div>
                     <div id="dateRangeFilter" class="hidden px-3 pt-2 pb-3 border-b flex gap-2 items-center" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
                         <input type="date" id="filterStartDate" onchange="window.loadTasksForPanel()" class="text-xs px-2 py-1.5 rounded w-full border outline-none" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
@@ -392,6 +425,10 @@ window.loadChatsList = async function() {
         </div>`;
     });
 
+    // Update top bar room title now that we have user data
+    const titleSpanEl = document.getElementById('roomTitleDisplay');
+    if (titleSpanEl) titleSpanEl.innerText = window.getRoomDisplayName ? window.getRoomDisplayName(window.currentRoom) : window.currentRoom;
+
     const chatsListEl = document.getElementById('chatsList');
     if (chatsListEl) {
         chatsListEl.innerHTML = html;
@@ -558,6 +595,64 @@ window.animateBell = function() {
     target.addEventListener('click', () => target.classList.remove('bell-ring'), { once: true });
 };
 
+// ─── FILTER/SORT PILL HELPERS ─────────────────────────────────────────────
+window.setTaskFilter = function(val) {
+    const sel = document.getElementById('taskFilter');
+    if (sel) sel.value = val;
+    document.querySelectorAll('.filter-pill[data-filter]').forEach(p => p.classList.toggle('fp-active', p.dataset.filter === val));
+    const dr = document.getElementById('dateRangeFilter');
+    if (dr) { if (val === 'date_range') dr.classList.remove('hidden'); else dr.classList.add('hidden'); }
+    if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel();
+};
+window.setTaskSort = function(val) {
+    const sel = document.getElementById('taskSort');
+    if (sel) sel.value = val;
+    document.querySelectorAll('.filter-pill[data-sort]').forEach(p => p.classList.toggle('fp-active', p.dataset.sort === val));
+    if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel();
+};
+
+// ─── SCROLL ARROWS ─────────────────────────────────────────────────────────
+window.initScrollArrows = function() {
+    const mc = document.getElementById('messagesContainer');
+    if (!mc || document.getElementById('scrollTopBtn')) return;
+    mc.style.position = 'relative';
+    const btnTop = document.createElement('button');
+    btnTop.id = 'scrollTopBtn';
+    btnTop.className = 'chat-scroll-btn';
+    btnTop.style.cssText = 'bottom:72px;display:none;background:var(--bg-sidebar);color:var(--text-secondary);';
+    btnTop.innerHTML = '<i class="fa-solid fa-chevron-up text-xs"></i>';
+    btnTop.title = 'Scroll to top';
+    btnTop.onclick = () => mc.scrollTo({top:0,behavior:'smooth'});
+    const btnBot = document.createElement('button');
+    btnBot.id = 'scrollBotBtn';
+    btnBot.className = 'chat-scroll-btn';
+    btnBot.style.cssText = 'bottom:32px;display:none;background:var(--accent);color:#fff;border-color:var(--accent);';
+    btnBot.innerHTML = '<i class="fa-solid fa-chevron-down text-xs"></i>';
+    btnBot.title = 'Scroll to bottom';
+    btnBot.onclick = () => mc.scrollTo({top:mc.scrollHeight,behavior:'smooth'});
+    mc.appendChild(btnTop);
+    mc.appendChild(btnBot);
+    mc.addEventListener('scroll', () => {
+        const atTop = mc.scrollTop < 120;
+        const atBot = mc.scrollHeight - mc.scrollTop - mc.clientHeight < 120;
+        btnTop.style.display = atTop ? 'none' : 'flex';
+        btnBot.style.display = atBot ? 'none' : 'flex';
+    });
+};
+
+// ─── ROOM DISPLAY NAME RESOLVER ────────────────────────────────────────────
+window.getRoomDisplayName = function(roomId) {
+    if (!roomId) return 'Chat';
+    if (roomId.startsWith('dm_')) {
+        if (!window.globalUsersCache?.length) return 'Direct Message';
+        const withoutPrefix = roomId.replace('dm_', '');
+        const other = window.globalUsersCache.find(u => u.id !== window.currentUser?.id && withoutPrefix.includes(u.id));
+        if (other) return window.toSentenceCase?.(other.full_name || other.email?.split('@')[0]) || 'Direct Message';
+        return 'Direct Message';
+    }
+    return roomId.charAt(0).toUpperCase() + roomId.slice(1);
+};
+
 // Boot Sequence
 ;(async() => {
     const {data: {session}} = await sb.auth.getSession();
@@ -568,5 +663,6 @@ window.animateBell = function() {
         if (typeof window.ensureProfile === 'function') await window.ensureProfile();
         if (typeof window.renderMainApp === 'function') window.renderMainApp();
         if (typeof window.startSubscriptions === 'function') window.startSubscriptions();
+        if (typeof window.initScrollArrows === 'function') window.initScrollArrows();
     }
 })();

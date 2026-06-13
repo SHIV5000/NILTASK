@@ -1,19 +1,21 @@
 import { sb } from './shared.js';
 
-// v1.52.0 - notifyUser defined, task sort by deadline, notifications for all actions
+// v1.53.0 - task_id in notifications, data-task-id on cards, task sort by deadline, notifications for all actions
 
 // ─── UNIVERSAL NOTIFY HELPER ───────────────────────────────────────────────
 // type: 'message' | 'task' | 'reminder' | 'general'
-window.notifyUser = async function(userId, message, messageId = null, type = 'task') {
+window.notifyUser = async function(userId, message, messageId = null, type = 'task', taskId = null) {
     if (!userId || !message) return;
     try {
-        await sb.from('notifications').insert({
+        const payload = {
             user_id: userId,
             type,
             message: window.stripHtml ? window.stripHtml(message) : message,
             message_id: messageId,
             is_read: false
-        });
+        };
+        if (taskId) payload.task_id = taskId;
+        await sb.from('notifications').insert(payload);
     } catch (e) {
         console.warn('notifyUser failed:', e.message);
     }
@@ -110,7 +112,7 @@ window.saveTaskMultiAssignee = async function() {
     await sb.from('task_trails').insert({ task_id: task.id, user_id: window.currentUser.id, action: 'UPDATE', comment: 'Task Created' });
 
     for (const aid of aids) {
-        await window.notifyUser(aid, `📋 New Task Assigned: ${title}`, task.original_message_id, 'task');
+        await window.notifyUser(aid, `📋 New Task Assigned: ${title}`, task.original_message_id, 'task', task.id);
     }
 
     window.showCenterToast('Ticket Created Successfully');
@@ -131,13 +133,13 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
 
     if (action === 'ack') {
         newStatus = 'in_progress'; actionText = 'UPDATE'; comment = 'Acknowledged the task';
-        await window.notifyUser(creatorId, `✅ Task Acknowledged: ${taskData.title}`, taskData.original_message_id, 'task');
+        await window.notifyUser(creatorId, `✅ Task Acknowledged: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
     } else if (action === 'update') {
         const el = document.getElementById(`update-txt-${taskId}-${assigneeId}`);
         comment = el.value;
         if (!comment) return window.showCenterToast('Comment cannot be empty', 'fa-solid fa-times', 'text-red-500');
         actionText = 'UPDATE';
-        await window.notifyUser(creatorId, `💬 Task Update: ${taskData.title} — ${comment.substring(0, 60)}`, taskData.original_message_id, 'task');
+        await window.notifyUser(creatorId, `💬 Task Update: ${taskData.title} — ${comment.substring(0, 60)}`, taskData.original_message_id, 'task', taskId);
         el.value = '';
         document.getElementById(`comment-box-${taskId}-${assigneeId}`)?.classList.add('hidden');
     } else if (action === 'upload') {
@@ -153,7 +155,7 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
         if (uploadErr) { if (progressContainer) progressContainer.classList.add('hidden'); return window.showCenterToast('Upload Failed: ' + uploadErr.message, 'fa-solid fa-times', 'text-red-500'); }
         if (progressContainer && progressBar) progressBar.style.width = '100%';
         actionText = 'FILE'; comment = `${file.name}|${filePath}`;
-        await window.notifyUser(creatorId, `📎 File uploaded on task: ${taskData.title}`, taskData.original_message_id, 'task');
+        await window.notifyUser(creatorId, `📎 File uploaded on task: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
         el.value = '';
         if (progressContainer) setTimeout(() => { progressContainer.classList.add('hidden'); progressBar.style.width = '0%'; }, 500);
     } else if (action === 'submit') {
@@ -162,24 +164,24 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
             if (!ftrails || ftrails.length === 0) return window.showCenterToast('Proof required — please attach a file.', 'fa-solid fa-exclamation-triangle', 'text-red-500');
         }
         newStatus = 'submitted'; actionText = 'UPDATE'; comment = 'Submitted for Review';
-        await window.notifyUser(creatorId, `📬 Task Submitted for Review: ${taskData.title}`, taskData.original_message_id, 'task');
+        await window.notifyUser(creatorId, `📬 Task Submitted for Review: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
     } else if (action === 'accept') {
         newStatus = 'accepted'; actionText = 'UPDATE'; comment = 'Accepted completion';
-        await window.notifyUser(assigneeId, `🎉 Task Accepted: ${taskData.title}`, taskData.original_message_id, 'task');
+        await window.notifyUser(assigneeId, `🎉 Task Accepted: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
     } else if (action === 'review_again') {
         const txtEl = document.getElementById(`review-txt-${taskId}-${assigneeId}`);
         comment = txtEl ? txtEl.value : '';
         if (!comment) return window.showCenterToast('Feedback is mandatory for rework!', 'fa-solid fa-times', 'text-red-500');
         newStatus = 'needs_review'; actionText = 'UPDATE';
-        await window.notifyUser(assigneeId, `🔄 Task Needs Rework: ${taskData.title} — ${comment.substring(0, 60)}`, taskData.original_message_id, 'task');
+        await window.notifyUser(assigneeId, `🔄 Task Needs Rework: ${taskData.title} — ${comment.substring(0, 60)}`, taskData.original_message_id, 'task', taskId);
         document.getElementById(`review-box-${taskId}-${assigneeId}`)?.classList.add('hidden');
     } else if (action === 'delegate') {
         const newAssignee = document.getElementById(`delegate-sel-${taskId}-${assigneeId}`).value;
         if (!newAssignee) return window.showCenterToast('Select user to delegate', 'fa-solid fa-times', 'text-red-500');
         actionText = 'UPDATE'; comment = 'Delegated task';
         await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack', state: 'pending' });
-        await window.notifyUser(newAssignee, `👤 Task Delegated to you: ${taskData.title}`, taskData.original_message_id, 'task');
-        await window.notifyUser(creatorId, `↗️ Task Delegated: ${taskData.title}`, taskData.original_message_id, 'task');
+        await window.notifyUser(newAssignee, `👤 Task Delegated to you: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
+        await window.notifyUser(creatorId, `↗️ Task Delegated: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
         document.getElementById(`delegate-box-${taskId}-${assigneeId}`)?.classList.add('hidden');
     } else if (action === 'transfer') {
         const newAssignee = document.getElementById(`transfer-sel-${taskId}-${assigneeId}`).value;
@@ -190,8 +192,8 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
         actionText = 'UPDATE';
         await sb.from('task_assignees').delete().eq('task_id', taskId).eq('assignee_id', assigneeId);
         await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack', state: 'pending' });
-        await window.notifyUser(newAssignee, `🔁 Task Transferred to you: ${taskData.title}`, taskData.original_message_id, 'task');
-        await window.notifyUser(assigneeId, `🔁 Your task was transferred: ${taskData.title}`, taskData.original_message_id, 'task');
+        await window.notifyUser(newAssignee, `🔁 Task Transferred to you: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
+        await window.notifyUser(assigneeId, `🔁 Your task was transferred: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
     }
 
     if (newStatus) {
@@ -429,7 +431,7 @@ window.loadTasksForPanel = async function() {
         }).join('');
 
         return `
-        <div class="jira-card bg-white rounded-2xl shadow-sm border border-gray-200 mb-4 overflow-hidden relative" style="border-left-width:6px;border-left-style:solid;border-left-color:${borderClass};">
+        <div class="jira-card bg-white rounded-2xl shadow-sm border border-gray-200 mb-4 overflow-hidden relative" data-task-id="${task.id}" style="border-left-width:6px;border-left-style:solid;border-left-color:${borderClass};">
             <div class="p-4">
                 <div class="flex justify-between items-start mb-3">
                     <div class="font-bold text-gray-800 text-[16px] flex items-start gap-2">

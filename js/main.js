@@ -79,7 +79,7 @@ window.renderMainApp = function() {
                         <div class="w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px]" style="background-color:var(--accent);">${userNameDisplay.charAt(0).toUpperCase()}</div>
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
-                    <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color:var(--text-secondary);">v1.53.0 - Activity Feed, Reactions RT, All fixes</div>
+                    <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color:var(--text-secondary);">v1.54.0 - Link pill, no rename modal, reactions RT, cross-scroll DB lookup</div>
                 </div>
             </div>
 
@@ -134,6 +134,7 @@ window.renderMainApp = function() {
                             <div class="flex-1 min-w-0 bg-transparent py-1">
                                 <div id="richEditor" class="w-full" style="color:var(--text-primary);"></div>
                             </div>
+                            <button onclick="window.openLinkModal('main')" class="p-2 transition-colors" title="Insert Link Pill" style="color:var(--text-secondary);"><i class="fa-solid fa-link text-[16px]"></i></button>
                             <button onclick="window.showScheduleModal()" class="p-2 transition-colors" title="Schedule" style="color:var(--text-secondary);"><i class="ti ti-clock text-xl"></i></button>
                             <button id="sendBtn" class="text-white rounded-lg shadow-md transition-colors h-[38px] w-[46px] flex items-center justify-center mb-0.5" style="background-color:var(--accent);"><i class="ti ti-send text-lg"></i></button>
                         </div>
@@ -230,6 +231,20 @@ window.renderMainApp = function() {
             </div>
         </div>
 
+        <!-- Link Pill Modal -->
+        <div id="linkPillModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+            <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+                <h3 class="text-lg font-bold mb-1" style="color:var(--text-primary);">Insert Link</h3>
+                <p class="text-xs mb-4" style="color:var(--text-secondary);">URL is hidden — only the name appears as a pill to recipients.</p>
+                <input type="text" id="linkPillName" placeholder="Display name (e.g. View Report)" class="w-full p-3 rounded-xl mb-3 border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                <input type="url" id="linkPillUrl" placeholder="https://..." class="w-full p-3 rounded-xl mb-5 border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                <div class="flex gap-3">
+                    <button onclick="window.closeLinkModal()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
+                    <button onclick="window.insertLinkPill()" class="flex-1 py-2.5 rounded-xl font-bold text-white shadow-md" style="background-color:var(--accent);">Insert Pill</button>
+                </div>
+            </div>
+        </div>
+
         <div id="reminderModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
             <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
                 <h3 class="text-xl font-bold mb-4" style="color:var(--text-primary);">Set Reminder</h3>
@@ -268,15 +283,25 @@ window.renderMainApp = function() {
     });
     document.getElementById('sendBtn').onclick = () => { if (typeof window.sendMessage === 'function') window.sendMessage(); };
 
-    document.getElementById('fileAttachment').addEventListener('change', (e) => {
+    // File attachment — direct upload, no rename modal
+    document.getElementById('fileAttachment').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        const lastDot = file.name.lastIndexOf('.');
-        const baseName = lastDot !== -1 ? file.name.substring(0, lastDot) : file.name;
-        window.pendingFileUpload = file;
-        document.getElementById('newFileNameInput').value = baseName;
-        document.getElementById('fileRenameModal').classList.remove('hidden');
-        document.getElementById('fileRenameModal').classList.add('flex');
+        window.showCenterToast('Uploading...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
+        const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+        const filePath = `chat/${Date.now()}_${safeName}`;
+        const sizeKB = Math.round(file.size / 1024);
+        const { error } = await sb.storage.from('task-proofs').upload(filePath, file);
+        if (error) { window.showCenterToast('Upload failed: ' + error.message, 'fa-solid fa-times', 'text-red-500'); return; }
+        if (window.quillEditor) {
+            window.quillEditor.focus();
+            const range = window.quillEditor.getSelection();
+            const index = range ? range.index : window.quillEditor.getLength();
+            window.quillEditor.insertText(index, `📁 ${file.name} (${sizeKB} KB)
+`, 'link', `https://secure-file.local/${filePath}`);
+        }
+        window.showCenterToast('File attached!', 'fa-solid fa-check-circle', 'text-green-500');
+        e.target.value = '';
     });
 
     const searchBar = document.getElementById('messageSearchBar');
@@ -447,6 +472,19 @@ window.startSubscriptions = function() {
                 // Play sound for DM received in background
                 if (incomingRoom.startsWith('dm_') && incomingRoom.includes(window.currentUser.id) && p.new.sender_id !== window.currentUser.id) {
                     window.playSound('message');
+                }
+            }
+        }).subscribe();
+
+    // Reactions real-time — update other viewers' DOM when a reaction is added
+    let reactionsSubscription = null;
+    if (reactionsSubscription) reactionsSubscription.unsubscribe();
+    reactionsSubscription = sb.channel('reactions-changes')
+        .on('postgres_changes', {event:'INSERT', schema:'public', table:'reactions'}, (p) => {
+            // Only update if the reaction is NOT from current user (they already have it in DOM)
+            if (p.new.user_id !== window.currentUser.id) {
+                if (typeof window.applyReactionDOM === 'function') {
+                    window.applyReactionDOM(p.new.message_id, p.new.value, p.new.type);
                 }
             }
         }).subscribe();

@@ -1,6 +1,6 @@
 import { sb } from './shared.js';
 
-// v1.53.0 - Reactions real-time, DM fix, cross-room scroll via pendingScrollId
+// v1.54.0 - Reactions stable DOM, no reload, link pill, cross-room scroll via pendingScrollId
 
 window.sendMessage = async function() {
     let text = window.quillEditor.root.innerHTML.trim();
@@ -243,11 +243,12 @@ window.renderMessages = function(messages) {
     c.innerHTML = dateLabel + topLevel.map(msg => buildMsgHTML(msg)).join('');
 };
 
-// Apply reaction — writes to DB so all viewers get real-time update
+// Apply reaction — DOM update only; writes to reactions table if it exists.
+// Does NOT call loadMessages() — that would wipe all DOM reactions.
 window.applyReaction = async function(msgId, value, type) {
-    // Update DOM immediately for the sender
+    // 1. Update DOM immediately — permanent for this session
     window.applyReactionDOM(msgId, value, type);
-    // Write to DB — real-time subscription on messages table will reload for others
+    // 2. Persist to DB (reactions table optional — create if you want cross-user RT)
     try {
         const { data: existing } = await sb.from('reactions')
             .select('id, count').eq('message_id', msgId).eq('value', value)
@@ -257,15 +258,11 @@ window.applyReaction = async function(msgId, value, type) {
         } else {
             await sb.from('reactions').insert({ message_id: msgId, user_id: window.currentUser.id, value, type, count: 1 });
         }
-        // Trigger a lightweight reload of the current message to sync all users
-        // We do this by inserting a sentinel update to the message row — or just reload
-        // Simpler: reload messages (debounced so not too heavy)
-        clearTimeout(window._reactionReloadTimer);
-        window._reactionReloadTimer = setTimeout(() => {
-            if (typeof window.loadMessages === 'function') window.loadMessages();
-        }, 800);
+        // NOTE: Do NOT call loadMessages() here — it would wipe all DOM reactions
+        // For cross-user real-time, subscribe to reactions table in startSubscriptions
     } catch(e) {
-        console.warn('Reactions DB write failed (table may not exist):', e.message);
+        // Reactions table doesn't exist yet — that's fine, local only
+        // Run: CREATE TABLE reactions (id uuid default gen_random_uuid() primary key, message_id uuid, user_id uuid, value text, type text, count int default 1, created_at timestamptz default now());
     }
 };
 

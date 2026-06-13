@@ -1,11 +1,20 @@
 import { sb } from './shared.js';
 
-// v1.55.0 - Link pill button rendering, no reload, link pill, cross-room scroll via pendingScrollId
+// v1.56.0 - File icons, URL blocking, no reload, link pill, cross-room scroll via pendingScrollId
 
 window.sendMessage = async function() {
     let text = window.quillEditor.root.innerHTML.trim();
     text = text.replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
     if (!text) return;
+
+    // Block bare URL pasting — user should use the Link button instead
+    const plainText = window.stripHtml ? window.stripHtml(text) : text;
+    const bareUrlPattern = /(?<![>='"a-zA-Z0-9_-])(https?:\/\/[^\s<>"]{4,})/i;
+    const hasLinkPill = text.includes('link-pill.local') || text.includes('secure-file.local');
+    if (!hasLinkPill && bareUrlPattern.test(plainText)) {
+        window.showCenterToast('Please use the 🔗 Link button to insert URLs', 'fa-solid fa-link', 'text-indigo-400');
+        return;
+    }
 
     const sendBtn = document.getElementById('sendBtn');
     if (sendBtn) sendBtn.innerHTML = '<i class="ti ti-loader fa-spin text-lg"></i>';
@@ -148,9 +157,42 @@ window.renderMessages = function(messages) {
         const time = window.getISTTime(msg.created_at);
         const snippetText = window.getSnippet(msg.text);
 
+        // ── Transform secure-file links to styled file cards ────────────────────
         let displayHtml = msg.text.replace(
-            /href="https:\/\/secure-file\.local\/([^"]+)"/g,
-            `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800 transition-colors"`
+            /<a\s+href="https:\/\/secure-file\.local\/([^"]+)"[^>]*>([^<]*)<\/a>/g,
+            (match, path, anchorText) => {
+                const ext = (path.split('.').pop() || '').toLowerCase().split('?')[0];
+                const nameRaw = anchorText.replace(/^📁\s*/, '').trim();
+                const sizeMatch = nameRaw.match(/\(([^)]+)\)$/);
+                const sizePart = sizeMatch ? sizeMatch[1] : '';
+                const displayName = nameRaw.replace(/\s*\([^)]+\)$/, '').trim() || 'Attached File';
+                // Icon + color per file type
+                let icon='fa-file', iconColor='#6b7280', bg='#f9fafb', typeLabel='File';
+                if (ext==='pdf') { icon='fa-file-pdf'; iconColor='#dc2626'; bg='#fef2f2'; typeLabel='PDF'; }
+                else if (['doc','docx'].includes(ext)) { icon='fa-file-word'; iconColor='#2563eb'; bg='#eff6ff'; typeLabel='Word'; }
+                else if (['xls','xlsx'].includes(ext)) { icon='fa-file-excel'; iconColor='#16a34a'; bg='#f0fdf4'; typeLabel='Excel'; }
+                else if (['ppt','pptx'].includes(ext)) { icon='fa-file-powerpoint'; iconColor='#ea580c'; bg='#fff7ed'; typeLabel='PowerPoint'; }
+                else if (['jpg','jpeg','png','gif','webp','svg'].includes(ext)) { icon='fa-file-image'; iconColor='#7c3aed'; bg='#f5f3ff'; typeLabel='Image'; }
+                const safePath = path.replace(/'/g, '%27');
+                return `<div onclick="window.openSecureFile('${safePath}')"
+                    class="file-card"
+                    style="background:${bg};border:1px solid ${iconColor}25;"
+                    onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
+                    <div style="width:38px;height:38px;border-radius:8px;background:${iconColor}15;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <i class="fa-solid ${icon}" style="color:${iconColor};font-size:20px;"></i>
+                    </div>
+                    <div style="min-width:0;flex:1;">
+                        <div style="font-size:12px;font-weight:700;color:#1f2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;">${displayName}</div>
+                        <div style="font-size:10px;display:flex;gap:6px;align-items:center;margin-top:1px;">
+                            <span style="font-weight:700;color:${iconColor};">${typeLabel}</span>
+                            ${sizePart ? `<span style="color:#9ca3af;">${sizePart}</span>` : ''}
+                        </div>
+                    </div>
+                    <div style="font-size:10px;font-weight:700;color:${iconColor};white-space:nowrap;display:flex;align-items:center;gap:3px;">
+                        <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:9px;"></i> Open
+                    </div>
+                </div>`;
+            }
         );
 
         // ── Transform link-pill URLs into beautiful styled buttons ────────────

@@ -74,12 +74,24 @@ window.renderMainApp = function() {
 
                 <div id="chatsList" class="flex-1 overflow-y-auto px-2 pb-4"></div>
 
-                <div class="p-3 border-t flex flex-col items-center justify-center gap-1.5" style="border-color:var(--border-color);background-color:var(--bg-body);">
-                    <div class="text-[13px] font-bold flex items-center gap-2 border shadow-sm px-3 py-1.5 rounded-full w-full justify-center" style="color:var(--text-primary);border-color:var(--border-color);background-color:var(--bg-sidebar);">
-                        <div class="w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px]" style="background-color:var(--accent);">${userNameDisplay.charAt(0).toUpperCase()}</div>
-                        ${window.escapeHtml(userNameDisplay.toUpperCase())}
+                <div class="p-3 border-t flex flex-col gap-1.5" style="border-color:var(--border-color);background-color:var(--bg-body);">
+                    <div class="flex items-center gap-2 w-full">
+                        <div class="flex-1 text-[12px] font-bold flex items-center gap-2 border shadow-sm px-2 py-1.5 rounded-full justify-center min-w-0" style="color:var(--text-primary);border-color:var(--border-color);background-color:var(--bg-sidebar);">
+                            <div class="w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px] flex-shrink-0" style="background-color:var(--accent);">${userNameDisplay.charAt(0).toUpperCase()}</div>
+                            <span class="truncate">${window.escapeHtml(userNameDisplay.toUpperCase())}</span>
+                        </div>
+                        <button onclick="window.openSettings()" title="Profile Settings"
+                            class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border hover:bg-gray-100 transition-colors"
+                            style="color:var(--text-secondary);border-color:var(--border-color);background-color:var(--bg-sidebar);">
+                            <i class="fa-solid fa-gear text-sm"></i>
+                        </button>
+                        <button onclick="window.openDashboard()" title="My Dashboard"
+                            class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border hover:bg-gray-100 transition-colors"
+                            style="color:var(--text-secondary);border-color:var(--border-color);background-color:var(--bg-sidebar);">
+                            <i class="fa-solid fa-chart-bar text-sm"></i>
+                        </button>
                     </div>
-                    <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color:var(--text-secondary);">v1.56.0 - All 10 fixes applied, feed full height, reactions RT, cross-scroll DB lookup</div>
+                    <div class="text-[9px] font-bold tracking-wider uppercase text-center" style="color:var(--text-secondary);">v1.58.0 - Dashboard · Settings · Group Settings</div>
                 </div>
             </div>
 
@@ -279,68 +291,6 @@ window.renderMainApp = function() {
                 <div class="flex gap-3">
                     <button onclick="window.closeLinkModal()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
                     <button onclick="window.insertLinkPill()" class="flex-1 py-2.5 rounded-xl font-bold text-white shadow-md" style="background-color:var(--accent);">Insert Pill</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Dashboard Modal -->
-        <div id="dashboardModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
-            <div class="rounded-2xl w-full max-w-2xl mx-4 shadow-2xl border overflow-hidden" style="background-color:var(--bg-sidebar);border-color:var(--border-color);max-height:90vh;">
-                <div class="p-5 border-b flex items-center justify-between" style="border-color:var(--border-color);">
-                    <h3 class="text-lg font-bold flex items-center gap-2" style="color:var(--text-primary);">
-                        <i class="fa-solid fa-chart-bar" style="color:var(--accent);"></i> My Dashboard
-                    </h3>
-                    <div class="flex items-center gap-2">
-                        <div class="flex gap-1">
-                            ${['today','week','month','all'].map(f=>`<button class="dash-filter text-[10px] font-bold px-2.5 py-1 rounded-full border transition-colors ${f==='all'?'active':''}"`+` data-filter="${f}" onclick="window.loadDashboard('${f}')">${f.charAt(0).toUpperCase()+f.slice(1)}</button>`).join('')}
-                        </div>
-                        <button onclick="window.downloadProgressCard()" title="Download Progress Card"
-                            class="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full text-white shadow-sm" style="background:var(--accent);">
-                            <i class="fa-solid fa-download text-[10px]"></i> Download
-                        </button>
-                        <button onclick="window.closeDashboard()" class="w-7 h-7 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors" style="color:var(--text-secondary);">
-                            <i class="fa-solid fa-times text-sm"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="overflow-y-auto p-5" style="max-height:calc(90vh - 72px);" id="dashboardContent">
-                    <div class="flex items-center justify-center py-12" style="color:var(--text-secondary);">
-                        <i class="fa-solid fa-spinner fa-spin mr-2"></i> Loading stats...
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Group Settings Modal -->
-        <div id="groupSettingsModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
-            <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
-                <div class="flex items-center justify-between mb-5">
-                    <h3 class="text-lg font-bold flex items-center gap-2" style="color:var(--text-primary);">
-                        <i class="fa-solid fa-users-gear" style="color:var(--accent);"></i> Group Settings
-                    </h3>
-                    <button onclick="window.closeGroupSettings()" class="w-7 h-7 rounded-full flex items-center justify-center hover:bg-gray-100" style="color:var(--text-secondary);">
-                        <i class="fa-solid fa-times text-sm"></i>
-                    </button>
-                </div>
-                <div class="flex flex-col items-center mb-4">
-                    <img id="groupPhotoPreview" src="" alt="" style="display:none;width:64px;height:64px;border-radius:12px;object-fit:cover;border:3px solid var(--accent);margin-bottom:8px;">
-                    <div id="groupPhotoPlaceholder" class="w-16 h-16 rounded-xl flex items-center justify-center text-white text-2xl font-bold mb-2" style="background:var(--accent);" id="groupAvatarPlaceholder">G</div>
-                    <label class="cursor-pointer text-xs font-bold px-3 py-1.5 rounded-full border transition-colors hover:opacity-80" style="color:var(--accent);border-color:var(--accent);">
-                        <i class="fa-solid fa-camera text-[10px] mr-1"></i> Change Photo
-                        <input type="file" id="groupPhotoInput" class="hidden" accept="image/*" onchange="window.previewGroupPhoto(this)">
-                    </label>
-                </div>
-                <div class="mb-3">
-                    <label class="text-xs font-bold mb-1 block" style="color:var(--text-secondary);">Display Name</label>
-                    <input type="text" id="groupNameInput" class="w-full p-2.5 rounded-xl border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
-                </div>
-                <div class="mb-5">
-                    <div class="text-xs font-bold mb-2" style="color:var(--text-secondary);">Members</div>
-                    <div id="groupMembersList" class="max-h-32 overflow-y-auto flex flex-col gap-1"></div>
-                </div>
-                <div class="flex gap-3">
-                    <button onclick="window.closeGroupSettings()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
-                    <button onclick="window.saveGroupSettings()" class="flex-1 py-2.5 rounded-xl font-bold text-white shadow-md" style="background-color:var(--accent);">Save</button>
                 </div>
             </div>
         </div>

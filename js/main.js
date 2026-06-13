@@ -79,7 +79,7 @@ window.renderMainApp = function() {
                         <div class="w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px]" style="background-color:var(--accent);">${userNameDisplay.charAt(0).toUpperCase()}</div>
                         ${window.escapeHtml(userNameDisplay.toUpperCase())}
                     </div>
-                    <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color:var(--text-secondary);">v1.54.0 - Link pill, no rename modal, reactions RT, cross-scroll DB lookup</div>
+                    <div class="text-[9px] font-bold tracking-wider uppercase mt-1" style="color:var(--text-secondary);">v1.55.0 - Filter section id, feed full height, reactions RT, cross-scroll DB lookup</div>
                 </div>
             </div>
 
@@ -147,7 +147,7 @@ window.renderMainApp = function() {
             <!-- RIGHT SIDEBAR -->
             <div id="rightSidebar" class="right-sidebar border-l flex-col z-20 shadow-sm" style="display:${rightDisplay};width:${rightWidth};background-color:var(--bg-sidebar);border-color:var(--border-color);">
                 <div class="w-full h-full flex flex-col min-w-0">
-                    <div class="p-3 border-b flex flex-col gap-2" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+                    <div id="rightSidebarFilters" class="p-3 border-b flex flex-col gap-2" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
                         <h3 class="font-bold flex items-center gap-2" style="color:var(--text-primary);"><i class="fa-solid fa-filter" style="color:var(--accent);"></i> Task Filters</h3>
                         <select id="taskFilter" onchange="window.toggleDateFilter()" class="text-xs px-2 py-2 rounded-lg border font-medium shadow-sm outline-none cursor-pointer w-full transition-all" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
                             <option value="all">All Tasks</option>

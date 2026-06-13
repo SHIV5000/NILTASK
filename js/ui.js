@@ -32,6 +32,16 @@ import { sb } from './shared.js';
         /* File card in bubbles */
         .file-card { display:inline-flex;align-items:center;gap:10px;border-radius:12px;padding:8px 14px;cursor:pointer;margin:4px 0;max-width:280px;transition:opacity 0.2s; }
         .file-card:hover { opacity:0.8; }
+        /* Rich text formatting in message bubbles (replaces ql-editor class without its scrollbar) */
+        .b-text ol { list-style-type:decimal; padding-left:1.4em; margin:0; }
+        .b-text ul { list-style-type:disc; padding-left:1.4em; margin:0; }
+        .b-text li { margin-bottom:2px; }
+        .b-text strong, .b-text b { font-weight:700; }
+        .b-text em, .b-text i { font-style:italic; }
+        .b-text u { text-decoration:underline; }
+        .b-text s { text-decoration:line-through; }
+        .b-text p { margin:0; }
+        .b-text br { display:block; content:""; margin:2px 0; }
     `;
     document.head.appendChild(style);
 })();

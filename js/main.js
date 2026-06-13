@@ -93,7 +93,7 @@ window.renderMainApp = function() {
                             <i class="fa-solid fa-chart-bar text-sm"></i>
                         </button>
                     </div>
-                    <div class="text-[9px] font-bold tracking-wider uppercase text-center" style="color:var(--text-secondary);">VER 1.59.0</div>
+                    <div class="text-[9px] font-bold tracking-wider uppercase text-center" style="color:var(--text-secondary);">VER 1.60.0</div>
                 </div>
             </div>
 
@@ -196,7 +196,7 @@ window.renderMainApp = function() {
                             <div class="text-[9px] font-black tracking-widest uppercase mb-1.5 flex items-center gap-1" style="color:var(--text-secondary);">
                                 <i class="fa-solid fa-filter" style="font-size:8px;color:var(--accent);"></i> Filter
                             </div>
-                            <div class="flex gap-1 overflow-x-auto pb-1.5" style="scrollbar-width:none;">
+                            <div class="flex gap-1 flex-wrap pb-1">
                                 <button class="filter-pill fp-active" data-filter="all" onclick="window.setTaskFilter('all')">All</button>
                                 <button class="filter-pill" data-filter="today" onclick="window.setTaskFilter('today')">Today</button>
                                 <button class="filter-pill" data-filter="pending" onclick="window.setTaskFilter('pending')">Pending</button>
@@ -211,7 +211,7 @@ window.renderMainApp = function() {
                         <!-- Sort row -->
                         <div class="px-3 pb-2.5">
                             <div class="text-[9px] font-black tracking-widest uppercase mb-1.5" style="color:var(--text-secondary);">Sort by</div>
-                            <div class="flex gap-1.5">
+                            <div class="flex gap-1 flex-wrap">
                                 <button class="filter-pill fp-active" data-sort="deadline_asc" onclick="window.setTaskSort('deadline_asc')" title="Deadline: Earliest"><i class="fa-solid fa-arrow-up text-[8px]"></i> Deadline ↑</button>
                                 <button class="filter-pill" data-sort="deadline_desc" onclick="window.setTaskSort('deadline_desc')" title="Deadline: Latest"><i class="fa-solid fa-arrow-down text-[8px]"></i> Deadline ↓</button>
                                 <button class="filter-pill" data-sort="created_desc" onclick="window.setTaskSort('created_desc')" title="Newest first">Newest</button>
@@ -652,13 +652,25 @@ window.startSubscriptions = function() {
     }
     window._reactionsBroadcast = sb.channel('mpgs-reactions-v1');
     window._reactionsBroadcast
+        // Handle reaction ADD from other users
         .on('broadcast', { event: 'reaction' }, (payload) => {
             const p = payload.payload;
-            // Only update DOM for OTHER users — sender already updated their own DOM
             if (p && p.user_id !== window.currentUser.id) {
                 if (typeof window.applyReactionDOM === 'function') {
                     window.applyReactionDOM(p.message_id, p.value, p.type);
                 }
+            }
+        })
+        // Handle reaction REMOVE from other users (toggle off)
+        .on('broadcast', { event: 'reaction_remove' }, (payload) => {
+            const p = payload.payload;
+            if (p && p.user_id !== window.currentUser.id) {
+                const footer = document.getElementById('footer-' + p.message_id);
+                if (!footer) return;
+                const chip = footer.querySelector(`[data-emoji="${p.value}"]`);
+                const tag  = footer.querySelector(`[data-tag="${p.value}"]`);
+                if (chip) chip.remove();
+                if (tag)  tag.remove();
             }
         })
         .subscribe();

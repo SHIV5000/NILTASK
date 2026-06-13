@@ -1,6 +1,6 @@
 import { sb } from './shared.js';
 
-// v1.55.0 - Link button, feed full height, task scroll fix, READ tag, activity feed fix, clear fix, reactions fix, link pill, no rename modal
+// v1.56.0 - File icons, URL block, top labels, modern filters, scroll arrows, completed opacity, task scroll fix, READ tag, activity feed fix, clear fix, reactions fix, link pill, no rename modal
 
 // ─── CSS ───────────────────────────────────────────────────────────────────
 (function() {
@@ -14,8 +14,24 @@ import { sb } from './shared.js';
         .notif-badge { position:absolute;top:-6px;right:-8px;background:var(--accent);color:#fff;border-radius:50%;font-size:9px;font-weight:800;width:17px;height:17px;display:flex;align-items:center;justify-content:center;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,0.3);z-index:20; }
         .link-pill { display:inline-flex;align-items:center;gap:4px;background:rgba(99,102,241,0.12);color:#4f46e5;border:1px solid rgba(99,102,241,0.3);border-radius:20px;padding:2px 10px;font-size:12px;font-weight:600;text-decoration:none;cursor:pointer; }
         .link-pill:hover { background:rgba(99,102,241,0.2); }
-        .link-pill i { font-size:10px; }
         .b-text a.link-pill { color:#4f46e5!important; }
+        /* Modern task filter pills */
+        .filter-pill { font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;border:1px solid var(--border-color);color:var(--text-secondary);background:var(--bg-body);cursor:pointer;white-space:nowrap;transition:all 0.18s;flex-shrink:0; }
+        .filter-pill:hover { border-color:var(--accent);color:var(--accent); }
+        .filter-pill.fp-active { background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 2px 8px rgba(var(--accent-rgb,99,102,241),0.3); }
+        .sort-select-wrap { position:relative; }
+        .sort-select-wrap i { position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:10px;pointer-events:none;color:var(--text-secondary); }
+        .sort-select-wrap select { padding-left:26px;appearance:none;-webkit-appearance:none; }
+        /* Scroll arrows */
+        .chat-scroll-btn { position:absolute;right:14px;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:10;border:1px solid var(--border-color);transition:all 0.2s;box-shadow:0 2px 8px rgba(0,0,0,0.12); }
+        .chat-scroll-btn:hover { transform:scale(1.1); }
+        /* Top bar icon labels */
+        .topbar-icon-btn { display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;color:var(--text-secondary);transition:color 0.18s; }
+        .topbar-icon-btn:hover { color:var(--accent); }
+        .topbar-icon-btn span { font-size:7px;font-weight:800;letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap; }
+        /* File card in bubbles */
+        .file-card { display:inline-flex;align-items:center;gap:10px;border-radius:12px;padding:8px 14px;cursor:pointer;margin:4px 0;max-width:280px;transition:opacity 0.2s; }
+        .file-card:hover { opacity:0.8; }
     `;
     document.head.appendChild(style);
 })();
@@ -395,43 +411,72 @@ window.openTopPanel = async function(type) {
     // ── ALERTS ─────────────────────────────────────────────────────────────
     } else if (type==='alerts') {
         const {data}=await sb.from('notifications').select('*').eq('user_id',window.currentUser.id).order('created_at',{ascending:false}).limit(20);
+
+        // Batch-fetch message info (sender + room) for all notifications that have message_id
+        const msgIds=(data||[]).filter(d=>d.message_id).map(d=>d.message_id);
+        let msgInfoMap=new Map();
+        if(msgIds.length){
+            const {data:relMsgs}=await sb.from('messages').select('id,room_id,sender_id,profiles(full_name,email)').in('id',msgIds);
+            relMsgs?.forEach(m=>msgInfoMap.set(m.id,m));
+        }
+
         panel.innerHTML=`<div class="flex items-center justify-between border-b pb-3 mb-3" style="border-color:var(--border-color);">
             <h4 class="font-bold flex items-center gap-2" style="color:var(--text-primary);"><i class="fa-regular fa-bell text-yellow-500"></i> Notifications</h4>
             ${data?.length?`<button onclick="window.clearAllNotifications()" class="text-[10px] font-bold hover:text-red-500 px-2 py-0.5 rounded-lg transition-colors" style="color:var(--text-secondary);">Clear all</button>`:''}
         </div>`;
+
         if(!data?.length){
             panel.innerHTML+=`<p class="text-xs italic text-center py-6" style="color:var(--text-secondary);">All caught up! 🎉</p>`;
         } else {
+            // Mark all unread as read silently
             const unreadIds=data.filter(d=>!d.is_read).map(d=>d.id);
             if(unreadIds.length) sb.from('notifications').update({is_read:true}).in('id',unreadIds).then(()=>window.refreshNotificationBadge?.());
+
             const iconMap={reminder:'fa-stopwatch',task:'fa-clipboard-check',message:'fa-comment',general:'fa-bell'};
             const colorMap={reminder:'#a855f7',task:'#3b82f6',message:'#22c55e',general:'#f59e0b'};
+
             data.forEach(d=>{
                 const msg=window.stripHtml(d.message);
                 const t=new Date(d.created_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
                 const tp=d.type||'general';
                 const ic=iconMap[tp]||'fa-bell', co=colorMap[tp]||'#f59e0b';
-                // Task type → always go to task card (goToTask handles null taskId gracefully)
-                // Message/reminder → scroll to message
-                const clickFn = tp === 'task'
+
+                // Resolve sender + room from batch-fetched message data
+                const relMsg=msgInfoMap.get(d.message_id);
+                const senderName=relMsg?.profiles
+                    ? (window.toSentenceCase?.(relMsg.profiles.full_name||relMsg.profiles.email?.split('@')[0])||'')
+                    : '';
+                const roomLabel=relMsg?.room_id
+                    ? (relMsg.room_id.startsWith('dm_') ? '💬 DM' : `# ${relMsg.room_id}`)
+                    : '';
+
+                const clickFn = tp==='task'
                     ? `window.goToTask('${d.task_id||''}','${d.id}')`
                     : `window.goToMessage('${d.message_id}','${d.id}')`;
-                const readTag = d.is_read
-                    ? `<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;background:rgba(34,197,94,0.1);color:#16a34a;flex-shrink:0;">READ ✓</span>`
-                    : `<span class="w-1.5 h-1.5 rounded-full flex-shrink-0" style="background:${co};margin-top:2px;"></span>`;
-                panel.innerHTML+=`<div class="mb-2 rounded-xl border overflow-hidden" id="notif-${d.id}" style="border-color:var(--border-color);opacity:${d.is_read?'0.6':'1'};">
-                    <div class="p-2.5 flex items-start gap-2 cursor-pointer hover:opacity-80" style="background-color:var(--bg-body);" onclick="${clickFn}; document.getElementById('notif-${d.id}').style.opacity='0.6';">
-                        ${readTag}
+
+                // Unread = full opacity, Read = 60%
+                const opacity = d.is_read ? '0.6' : '1';
+                const unreadDot = !d.is_read
+                    ? `<span class="w-2 h-2 rounded-full flex-shrink-0 mt-0.5" style="background:${co};"></span>`
+                    : '';
+
+                panel.innerHTML+=`<div class="mb-2 rounded-xl border overflow-hidden" id="notif-${d.id}" style="border-color:var(--border-color);opacity:${opacity};">
+                    <div class="p-2.5 flex items-start gap-2 cursor-pointer hover:opacity-80" style="background-color:var(--bg-body);"
+                        onclick="${clickFn}; document.getElementById('notif-${d.id}').style.opacity='0.6';">
+                        ${unreadDot}
                         <i class="fa-solid ${ic} mt-0.5 flex-shrink-0" style="color:${co};font-size:13px;"></i>
                         <div class="min-w-0 flex-1">
-                            <p class="text-xs font-semibold line-clamp-2" style="color:var(--text-primary);">${window.escapeHtml(msg.substring(0,120))}</p>
-                            <div class="flex items-center gap-2 mt-1 flex-wrap">
-                                <span class="text-[9px] px-1.5 py-0.5 rounded-full font-bold capitalize" style="background:${co}18;color:${co};">${tp}</span>
-                                <span class="text-[10px]" style="color:var(--text-secondary);">${t}</span>
+                            <div class="flex items-center gap-1.5 flex-wrap mb-1">
+                                <span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase" style="background:${co}18;color:${co};">${tp}</span>
+                                ${senderName?`<span class="text-[9px] font-bold" style="color:var(--text-primary);">${window.escapeHtml(senderName)}</span>`:''}
+                                ${roomLabel?`<span class="text-[9px] font-semibold" style="color:var(--text-secondary);">${window.escapeHtml(roomLabel)}</span>`:''}
+                                <span class="text-[9px] ml-auto flex-shrink-0 whitespace-nowrap" style="color:var(--text-secondary);">${t}</span>
                             </div>
+                            <p class="text-xs font-semibold line-clamp-2" style="color:var(--text-primary);">${window.escapeHtml(msg.substring(0,120))}</p>
                         </div>
                         <button onclick="event.stopPropagation();window.dismissNotif('${d.id}')" class="flex-shrink-0 ml-1 p-1.5 rounded hover:bg-red-50 hover:text-red-500 transition-colors" style="color:var(--text-secondary);" title="Dismiss"><i class="fa-solid fa-times" style="font-size:10px;"></i></button>
                     </div>
+                    ${!d.is_read?`<div class="px-2.5 pb-1.5"><span style="font-size:9px;font-weight:700;color:#16a34a;background:rgba(34,197,94,0.1);border-radius:8px;padding:1px 6px;">NEW</span></div>`:'<div class="px-2.5 pb-1.5"><span style="font-size:9px;color:var(--text-secondary);font-weight:600;">READ ✓</span></div>'}
                 </div>`;
             });
         }
@@ -539,16 +584,16 @@ window.openActivityFeed = async function() {
     const dateRangeEl = document.getElementById('dateRangeFilter');
     if (dateRangeEl) dateRangeEl.style.display = 'none';
 
-    // Fetch data
-    const [{ data: msgs }, { data: notifs }] = await Promise.all([
+    // Fetch data — Activity Feed = raw activity (messages + task trails). NOT notifications table.
+    const [{ data: msgs }, { data: trails }] = await Promise.all([
         sb.from('messages').select('*, profiles(full_name, email)').order('created_at', {ascending: false}).limit(40),
-        sb.from('notifications').select('*').eq('user_id', window.currentUser.id).order('created_at', {ascending: false}).limit(20)
+        sb.from('task_trails').select('*, profiles(full_name, email), tasks(title)').order('created_at', {ascending: false}).limit(20)
     ]);
 
     // Merge and sort newest first
     const items = [];
     msgs?.forEach(m => items.push({ kind: 'message', time: m.created_at, data: m }));
-    notifs?.forEach(n => items.push({ kind: 'notif', time: n.created_at, data: n }));
+    trails?.forEach(t => items.push({ kind: 'trail', time: t.created_at, data: t }));
     items.sort((a, b) => new Date(b.time) - new Date(a.time));
 
     // Create feed panel — same flex-1 as tasksPanel, NOT absolute
@@ -581,9 +626,6 @@ window.openActivityFeed = async function() {
         return;
     }
 
-    const iconMap = { reminder:'fa-stopwatch', task:'fa-clipboard-check', message:'fa-comment', general:'fa-bell' };
-    const colorMap = { reminder:'#a855f7', task:'#3b82f6', message:'#22c55e', general:'#f59e0b' };
-
     list.innerHTML = items.map(item => {
         const t = new Date(item.time).toLocaleString('en-IN', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'});
         if (item.kind === 'message') {
@@ -595,32 +637,33 @@ window.openActivityFeed = async function() {
             const av = name.charAt(0).toUpperCase();
             const bgAv = isMine ? 'var(--accent)' : '#6366f1';
             return `<div class="mb-2 p-2.5 rounded-xl border cursor-pointer hover:opacity-80 transition-opacity" style="background-color:var(--bg-sidebar);border-color:var(--border-color);" onclick="window.goToMessage('${m.id}',null,'${m.room_id}')">
-                <div class="flex items-center gap-2 mb-1.5">
+                <div class="flex items-center gap-2 mb-1">
                     <div class="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0" style="background:${bgAv};">${av}</div>
-                    <span class="text-[11px] font-bold truncate" style="color:var(--text-primary);">${window.escapeHtml(name)}</span>
+                    <span class="text-[11px] font-bold truncate flex-1" style="color:var(--text-primary);">${window.escapeHtml(name)}</span>
                     <span class="text-[9px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0" style="background:rgba(99,102,241,0.1);color:#6366f1;">${roomLabel}</span>
-                    <span class="text-[9px] ml-auto flex-shrink-0 whitespace-nowrap" style="color:var(--text-secondary);">${t}</span>
+                    <span class="text-[9px] flex-shrink-0 whitespace-nowrap" style="color:var(--text-secondary);">${t}</span>
                 </div>
                 <p class="text-[11px] line-clamp-2 pl-8" style="color:var(--text-secondary);">${window.escapeHtml(txt)}</p>
             </div>`;
         } else {
-            const n = item.data;
-            const msg = window.stripHtml(n.message).substring(0, 90);
-            const tp = n.type || 'general';
-            const ic = iconMap[tp] || 'fa-bell', co = colorMap[tp] || '#f59e0b';
-            const clickFn = tp === 'task'
-                ? `window.goToTask('${n.task_id||''}','${n.id}')`
-                : `window.goToMessage('${n.message_id}','${n.id}')`;
-            return `<div class="mb-2 p-2.5 rounded-xl border cursor-pointer hover:opacity-80 transition-opacity" style="background-color:var(--bg-sidebar);border-color:var(--border-color);opacity:${n.is_read?'0.6':'1'};" onclick="${clickFn}">
-                <div class="flex items-center gap-2 mb-1.5">
-                    <div class="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${co}22;">
-                        <i class="fa-solid ${ic}" style="color:${co};font-size:11px;"></i>
+            // Task trail entry
+            const tr = item.data;
+            const tName = window.toSentenceCase?.(tr.profiles?.full_name || tr.profiles?.email?.split('@')[0] || 'Unknown') || 'Unknown';
+            const taskTitle = tr.tasks?.title || 'Task';
+            const action = tr.action || 'UPDATE';
+            const comment = tr.comment ? ` — ${tr.comment.split('|')[0]}` : '';
+            const actionColors = { FILE:'#10b981', UPDATE:'#3b82f6', CREATE:'#6366f1' };
+            const co = actionColors[action] || '#6b7280';
+            return `<div class="mb-2 p-2.5 rounded-xl border cursor-pointer hover:opacity-80 transition-opacity" style="background-color:var(--bg-sidebar);border-color:var(--border-color);" onclick="window.goToTask('${tr.task_id||''}')">
+                <div class="flex items-center gap-2 mb-1">
+                    <div class="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${co}18;">
+                        <i class="fa-solid ${action==='FILE'?'fa-paperclip':action==='CREATE'?'fa-plus':'fa-tasks'}" style="color:${co};font-size:10px;"></i>
                     </div>
-                    <span class="text-[11px] font-bold capitalize" style="color:var(--text-primary);">${tp}</span>
-                    ${!n.is_read?`<span class="w-1.5 h-1.5 rounded-full flex-shrink-0" style="background:${co};"></span>`:''}
-                    <span class="text-[9px] ml-auto flex-shrink-0 whitespace-nowrap" style="color:var(--text-secondary);">${t}</span>
+                    <span class="text-[11px] font-bold truncate flex-1" style="color:var(--text-primary);">${window.escapeHtml(tName)}</span>
+                    <span class="text-[9px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0" style="background:${co}18;color:${co};">${action}</span>
+                    <span class="text-[9px] flex-shrink-0 whitespace-nowrap" style="color:var(--text-secondary);">${t}</span>
                 </div>
-                <p class="text-[11px] line-clamp-2 pl-8" style="color:var(--text-secondary);">${window.escapeHtml(msg)}</p>
+                <p class="text-[11px] line-clamp-2 pl-8" style="color:var(--text-secondary);">📋 ${window.escapeHtml(taskTitle)}${window.escapeHtml(comment)}</p>
             </div>`;
         }
     }).join('');

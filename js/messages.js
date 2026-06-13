@@ -381,50 +381,47 @@ window.renderMessages = function(messages) {
 };
 
 // Apply reaction — updates DOM immediately, broadcasts to all users, optionally persists.
+// ─── REACTION TOGGLE ─────────────────────────────────────────────────────────
+// Click once = add reaction; click same reaction again = remove it
 window.applyReaction = async function(msgId, value, type) {
-    // 1. Update DOM immediately for the user who clicked
+    const footer = document.getElementById('footer-' + msgId);
+    if (!footer) return;
+
+    // Check if this user already set this same reaction (visible in DOM)
+    const existingEmoji = type === 'emoji' ? footer.querySelector(`[data-emoji="${value}"]`) : null;
+    const existingTag   = type === 'tag'   ? footer.querySelector(`[data-tag="${value}"]`)   : null;
+    const alreadySet    = existingEmoji || existingTag;
+
+    if (alreadySet) {
+        // ── REMOVE (toggle off) ──────────────────────────────────────────────
+        alreadySet.remove();
+        try { await sb.from('reactions').delete()
+                .eq('message_id', msgId).eq('value', value).eq('user_id', window.currentUser.id); } catch(e) {}
+        try {
+            if (window._reactionsBroadcast) await window._reactionsBroadcast.send({
+                type:'broadcast', event:'reaction_remove',
+                payload:{ message_id:msgId, value, user_id:window.currentUser.id }
+            });
+        } catch(e) {}
+        return; // done
+    }
+
+    // ── ADD (toggle on) ──────────────────────────────────────────────────────
     window.applyReactionDOM(msgId, value, type);
 
-    // 2. Broadcast to ALL other connected users via Supabase Broadcast
-    //    This works with ZERO schema changes — no reactions table needed.
+    // Broadcast to all connected users via Supabase Broadcast (no schema needed)
     try {
-        if (window._reactionsBroadcast) {
-            await window._reactionsBroadcast.send({
-                type: 'broadcast',
-                event: 'reaction',
-                payload: {
-                    message_id: msgId,
-                    value,
-                    type,
-                    user_id: window.currentUser.id
-                }
-            });
-        }
-    } catch(e) { /* broadcast channel not ready yet */ }
+        if (window._reactionsBroadcast) await window._reactionsBroadcast.send({
+            type:'broadcast', event:'reaction',
+            payload:{ message_id:msgId, value, type, user_id:window.currentUser.id }
+        });
+    } catch(e) {}
 
-    // 3. Also persist to reactions table + notify message owner
+    // Persist to reactions table for page-reload survival (optional table)
     try {
-        const { data: existing } = await sb.from('reactions')
-            .select('id, count').eq('message_id', msgId).eq('value', value)
-            .eq('user_id', window.currentUser.id).maybeSingle();
-        if (existing) {
-            await sb.from('reactions').update({ count: (existing.count||1)+1 }).eq('id', existing.id);
-        } else {
-            await sb.from('reactions').insert({
-                message_id: msgId, user_id: window.currentUser.id,
-                value, type, count: 1
-            });
-        }
-    } catch(e) { /* reactions table may not exist yet */ }
-
-    // 4. Notify the message owner about the reaction (not yourself)
-    try {
-        const { data: msgRow } = await sb.from('messages').select('sender_id').eq('id', msgId).single();
-        if (msgRow && msgRow.sender_id !== window.currentUser.id) {
-            const myName = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'Someone';
-            const label = type === 'emoji' ? value : value;
-            await window.notifyUser(msgRow.sender_id, `${label} ${myName} reacted to your message`, msgId, 'reaction');
-        }
+        await sb.from('reactions').insert({
+            message_id:msgId, user_id:window.currentUser.id, value, type, count:1
+        });
     } catch(e) {}
 };
 

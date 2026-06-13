@@ -815,6 +815,172 @@ window.saveSettings = async function() {
     if (typeof window.loadChatsList === 'function') window.loadChatsList();
 };
 
+// ─── DASHBOARD ─────────────────────────────────────────────────────────────
+window.openDashboard = function() {
+    const modal = document.getElementById('dashboardModal');
+    if (!modal) return;
+    modal.classList.remove('hidden'); modal.classList.add('flex');
+    window.loadDashboardStats('today');
+};
+window.closeDashboard = function() {
+    const modal = document.getElementById('dashboardModal');
+    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+};
+
+window.loadDashboardStats = async function(period) {
+    // Activate tab
+    document.querySelectorAll('.dash-tab').forEach(t => {
+        const isActive = t.dataset.period === period;
+        t.style.background = isActive ? 'var(--accent)' : 'var(--bg-body)';
+        t.style.color = isActive ? '#fff' : 'var(--text-secondary)';
+        t.style.borderColor = isActive ? 'var(--accent)' : 'var(--border-color)';
+    });
+    const el = document.getElementById('dashboardContent');
+    if (!el) return;
+    el.innerHTML = '<div class="flex items-center justify-center py-12 opacity-50"><i class="fa-solid fa-circle-notch fa-spin text-2xl mr-2"></i> Loading stats...</div>';
+
+    // Date filter
+    const now = new Date();
+    let since = null;
+    if (period === 'today') { const d = new Date(now); d.setHours(0,0,0,0); since = d.toISOString(); }
+    else if (period === 'week') { const d = new Date(now); d.setDate(d.getDate()-7); since = d.toISOString(); }
+    else if (period === 'month') { const d = new Date(now); d.setMonth(d.getMonth()-1); since = d.toISOString(); }
+
+    // Fetch in parallel
+    const uid = window.currentUser.id;
+    const addSince = (q) => since ? q.gte('created_at', since) : q;
+
+    const [
+        { count: msgSent },
+        { count: msgRcvd },
+        { count: taskCreated },
+        { count: taskAssigned },
+        { count: taskDone },
+        { count: taskPending },
+        { count: notifCount }
+    ] = await Promise.all([
+        addSince(sb.from('messages').select('*',{count:'exact',head:true}).eq('sender_id', uid)),
+        addSince(sb.from('messages').select('*',{count:'exact',head:true}).neq('sender_id', uid).eq('room_id', window.currentRoom)),
+        addSince(sb.from('tasks').select('*',{count:'exact',head:true}).eq('assigned_by', uid)),
+        addSince(sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id', uid)),
+        addSince(sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id', uid).eq('status','accepted')),
+        addSince(sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id', uid).neq('status','accepted')),
+        addSince(sb.from('notifications').select('*',{count:'exact',head:true}).eq('user_id', uid))
+    ]);
+
+    // Overall score (0–100)
+    const totalAssigned = (taskAssigned || 0);
+    const completed = (taskDone || 0);
+    const completionRate = totalAssigned > 0 ? (completed / totalAssigned) : 0;
+    const activityScore = Math.min((msgSent || 0) / 20, 1); // capped at 20 msgs
+    const score = Math.round((completionRate * 60 + activityScore * 40));
+
+    const scoreColor = score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#ef4444';
+    const scoreLabel = score >= 70 ? 'Excellent' : score >= 40 ? 'Good' : 'Needs Improvement';
+
+    const stats = [
+        { label:'Messages Sent',      value: msgSent||0,      icon:'fa-paper-plane',     color:'#6366f1' },
+        { label:'Messages Received',  value: msgRcvd||0,      icon:'fa-inbox',            color:'#3b82f6' },
+        { label:'Tasks Created',      value: taskCreated||0,  icon:'fa-plus-circle',      color:'#8b5cf6' },
+        { label:'Assigned to Me',     value: taskAssigned||0, icon:'fa-user-check',       color:'#f59e0b' },
+        { label:'Completed Tasks',    value: taskDone||0,     icon:'fa-check-circle',     color:'#22c55e' },
+        { label:'Pending Tasks',      value: taskPending||0,  icon:'fa-hourglass-half',   color:'#ef4444' },
+    ];
+
+    el.innerHTML = `
+    <div id="dashboardPrintArea">
+        <!-- Score ring -->
+        <div class="flex items-center justify-between mb-5 p-4 rounded-2xl border" style="background:linear-gradient(135deg,${scoreColor}15,${scoreColor}05);border-color:${scoreColor}30;">
+            <div>
+                <div class="text-4xl font-black" style="color:${scoreColor};">${score}<span class="text-lg font-bold opacity-60">/100</span></div>
+                <div class="text-sm font-bold mt-1" style="color:${scoreColor};">${scoreLabel}</div>
+                <div class="text-xs mt-0.5" style="color:var(--text-secondary);">Overall Activity Score</div>
+            </div>
+            <div style="width:72px;height:72px;border-radius:50%;background:conic-gradient(${scoreColor} ${score*3.6}deg, var(--border-color) 0deg);display:flex;align-items:center;justify-content:center;">
+                <div style="width:54px;height:54px;border-radius:50%;background:var(--bg-sidebar);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:${scoreColor};">${score}%</div>
+            </div>
+        </div>
+        <!-- Stat cards -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
+            ${stats.map(s => `
+            <div class="p-3 rounded-xl border" style="background-color:var(--bg-body);border-color:var(--border-color);">
+                <div class="flex items-center gap-2 mb-1.5">
+                    <div style="width:28px;height:28px;border-radius:8px;background:${s.color}15;display:flex;align-items:center;justify-content:center;">
+                        <i class="fa-solid ${s.icon}" style="color:${s.color};font-size:11px;"></i>
+                    </div>
+                    <span class="text-[9px] font-bold uppercase tracking-wider" style="color:var(--text-secondary);">${s.label}</span>
+                </div>
+                <div class="text-2xl font-black" style="color:var(--text-primary);">${s.value}</div>
+            </div>`).join('')}
+        </div>
+        <!-- Completion bar -->
+        <div class="p-3 rounded-xl border" style="background-color:var(--bg-body);border-color:var(--border-color);">
+            <div class="flex justify-between mb-2">
+                <span class="text-xs font-bold" style="color:var(--text-secondary);">Task Completion Rate</span>
+                <span class="text-xs font-black" style="color:var(--text-primary);">${Math.round(completionRate*100)}%</span>
+            </div>
+            <div style="height:8px;border-radius:4px;background:var(--border-color);overflow:hidden;">
+                <div style="height:100%;border-radius:4px;background:${scoreColor};width:${Math.round(completionRate*100)}%;transition:width 0.5s;"></div>
+            </div>
+        </div>
+    </div>`;
+};
+
+window.downloadDashboardPDF = function() {
+    const el = document.getElementById('dashboardPrintArea');
+    if (!el || typeof html2pdf === 'undefined') { window.showCenterToast('PDF library not loaded','fa-solid fa-times','text-red-500'); return; }
+    const userName = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'padding:24px;font-family:Inter,sans-serif;background:#fff;color:#111;';
+    wrapper.innerHTML = `
+        <div style="text-align:center;margin-bottom:20px;border-bottom:2px solid #6366f1;padding-bottom:12px;">
+            <h2 style="color:#6366f1;margin:0;font-size:20px;">MPGS TaskFlow — Progress Card</h2>
+            <p style="color:#6b7280;margin:4px 0 0;font-size:12px;">${userName} · Generated ${new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</p>
+        </div>
+        ${el.innerHTML}`;
+    html2pdf().from(wrapper).set({
+        margin:10, filename:`Dashboard_${userName.replace(/\s+/g,'_')}.pdf`,
+        html2canvas:{scale:2,useCORS:true}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}
+    }).save().then(() => window.showCenterToast('Progress Card Downloaded!','fa-solid fa-file-pdf','text-green-500'));
+};
+
+// ─── GROUP SETTINGS ─────────────────────────────────────────────────────────
+window._selectedGroupColor = null;
+
+window.openGroupSettings = function(groupId, currentName, currentColor) {
+    const modal = document.getElementById('groupSettingsModal'); if (!modal) return;
+    document.getElementById('groupSettingsId').value = groupId;
+    document.getElementById('groupSettingsName').value = currentName;
+    window._selectedGroupColor = currentColor;
+    // Highlight current color
+    document.querySelectorAll('#groupColorPicker button').forEach(b => {
+        b.style.borderColor = b.dataset.color === currentColor ? '#fff' : 'transparent';
+        b.style.boxShadow  = b.dataset.color === currentColor ? '0 0 0 2px '+currentColor : 'none';
+    });
+    modal.classList.remove('hidden'); modal.classList.add('flex');
+};
+window.closeGroupSettings = function() {
+    const modal = document.getElementById('groupSettingsModal');
+    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+};
+window.selectGroupColor = function(color) {
+    window._selectedGroupColor = color;
+    document.querySelectorAll('#groupColorPicker button').forEach(b => {
+        b.style.borderColor = b.dataset.color === color ? '#fff' : 'transparent';
+        b.style.boxShadow  = b.dataset.color === color ? '0 0 0 2px '+color : 'none';
+    });
+};
+window.saveGroupSettings = function() {
+    const groupId = document.getElementById('groupSettingsId').value;
+    const name    = document.getElementById('groupSettingsName').value.trim();
+    if (!name) { window.showCenterToast('Name cannot be empty','fa-solid fa-times','text-red-500'); return; }
+    if (name) localStorage.setItem('dept_name_' + groupId, name);
+    if (window._selectedGroupColor) localStorage.setItem('dept_color_' + groupId, window._selectedGroupColor);
+    window.closeGroupSettings();
+    window.showCenterToast('Group updated ✓','fa-solid fa-check','text-green-400');
+    if (typeof window.loadChatsList === 'function') window.loadChatsList();
+};
+
 // ─── SCHEDULE MODAL ────────────────────────────────────────────────────────
 window.showScheduleModal = function() {
     let txt=window.quillEditor.root.innerHTML.trim();
@@ -833,3 +999,227 @@ window.saveScheduledMessage = async function() {
     window.quillEditor.root.innerHTML='';
     window.showCenterToast('Message Scheduled Successfully! 🕐');
 };
+
+// ─── DASHBOARD ─────────────────────────────────────────────────────────────
+window.openDashboard = async function() {
+    const modal = document.getElementById('dashboardModal');
+    if (!modal) return;
+    modal.classList.remove('hidden'); modal.classList.add('flex');
+    await window.loadDashboard('all');
+};
+window.closeDashboard = function() {
+    const modal = document.getElementById('dashboardModal');
+    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+};
+
+window.loadDashboard = async function(filter) {
+    // Update active pill
+    document.querySelectorAll('.dash-filter').forEach(b => b.classList.toggle('active', b.dataset.filter === filter));
+    const content = document.getElementById('dashboardContent');
+    if (!content) return;
+    content.innerHTML = '<div class="flex items-center justify-center py-12" style="color:var(--text-secondary);"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Loading...</div>';
+
+    const uid = window.currentUser.id;
+    const now = new Date();
+    let startDate = null;
+    if (filter === 'today') { startDate = new Date(now); startDate.setHours(0,0,0,0); }
+    else if (filter === 'week') { startDate = new Date(now); startDate.setDate(startDate.getDate() - 7); }
+    else if (filter === 'month') { startDate = new Date(now); startDate.setMonth(startDate.getMonth() - 1); }
+    const since = startDate ? startDate.toISOString() : '2020-01-01T00:00:00Z';
+
+    // Parallel queries
+    const [
+        { count: msgSent },
+        { count: msgRcvd },
+        { count: tasksCreated },
+        { count: tasksAssigned },
+        { count: tasksCompleted },
+        { count: tasksPending },
+        { count: reactions },
+        { count: replies }
+    ] = await Promise.all([
+        sb.from('messages').select('*',{count:'exact',head:true}).eq('sender_id',uid).gte('created_at',since),
+        sb.from('messages').select('*',{count:'exact',head:true}).neq('sender_id',uid).gte('created_at',since),
+        sb.from('tasks').select('*',{count:'exact',head:true}).eq('assigned_by',uid).gte('created_at',since),
+        sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id',uid),
+        sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id',uid).eq('status','accepted'),
+        sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id',uid).neq('status','accepted'),
+        sb.from('reactions').select('*',{count:'exact',head:true}).eq('user_id',uid).gte('created_at',since).catch(()=>({count:0})),
+        sb.from('messages').select('*',{count:'exact',head:true}).eq('sender_id',uid).not('parent_message_id','is',null).gte('created_at',since)
+    ]);
+
+    // Overall score: weighted metric
+    const totalTasks = (tasksAssigned||0);
+    const completionRate = totalTasks > 0 ? Math.round(((tasksCompleted||0) / totalTasks) * 100) : 0;
+    const engagementScore = Math.min(100, Math.round(((msgSent||0) * 2 + (replies||0) * 3 + (reactions||0)) / 5));
+    const overallScore = Math.round((completionRate * 0.6) + (engagementScore * 0.4));
+
+    const scoreColor = overallScore >= 80 ? '#16a34a' : overallScore >= 60 ? '#d97706' : '#dc2626';
+    const scoreLabel = overallScore >= 80 ? 'Excellent' : overallScore >= 60 ? 'Good' : 'Needs Attention';
+
+    const stat = (icon, color, label, value, bg) =>
+        `<div class="rounded-xl p-4 border" style="background:${bg};border-color:${color}22;">
+            <div class="flex items-center gap-2 mb-2">
+                <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:${color}18;">
+                    <i class="fa-solid ${icon}" style="color:${color};font-size:14px;"></i>
+                </div>
+                <span class="text-xs font-bold uppercase tracking-wider" style="color:${color};">${label}</span>
+            </div>
+            <div class="text-3xl font-black" style="color:var(--text-primary);">${value??0}</div>
+        </div>`;
+
+    content.innerHTML = `
+        <div id="dashboardReport">
+            <!-- Score Card -->
+            <div class="rounded-2xl p-5 mb-5 text-center" style="background:linear-gradient(135deg,${scoreColor}18,${scoreColor}08);border:1px solid ${scoreColor}30;">
+                <div class="text-5xl font-black mb-1" style="color:${scoreColor};">${overallScore}</div>
+                <div class="text-sm font-bold mb-1" style="color:${scoreColor};">${scoreLabel}</div>
+                <div class="text-xs" style="color:var(--text-secondary);">Overall Performance Score · ${filter === 'all' ? 'All Time' : filter.charAt(0).toUpperCase()+filter.slice(1)}</div>
+                <div class="flex gap-4 justify-center mt-3 text-xs" style="color:var(--text-secondary);">
+                    <span>Task Completion: <b style="color:${scoreColor};">${completionRate}%</b></span>
+                    <span>Engagement: <b style="color:${scoreColor};">${engagementScore}%</b></span>
+                </div>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                ${stat('fa-paper-plane','#6366f1','Messages Sent',msgSent,'var(--bg-body)')}
+                ${stat('fa-inbox','#10b981','Messages Received',msgRcvd,'var(--bg-body)')}
+                ${stat('fa-plus-circle','#f59e0b','Tasks Created',tasksCreated,'var(--bg-body)')}
+                ${stat('fa-user-check','#3b82f6','Tasks Assigned to Me',tasksAssigned,'var(--bg-body)')}
+                ${stat('fa-check-circle','#16a34a','Tasks Completed',tasksCompleted,'var(--bg-body)')}
+                ${stat('fa-clock','#ef4444','Tasks Pending',tasksPending,'var(--bg-body)')}
+                ${stat('fa-face-smile','#a855f7','Reactions Given',reactions,'var(--bg-body)')}
+                ${stat('fa-reply','#0ea5e9','Replies Sent',replies,'var(--bg-body)')}
+            </div>
+
+            <!-- Progress Bars -->
+            <div class="rounded-xl p-4 border" style="border-color:var(--border-color);background:var(--bg-body);">
+                <div class="text-xs font-bold mb-3 uppercase tracking-wider" style="color:var(--text-secondary);">Task Progress</div>
+                <div class="mb-2">
+                    <div class="flex justify-between text-xs mb-1" style="color:var(--text-secondary);">
+                        <span>Completed</span><span>${tasksCompleted||0} / ${tasksAssigned||0}</span>
+                    </div>
+                    <div class="w-full rounded-full h-2" style="background:var(--border-color);">
+                        <div class="h-2 rounded-full transition-all" style="width:${completionRate}%;background:#16a34a;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+    window._lastDashboardData = { filter, msgSent, msgRcvd, tasksCreated, tasksAssigned, tasksCompleted, tasksPending, reactions, replies, overallScore, scoreLabel, completionRate };
+};
+
+window.downloadProgressCard = async function() {
+    const el = document.getElementById('dashboardReport');
+    if (!el || typeof html2pdf === 'undefined') { window.showCenterToast('PDF library not loaded','fa-solid fa-times','text-red-500'); return; }
+    const d = window._lastDashboardData || {};
+    const name = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'padding:30px;font-family:Inter,sans-serif;background:#fff;color:#111;';
+    wrapper.innerHTML = `
+        <div style="text-align:center;margin-bottom:24px;">
+            <h2 style="color:#800000;font-size:22px;font-weight:800;margin-bottom:4px;">MPGS TaskFlow — Progress Card</h2>
+            <p style="font-size:13px;color:#666;">${name} &nbsp;·&nbsp; ${d.filter==='all'?'All Time':d.filter} &nbsp;·&nbsp; ${new Date().toLocaleDateString('en-IN')}</p>
+        </div>
+        <div style="text-align:center;padding:20px;background:#f0fdf4;border-radius:16px;margin-bottom:20px;">
+            <div style="font-size:48px;font-weight:900;color:#16a34a;">${d.overallScore||0}</div>
+            <div style="font-size:14px;font-weight:700;color:#16a34a;">${d.scoreLabel||'N/A'} — Overall Score</div>
+            <div style="font-size:12px;color:#666;margin-top:6px;">Task Completion: ${d.completionRate||0}%</div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <tr style="background:#f8f9fa;"><th style="padding:10px;border:1px solid #e5e7eb;text-align:left;">Metric</th><th style="padding:10px;border:1px solid #e5e7eb;text-align:right;">Count</th></tr>
+            ${[['Messages Sent',d.msgSent],['Messages Received',d.msgRcvd],['Tasks Created',d.tasksCreated],['Tasks Assigned',d.tasksAssigned],['Tasks Completed',d.tasksCompleted],['Tasks Pending',d.tasksPending],['Reactions Given',d.reactions],['Replies Sent',d.replies]]
+                .map(([k,v])=>`<tr><td style="padding:8px 10px;border:1px solid #e5e7eb;">${k}</td><td style="padding:8px 10px;border:1px solid #e5e7eb;text-align:right;font-weight:700;">${v||0}</td></tr>`).join('')}
+        </table>`;
+    html2pdf().from(wrapper).set({ margin:10, filename:`MPGS_Progress_${name}_${d.filter}.pdf`, html2canvas:{scale:2,useCORS:true}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'} }).save()
+        .then(()=>window.showCenterToast('Progress Card Downloaded!','fa-solid fa-file-pdf','text-green-500'));
+};
+
+// ─── GROUP SETTINGS ─────────────────────────────────────────────────────────
+window.openGroupSettings = function() {
+    const room = window.currentRoom;
+    if (!room || room.startsWith('dm_')) return;
+    const modal = document.getElementById('groupSettingsModal');
+    if (!modal) return;
+    // Load saved name from localStorage
+    const savedName = localStorage.getItem('mpgs_channel_name_' + room) || (room.charAt(0).toUpperCase() + room.slice(1));
+    document.getElementById('groupNameInput').value = savedName;
+    // Load photo
+    const savedPhoto = localStorage.getItem('mpgs_channel_photo_' + room);
+    const prev = document.getElementById('groupPhotoPreview');
+    const phdr = document.getElementById('groupPhotoPlaceholder');
+    if (savedPhoto) { prev.src = savedPhoto; prev.style.display='block'; if(phdr) phdr.style.display='none'; }
+    else { prev.style.display='none'; if(phdr) { phdr.style.display='flex'; phdr.textContent = savedName.charAt(0).toUpperCase(); } }
+    // Populate members list
+    const membersList = document.getElementById('groupMembersList');
+    if (membersList && window.globalUsersCache) {
+        membersList.innerHTML = window.globalUsersCache.map(u => {
+            const name = window.toSentenceCase?.(u.full_name || u.email.split('@')[0]) || u.email;
+            return `<div class="flex items-center gap-2 p-1.5 rounded-lg text-xs" style="color:var(--text-primary);">
+                <div class="w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0" style="background:var(--accent);">${name.charAt(0).toUpperCase()}</div>
+                <span class="font-semibold">${window.escapeHtml(name)}</span>
+                ${u.id === window.currentUser.id ? '<span class="text-[9px] px-1.5 py-0.5 rounded-full font-bold ml-auto" style="background:rgba(99,102,241,0.12);color:#6366f1;">You</span>' : ''}
+            </div>`;
+        }).join('');
+    }
+    modal.classList.remove('hidden'); modal.classList.add('flex');
+};
+window.closeGroupSettings = function() {
+    const modal = document.getElementById('groupSettingsModal');
+    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+};
+window.previewGroupPhoto = function(input) {
+    const file = input.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        const prev = document.getElementById('groupPhotoPreview');
+        const phdr = document.getElementById('groupPhotoPlaceholder');
+        prev.src = e.target.result; prev.style.display = 'block';
+        if (phdr) phdr.style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+};
+window.saveGroupSettings = async function() {
+    const room = window.currentRoom;
+    const name = document.getElementById('groupNameInput').value.trim();
+    if (!name) return;
+    localStorage.setItem('mpgs_channel_name_' + room, name);
+    // Save photo to localStorage as base64 (lightweight for now)
+    const photoInput = document.getElementById('groupPhotoInput');
+    if (photoInput.files[0]) {
+        const reader = new FileReader();
+        reader.onload = e => {
+            localStorage.setItem('mpgs_channel_photo_' + room, e.target.result);
+        };
+        reader.readAsDataURL(photoInput.files[0]);
+    }
+    // Update room title display
+    const titleSpan = document.getElementById('roomTitleDisplay');
+    if (titleSpan) titleSpan.innerText = name;
+    window.closeGroupSettings();
+    window.showCenterToast('Group settings saved ✓', 'fa-solid fa-check-circle', 'text-green-400');
+    if (typeof window.loadChatsList === 'function') window.loadChatsList();
+};
+
+// ─── SETTINGS FIX: Hide placeholder when photo shown ──────────────────────
+window.previewSettingsPhoto = function(input) {
+    const file = input.files[0]; if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { window.showCenterToast('Photo must be under 2MB','fa-solid fa-ban','text-red-500'); input.value=''; return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+        const prev = document.getElementById('settingsPhotoPreview');
+        prev.src = e.target.result; prev.style.display = 'block';
+        const placeholder = document.getElementById('settingsPhotoPlaceholder');
+        if (placeholder) placeholder.style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+};
+
+// CSS for dashboard filter pills
+(function() {
+    if (document.getElementById('dash-style')) return;
+    const s = document.createElement('style'); s.id='dash-style';
+    s.textContent = `.dash-filter{font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid var(--border-color);color:var(--text-secondary);background:var(--bg-body);cursor:pointer;transition:all 0.18s;} .dash-filter.active{background:var(--accent);color:#fff;border-color:var(--accent);}`;
+    document.head.appendChild(s);
+})();

@@ -807,8 +807,11 @@ window.openSettings = async function() {
     document.getElementById('settingsEmail').value = window.currentUser?.email || '';
     const photoEl = document.getElementById('settingsPhotoPreview');
     const placeholderEl = document.getElementById('settingsPhotoPlaceholder');
-    const avatarUrl = profile?.avatar_url || window._userAvatarUrl || null;
+    // Check localStorage fallback for avatar (works even if storage bucket is private)
+    const localAvatar = localStorage.getItem('mpgs_avatar_' + window.currentUser.id);
+    const avatarUrl = localAvatar || profile?.avatar_url || window._userAvatarUrl || null;
     if (avatarUrl) {
+        window._userAvatarUrl = avatarUrl;
         photoEl.src = avatarUrl; photoEl.style.display = 'block';
         if (placeholderEl) placeholderEl.style.display = 'none';
     } else {
@@ -832,416 +835,165 @@ window.previewSettingsPhoto = function(input) {
     reader.readAsDataURL(file);
 };
 // ─── PROFILE SETTINGS: Save display name and profile photo ───────────────────
+// ─── PROFILE SETTINGS SAVE ────────────────────────────────────────────────────
+// Updates display name + profile photo. Stores photo as base64 in localStorage
+// as fallback since storage bucket permissions may vary.
 window.saveSettings = async function() {
-    // ── Validate display name ─────────────────────────────────────────────────
+    // Validate name
     const name = document.getElementById('settingsName')?.value.trim();
     if (!name) { window.showCenterToast('Name cannot be empty','fa-solid fa-times','text-red-500'); return; }
 
     const photoInput = document.getElementById('settingsPhotoInput');
-    let avatarUrl = window._userAvatarUrl || null; // keep existing if no new file
+    let avatarDataUrl = window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + window.currentUser.id) || null;
 
-    // ── Upload photo if a new file was selected ────────────────────────────────
+    // Encode new photo as base64 — works without any storage bucket permissions
     if (photoInput?.files?.[0]) {
         const file = photoInput.files[0];
-        const ext  = file.name.split('.').pop();
-        const path = `avatars/${window.currentUser.id}.${ext}`; // fixed path = overwrites previous
-        window.showCenterToast('Uploading photo...','fa-solid fa-spinner fa-spin','text-blue-400');
-        const { error: upErr } = await sb.storage.from('task-proofs').upload(path, file, { upsert: true });
-        if (upErr) {
-            window.showCenterToast('Photo upload failed: ' + upErr.message,'fa-solid fa-times','text-red-500');
-            return;
-        }
-        const { data: urlData } = sb.storage.from('task-proofs').getPublicUrl(path);
-        avatarUrl = urlData?.publicUrl || null;
-        if (avatarUrl) {
-            // Bust cache with timestamp so browser reloads the new image
-            avatarUrl = avatarUrl.split('?')[0] + '?t=' + Date.now();
-        }
+        avatarDataUrl = await new Promise(resolve => {
+            const r = new FileReader();
+            r.onload = e => resolve(e.target.result);
+            r.readAsDataURL(file);
+        });
+        localStorage.setItem('mpgs_avatar_' + window.currentUser.id, avatarDataUrl);
     }
 
-    // ── Update auth user metadata (name shown in app header) ──────────────────
+    // Update Supabase auth metadata — also refreshes window.currentUser
     await sb.auth.updateUser({ data: { full_name: name } });
+    try { const { data: { user } } = await sb.auth.getUser(); if (user) window.currentUser = user; } catch(e) {}
 
-    // ── Update profiles table — try with avatar_url, fall back without it ──────
-    let profilePayload = { full_name: name };
-    if (avatarUrl) profilePayload.avatar_url = avatarUrl;
-    const { error: profErr } = await sb.from('profiles').update(profilePayload).eq('id', window.currentUser.id);
-    if (profErr) {
-        // avatar_url column may not exist yet — retry with name only
-        await sb.from('profiles').update({ full_name: name }).eq('id', window.currentUser.id);
+    // Update profiles table (name always; avatar_url only if column exists)
+    try { await sb.from('profiles').update({ full_name: name }).eq('id', window.currentUser.id); } catch(e) {}
+    try { if (avatarDataUrl) await sb.from('profiles').update({ full_name: name, avatar_url: avatarDataUrl }).eq('id', window.currentUser.id); } catch(e) {}
+
+    // Update sidebar DOM immediately — no page reload needed
+    window._userAvatarUrl = avatarDataUrl;
+    const av = document.getElementById('sidebarAvatar');
+    if (av) {
+        av.innerHTML = avatarDataUrl
+            ? `<img src="${avatarDataUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+            : name.charAt(0).toUpperCase();
     }
+    // Update the name in the sidebar pill (stable ID selector)
+    const nameEl = document.getElementById('sidebarNameDisplay');
+    if (nameEl) nameEl.textContent = name.toUpperCase();
 
-    // ── Update sidebar in real-time ───────────────────────────────────────────
-    if (avatarUrl) {
-        window._userAvatarUrl = avatarUrl;
-        const sidebarAv = document.getElementById('sidebarAvatar');
-        if (sidebarAv) {
-            sidebarAv.innerHTML = `<img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" alt="${window.escapeHtml(name)}">`;
-        }
-    }
-    // Update displayed username in sidebar pill
-    const sidebarName = document.querySelector('#sidebarAvatar + span');
-    if (sidebarName) sidebarName.textContent = name.toUpperCase();
-
-    window.showCenterToast('Settings saved ✓','fa-solid fa-check-circle','text-green-400');
+    window.showCenterToast('Profile saved ✓','fa-solid fa-check-circle','text-green-400');
     window.closeSettings();
-
-    // Reload chats list so any name changes propagate
     if (typeof window.loadChatsList === 'function') window.loadChatsList();
-};
+}
 
-// ─── DASHBOARD ─────────────────────────────────────────────────────────────
-// ─── DASHBOARD: Open the personal stats dashboard modal ───────────────────────
-window.openDashboard = async function() {
-    const modal = document.getElementById('dashboardModal');
-    if (!modal) return;
-    modal.classList.remove('hidden'); modal.classList.add('flex');
-    window.loadDashboard('today');
-};
-window.closeDashboard = function() {
-    const modal = document.getElementById('dashboardModal');
-    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
-};
 
-// ─── DASHBOARD PDF: Download a progress card PDF using html2pdf.js ────────────
-window.downloadDashboardPDF = function() {
-    if (typeof html2pdf === 'undefined') {
-        window.showCenterToast('PDF not available — html2pdf not loaded','fa-solid fa-exclamation-triangle','text-yellow-500');
-        return;
-    }
-    const el = document.getElementById('dashboardPrintArea') || document.getElementById('dashboardReport');
-    if (!el) { window.showCenterToast('Open dashboard first','fa-solid fa-info-circle','text-blue-400'); return; }
-    const userName = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'padding:24px;font-family:Inter,sans-serif;background:#fff;color:#111;';
-    wrapper.innerHTML = `
-        <div style="text-align:center;margin-bottom:20px;border-bottom:2px solid #6366f1;padding-bottom:12px;">
-            <h2 style="color:#6366f1;margin:0;font-size:20px;">MPGS TaskFlow — Progress Card</h2>
-            <p style="color:#6b7280;margin:4px 0 0;font-size:12px;">${userName} · Generated ${new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})}</p>
-        </div>
-        ${el.innerHTML}`;
-    html2pdf().from(wrapper).set({
-        margin:10, filename:`Dashboard_${userName.replace(/\s+/g,'_')}.pdf`,
-        html2canvas:{scale:2,useCORS:true}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}
-    }).save().then(() => window.showCenterToast('Progress Card Downloaded!','fa-solid fa-file-pdf','text-green-500'));
-};
-
-// ─── GROUP SETTINGS ─────────────────────────────────────────────────────────
-window._selectedGroupColor = null;
-
-window.openGroupSettings = function(groupId) {
-    const modal = document.getElementById('groupSettingsModal'); if (!modal) return;
-    const deptDefaults = { general:'General', math:'Math', science:'Science', leadership:'Leadership' };
-    const deptColors   = { general:'#6366f1', math:'#0ea5e9', science:'#10b981', leadership:'#f59e0b' };
-    const currentName  = localStorage.getItem('dept_name_' + groupId) || deptDefaults[groupId] || groupId;
-    const currentColor = localStorage.getItem('dept_color_' + groupId) || deptColors[groupId] || '#6366f1';
-    document.getElementById('groupSettingsId').value = groupId;
-    document.getElementById('groupSettingsName').value = currentName;
-    window._selectedGroupColor = currentColor;
-    document.querySelectorAll('#groupColorPicker button').forEach(b => {
-        const isActive = b.dataset.color === currentColor;
-        b.style.borderColor = isActive ? '#fff' : 'transparent';
-        b.style.boxShadow  = isActive ? '0 0 0 2px '+currentColor : 'none';
-        b.style.transform  = isActive ? 'scale(1.15)' : 'scale(1)';
-    });
-    modal.classList.remove('hidden'); modal.classList.add('flex');
-};
-window.closeGroupSettings = function() {
-    const modal = document.getElementById('groupSettingsModal');
-    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
-};
-window.selectGroupColor = function(color) {
-    window._selectedGroupColor = color;
-    document.querySelectorAll('#groupColorPicker button').forEach(b => {
-        b.style.borderColor = b.dataset.color === color ? '#fff' : 'transparent';
-        b.style.boxShadow  = b.dataset.color === color ? '0 0 0 2px '+color : 'none';
-    });
-};
-// ─── GROUP SETTINGS: Persist department name + colour to localStorage ─────────
 window.saveGroupSettings = function() {
-    const groupId = document.getElementById('groupSettingsId').value;
-    const name    = document.getElementById('groupSettingsName').value.trim();
-    if (!name) { window.showCenterToast('Name cannot be empty','fa-solid fa-times','text-red-500'); return; }
-    if (name) localStorage.setItem('dept_name_' + groupId, name);
-    if (window._selectedGroupColor) localStorage.setItem('dept_color_' + groupId, window._selectedGroupColor);
+    // Read from correct element IDs that match the modal HTML
+    const gid  = document.getElementById('groupSettingsId')?.value;
+    const name = document.getElementById('groupSettingsName')?.value.trim();
+    if (!gid || !name) { window.showCenterToast('Name cannot be empty','fa-solid fa-times','text-red-500'); return; }
+
+    // Save name + colour — USE SAME KEY PREFIX as openGroupSettings: dept_name_, dept_color_
+    localStorage.setItem('dept_name_'  + gid, name);
+    if (window._selectedGroupColor) localStorage.setItem('dept_color_' + gid, window._selectedGroupColor);
+
+    // Save member + admin selections from checkboxes
+    const memberIds = Array.from(document.querySelectorAll('.group-member-cb:checked')).map(cb => cb.dataset.uid);
+    const adminIds  = Array.from(document.querySelectorAll('.group-admin-cb:checked')).map(cb => cb.dataset.uid);
+    localStorage.setItem('dept_members_' + gid, JSON.stringify(memberIds));
+    localStorage.setItem('dept_admins_'  + gid, JSON.stringify(adminIds));
+
+    // Update room title if currently in this group
+    if (window.currentRoom === gid) {
+        const t = document.getElementById('roomTitleDisplay');
+        if (t) t.innerText = name;
+    }
     window.closeGroupSettings();
-    window.showCenterToast('Group updated ✓','fa-solid fa-check','text-green-400');
+    window.showCenterToast('Group settings saved ✓','fa-solid fa-check-circle','text-green-400');
     if (typeof window.loadChatsList === 'function') window.loadChatsList();
-};
+}
 
-// ─── SCHEDULE MODAL ────────────────────────────────────────────────────────
-window.showScheduleModal = function() {
-    let txt=window.quillEditor.root.innerHTML.trim();
-    txt=txt.replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g,'');
-    if(!txt){window.showCenterToast('Type a message first.','fa-solid fa-exclamation-triangle','text-yellow-500');return;}
-    document.getElementById('scheduleModal').classList.remove('hidden');
-    document.getElementById('scheduleModal').classList.add('flex');
-};
-window.closeScheduleModal = function() { document.getElementById('scheduleModal').classList.add('hidden'); document.getElementById('scheduleModal').classList.remove('flex'); };
-// ─── SCHEDULE: Insert a pending scheduled_messages row ──────────────────────────
-window.saveScheduledMessage = async function() {
-    const time=document.getElementById('scheduleDateTime').value; if(!time) return;
-    let txt=window.quillEditor.root.innerHTML.trim();
-    txt=txt.replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g,'');
-    await sb.from('scheduled_messages').insert({sender_id:window.currentUser.id,room_id:window.currentRoom,message_text:txt,scheduled_time:new Date(time).toISOString(),status:'pending'});
-    window.closeScheduleModal();
-    window.quillEditor.root.innerHTML='';
-    window.showCenterToast('Message Scheduled Successfully! 🕐');
-};
 
-// ─── DASHBOARD ─────────────────────────────────────────────────────────────
-window.openDashboard = async function() {
-    const modal = document.getElementById('dashboardModal');
-    if (!modal) return;
-    modal.classList.remove('hidden'); modal.classList.add('flex');
-    await window.loadDashboard('all');
-};
-window.closeDashboard = function() {
-    const modal = document.getElementById('dashboardModal');
-    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
-};
 
-// ─── DASHBOARD DATA: Fetch stats for today/week/month/all and render dashboard ─
-window.loadDashboard = async function(filter) {
-    // Update active tab
-    document.querySelectorAll('.dash-tab').forEach(b => {
-        const isActive = b.dataset.period === filter;
-        b.style.background = isActive ? 'var(--accent)' : 'var(--bg-body)';
-        b.style.color = isActive ? '#fff' : 'var(--text-secondary)';
-        b.style.borderColor = isActive ? 'var(--accent)' : 'var(--border-color)';
-    });
-    const content = document.getElementById('dashboardContent');
-    if (!content) return;
-    content.innerHTML = '<div class="flex items-center justify-center py-12" style="color:var(--text-secondary);"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Loading stats...</div>';
 
-    const uid = window.currentUser.id;
-    const now = new Date();
-    let since = null;
-    if (filter === 'today') { const d = new Date(now); d.setHours(0,0,0,0); since = d.toISOString(); }
-    else if (filter === 'week') { const d = new Date(now); d.setDate(d.getDate()-7); since = d.toISOString(); }
-    else if (filter === 'month') { const d = new Date(now); d.setMonth(d.getMonth()-1); since = d.toISOString(); }
-
-    // Safe sequential queries — each wrapped in try/catch returning 0 on error
-    // task_assignees has NO created_at column — do NOT add gte filter on it
-    const safeCount = async (buildQuery) => {
-        try {
-            const { count, error } = await buildQuery();
-            if (error) return 0;
-            return count || 0;
-        } catch(e) { return 0; }
-    };
-
-    const msgSent = await safeCount(() => {
-        let q = sb.from('messages').select('*',{count:'exact',head:true}).eq('sender_id',uid);
-        if (since) q = q.gte('created_at', since);
-        return q;
-    });
-    const msgRcvd = await safeCount(() => {
-        let q = sb.from('messages').select('*',{count:'exact',head:true}).neq('sender_id',uid);
-        if (since) q = q.gte('created_at', since);
-        return q;
-    });
-    const tasksCreated = await safeCount(() => {
-        let q = sb.from('tasks').select('*',{count:'exact',head:true}).eq('assigned_by',uid);
-        if (since) q = q.gte('created_at', since);
-        return q;
-    });
-    const replies = await safeCount(() => {
-        let q = sb.from('messages').select('*',{count:'exact',head:true}).eq('sender_id',uid).not('parent_message_id','is',null);
-        if (since) q = q.gte('created_at', since);
-        return q;
-    });
-    // task_assignees — no created_at, no date filter
-    const tasksAssigned  = await safeCount(() => sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id',uid));
-    const tasksCompleted = await safeCount(() => sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id',uid).eq('status','accepted'));
-    const tasksPending   = await safeCount(() => sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id',uid).neq('status','accepted'));
-    // reactions table optional
-    const reactions = await safeCount(() => {
-        let q = sb.from('reactions').select('*',{count:'exact',head:true}).eq('user_id',uid);
-        if (since) q = q.gte('created_at', since);
-        return q;
-    });
-
-    // Overall score: weighted metric
-    const totalTasks = (tasksAssigned||0);
-    const completionRate = totalTasks > 0 ? Math.round(((tasksCompleted||0) / totalTasks) * 100) : 0;
-    const engagementScore = Math.min(100, Math.round(((msgSent||0) * 2 + (replies||0) * 3 + (reactions||0)) / 5));
-    const overallScore = Math.round((completionRate * 0.6) + (engagementScore * 0.4));
-
-    const scoreColor = overallScore >= 80 ? '#16a34a' : overallScore >= 60 ? '#d97706' : '#dc2626';
-    const scoreLabel = overallScore >= 80 ? 'Excellent' : overallScore >= 60 ? 'Good' : 'Needs Attention';
-
-    const stat = (icon, color, label, value, bg) =>
-        `<div class="rounded-xl p-4 border" style="background:${bg};border-color:${color}22;">
-            <div class="flex items-center gap-2 mb-2">
-                <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:${color}18;">
-                    <i class="fa-solid ${icon}" style="color:${color};font-size:14px;"></i>
-                </div>
-                <span class="text-xs font-bold uppercase tracking-wider" style="color:${color};">${label}</span>
-            </div>
-            <div class="text-3xl font-black" style="color:var(--text-primary);">${value??0}</div>
-        </div>`;
-
-    content.innerHTML = `
-        <div id="dashboardReport">
-            <!-- Score Card -->
-            <div class="rounded-2xl p-5 mb-5 text-center" style="background:linear-gradient(135deg,${scoreColor}18,${scoreColor}08);border:1px solid ${scoreColor}30;">
-                <div class="text-5xl font-black mb-1" style="color:${scoreColor};">${overallScore}</div>
-                <div class="text-sm font-bold mb-1" style="color:${scoreColor};">${scoreLabel}</div>
-                <div class="text-xs" style="color:var(--text-secondary);">Overall Performance Score · ${filter === 'all' ? 'All Time' : filter.charAt(0).toUpperCase()+filter.slice(1)}</div>
-                <div class="flex gap-4 justify-center mt-3 text-xs" style="color:var(--text-secondary);">
-                    <span>Task Completion: <b style="color:${scoreColor};">${completionRate}%</b></span>
-                    <span>Engagement: <b style="color:${scoreColor};">${engagementScore}%</b></span>
-                </div>
-            </div>
-
-            <!-- Stats Grid -->
-            <div class="grid grid-cols-2 gap-3 mb-4">
-                ${stat('fa-paper-plane','#6366f1','Messages Sent',msgSent,'var(--bg-body)')}
-                ${stat('fa-inbox','#10b981','Messages Received',msgRcvd,'var(--bg-body)')}
-                ${stat('fa-plus-circle','#f59e0b','Tasks Created',tasksCreated,'var(--bg-body)')}
-                ${stat('fa-user-check','#3b82f6','Tasks Assigned to Me',tasksAssigned,'var(--bg-body)')}
-                ${stat('fa-check-circle','#16a34a','Tasks Completed',tasksCompleted,'var(--bg-body)')}
-                ${stat('fa-clock','#ef4444','Tasks Pending',tasksPending,'var(--bg-body)')}
-                ${stat('fa-face-smile','#a855f7','Reactions Given',reactions,'var(--bg-body)')}
-                ${stat('fa-reply','#0ea5e9','Replies Sent',replies,'var(--bg-body)')}
-            </div>
-
-            <!-- Progress Bars -->
-            <div class="rounded-xl p-4 border" style="border-color:var(--border-color);background:var(--bg-body);">
-                <div class="text-xs font-bold mb-3 uppercase tracking-wider" style="color:var(--text-secondary);">Task Progress</div>
-                <div class="mb-2">
-                    <div class="flex justify-between text-xs mb-1" style="color:var(--text-secondary);">
-                        <span>Completed</span><span>${tasksCompleted||0} / ${tasksAssigned||0}</span>
-                    </div>
-                    <div class="w-full rounded-full h-2" style="background:var(--border-color);">
-                        <div class="h-2 rounded-full transition-all" style="width:${completionRate}%;background:#16a34a;"></div>
-                    </div>
-                </div>
-            </div>
-        </div>`;
-
-    window._lastDashboardData = { filter, msgSent, msgRcvd, tasksCreated, tasksAssigned, tasksCompleted, tasksPending, reactions, replies, overallScore, scoreLabel, completionRate };
-};
-
-window.downloadProgressCard = async function() {
-    const el = document.getElementById('dashboardReport');
-    if (!el || typeof html2pdf === 'undefined') { window.showCenterToast('PDF library not loaded','fa-solid fa-times','text-red-500'); return; }
-    const d = window._lastDashboardData || {};
-    const name = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'padding:30px;font-family:Inter,sans-serif;background:#fff;color:#111;';
-    wrapper.innerHTML = `
-        <div style="text-align:center;margin-bottom:24px;">
-            <h2 style="color:#800000;font-size:22px;font-weight:800;margin-bottom:4px;">MPGS TaskFlow — Progress Card</h2>
-            <p style="font-size:13px;color:#666;">${name} &nbsp;·&nbsp; ${d.filter==='all'?'All Time':d.filter} &nbsp;·&nbsp; ${new Date().toLocaleDateString('en-IN')}</p>
-        </div>
-        <div style="text-align:center;padding:20px;background:#f0fdf4;border-radius:16px;margin-bottom:20px;">
-            <div style="font-size:48px;font-weight:900;color:#16a34a;">${d.overallScore||0}</div>
-            <div style="font-size:14px;font-weight:700;color:#16a34a;">${d.scoreLabel||'N/A'} — Overall Score</div>
-            <div style="font-size:12px;color:#666;margin-top:6px;">Task Completion: ${d.completionRate||0}%</div>
-        </div>
-        <table style="width:100%;border-collapse:collapse;font-size:13px;">
-            <tr style="background:#f8f9fa;"><th style="padding:10px;border:1px solid #e5e7eb;text-align:left;">Metric</th><th style="padding:10px;border:1px solid #e5e7eb;text-align:right;">Count</th></tr>
-            ${[['Messages Sent',d.msgSent],['Messages Received',d.msgRcvd],['Tasks Created',d.tasksCreated],['Tasks Assigned',d.tasksAssigned],['Tasks Completed',d.tasksCompleted],['Tasks Pending',d.tasksPending],['Reactions Given',d.reactions],['Replies Sent',d.replies]]
-                .map(([k,v])=>`<tr><td style="padding:8px 10px;border:1px solid #e5e7eb;">${k}</td><td style="padding:8px 10px;border:1px solid #e5e7eb;text-align:right;font-weight:700;">${v||0}</td></tr>`).join('')}
-        </table>`;
-    html2pdf().from(wrapper).set({ margin:10, filename:`MPGS_Progress_${name}_${d.filter}.pdf`, html2canvas:{scale:2,useCORS:true}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'} }).save()
-        .then(()=>window.showCenterToast('Progress Card Downloaded!','fa-solid fa-file-pdf','text-green-500'));
-};
-
-// ─── GROUP SETTINGS ─────────────────────────────────────────────────────────
-// Opens the group/department settings modal for the given groupId
-// Reads saved name/color from localStorage and pre-fills the form
-window.openGroupSettings = function(groupId) {
-    // groupId may be passed directly, or default to currentRoom if department
+// ─── GROUP SETTINGS ──────────────────────────────────────────────────────────
+// Opens group settings modal for a department — loads name, colour, members.
+window.openGroupSettings = async function(groupId) {
     const gid = groupId || window.currentRoom;
     if (!gid || gid.startsWith('dm_')) return;
 
     const modal = document.getElementById('groupSettingsModal');
-    if (!modal) {
-        window.showCenterToast('Group Settings not available', 'fa-solid fa-info-circle', 'text-yellow-400');
-        return;
-    }
+    if (!modal) { window.showCenterToast('Group Settings modal not found','fa-solid fa-info-circle','text-yellow-400'); return; }
 
-    // Pre-fill name using groupSettingsId (hidden) + groupSettingsName (text input)
+    // Defaults per department
     const deptDefaults = { general:'General', math:'Math', science:'Science', leadership:'Leadership' };
     const deptColors   = { general:'#6366f1', math:'#0ea5e9', science:'#10b981', leadership:'#f59e0b' };
-    const currentName  = localStorage.getItem('dept_name_' + gid) || deptDefaults[gid] || (gid.charAt(0).toUpperCase() + gid.slice(1));
+    const currentName  = localStorage.getItem('dept_name_'  + gid) || deptDefaults[gid] || gid.charAt(0).toUpperCase() + gid.slice(1);
     const currentColor = localStorage.getItem('dept_color_' + gid) || deptColors[gid] || '#6366f1';
 
+    // Pre-fill form fields
     const idEl   = document.getElementById('groupSettingsId');
     const nameEl = document.getElementById('groupSettingsName');
     if (idEl)   idEl.value   = gid;
     if (nameEl) nameEl.value = currentName;
 
     window._selectedGroupColor = currentColor;
-    // Highlight the active colour swatch
     document.querySelectorAll('#groupColorPicker button').forEach(b => {
-        const isActive = b.dataset.color === currentColor;
-        b.style.borderColor = isActive ? '#fff' : 'transparent';
-        b.style.boxShadow   = isActive ? '0 0 0 2px ' + currentColor : 'none';
-        b.style.transform   = isActive ? 'scale(1.15)' : 'scale(1)';
+        const active = b.dataset.color === currentColor;
+        b.style.borderColor = active ? '#fff' : 'transparent';
+        b.style.boxShadow   = active ? '0 0 0 2px ' + currentColor : 'none';
+        b.style.transform   = active ? 'scale(1.2)' : 'scale(1)';
     });
+
+    // Populate members list — fetch from Supabase if cache empty
+    const memberList = document.getElementById('groupMembersList');
+    if (memberList) {
+        let users = window.globalUsersCache || [];
+        if (!users.length) {
+            try {
+                const { data } = await sb.from('profiles').select('id, full_name, email');
+                users = data || [];
+                if (users.length) window.globalUsersCache = users;
+            } catch(e) {}
+        }
+        const savedMembers = JSON.parse(localStorage.getItem('dept_members_' + gid) || '[]');
+        const savedAdmins  = JSON.parse(localStorage.getItem('dept_admins_'  + gid) || '[]');
+        if (users.length) {
+            memberList.innerHTML = users.map(u => {
+                const uname    = window.toSentenceCase?.(u.full_name || u.email?.split('@')[0]) || (u.email || '?');
+                const isMember = savedMembers.length === 0 || savedMembers.includes(u.id);
+                const isAdmin  = savedAdmins.includes(u.id);
+                const isMe     = u.id === window.currentUser?.id;
+                return `<div class="flex items-center gap-2 p-2 text-xs border-b last:border-b-0" style="border-color:var(--border-color);">
+                    <div class="w-6 h-6 rounded-full flex items-center justify-center text-white font-bold text-[9px] flex-shrink-0" style="background:var(--accent);">${uname.charAt(0).toUpperCase()}</div>
+                    <span class="font-semibold flex-1 truncate" style="color:var(--text-primary);">${window.escapeHtml(uname)}${isMe ? ' <span style="color:#6366f1;font-size:9px;">(You)</span>' : ''}</span>
+                    <label class="flex items-center gap-1 cursor-pointer" style="color:var(--text-secondary);">
+                        <input type="checkbox" class="group-member-cb" data-uid="${u.id}" ${isMember ? 'checked' : ''}>
+                        <span class="text-[9px] font-bold">Member</span>
+                    </label>
+                    <label class="flex items-center gap-1 cursor-pointer" style="color:#f59e0b;">
+                        <input type="checkbox" class="group-admin-cb" data-uid="${u.id}" ${isAdmin ? 'checked' : ''}>
+                        <span class="text-[9px] font-bold">Admin</span>
+                    </label>
+                </div>`;
+            }).join('');
+        } else {
+            memberList.innerHTML = '<p class="text-xs p-3 italic" style="color:var(--text-secondary);">No members found.</p>';
+        }
+    }
 
     modal.classList.remove('hidden');
     modal.classList.add('flex');
 };
+
 window.closeGroupSettings = function() {
     const modal = document.getElementById('groupSettingsModal');
     if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
 };
-window.previewGroupPhoto = function(input) {
-    const file = input.files[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = e => {
-        const prev = document.getElementById('groupPhotoPreview');
-        const phdr = document.getElementById('groupPhotoPlaceholder');
-        prev.src = e.target.result; prev.style.display = 'block';
-        if (phdr) phdr.style.display = 'none';
-    };
-    reader.readAsDataURL(file);
-};
-window.saveGroupSettings = async function() {
-    const room = window.currentRoom;
-    const name = document.getElementById('groupNameInput').value.trim();
-    if (!name) return;
-    localStorage.setItem('mpgs_channel_name_' + room, name);
-    // Save photo to localStorage as base64 (lightweight for now)
-    const photoInput = document.getElementById('groupPhotoInput');
-    if (photoInput.files[0]) {
-        const reader = new FileReader();
-        reader.onload = e => {
-            localStorage.setItem('mpgs_channel_photo_' + room, e.target.result);
-        };
-        reader.readAsDataURL(photoInput.files[0]);
-    }
-    // Update room title display
-    const titleSpan = document.getElementById('roomTitleDisplay');
-    if (titleSpan) titleSpan.innerText = name;
-    window.closeGroupSettings();
-    window.showCenterToast('Group settings saved ✓', 'fa-solid fa-check-circle', 'text-green-400');
-    if (typeof window.loadChatsList === 'function') window.loadChatsList();
-};
 
-// ─── SETTINGS FIX: Hide placeholder when photo shown ──────────────────────
-window.previewSettingsPhoto = function(input) {
-    const file = input.files[0]; if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { window.showCenterToast('Photo must be under 2MB','fa-solid fa-ban','text-red-500'); input.value=''; return; }
-    const reader = new FileReader();
-    reader.onload = e => {
-        const prev = document.getElementById('settingsPhotoPreview');
-        prev.src = e.target.result; prev.style.display = 'block';
-        const placeholder = document.getElementById('settingsPhotoPlaceholder');
-        if (placeholder) placeholder.style.display = 'none';
-    };
-    reader.readAsDataURL(file);
+// Highlight selected colour swatch
+window.selectGroupColor = function(color) {
+    window._selectedGroupColor = color;
+    document.querySelectorAll('#groupColorPicker button').forEach(b => {
+        const active = b.dataset.color === color;
+        b.style.borderColor = active ? '#fff' : 'transparent';
+        b.style.boxShadow   = active ? '0 0 0 2px ' + color : 'none';
+        b.style.transform   = active ? 'scale(1.2)' : 'scale(1)';
+    });
 };
-
-// CSS for dashboard filter pills
-(function() {
-    if (document.getElementById('dash-style')) return;
-    const s = document.createElement('style'); s.id='dash-style';
-    s.textContent = `.dash-filter{font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid var(--border-color);color:var(--text-secondary);background:var(--bg-body);cursor:pointer;transition:all 0.18s;} .dash-filter.active{background:var(--accent);color:#fff;border-color:var(--accent);}`;
-    document.head.appendChild(s);
-})();

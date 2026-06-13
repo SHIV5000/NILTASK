@@ -1,6 +1,6 @@
 import { sb } from './shared.js';
 
-// v1.57.0 - IST fix, RT feed, beautify, settings, filter wrap, top labels, modern filters, scroll arrows, completed opacity, task scroll fix, READ tag, activity feed fix, clear fix, reactions fix, link pill, no rename modal
+// v1.58.0 - IST fix, RT feed, beautify, settings, filter wrap, top labels, modern filters, scroll arrows, completed opacity, task scroll fix, READ tag, activity feed fix, clear fix, reactions fix, link pill, no rename modal
 
 // ─── CSS ───────────────────────────────────────────────────────────────────
 (function() {

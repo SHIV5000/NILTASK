@@ -60,7 +60,7 @@ window.renderMainApp = function() {
                             <i id="themeToggleIcon" class="fa-solid ${window.currentTheme === 'light' ? 'fa-sun' : (window.currentTheme === 'dark' ? 'fa-moon' : 'fa-cloud-moon')} text-sm"></i>
                         </button>
                         <button onclick="window.logout()" class="w-8 h-8 rounded-full hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-colors" style="color:var(--text-secondary);">
-                            <i class="fa-solid fa-sign-out-alt text-sm"></i>
+                            <i class="fa-solid fa-arrow-right-from-bracket text-sm"></i>
                         </button>
                     </div>
                 </div>
@@ -77,7 +77,9 @@ window.renderMainApp = function() {
                 <div class="p-3 border-t flex flex-col gap-1.5" style="border-color:var(--border-color);background-color:var(--bg-body);">
                     <div class="flex items-center gap-2 w-full">
                         <div class="flex-1 text-[12px] font-bold flex items-center gap-2 border shadow-sm px-2 py-1.5 rounded-full justify-center min-w-0" style="color:var(--text-primary);border-color:var(--border-color);background-color:var(--bg-sidebar);">
-                            <div class="w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px] flex-shrink-0" style="background-color:var(--accent);">${userNameDisplay.charAt(0).toUpperCase()}</div>
+                            <div id="sidebarAvatar" class="w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px] flex-shrink-0 overflow-hidden" style="background-color:var(--accent);">
+                                ${window._userAvatarUrl ? `<img src="${window._userAvatarUrl}" style="width:100%;height:100%;object-fit:cover;">` : userNameDisplay.charAt(0).toUpperCase()}
+                            </div>
                             <span class="truncate">${window.escapeHtml(userNameDisplay.toUpperCase())}</span>
                         </div>
                         <button onclick="window.openSettings()" title="Profile Settings"
@@ -91,7 +93,7 @@ window.renderMainApp = function() {
                             <i class="fa-solid fa-chart-bar text-sm"></i>
                         </button>
                     </div>
-                    <div class="text-[9px] font-bold tracking-wider uppercase text-center" style="color:var(--text-secondary);">v1.58.0 - Dashboard · Settings · Group Settings</div>
+                    <div class="text-[9px] font-bold tracking-wider uppercase text-center" style="color:var(--text-secondary);">VER 1.59.0</div>
                 </div>
             </div>
 
@@ -109,25 +111,25 @@ window.renderMainApp = function() {
                             <i class="fa-solid fa-sliders text-xs"></i>
                         </button>
                     </div>
-                    <div class="flex items-center gap-3" style="color:var(--text-secondary);">
+                    <div class="flex items-center gap-4" style="color:var(--text-secondary);">
                         <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('scheduled')" title="Scheduled Messages">
-                            <i class="ti ti-clock text-lg"></i><span>Schedule</span>
+                            <i class="ti ti-clock text-xl"></i><span>Schedule</span>
                         </div>
                         <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('reminders')" title="Reminders">
-                            <i class="fa-solid fa-stopwatch text-[15px]"></i><span>Remind</span>
+                            <i class="fa-solid fa-stopwatch text-[18px]"></i><span>Remind</span>
                         </div>
                         <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('bookmarks')" title="Bookmarks">
-                            <i class="ti ti-bookmark text-lg"></i><span>Saved</span>
+                            <i class="ti ti-bookmark text-xl"></i><span>Bookmarks</span>
                         </div>
                         <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('alerts')" title="Notifications">
-                            <i class="ti ti-bell text-lg"></i><span>Alerts</span>
+                            <i class="ti ti-bell text-xl"></i><span>Alerts</span>
                         </div>
                         <div class="topbar-icon-btn top-bar-icon" onclick="window.openActivityFeed()" title="Activity Feed">
-                            <i class="fa-solid fa-bolt text-[14px]"></i><span>Activity</span>
+                            <i class="fa-solid fa-bolt text-[17px]"></i><span>Activity</span>
                         </div>
-                        <div class="border-l pl-3 ml-1 flex gap-2" style="border-color:var(--border-color);">
+                        <div class="border-l pl-4 ml-1 flex gap-3" style="border-color:var(--border-color);">
                             <div class="topbar-icon-btn" onclick="window.toggleRightSidebar()" title="Toggle Task Panel">
-                                <i class="ti ti-layout-sidebar-right text-lg"></i><span>Tasks</span>
+                                <i class="ti ti-layout-sidebar-right text-xl"></i><span>Tasks</span>
                             </div>
                         </div>
                         <input type="text" id="messageSearchBar" placeholder="Search messages..." class="ui-input px-3 py-1 rounded-full text-sm w-40 outline-none ml-1">
@@ -313,7 +315,7 @@ window.renderMainApp = function() {
                 </div>
                 <!-- Period tabs -->
                 <div class="flex gap-1 p-4 pb-0 flex-shrink-0">
-                    ${['today','week','month','all'].map(p => `<button class="dash-tab px-3 py-1.5 rounded-lg text-xs font-bold border transition-all" data-period="${p}" onclick="window.loadDashboardStats('${p}')" style="border-color:var(--border-color);color:var(--text-secondary);background:var(--bg-body);">${p==='all'?'All Time':p.charAt(0).toUpperCase()+p.slice(1)}</button>`).join('')}
+                    ${['today','week','month','all'].map(p => `<button class="dash-tab px-3 py-1.5 rounded-lg text-xs font-bold border transition-all" data-period="${p}" onclick="window.loadDashboard('${p}')" style="border-color:var(--border-color);color:var(--text-secondary);background:var(--bg-body);">${p==='all'?'All Time':p.charAt(0).toUpperCase()+p.slice(1)}</button>`).join('')}
                 </div>
                 <div id="dashboardContent" class="flex-1 overflow-y-auto p-4"></div>
             </div>
@@ -366,7 +368,7 @@ window.renderMainApp = function() {
                 <!-- Photo -->
                 <div class="flex flex-col items-center mb-5">
                     <div class="relative mb-3">
-                        <img id="settingsPhotoPreview" src="" alt="Profile" style="display:none;width:72px;height:72px;border-radius:50%;object-fit:cover;border:3px solid var(--accent);">
+                        <img id="settingsPhotoPreview" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="Profile" style="display:none;width:72px;height:72px;border-radius:50%;object-fit:cover;border:3px solid var(--accent);">
                         <div id="settingsPhotoPlaceholder" class="w-18 h-18 rounded-full flex items-center justify-center text-white text-2xl font-bold" style="width:72px;height:72px;border-radius:50%;background:var(--accent);">${userNameDisplay.charAt(0).toUpperCase()}</div>
                     </div>
                     <label class="cursor-pointer text-xs font-bold px-3 py-1.5 rounded-full border transition-colors hover:opacity-80" style="color:var(--accent);border-color:var(--accent);">
@@ -530,7 +532,7 @@ window.loadChatsList = async function() {
                     <span class="absolute -top-1 -right-1 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center" style="background:#22c55e;">${unread > 9 ? '9+' : unread}</span>` : ''}
             </div>
             <span class="flex-1 truncate tracking-wide text-sm" style="color:var(--text-primary);">${storedName}</span>
-            <button onclick="event.stopPropagation();window.openGroupSettings('${g}','${storedName}','${storedColor}')"
+            <button onclick="event.stopPropagation();window.openGroupSettings('${g}')"
                 class="opacity-0 group-hover/dept:opacity-100 transition-opacity p-1 rounded hover:bg-gray-100 flex-shrink-0"
                 style="color:var(--text-secondary);" title="Group Settings">
                 <i class="fa-solid fa-gear text-[10px]"></i>
@@ -669,9 +671,19 @@ window.startSubscriptions = function() {
             // Check sender_id manually since Supabase RT filter on UPDATE is unreliable
             if (p.new.status === 'sent' && p.new.sender_id === window.currentUser.id) {
                 const msg = window.stripHtml ? window.stripHtml(p.new.message_text) : p.new.message_text;
-                window.showCenterToast(`📨 Scheduled message sent: ${msg.substring(0,50)}`, 'fa-solid fa-clock', 'text-blue-400');
+                const preview = msg.substring(0, 60);
+                window.showCenterToast(`📨 Scheduled: ${preview}`, 'fa-solid fa-clock', 'text-blue-400');
                 window.playSound('message');
-                window.notifyUser(window.currentUser.id, `📨 Scheduled message sent: ${msg.substring(0,50)}`, null, 'message');
+                // Insert into notifications table so it appears in bell icon
+                if (typeof window.notifyUser === 'function') {
+                    window.notifyUser(window.currentUser.id, `📨 Scheduled message sent: ${preview}`, null, 'task');
+                }
+                // Refresh badge
+                if (typeof window.refreshNotificationBadge === 'function') window.refreshNotificationBadge();
+                // Also reload messages if the scheduled message is for current room
+                if (p.new.room_id === window.currentRoom && typeof window.loadMessages === 'function') {
+                    window.loadMessages();
+                }
             }
         }).subscribe();
 

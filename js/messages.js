@@ -435,7 +435,7 @@ window.applyReactionDOM = function(msgId, value, type) {
     if (type === 'emoji') {
         const existing = Array.from(footer.querySelectorAll('.e-chip')).find(c => c.textContent.trim().startsWith(value));
         if (existing) { const cnt = existing.querySelector('.e-cnt'); if(cnt) cnt.textContent = parseInt(cnt.textContent||'1')+1; }
-        else { const rm = footer.querySelector('.group\\/reaction'); rm?.insertAdjacentHTML('beforebegin', `<button class="e-chip active">${value} <span class="e-cnt">1</span></button>`); }
+        else { const rm = footer.querySelector('.group\\/reaction'); rm?.insertAdjacentHTML('beforebegin', `<button class="e-chip active" data-emoji="${value}">${value} <span class="e-cnt">1</span></button>`); }
     } else {
         if (!footer.querySelector(`[data-tag="${value}"]`)) {
             footer.insertAdjacentHTML('beforeend', `<span class="${colorMap[value]||'bg-blue-50 text-blue-700 border-blue-200'} px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ml-1" data-tag="${value}">${value}</span>`);

@@ -1,6 +1,6 @@
 import { sb } from './shared.js';
 
-// v1.58.0 - Edit fix, reaction/reply notifs, edit/forward/delete, ql-editor class, no reload, link pill, cross-room scroll via pendingScrollId
+// v1.58.0 - Edit/Forward/Delete, Reply+Reaction notifications, Broadcast reactions
 
 window.sendMessage = async function() {
     let text = window.quillEditor.root.innerHTML.trim();

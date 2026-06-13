@@ -1,6 +1,29 @@
+/**
+ * ui.js — MPGS TaskFlow v1.60.0
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Utility / UI layer — injected onto window.* so all other modules can call it.
+ *
+ * Blocks in this file:
+ *  • CSS injection         — theme, pill, badge, file-card, rich-text styles
+ *  • HTML stripping        — window.stripHtml
+ *  • Navigation helpers    — goToTask, goToMessage (cross-room)
+ *  • Theme                 — applyTheme, toggleTheme
+ *  • Toast                 — showCenterToast
+ *  • Top panels            — openTopPanel (scheduled / reminders / bookmarks / alerts)
+ *  • Notification actions  — dismissNotif, clearAllNotifications, clearFiredReminders
+ *  • Bell badge            — refreshNotificationBadge, markNotifRead, animateBell
+ *  • Activity Feed         — openActivityFeed, closeActivityFeed, refreshActivityFeed
+ *  • Dashboard             — openDashboard, loadDashboard, downloadDashboardPDF
+ *  • Profile Settings      — openSettings, saveSettings, previewSettingsPhoto
+ *  • Group Settings        — openGroupSettings, closeGroupSettings, saveGroupSettings
+ *  • Link Pill             — openLinkModal, closeLinkModal, insertLinkPill
+ *  • Modals (Task/Reminder/Schedule/Forward)
+ *  • Filter/Sort helpers   — toggleDateFilter
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
 import { sb } from './shared.js';
 
-// v1.58.0 - IST fix, RT feed, beautify, settings, filter wrap, top labels, modern filters, scroll arrows, completed opacity, task scroll fix, READ tag, activity feed fix, clear fix, reactions fix, link pill, no rename modal
+// v1.60.0 - IST fix, RT feed, beautify, settings, filter wrap, top labels, modern filters, scroll arrows, completed opacity, task scroll fix, READ tag, activity feed fix, clear fix, reactions fix, link pill, no rename modal
 
 // ─── CSS ───────────────────────────────────────────────────────────────────
 (function() {
@@ -53,6 +76,7 @@ window.pendingScrollId   = null;
 window.pendingFileUpload = null;
 
 // ─── HELPERS ───────────────────────────────────────────────────────────────
+// ─── UTILITY: Strip HTML tags → plain text ───────────────────────────────────
 window.stripHtml = function(html) {
     if (!html) return '';
     const d = document.createElement('div'); d.innerHTML = html;
@@ -60,6 +84,7 @@ window.stripHtml = function(html) {
 };
 
 // ─── SCROLL TO TASK CARD ───────────────────────────────────────────────────
+// ─── NAVIGATION: Scroll right sidebar to a specific task card ────────────────
 window.goToTask = async function(taskId, notifId) {
     document.querySelectorAll('.top-panel-dropdown').forEach(p => p.remove());
     if (notifId && notifId !== 'null' && notifId !== 'undefined') {
@@ -115,6 +140,7 @@ window.goToTask = async function(taskId, notifId) {
 };
 
 // ─── CROSS-ROOM SCROLL (THE FIX: always fetch room_id from DB if unknown) ──
+// ─── NAVIGATION: Cross-room scroll to any message (fetches room_id if unknown) ─
 window.goToMessage = async function(messageId, notifId, roomId) {
     document.querySelectorAll('.top-panel-dropdown').forEach(p => p.remove());
     if (notifId && notifId !== 'null' && notifId !== 'undefined') window.markNotifRead(notifId);
@@ -170,12 +196,14 @@ window.goToMessage = async function(messageId, notifId, roomId) {
     }
 };
 
+// ─── THEME: Apply light / dark / sober-dark theme to document root ───────────
 window.applyTheme = function() {
     document.documentElement.setAttribute('data-theme', window.currentTheme);
     const icon = document.getElementById('themeToggleIcon');
     if (icon) icon.className = `fa-solid ${window.currentTheme==='light'?'fa-sun':window.currentTheme==='dark'?'fa-moon':'fa-cloud-moon'} text-sm`;
 };
 
+// ─── TOAST: Show a temporary centred notification toast ───────────────────────
 window.showCenterToast = function(msg, icon='fa-solid fa-check-circle', color='text-green-400') {
     document.querySelectorAll('.center-toast').forEach(t => t.remove());
     const cleanMsg = window.stripHtml(msg);
@@ -323,6 +351,7 @@ window.insertLinkPill = function() {
 };
 
 // ─── TOP PANELS ────────────────────────────────────────────────────────────
+// ─── PANELS: Open a top-bar dropdown panel (scheduled/reminders/bookmarks/alerts)
 window.openTopPanel = async function(type) {
     document.querySelectorAll('.top-panel-dropdown').forEach(m=>m.remove());
     const panel=document.createElement('div');
@@ -441,7 +470,8 @@ window.openTopPanel = async function(type) {
         } else {
             // Mark all unread as read silently
             const unreadIds=data.filter(d=>!d.is_read).map(d=>d.id);
-            if(unreadIds.length) sb.from('notifications').update({is_read:true}).in('id',unreadIds).then(()=>window.refreshNotificationBadge?.());
+            if(unreadIds.length) sb.from('notifications').update({is_read:true}).in('id',unreadIds).then(()=>// ─── BADGE: Refresh unread count on the bell icon ─────────────────────────────
+window.refreshNotificationBadge?.());
 
             const iconMap={reminder:'fa-stopwatch',task:'fa-clipboard-check',message:'fa-comment',general:'fa-bell'};
             const colorMap={reminder:'#a855f7',task:'#3b82f6',message:'#22c55e',general:'#f59e0b'};
@@ -687,6 +717,7 @@ window.openActivityFeed = async function() {
     }).join('');
 };
 
+// ─── Close activity feed and restore the task hub ──────────────────────────────
 window.closeActivityFeed = function() {
     window._activityFeedOpen = false;
     document.getElementById('activityFeedPanel')?.remove();
@@ -768,6 +799,7 @@ window.renderActivityFeedItems = function(items, list) {
 };
 
 // ─── SETTINGS ──────────────────────────────────────────────────────────────
+// ─── PROFILE SETTINGS: Open settings modal with current user profile data ──────
 window.openSettings = async function() {
     const modal = document.getElementById('settingsModal'); if (!modal) return;
     const { data: profile } = await sb.from('profiles').select('*').eq('id', window.currentUser.id).single();
@@ -799,36 +831,67 @@ window.previewSettingsPhoto = function(input) {
     };
     reader.readAsDataURL(file);
 };
+// ─── PROFILE SETTINGS: Save display name and profile photo ───────────────────
 window.saveSettings = async function() {
-    const name = document.getElementById('settingsName').value.trim();
+    // ── Validate display name ─────────────────────────────────────────────────
+    const name = document.getElementById('settingsName')?.value.trim();
     if (!name) { window.showCenterToast('Name cannot be empty','fa-solid fa-times','text-red-500'); return; }
+
     const photoInput = document.getElementById('settingsPhotoInput');
-    let avatarUrl = null;
-    if (photoInput.files[0]) {
+    let avatarUrl = window._userAvatarUrl || null; // keep existing if no new file
+
+    // ── Upload photo if a new file was selected ────────────────────────────────
+    if (photoInput?.files?.[0]) {
         const file = photoInput.files[0];
-        const path = `avatars/${window.currentUser.id}_${Date.now()}.${file.name.split('.').pop()}`;
+        const ext  = file.name.split('.').pop();
+        const path = `avatars/${window.currentUser.id}.${ext}`; // fixed path = overwrites previous
+        window.showCenterToast('Uploading photo...','fa-solid fa-spinner fa-spin','text-blue-400');
         const { error: upErr } = await sb.storage.from('task-proofs').upload(path, file, { upsert: true });
-        if (!upErr) {
-            const { data: urlData } = sb.storage.from('task-proofs').getPublicUrl(path);
-            avatarUrl = urlData?.publicUrl;
+        if (upErr) {
+            window.showCenterToast('Photo upload failed: ' + upErr.message,'fa-solid fa-times','text-red-500');
+            return;
+        }
+        const { data: urlData } = sb.storage.from('task-proofs').getPublicUrl(path);
+        avatarUrl = urlData?.publicUrl || null;
+        if (avatarUrl) {
+            // Bust cache with timestamp so browser reloads the new image
+            avatarUrl = avatarUrl.split('?')[0] + '?t=' + Date.now();
         }
     }
-    const updatePayload = { full_name: name };
-    if (avatarUrl) updatePayload.avatar_url = avatarUrl;
-    await sb.from('profiles').update(updatePayload).eq('id', window.currentUser.id);
+
+    // ── Update auth user metadata (name shown in app header) ──────────────────
     await sb.auth.updateUser({ data: { full_name: name } });
-    window.showCenterToast('Settings saved ✓','fa-solid fa-check-circle','text-green-400');
-    window.closeSettings();
-    // Update sidebar avatar immediately without full re-render
+
+    // ── Update profiles table — try with avatar_url, fall back without it ──────
+    let profilePayload = { full_name: name };
+    if (avatarUrl) profilePayload.avatar_url = avatarUrl;
+    const { error: profErr } = await sb.from('profiles').update(profilePayload).eq('id', window.currentUser.id);
+    if (profErr) {
+        // avatar_url column may not exist yet — retry with name only
+        await sb.from('profiles').update({ full_name: name }).eq('id', window.currentUser.id);
+    }
+
+    // ── Update sidebar in real-time ───────────────────────────────────────────
     if (avatarUrl) {
         window._userAvatarUrl = avatarUrl;
         const sidebarAv = document.getElementById('sidebarAvatar');
-        if (sidebarAv) sidebarAv.innerHTML = `<img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+        if (sidebarAv) {
+            sidebarAv.innerHTML = `<img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" alt="${window.escapeHtml(name)}">`;
+        }
     }
+    // Update displayed username in sidebar pill
+    const sidebarName = document.querySelector('#sidebarAvatar + span');
+    if (sidebarName) sidebarName.textContent = name.toUpperCase();
+
+    window.showCenterToast('Settings saved ✓','fa-solid fa-check-circle','text-green-400');
+    window.closeSettings();
+
+    // Reload chats list so any name changes propagate
     if (typeof window.loadChatsList === 'function') window.loadChatsList();
 };
 
 // ─── DASHBOARD ─────────────────────────────────────────────────────────────
+// ─── DASHBOARD: Open the personal stats dashboard modal ───────────────────────
 window.openDashboard = async function() {
     const modal = document.getElementById('dashboardModal');
     if (!modal) return;
@@ -840,6 +903,7 @@ window.closeDashboard = function() {
     if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
 };
 
+// ─── DASHBOARD PDF: Download a progress card PDF using html2pdf.js ────────────
 window.downloadDashboardPDF = function() {
     if (typeof html2pdf === 'undefined') {
         window.showCenterToast('PDF not available — html2pdf not loaded','fa-solid fa-exclamation-triangle','text-yellow-500');
@@ -893,6 +957,7 @@ window.selectGroupColor = function(color) {
         b.style.boxShadow  = b.dataset.color === color ? '0 0 0 2px '+color : 'none';
     });
 };
+// ─── GROUP SETTINGS: Persist department name + colour to localStorage ─────────
 window.saveGroupSettings = function() {
     const groupId = document.getElementById('groupSettingsId').value;
     const name    = document.getElementById('groupSettingsName').value.trim();
@@ -913,6 +978,7 @@ window.showScheduleModal = function() {
     document.getElementById('scheduleModal').classList.add('flex');
 };
 window.closeScheduleModal = function() { document.getElementById('scheduleModal').classList.add('hidden'); document.getElementById('scheduleModal').classList.remove('flex'); };
+// ─── SCHEDULE: Insert a pending scheduled_messages row ──────────────────────────
 window.saveScheduledMessage = async function() {
     const time=document.getElementById('scheduleDateTime').value; if(!time) return;
     let txt=window.quillEditor.root.innerHTML.trim();
@@ -935,6 +1001,7 @@ window.closeDashboard = function() {
     if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
 };
 
+// ─── DASHBOARD DATA: Fetch stats for today/week/month/all and render dashboard ─
 window.loadDashboard = async function(filter) {
     // Update active tab
     document.querySelectorAll('.dash-tab').forEach(b => {
@@ -1084,33 +1151,41 @@ window.downloadProgressCard = async function() {
 };
 
 // ─── GROUP SETTINGS ─────────────────────────────────────────────────────────
-window.openGroupSettings = function() {
-    const room = window.currentRoom;
-    if (!room || room.startsWith('dm_')) return;
+// Opens the group/department settings modal for the given groupId
+// Reads saved name/color from localStorage and pre-fills the form
+window.openGroupSettings = function(groupId) {
+    // groupId may be passed directly, or default to currentRoom if department
+    const gid = groupId || window.currentRoom;
+    if (!gid || gid.startsWith('dm_')) return;
+
     const modal = document.getElementById('groupSettingsModal');
-    if (!modal) return;
-    // Load saved name from localStorage
-    const savedName = localStorage.getItem('mpgs_channel_name_' + room) || (room.charAt(0).toUpperCase() + room.slice(1));
-    document.getElementById('groupNameInput').value = savedName;
-    // Load photo
-    const savedPhoto = localStorage.getItem('mpgs_channel_photo_' + room);
-    const prev = document.getElementById('groupPhotoPreview');
-    const phdr = document.getElementById('groupPhotoPlaceholder');
-    if (savedPhoto) { prev.src = savedPhoto; prev.style.display='block'; if(phdr) phdr.style.display='none'; }
-    else { prev.style.display='none'; if(phdr) { phdr.style.display='flex'; phdr.textContent = savedName.charAt(0).toUpperCase(); } }
-    // Populate members list
-    const membersList = document.getElementById('groupMembersList');
-    if (membersList && window.globalUsersCache) {
-        membersList.innerHTML = window.globalUsersCache.map(u => {
-            const name = window.toSentenceCase?.(u.full_name || u.email.split('@')[0]) || u.email;
-            return `<div class="flex items-center gap-2 p-1.5 rounded-lg text-xs" style="color:var(--text-primary);">
-                <div class="w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0" style="background:var(--accent);">${name.charAt(0).toUpperCase()}</div>
-                <span class="font-semibold">${window.escapeHtml(name)}</span>
-                ${u.id === window.currentUser.id ? '<span class="text-[9px] px-1.5 py-0.5 rounded-full font-bold ml-auto" style="background:rgba(99,102,241,0.12);color:#6366f1;">You</span>' : ''}
-            </div>`;
-        }).join('');
+    if (!modal) {
+        window.showCenterToast('Group Settings not available', 'fa-solid fa-info-circle', 'text-yellow-400');
+        return;
     }
-    modal.classList.remove('hidden'); modal.classList.add('flex');
+
+    // Pre-fill name using groupSettingsId (hidden) + groupSettingsName (text input)
+    const deptDefaults = { general:'General', math:'Math', science:'Science', leadership:'Leadership' };
+    const deptColors   = { general:'#6366f1', math:'#0ea5e9', science:'#10b981', leadership:'#f59e0b' };
+    const currentName  = localStorage.getItem('dept_name_' + gid) || deptDefaults[gid] || (gid.charAt(0).toUpperCase() + gid.slice(1));
+    const currentColor = localStorage.getItem('dept_color_' + gid) || deptColors[gid] || '#6366f1';
+
+    const idEl   = document.getElementById('groupSettingsId');
+    const nameEl = document.getElementById('groupSettingsName');
+    if (idEl)   idEl.value   = gid;
+    if (nameEl) nameEl.value = currentName;
+
+    window._selectedGroupColor = currentColor;
+    // Highlight the active colour swatch
+    document.querySelectorAll('#groupColorPicker button').forEach(b => {
+        const isActive = b.dataset.color === currentColor;
+        b.style.borderColor = isActive ? '#fff' : 'transparent';
+        b.style.boxShadow   = isActive ? '0 0 0 2px ' + currentColor : 'none';
+        b.style.transform   = isActive ? 'scale(1.15)' : 'scale(1)';
+    });
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
 };
 window.closeGroupSettings = function() {
     const modal = document.getElementById('groupSettingsModal');

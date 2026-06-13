@@ -561,18 +561,23 @@ window.startSubscriptions = function() {
             if (window._activityFeedOpen && typeof window.refreshActivityFeed === 'function') window.refreshActivityFeed();
         }).subscribe();
 
-    // Reactions real-time — update other viewers' DOM when a reaction is added
-    let reactionsSubscription = null;
-    if (reactionsSubscription) reactionsSubscription.unsubscribe();
-    reactionsSubscription = sb.channel('reactions-changes')
-        .on('postgres_changes', {event:'INSERT', schema:'public', table:'reactions'}, (p) => {
-            // Only update if the reaction is NOT from current user (they already have it in DOM)
-            if (p.new.user_id !== window.currentUser.id) {
+    // Reactions real-time via BROADCAST — works instantly, zero schema requirements.
+    // No reactions table needed. All connected users receive the reaction immediately.
+    if (window._reactionsBroadcast) {
+        try { window._reactionsBroadcast.unsubscribe(); } catch(e) {}
+    }
+    window._reactionsBroadcast = sb.channel('mpgs-reactions-v1');
+    window._reactionsBroadcast
+        .on('broadcast', { event: 'reaction' }, (payload) => {
+            const p = payload.payload;
+            // Only update DOM for OTHER users — sender already updated their own DOM
+            if (p && p.user_id !== window.currentUser.id) {
                 if (typeof window.applyReactionDOM === 'function') {
-                    window.applyReactionDOM(p.new.message_id, p.new.value, p.new.type);
+                    window.applyReactionDOM(p.message_id, p.value, p.type);
                 }
             }
-        }).subscribe();
+        })
+        .subscribe();
 
     // Scheduled messages: notify sender when status changes to 'sent'
     let scheduledSubscription = null;

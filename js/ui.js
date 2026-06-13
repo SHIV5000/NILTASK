@@ -472,7 +472,7 @@ window.openTopPanel = async function(type) {
 
                 panel.innerHTML+=`<div class="mb-2 rounded-xl border overflow-hidden" id="notif-${d.id}" style="border-color:var(--border-color);opacity:${opacity};">
                     <div class="p-2.5 flex items-start gap-2 cursor-pointer hover:opacity-80" style="background-color:var(--bg-body);"
-                        onclick="${clickFn}; document.getElementById('notif-${d.id}').style.opacity='0.6';">
+                        onclick="${clickFn}; (function(n){if(n)n.style.opacity='0.6';})(document.getElementById('notif-${d.id}'));">
                         ${unreadDot}
                         <i class="fa-solid ${ic} mt-0.5 flex-shrink-0" style="color:${co};font-size:13px;"></i>
                         <div class="min-w-0 flex-1">
@@ -816,114 +816,15 @@ window.saveSettings = async function() {
 };
 
 // ─── DASHBOARD ─────────────────────────────────────────────────────────────
-window.openDashboard = function() {
+window.openDashboard = async function() {
     const modal = document.getElementById('dashboardModal');
     if (!modal) return;
     modal.classList.remove('hidden'); modal.classList.add('flex');
-    window.loadDashboardStats('today');
+    window.loadDashboard('today');
 };
 window.closeDashboard = function() {
     const modal = document.getElementById('dashboardModal');
     if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
-};
-
-window.loadDashboardStats = async function(period) {
-    // Activate tab
-    document.querySelectorAll('.dash-tab').forEach(t => {
-        const isActive = t.dataset.period === period;
-        t.style.background = isActive ? 'var(--accent)' : 'var(--bg-body)';
-        t.style.color = isActive ? '#fff' : 'var(--text-secondary)';
-        t.style.borderColor = isActive ? 'var(--accent)' : 'var(--border-color)';
-    });
-    const el = document.getElementById('dashboardContent');
-    if (!el) return;
-    el.innerHTML = '<div class="flex items-center justify-center py-12 opacity-50"><i class="fa-solid fa-circle-notch fa-spin text-2xl mr-2"></i> Loading stats...</div>';
-
-    // Date filter
-    const now = new Date();
-    let since = null;
-    if (period === 'today') { const d = new Date(now); d.setHours(0,0,0,0); since = d.toISOString(); }
-    else if (period === 'week') { const d = new Date(now); d.setDate(d.getDate()-7); since = d.toISOString(); }
-    else if (period === 'month') { const d = new Date(now); d.setMonth(d.getMonth()-1); since = d.toISOString(); }
-
-    // Fetch in parallel
-    const uid = window.currentUser.id;
-    const addSince = (q) => since ? q.gte('created_at', since) : q;
-
-    const [
-        { count: msgSent },
-        { count: msgRcvd },
-        { count: taskCreated },
-        { count: taskAssigned },
-        { count: taskDone },
-        { count: taskPending },
-        { count: notifCount }
-    ] = await Promise.all([
-        addSince(sb.from('messages').select('*',{count:'exact',head:true}).eq('sender_id', uid)),
-        addSince(sb.from('messages').select('*',{count:'exact',head:true}).neq('sender_id', uid).eq('room_id', window.currentRoom)),
-        addSince(sb.from('tasks').select('*',{count:'exact',head:true}).eq('assigned_by', uid)),
-        addSince(sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id', uid)),
-        addSince(sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id', uid).eq('status','accepted')),
-        addSince(sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id', uid).neq('status','accepted')),
-        addSince(sb.from('notifications').select('*',{count:'exact',head:true}).eq('user_id', uid))
-    ]);
-
-    // Overall score (0–100)
-    const totalAssigned = (taskAssigned || 0);
-    const completed = (taskDone || 0);
-    const completionRate = totalAssigned > 0 ? (completed / totalAssigned) : 0;
-    const activityScore = Math.min((msgSent || 0) / 20, 1); // capped at 20 msgs
-    const score = Math.round((completionRate * 60 + activityScore * 40));
-
-    const scoreColor = score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#ef4444';
-    const scoreLabel = score >= 70 ? 'Excellent' : score >= 40 ? 'Good' : 'Needs Improvement';
-
-    const stats = [
-        { label:'Messages Sent',      value: msgSent||0,      icon:'fa-paper-plane',     color:'#6366f1' },
-        { label:'Messages Received',  value: msgRcvd||0,      icon:'fa-inbox',            color:'#3b82f6' },
-        { label:'Tasks Created',      value: taskCreated||0,  icon:'fa-plus-circle',      color:'#8b5cf6' },
-        { label:'Assigned to Me',     value: taskAssigned||0, icon:'fa-user-check',       color:'#f59e0b' },
-        { label:'Completed Tasks',    value: taskDone||0,     icon:'fa-check-circle',     color:'#22c55e' },
-        { label:'Pending Tasks',      value: taskPending||0,  icon:'fa-hourglass-half',   color:'#ef4444' },
-    ];
-
-    el.innerHTML = `
-    <div id="dashboardPrintArea">
-        <!-- Score ring -->
-        <div class="flex items-center justify-between mb-5 p-4 rounded-2xl border" style="background:linear-gradient(135deg,${scoreColor}15,${scoreColor}05);border-color:${scoreColor}30;">
-            <div>
-                <div class="text-4xl font-black" style="color:${scoreColor};">${score}<span class="text-lg font-bold opacity-60">/100</span></div>
-                <div class="text-sm font-bold mt-1" style="color:${scoreColor};">${scoreLabel}</div>
-                <div class="text-xs mt-0.5" style="color:var(--text-secondary);">Overall Activity Score</div>
-            </div>
-            <div style="width:72px;height:72px;border-radius:50%;background:conic-gradient(${scoreColor} ${score*3.6}deg, var(--border-color) 0deg);display:flex;align-items:center;justify-content:center;">
-                <div style="width:54px;height:54px;border-radius:50%;background:var(--bg-sidebar);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:${scoreColor};">${score}%</div>
-            </div>
-        </div>
-        <!-- Stat cards -->
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
-            ${stats.map(s => `
-            <div class="p-3 rounded-xl border" style="background-color:var(--bg-body);border-color:var(--border-color);">
-                <div class="flex items-center gap-2 mb-1.5">
-                    <div style="width:28px;height:28px;border-radius:8px;background:${s.color}15;display:flex;align-items:center;justify-content:center;">
-                        <i class="fa-solid ${s.icon}" style="color:${s.color};font-size:11px;"></i>
-                    </div>
-                    <span class="text-[9px] font-bold uppercase tracking-wider" style="color:var(--text-secondary);">${s.label}</span>
-                </div>
-                <div class="text-2xl font-black" style="color:var(--text-primary);">${s.value}</div>
-            </div>`).join('')}
-        </div>
-        <!-- Completion bar -->
-        <div class="p-3 rounded-xl border" style="background-color:var(--bg-body);border-color:var(--border-color);">
-            <div class="flex justify-between mb-2">
-                <span class="text-xs font-bold" style="color:var(--text-secondary);">Task Completion Rate</span>
-                <span class="text-xs font-black" style="color:var(--text-primary);">${Math.round(completionRate*100)}%</span>
-            </div>
-            <div style="height:8px;border-radius:4px;background:var(--border-color);overflow:hidden;">
-                <div style="height:100%;border-radius:4px;background:${scoreColor};width:${Math.round(completionRate*100)}%;transition:width 0.5s;"></div>
-            </div>
-        </div>
-    </div>`;
 };
 
 window.downloadDashboardPDF = function() {
@@ -1013,40 +914,64 @@ window.closeDashboard = function() {
 };
 
 window.loadDashboard = async function(filter) {
-    // Update active pill
-    document.querySelectorAll('.dash-filter').forEach(b => b.classList.toggle('active', b.dataset.filter === filter));
+    // Update active tab
+    document.querySelectorAll('.dash-tab').forEach(b => {
+        const isActive = b.dataset.period === filter;
+        b.style.background = isActive ? 'var(--accent)' : 'var(--bg-body)';
+        b.style.color = isActive ? '#fff' : 'var(--text-secondary)';
+        b.style.borderColor = isActive ? 'var(--accent)' : 'var(--border-color)';
+    });
     const content = document.getElementById('dashboardContent');
     if (!content) return;
-    content.innerHTML = '<div class="flex items-center justify-center py-12" style="color:var(--text-secondary);"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Loading...</div>';
+    content.innerHTML = '<div class="flex items-center justify-center py-12" style="color:var(--text-secondary);"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Loading stats...</div>';
 
     const uid = window.currentUser.id;
     const now = new Date();
-    let startDate = null;
-    if (filter === 'today') { startDate = new Date(now); startDate.setHours(0,0,0,0); }
-    else if (filter === 'week') { startDate = new Date(now); startDate.setDate(startDate.getDate() - 7); }
-    else if (filter === 'month') { startDate = new Date(now); startDate.setMonth(startDate.getMonth() - 1); }
-    const since = startDate ? startDate.toISOString() : '2020-01-01T00:00:00Z';
+    let since = null;
+    if (filter === 'today') { const d = new Date(now); d.setHours(0,0,0,0); since = d.toISOString(); }
+    else if (filter === 'week') { const d = new Date(now); d.setDate(d.getDate()-7); since = d.toISOString(); }
+    else if (filter === 'month') { const d = new Date(now); d.setMonth(d.getMonth()-1); since = d.toISOString(); }
 
-    // Parallel queries
-    const [
-        { count: msgSent },
-        { count: msgRcvd },
-        { count: tasksCreated },
-        { count: tasksAssigned },
-        { count: tasksCompleted },
-        { count: tasksPending },
-        { count: reactions },
-        { count: replies }
-    ] = await Promise.all([
-        sb.from('messages').select('*',{count:'exact',head:true}).eq('sender_id',uid).gte('created_at',since),
-        sb.from('messages').select('*',{count:'exact',head:true}).neq('sender_id',uid).gte('created_at',since),
-        sb.from('tasks').select('*',{count:'exact',head:true}).eq('assigned_by',uid).gte('created_at',since),
-        sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id',uid),
-        sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id',uid).eq('status','accepted'),
-        sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id',uid).neq('status','accepted'),
-        sb.from('reactions').select('*',{count:'exact',head:true}).eq('user_id',uid).gte('created_at',since).catch(()=>({count:0})),
-        sb.from('messages').select('*',{count:'exact',head:true}).eq('sender_id',uid).not('parent_message_id','is',null).gte('created_at',since)
-    ]);
+    // Safe sequential queries — each wrapped in try/catch returning 0 on error
+    // task_assignees has NO created_at column — do NOT add gte filter on it
+    const safeCount = async (buildQuery) => {
+        try {
+            const { count, error } = await buildQuery();
+            if (error) return 0;
+            return count || 0;
+        } catch(e) { return 0; }
+    };
+
+    const msgSent = await safeCount(() => {
+        let q = sb.from('messages').select('*',{count:'exact',head:true}).eq('sender_id',uid);
+        if (since) q = q.gte('created_at', since);
+        return q;
+    });
+    const msgRcvd = await safeCount(() => {
+        let q = sb.from('messages').select('*',{count:'exact',head:true}).neq('sender_id',uid);
+        if (since) q = q.gte('created_at', since);
+        return q;
+    });
+    const tasksCreated = await safeCount(() => {
+        let q = sb.from('tasks').select('*',{count:'exact',head:true}).eq('assigned_by',uid);
+        if (since) q = q.gte('created_at', since);
+        return q;
+    });
+    const replies = await safeCount(() => {
+        let q = sb.from('messages').select('*',{count:'exact',head:true}).eq('sender_id',uid).not('parent_message_id','is',null);
+        if (since) q = q.gte('created_at', since);
+        return q;
+    });
+    // task_assignees — no created_at, no date filter
+    const tasksAssigned  = await safeCount(() => sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id',uid));
+    const tasksCompleted = await safeCount(() => sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id',uid).eq('status','accepted'));
+    const tasksPending   = await safeCount(() => sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id',uid).neq('status','accepted'));
+    // reactions table optional
+    const reactions = await safeCount(() => {
+        let q = sb.from('reactions').select('*',{count:'exact',head:true}).eq('user_id',uid);
+        if (since) q = q.gte('created_at', since);
+        return q;
+    });
 
     // Overall score: weighted metric
     const totalTasks = (tasksAssigned||0);

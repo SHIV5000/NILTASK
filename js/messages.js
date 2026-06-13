@@ -7,13 +7,15 @@ window.sendMessage = async function() {
     text = text.replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
     if (!text) return;
 
-    // Block bare URL pasting — user should use the Link button instead
-    const plainText = window.stripHtml ? window.stripHtml(text) : text;
-    const bareUrlPattern = /(?<![>='"a-zA-Z0-9_-])(https?:\/\/[^\s<>"]{4,})/i;
-    const hasLinkPill = text.includes('link-pill.local') || text.includes('secure-file.local');
-    if (!hasLinkPill && bareUrlPattern.test(plainText)) {
-        window.showCenterToast('Please use the 🔗 Link button to insert URLs', 'fa-solid fa-link', 'text-indigo-400');
-        return;
+    // Block bare URL pasting — use the Link button instead
+    // Only block if no Quill-managed links already present in the HTML
+    const hasQuillLinks = text.includes('link-pill.local') || text.includes('secure-file.local') || text.includes('<a href=');
+    if (!hasQuillLinks) {
+        const plainText = window.stripHtml ? window.stripHtml(text) : text;
+        if (/https?:\/\/[^\s]{4,}/i.test(plainText)) {
+            window.showCenterToast('Please use the Link button to insert URLs', 'fa-solid fa-link', 'text-indigo-400');
+            return;
+        }
     }
 
     const sendBtn = document.getElementById('sendBtn');
@@ -250,7 +252,7 @@ window.renderMessages = function(messages) {
         const ddItems = isSent
             ? `<button class="dd-item" onclick="window.closeDropdowns(); window.openTaskModal('${msg.id}', '${window.escapeHtml(msg.text)}')"><i class="ti ti-clipboard-check"></i>Create Task</button>
                <button class="dd-item" onclick="window.closeDropdowns(); window.showReminderModal('${msg.id}', '${snippetText}')"><i class="ti ti-bell"></i>Reminder</button>
-               <button class="dd-item" onclick="window.closeDropdowns(); window.startEditMessage('${msg.id}', \`${msg.text.replace(/`/g,"'")}\`)"><i class="ti ti-edit"></i>Edit</button>
+               <button class="dd-item" onclick="window.closeDropdowns(); window.startEditMessage('${msg.id}')"><i class="ti ti-edit"></i>Edit</button>
                <button class="dd-item" onclick="window.closeDropdowns(); window.openForwardModal('${msg.id}', '${snippetText}', '${window.escapeHtml(senderName)}')"><i class="ti ti-share"></i>Forward</button>
                <button class="dd-item danger" onclick="window.closeDropdowns(); window.deleteMessage('${msg.id}')"><i class="ti ti-trash"></i>Delete</button>`
             : `<button class="dd-item" onclick="window.closeDropdowns(); window.openTaskModal('${msg.id}', '${window.escapeHtml(msg.text)}')"><i class="ti ti-clipboard-check"></i>Create Task</button>
@@ -398,24 +400,30 @@ window.applyReactionDOM = function(msgId, value, type) {
 };
 
 // ── EDIT MESSAGE ─────────────────────────────────────────────────────────────
-window.startEditMessage = function(msgId, currentHtml) {
-    const textDiv = document.querySelector(`#row-${msgId} .b-text`);
+window._editCache = {};  // store original HTML per msgId
+
+window.startEditMessage = function(msgId) {
+    const textDiv = document.querySelector('#row-' + msgId + ' .b-text');
     if (!textDiv) return;
-    const plainText = window.stripHtml(currentHtml);
-    textDiv.innerHTML = `
-        <div style="display:flex;flex-direction:column;gap:6px;">
-            <textarea id="edit-area-${msgId}" style="width:100%;min-height:60px;padding:8px;border-radius:8px;border:1px solid var(--border-color);font-size:13px;background:var(--bg-body);color:var(--text-primary);resize:vertical;font-family:inherit;outline:none;">${plainText}</textarea>
-            <div style="display:flex;gap:6px;justify-content:flex-end;">
-                <button onclick="window.cancelEditMessage('${msgId}', \`${currentHtml.replace(/`/g,"'")}\`)"
-                    style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-secondary);cursor:pointer;">Cancel</button>
-                <button onclick="window.saveEditMessage('${msgId}')"
-                    style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;">Save</button>
-            </div>
-        </div>`;
+    // Store original HTML so Cancel can restore it
+    window._editCache[msgId] = textDiv.innerHTML;
+    const plainText = window.stripHtml(textDiv.innerHTML);
+    textDiv.innerHTML =
+        '<div style="display:flex;flex-direction:column;gap:6px;">' +
+        '<textarea id="edit-area-' + msgId + '" style="width:100%;min-height:60px;padding:8px;border-radius:8px;border:1px solid var(--border-color);font-size:13px;background:var(--bg-body);color:var(--text-primary);resize:vertical;font-family:inherit;outline:none;">' + plainText + '</textarea>' +
+        '<div style="display:flex;gap:6px;justify-content:flex-end;">' +
+        '<button onclick="window.cancelEditMessage(' + JSON.stringify(msgId) + ')" ' +
+        'style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-secondary);cursor:pointer;">Cancel</button>' +
+        '<button onclick="window.saveEditMessage(' + JSON.stringify(msgId) + ')" ' +
+        'style="font-size:11px;font-weight:700;padding:4px 12px;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;">Save</button>' +
+        '</div></div>';
 };
-window.cancelEditMessage = function(msgId, originalHtml) {
-    const textDiv = document.querySelector(`#row-${msgId} .b-text`);
-    if (textDiv) textDiv.innerHTML = originalHtml;
+window.cancelEditMessage = function(msgId) {
+    const textDiv = document.querySelector('#row-' + msgId + ' .b-text');
+    if (textDiv && window._editCache[msgId]) {
+        textDiv.innerHTML = window._editCache[msgId];
+        delete window._editCache[msgId];
+    }
 };
 window.saveEditMessage = async function(msgId) {
     const area = document.getElementById(`edit-area-${msgId}`);

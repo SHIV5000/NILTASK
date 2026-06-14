@@ -268,18 +268,35 @@ window.doSignup = async function() {
     });
 
     if (tryErr) {
-      const alreadyExists = tryErr.message?.toLowerCase().includes('already registered')
-                         || tryErr.message?.toLowerCase().includes('already been registered')
-                         || tryErr.status === 400;
-      if (alreadyExists) {
-        // Auth user already exists from a previous failed attempt.
-        // Sign them in so we can complete the setup.
-        await status('Account found — signing in to complete setup...');
+      const msg = tryErr.message?.toLowerCase() || '';
+      const trySignIn =
+        msg.includes('already registered') ||
+        msg.includes('already been registered') ||
+        msg.includes('confirmation email') ||   // email send failed — user may exist
+        msg.includes('sending') ||
+        tryErr.status === 400 ||
+        tryErr.status === 422;
+
+      if (trySignIn) {
+        // User may already exist — try signing in to complete setup
+        await status('Checking existing account...');
         const { data: loginData, error: loginErr } = await sb.auth.signInWithPassword({
           email: tenantData.email, password
         });
-        if (loginErr) throw new Error('Email already registered but password is wrong. Try logging in at the main page.');
-        signupData = loginData;
+        if (loginErr) {
+          // Truly a new user but email failed — common on Supabase free tier
+          // Check if user was created despite the email error
+          if (tryData?.user) {
+            signupData = tryData;  // user created, email just failed — continue
+          } else {
+            throw new Error(
+              'Email service error. Please try again in 1 minute, or turn OFF ' +
+              '"Confirm email" in Supabase Dashboard → Authentication → Providers → Email.'
+            );
+          }
+        } else {
+          signupData = loginData;
+        }
       } else {
         throw new Error(tryErr.message);
       }

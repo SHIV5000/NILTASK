@@ -22,11 +22,12 @@ window.notifyUser = async function(userId, message, messageId = null, type = 'ta
     if (!userId || !message) return;
     try {
         const payload = {
-            user_id: userId,
+            user_id:   userId,
             type,
-            message: window.stripHtml ? window.stripHtml(message) : message,
+            message:   window.stripHtml ? window.stripHtml(message) : message,
             message_id: messageId,
-            is_read: false
+            tenant_id: window.currentTenantId,
+            is_read:   false
         };
         if (taskId) payload.task_id = taskId;
         await sb.from('notifications').insert(payload);
@@ -114,16 +115,17 @@ window.saveTaskMultiAssignee = async function() {
         original_message_id: window.currentMessageId,
         title,
         assigned_by: window.currentUser.id,
-        deadline: document.getElementById('taskDeadline').value || null,
-        priority: document.getElementById('taskPriority').value,
+        tenant_id:   window.currentTenantId,
+        deadline:    document.getElementById('taskDeadline').value || null,
+        priority:    document.getElementById('taskPriority').value,
         require_proof: document.getElementById('taskRequireProof')?.checked || false,
         status: 'pending'
     }).select().single();
 
     if (tErr || !task) { console.error(tErr); return window.showCenterToast('Failed to create task.', 'fa-solid fa-times', 'text-red-500'); }
 
-    await sb.from('task_assignees').insert(aids.map(aid => ({ task_id: task.id, assignee_id: aid, status: 'pending_ack', state: 'pending' })));
-    await sb.from('task_trails').insert({ task_id: task.id, user_id: window.currentUser.id, action: 'UPDATE', comment: 'Task Created' });
+    await sb.from('task_assignees').insert(aids.map(aid => ({ task_id: task.id, assignee_id: aid, tenant_id: window.currentTenantId, status: 'pending_ack', state: 'pending' })));
+    await sb.from('task_trails').insert({ task_id: task.id, user_id: window.currentUser.id, tenant_id: window.currentTenantId, action: 'UPDATE', comment: 'Task Created' });
 
     for (const aid of aids) {
         await window.notifyUser(aid, `📋 New Task Assigned: ${title}`, task.original_message_id, 'task', task.id);
@@ -195,7 +197,7 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
         const newAssignee = document.getElementById(`delegate-sel-${taskId}-${assigneeId}`).value;
         if (!newAssignee) return window.showCenterToast('Select user to delegate', 'fa-solid fa-times', 'text-red-500');
         actionText = 'UPDATE'; comment = 'Delegated task';
-        await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack', state: 'pending' });
+        await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, tenant_id: window.currentTenantId, status: 'pending_ack', state: 'pending' });
         await window.notifyUser(newAssignee, `👤 Task Delegated to you: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
         await window.notifyUser(creatorId, `↗️ Task Delegated: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
         document.getElementById(`delegate-box-${taskId}-${assigneeId}`)?.classList.add('hidden');
@@ -207,7 +209,7 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
         if (!comment) return window.showCenterToast('Reason is mandatory for transfer!', 'fa-solid fa-times', 'text-red-500');
         actionText = 'UPDATE';
         await sb.from('task_assignees').delete().eq('task_id', taskId).eq('assignee_id', assigneeId);
-        await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, status: 'pending_ack', state: 'pending' });
+        await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, tenant_id: window.currentTenantId, status: 'pending_ack', state: 'pending' });
         await window.notifyUser(newAssignee, `🔁 Task Transferred to you: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
         await window.notifyUser(assigneeId, `🔁 Your task was transferred: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
     }
@@ -226,7 +228,7 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
         }
     }
 
-    await sb.from('task_trails').insert({ task_id: taskId, user_id: window.currentUser.id, action: actionText, comment });
+    await sb.from('task_trails').insert({ task_id: taskId, user_id: window.currentUser.id, tenant_id: window.currentTenantId, action: actionText, comment });
     window.loadTasksForPanel();
 };
 

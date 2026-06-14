@@ -274,4 +274,3 @@ window.selectGroupColor = function(color) {
         b.style.transform   = active ? 'scale(1.2)' : 'scale(1)';
     });
 };
-

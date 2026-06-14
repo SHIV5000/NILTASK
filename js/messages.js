@@ -3,6 +3,11 @@ import { sb } from './shared.js';
 // v1.58.0 - Edit/Forward/Delete, Reply+Reaction notifications, Broadcast reactions
 
 window.sendMessage = async function() {
+    // Check trial expiry
+    if (window._trialExpired) {
+        window.showCenterToast('Trial expired — contact developer to upgrade','fa-solid fa-circle-xmark','text-red-500');
+        return;
+    }
     let text = window.quillEditor.root.innerHTML.trim();
     text = text.replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
     if (!text) return;
@@ -274,13 +279,19 @@ window.renderMessages = function(messages) {
         const replyCount = replies[msg.id] ? replies[msg.id].length : 0;
         const isBookmarked = window.bookmarkedSet.has(msg.id);
 
+        // Create Task visible only to non-teachers and only if tasks_enabled
+        const showCreateTask = window.canCreateTask ? window.canCreateTask() : true;
+        const createTaskBtn  = showCreateTask
+            ? `<button class="dd-item" onclick="window.closeDropdowns(); window.openTaskModal('${msg.id}', '${window.escapeHtml(msg.text)}')"><i class="ti ti-clipboard-check"></i>Create Task</button>`
+            : '';
+
         const ddItems = isSent
-            ? `<button class="dd-item" onclick="window.closeDropdowns(); window.openTaskModal('${msg.id}', '${window.escapeHtml(msg.text)}')"><i class="ti ti-clipboard-check"></i>Create Task</button>
+            ? `${createTaskBtn}
                <button class="dd-item" onclick="window.closeDropdowns(); window.showReminderModal('${msg.id}', '${snippetText}')"><i class="ti ti-bell"></i>Reminder</button>
                <button class="dd-item" onclick="window.closeDropdowns(); window.startEditMessage('${msg.id}')"><i class="ti ti-edit"></i>Edit</button>
                <button class="dd-item" onclick="window.closeDropdowns(); window.openForwardModal('${msg.id}', '${snippetText}', '${window.escapeHtml(senderName)}')"><i class="ti ti-share"></i>Forward</button>
                <button class="dd-item danger" onclick="window.closeDropdowns(); window.deleteMessage('${msg.id}')"><i class="ti ti-trash"></i>Delete</button>`
-            : `<button class="dd-item" onclick="window.closeDropdowns(); window.openTaskModal('${msg.id}', '${window.escapeHtml(msg.text)}')"><i class="ti ti-clipboard-check"></i>Create Task</button>
+            : `${createTaskBtn}
                <button class="dd-item" onclick="window.closeDropdowns(); window.showReminderModal('${msg.id}', '${snippetText}')"><i class="ti ti-bell"></i>Reminder</button>
                <button class="dd-item" onclick="window.closeDropdowns(); window.openForwardModal('${msg.id}', '${snippetText}', '${window.escapeHtml(senderName)}')"><i class="ti ti-share"></i>Forward</button>`;
 

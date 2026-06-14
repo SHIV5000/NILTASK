@@ -56,7 +56,8 @@ window.renderMainApp = function() {
                             <i id="themeToggleIcon" class="fa-solid ${window.currentTheme === 'light' ? 'fa-sun' : (window.currentTheme === 'dark' ? 'fa-moon' : 'fa-cloud-moon')} text-sm"></i>
                         </button>
                         <button onclick="window.logout()" class="w-8 h-8 rounded-full hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-colors" style="color:var(--text-secondary);">
-                            <i class="fa-solid fa-arrow-right-from-bracket text-sm"></i>
+                         
+                            <i class="fa-solid fa-power-off"></i>
                         </button>
                     </div>
                 </div>

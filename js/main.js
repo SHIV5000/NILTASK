@@ -93,7 +93,7 @@ window.renderMainApp = function() {
                             <i class="fa-solid fa-chart-bar text-sm"></i>
                         </button>
                     </div>
-                    <div class="text-[9px] font-bold tracking-wider uppercase text-center" style="color:var(--text-secondary);">VER 1.60.0</div>
+                    <div class="text-[9px] font-bold tracking-wider uppercase text-center" style="color:var(--text-secondary);">VER 1.61.0</div>
                 </div>
             </div>
 
@@ -766,13 +766,7 @@ window.startSubscriptions = function() {
 };
 
 // Bell animation — pulses until user clicks it
-window.animateBell = function() {
-    const bell = document.querySelector(".bell-wrapper i.ti-bell, [onclick*=\"openTopPanel('alerts')\"]");
-    if (!bell) return;
-    const target = bell.closest('.bell-wrapper') || bell;
-    target.classList.add('bell-ring');
-    target.addEventListener('click', () => target.classList.remove('bell-ring'), { once: true });
-};
+
 
 // ─── FILTER/SORT PILL HELPERS ─────────────────────────────────────────────
 window.setTaskFilter = function(val) {

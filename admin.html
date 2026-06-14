@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MPGS TaskFlow — Admin Panel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./css/theme.css">
+  <style>
+    body { font-family:'Inter',sans-serif; background:var(--bg-body); overflow-x:hidden; }
+
+    /* ── School badge ── */
+    .school-badge {
+      background: linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 60%, #000) 100%);
+      border-radius: 14px; padding: 14px 18px; text-align: center;
+      box-shadow: 0 5px 0 rgba(0,0,0,.25), 0 8px 20px rgba(0,0,0,.2),
+                  inset 0 1px 0 rgba(255,255,255,.18);
+      position: relative; overflow: hidden;
+      transform: perspective(400px) rotateX(1.5deg);
+    }
+    .school-badge::before {
+      content:''; position:absolute; top:0; left:0; right:0; height:50%;
+      background:rgba(255,255,255,.08); border-radius:14px 14px 0 0;
+    }
+    .school-badge-name {
+      font-size:13px; font-weight:900; color:#fff; letter-spacing:1.5px;
+      text-transform:uppercase; text-shadow:0 2px 4px rgba(0,0,0,.4),0 -1px 0 rgba(255,255,255,.2);
+      position:relative; z-index:1;
+    }
+    .school-badge-sub {
+      font-size:8px; color:rgba(255,255,255,.6); letter-spacing:2px;
+      text-transform:uppercase; margin-top:3px; position:relative; z-index:1;
+    }
+
+    /* ── Stats cards ── */
+    .stat-card {
+      background:var(--bg-sidebar); border:1px solid var(--border-color);
+      border-radius:14px; padding:16px 18px;
+      display:flex; align-items:center; gap:14px;
+    }
+    .stat-icon {
+      width:44px; height:44px; border-radius:12px;
+      display:flex; align-items:center; justify-content:center; flex-shrink:0;
+    }
+    .stat-val { font-size:26px; font-weight:800; color:var(--text-primary); line-height:1; }
+    .stat-lbl { font-size:11px; color:var(--text-secondary); font-weight:600; margin-top:3px; }
+
+    /* ── Table ── */
+    .staff-table { width:100%; border-collapse:collapse; }
+    .staff-table th {
+      text-align:left; font-size:10px; font-weight:800; text-transform:uppercase;
+      letter-spacing:.06em; color:var(--text-secondary); padding:10px 14px;
+      border-bottom:1px solid var(--border-color); background:var(--bg-body);
+    }
+    .staff-table td {
+      padding:12px 14px; border-bottom:1px solid var(--border-color);
+      font-size:13px; color:var(--text-primary);
+      background:var(--bg-sidebar);
+    }
+    .staff-table tr:last-child td { border-bottom:none; }
+    .staff-table tr:hover td { background:var(--bg-body); }
+
+    /* ── Role badge ── */
+    .role-pill {
+      display:inline-block; font-size:10px; font-weight:700;
+      padding:2px 9px; border-radius:20px;
+    }
+    .role-principal   { background:#f3e8ff; color:#7c3aed; }
+    .role-vp_admin    { background:#dbeafe; color:#1d4ed8; }
+    .role-exam_controller { background:#fef3c7; color:#b45309; }
+    .role-hod         { background:#d1fae5; color:#065f46; }
+    .role-teacher     { background:#f1f5f9; color:#475569; }
+
+    /* ── Toggle switch ── */
+    .toggle { position:relative; width:40px; height:22px; }
+    .toggle input { opacity:0; width:0; height:0; }
+    .toggle-slider {
+      position:absolute; inset:0; background:#cbd5e1; border-radius:22px;
+      cursor:pointer; transition:.25s;
+    }
+    .toggle-slider::before {
+      content:''; position:absolute; left:3px; top:3px;
+      width:16px; height:16px; background:#fff; border-radius:50%;
+      transition:.25s; box-shadow:0 1px 3px rgba(0,0,0,.2);
+    }
+    .toggle input:checked + .toggle-slider { background:var(--accent); }
+    .toggle input:checked + .toggle-slider::before { transform:translateX(18px); }
+
+    /* ── Buttons ── */
+    .btn-accent {
+      background:var(--accent); color:#fff; border:none;
+      border-radius:10px; padding:10px 18px; font-size:13px;
+      font-weight:700; cursor:pointer; transition:opacity .2s;
+      display:inline-flex; align-items:center; gap:7px;
+    }
+    .btn-accent:hover { opacity:.88; }
+    .btn-outline {
+      background:transparent; color:var(--text-secondary);
+      border:1px solid var(--border-color); border-radius:10px;
+      padding:10px 18px; font-size:13px; font-weight:700;
+      cursor:pointer; transition:.2s;
+      display:inline-flex; align-items:center; gap:7px;
+    }
+    .btn-outline:hover { border-color:var(--accent); color:var(--accent); }
+    .btn-sm {
+      padding:5px 11px !important; font-size:11px !important;
+      border-radius:7px !important;
+    }
+    .btn-danger { background:#fef2f2; color:#dc2626; border:1px solid #fecaca;
+      border-radius:7px; padding:5px 11px; font-size:11px; font-weight:700;
+      cursor:pointer; transition:.2s; }
+    .btn-danger:hover { background:#fee2e2; }
+
+    /* ── Modal ── */
+    .modal-wrap {
+      position:fixed; inset:0; background:rgba(0,0,0,.5);
+      backdrop-filter:blur(4px); display:none; z-index:50;
+      align-items:center; justify-content:center; padding:16px;
+    }
+    .modal-wrap.open { display:flex; }
+    .modal-card {
+      background:var(--bg-sidebar); border:1px solid var(--border-color);
+      border-radius:20px; padding:28px; width:100%; max-width:480px;
+      max-height:90vh; overflow-y:auto;
+      box-shadow:0 20px 40px rgba(0,0,0,.12);
+    }
+    .field { margin-bottom:14px; }
+    .field label {
+      display:block; font-size:11px; font-weight:700; text-transform:uppercase;
+      letter-spacing:.05em; color:var(--text-secondary); margin-bottom:5px;
+    }
+    .field input, .field select {
+      width:100%; padding:10px 13px; border-radius:10px;
+      border:1px solid var(--border-color); background:var(--bg-body);
+      color:var(--text-primary); font-size:13px; outline:none; box-sizing:border-box;
+      transition:border-color .2s;
+    }
+    .field input:focus, .field select:focus { border-color:var(--accent); }
+    .err-msg {
+      color:#dc2626; font-size:12px; font-weight:600;
+      padding:8px 12px; background:#fef2f2; border-radius:8px;
+      border:1px solid #fecaca; display:none; margin-top:8px;
+    }
+
+    /* ── Trial banner ── */
+    .trial-banner {
+      background:linear-gradient(135deg,rgba(99,102,241,.08),rgba(139,92,246,.05));
+      border:1px solid rgba(99,102,241,.25); border-radius:12px;
+      padding:12px 16px; display:flex; align-items:center; gap:12px;
+    }
+
+    /* ── Avatar ── */
+    .av {
+      width:36px; height:36px; border-radius:50%;
+      display:flex; align-items:center; justify-content:center;
+      font-size:13px; font-weight:700; color:#fff; flex-shrink:0;
+    }
+  </style>
+</head>
+<body>
+<div id="adminRoot" style="min-height:100vh;display:flex;flex-direction:column;">
+  <!-- Loading state -->
+  <div id="loadingScreen" style="flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;">
+    <div style="width:40px;height:40px;border:3px solid var(--border-color);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;"></div>
+    <p style="font-size:13px;color:var(--text-secondary);">Loading admin panel...</p>
+  </div>
+</div>
+
+<!-- Add / Edit Staff Modal -->
+<div class="modal-wrap" id="staffModal">
+  <div class="modal-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <h3 id="modalTitle" style="font-size:16px;font-weight:800;color:var(--text-primary);margin:0;">Add Staff Member</h3>
+      <button onclick="closeStaffModal()" style="width:28px;height:28px;border-radius:50%;background:transparent;border:none;cursor:pointer;color:var(--text-secondary);font-size:16px;">✕</button>
+    </div>
+    <input type="hidden" id="editUserId">
+    <div class="field">
+      <label>Full Name</label>
+      <input type="text" id="sfName" placeholder="e.g. Mr. Rajesh Kumar">
+    </div>
+    <div class="field">
+      <label>Email Address</label>
+      <input type="email" id="sfEmail" placeholder="teacher@gmail.com">
+    </div>
+    <div id="passwordField" class="field">
+      <label>Initial Password <span style="font-weight:400;text-transform:none;font-size:10px;">(share with staff directly)</span></label>
+      <div style="position:relative;">
+        <input type="password" id="sfPassword" placeholder="Min 8 characters" style="padding-right:40px;">
+        <i id="pwdEye" class="fa-solid fa-eye" onclick="togglePwdEye()" style="position:absolute;right:13px;top:50%;transform:translateY(-50%);color:var(--text-secondary);cursor:pointer;"></i>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="field">
+        <label>Role</label>
+        <select id="sfRole">
+          <option value="teacher">Teacher / Staff</option>
+          <option value="hod">Head of Department</option>
+          <option value="exam_controller">Exam Controller</option>
+          <option value="vp_admin">Vice Principal / Admin</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Department</label>
+        <input type="text" id="sfDept" placeholder="e.g. Science">
+      </div>
+    </div>
+    <div class="field">
+      <label>Designation</label>
+      <input type="text" id="sfDesig" placeholder="e.g. Physics Teacher, Sports HOD">
+    </div>
+    <div class="err-msg" id="modalErr"></div>
+    <div style="display:flex;gap:10px;margin-top:6px;">
+      <button class="btn-outline" style="flex:1;" onclick="closeStaffModal()">Cancel</button>
+      <button class="btn-accent" style="flex:2;" id="saveStaffBtn" onclick="saveStaff()">
+        <i class="fa-solid fa-user-plus"></i> Add Staff Member
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+<script type="module" src="./js/shared.js"></script>
+<script type="module" src="./js/auth.js"></script>
+<script type="module" src="./js/admin.js"></script>
+</body>
+</html>

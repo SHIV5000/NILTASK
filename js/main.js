@@ -20,17 +20,12 @@ window.scrollToAndHighlight = function(elementId) {
     element.scrollIntoView({ behavior: 'smooth', block: 'center' });
     const bubble = element.querySelector('.bubble');
     if (bubble) {
-        // Remove any previous line effect and restart animation
-        bubble.classList.remove('sweeping-line');
-        void bubble.offsetWidth; // force reflow
-        bubble.classList.add('sweeping-line');
-        setTimeout(() => {
-            bubble.classList.remove('sweeping-line');
-        }, 4000);
+        bubble.classList.add('glow-target');
+        setTimeout(() => bubble.classList.add('active-glow'), 50);
+        setTimeout(() => bubble.classList.remove('glow-target', 'active-glow'), 3000);
     }
     document.querySelectorAll('.top-panel-dropdown').forEach(p => p.remove());
 };
-
 // HIGHLIGHT ENDS
 
 window.renderMainApp = function() {

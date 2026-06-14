@@ -1,8 +1,4 @@
 import { sb } from './shared.js';
-import './ui.js';
-import './auth.js';
-import './tasks.js';
-import './messages.js';
 
 // v1.51.0 - Departments/Staff sidebar, unread badges, search fix, cross-room scroll
 

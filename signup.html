@@ -258,8 +258,16 @@ window.doSignup = async () => {
     const session = data?.session;
 
     if (session) {
-      // Email confirmation is OFF — user has a live session, complete setup now
-      await completeSetup(user.id, schoolName, principalName, mobile, email);
+      // Explicitly set session so auth token is in request headers before DB calls
+      await sb.auth.setSession({
+        access_token:  session.access_token,
+        refresh_token: session.refresh_token
+      });
+      // Verify session is live (forces client to sync internal auth state)
+      const { data: { session: liveSession } } = await sb.auth.getSession();
+      if (!liveSession) throw new Error('Session not established. Please try again.');
+
+      await completeSetup(liveSession.user.id, schoolName, principalName, mobile, email);
       localStorage.removeItem('_pending_signup');
       $('pfill').style.width = '100%';
       show('step5');

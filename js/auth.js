@@ -18,11 +18,15 @@ window.signIn = async function(email, pwd) {
     // Load tenant context — everything else depends on this
     const loaded = await window.loadTenantContext();
     if (!loaded) {
+        // Auth user exists but school setup was never completed.
+        // Redirect back to signup so they can finish registration.
         window.showCenterToast(
-            'Account not linked to a school. Contact your administrator.',
-            'fa-solid fa-exclamation-triangle', 'text-red-500'
+            'School setup incomplete — please complete registration.',
+            'fa-solid fa-exclamation-triangle', 'text-yellow-500'
         );
         await sb.auth.signOut();
+        // Small delay so toast is visible, then redirect
+        setTimeout(() => { window.location.href = './signup.html'; }, 1800);
         return false;
     }
 

@@ -1,5 +1,4 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { createClient } from '@supabase/supabase-js'
 
 export const SUPABASE_URL = 'https://apfymygzwkzjhhgmtkaj.supabase.co';
 export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwZnlteWd6d2t6amhoZ210a2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5MjM5MTIsImV4cCI6MjA5NjQ5OTkxMn0.RiV6kDDeSq5ZIP68RGwtpLtqPALFloq23owoNm2aA-c';
@@ -73,61 +72,3 @@ window.openSecureFile = async function(filePath) {
 window.notifyUser = async function(userId, message) {
     await sb.from('notifications').insert({ user_id: userId, message: message, created_at: new Date().toISOString() });
 }
-
-
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
-let currentTenantId = null
-
-export async function initTenantContext() {
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) return null
-
-  const { data: userRole } = await supabase
-    .from('user_roles')
-    .select('tenant_id')
-    .eq('user_id', session.user.id)
-    .maybeSingle()
-
-  if (userRole?.tenant_id) {
-    currentTenantId = userRole.tenant_id
-    await supabase.rpc('app.set_current_tenant_id', { tenant_id: currentTenantId })
-    return currentTenantId
-  }
-  return null
-}
-
-export function getCurrentTenantId() {
-  return currentTenantId
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -52,7 +52,7 @@ function renderAdmin() {
                     ${window.escapeHtml(userName)}
                     <span style="font-size:10px;background:rgba(99,102,241,.1);color:#6366f1;padding:2px 8px;border-radius:20px;margin-left:4px;">${window.currentRoleName || 'Admin'}</span>
                 </div>
-                <button class="btn-outline btn-sm" onclick="window.location.href='/'">
+                <button class="btn-outline btn-sm" onclick="window.location.href='/?mode=chat'">
                     <i class="fa-solid fa-comments"></i> Go to Chat
                 </button>
                 <button class="btn-outline btn-sm" onclick="window.logout?.()">

@@ -353,4 +353,3 @@ window.downloadDashboardPDF = function() {
 
 // ─── GROUP SETTINGS ──────────────────────────────────────────────────────────
 // Opens group settings modal for a department — loads name, colour, members.
-

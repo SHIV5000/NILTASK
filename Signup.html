@@ -9,201 +9,231 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./css/theme.css">
   <style>
-    body { font-family: 'Inter', sans-serif; background: var(--bg-body); }
-    .field { margin-bottom: 16px; }
-    .field label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 6px; }
-    .field input { width: 100%; padding: 11px 14px; border-radius: 10px; border: 1px solid var(--border-color); background: var(--bg-body); color: var(--text-primary); font-size: 14px; outline: none; box-sizing: border-box; transition: border-color 0.2s; }
-    .field input:focus { border-color: var(--accent); }
-    .btn-primary { width: 100%; padding: 12px; border-radius: 10px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 700; border: none; cursor: pointer; margin-top: 8px; transition: opacity 0.2s; }
-    .btn-primary:hover:not(:disabled) { opacity: 0.88; }
-    .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
-    .step { display: none; }
-    .step.active { display: block; }
-    .progress-bar { height: 3px; border-radius: 2px; background: var(--border-color); overflow: hidden; margin-bottom: 24px; }
-    .progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.4s ease; }
-    .error { color: #dc2626; font-size: 12px; font-weight: 600; margin-top: 8px; display: none; }
-    .success-icon { width: 64px; height: 64px; border-radius: 50%; background: rgba(22,163,74,0.12); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+    body{font-family:'Inter',sans-serif;background:var(--bg-body);}
+    .field{margin-bottom:14px;}
+    .field label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-secondary);margin-bottom:5px;}
+    .field input{width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-primary);font-size:13px;outline:none;box-sizing:border-box;transition:border-color .2s;}
+    .field input:focus{border-color:var(--accent);}
+    .btn{width:100%;padding:12px;border-radius:10px;font-size:14px;font-weight:700;border:none;cursor:pointer;transition:opacity .2s;}
+    .btn-primary{background:var(--accent);color:#fff;}
+    .btn-primary:hover:not(:disabled){opacity:.88;}
+    .btn-primary:disabled{opacity:.5;cursor:not-allowed;}
+    .btn-outline{background:transparent;border:1px solid var(--border-color);color:var(--text-secondary);}
+    .step{display:none;} .step.active{display:block;}
+    .pbar{height:3px;border-radius:2px;background:var(--border-color);overflow:hidden;margin-bottom:22px;}
+    .pfill{height:100%;background:var(--accent);border-radius:2px;transition:width .35s ease;}
+    .err{color:#dc2626;font-size:12px;font-weight:600;margin-top:6px;display:none;padding:8px 12px;background:#fef2f2;border-radius:8px;border:1px solid #fecaca;}
+    .info-box{background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);border-radius:10px;padding:11px 14px;font-size:12px;color:#15803d;margin-bottom:16px;}
+    .review-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border-color);}
+    .review-row:last-child{border-bottom:none;}
   </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
-
 <div style="width:100%;max-width:440px;">
 
-  <!-- Header -->
-  <div class="text-center mb-8">
-    <div style="width:52px;height:52px;border-radius:14px;background:var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
-      <i class="fa-solid fa-comments" style="color:#fff;font-size:22px;"></i>
+  <!-- Logo + heading -->
+  <div class="text-center mb-7">
+    <div style="width:50px;height:50px;border-radius:13px;background:var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto 10px;">
+      <i class="fa-solid fa-comments" style="color:#fff;font-size:20px;"></i>
     </div>
-    <h1 style="font-size:22px;font-weight:800;color:var(--text-primary);margin:0 0 4px;">MPGS TaskFlow</h1>
-    <p style="font-size:13px;color:var(--text-secondary);margin:0;">Register your school — 30-day free trial</p>
+    <h1 style="font-size:21px;font-weight:800;color:var(--text-primary);margin:0 0 3px;">MPGS TaskFlow</h1>
+    <p style="font-size:12px;color:var(--text-secondary);margin:0;">Register your school · 30-day free trial</p>
   </div>
 
   <!-- Card -->
-  <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:20px;padding:32px;box-shadow:0 4px 24px rgba(0,0,0,0.07);">
+  <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:18px;padding:28px;box-shadow:0 4px 20px rgba(0,0,0,.06);">
 
-    <!-- Progress -->
-    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:33%"></div></div>
+    <div class="pbar"><div class="pfill" id="pfill" style="width:33%"></div></div>
 
-    <!-- STEP 1: School Details -->
+    <!-- STEP 1: School details -->
     <div class="step active" id="step1">
-      <h2 style="font-size:16px;font-weight:700;color:var(--text-primary);margin:0 0 20px;">Step 1 of 3 — School details</h2>
+      <h2 style="font-size:14px;font-weight:700;color:var(--text-primary);margin:0 0 18px;">Step 1 of 3 · School details</h2>
       <div class="field">
-        <label>School Name</label>
+        <label>School name</label>
         <input type="text" id="schoolName" placeholder="e.g. Modern Public Global School" autocomplete="organization">
       </div>
       <div class="field">
-        <label>Your Name (Principal)</label>
-        <input type="text" id="principalName" placeholder="Full name" autocomplete="name">
+        <label>Principal name</label>
+        <input type="text" id="principalName" placeholder="Your full name" autocomplete="name">
       </div>
       <div class="field">
-        <label>Mobile Number</label>
+        <label>Mobile number</label>
         <input type="tel" id="mobile" placeholder="10-digit mobile" maxlength="10" autocomplete="tel">
       </div>
-      <p class="error" id="err1">Please fill all fields correctly.</p>
-      <button class="btn-primary" onclick="goToStep2()">Continue <i class="fa-solid fa-arrow-right ml-2"></i></button>
+      <p class="err" id="err1"></p>
+      <button class="btn btn-primary" onclick="goStep2()">Continue <i class="fa-solid fa-arrow-right ml-1"></i></button>
     </div>
 
-    <!-- STEP 2: Login Credentials -->
+    <!-- STEP 2: Email + Password -->
     <div class="step" id="step2">
-      <h2 style="font-size:16px;font-weight:700;color:var(--text-primary);margin:0 0 20px;">Step 2 of 3 — Login credentials</h2>
+      <h2 style="font-size:14px;font-weight:700;color:var(--text-primary);margin:0 0 18px;">Step 2 of 3 · Login credentials</h2>
       <div class="field">
-        <label>Email Address</label>
-        <input type="email" id="email" placeholder="your@email.com" autocomplete="email">
+        <label>Email address <span style="color:var(--accent);">← Supabase sends confirmation here</span></label>
+        <input type="email" id="email" placeholder="principal@yourschool.com" autocomplete="email">
       </div>
       <div class="field">
         <label>Password (min 8 characters)</label>
         <div style="position:relative;">
-          <input type="password" id="password" placeholder="Choose a strong password" autocomplete="new-password" style="padding-right:42px;">
-          <i id="togglePwd" class="fa-solid fa-eye" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--text-secondary);cursor:pointer;" onclick="togglePwd()"></i>
+          <input type="password" id="password" placeholder="Choose a strong password" autocomplete="new-password" style="padding-right:40px;">
+          <i class="fa-solid fa-eye" id="eyeIcon" onclick="toggleEye()" style="position:absolute;right:13px;top:50%;transform:translateY(-50%);color:var(--text-secondary);cursor:pointer;"></i>
         </div>
       </div>
       <div class="field">
-        <label>Confirm Password</label>
+        <label>Confirm password</label>
         <input type="password" id="confirmPwd" placeholder="Repeat password" autocomplete="new-password">
       </div>
-      <p class="error" id="err2">Passwords must match and be at least 8 characters.</p>
-      <div style="display:flex;gap:10px;">
-        <button onclick="goToStep(1)" style="flex:1;padding:12px;border-radius:10px;background:transparent;border:1px solid var(--border-color);color:var(--text-secondary);font-weight:700;font-size:14px;cursor:pointer;">Back</button>
-        <button class="btn-primary" style="flex:2;margin-top:0;" onclick="goToStep3()">Continue <i class="fa-solid fa-arrow-right ml-2"></i></button>
+      <p class="err" id="err2"></p>
+      <div style="display:flex;gap:9px;">
+        <button class="btn btn-outline" style="flex:1;" onclick="goStep(1)">Back</button>
+        <button class="btn btn-primary" style="flex:2;" onclick="goStep3()">Continue <i class="fa-solid fa-arrow-right ml-1"></i></button>
       </div>
     </div>
 
-    <!-- STEP 3: Review + Submit -->
+    <!-- STEP 3: Review -->
     <div class="step" id="step3">
-      <h2 style="font-size:16px;font-weight:700;color:var(--text-primary);margin:0 0 20px;">Step 3 of 3 — Review & confirm</h2>
-      <div style="background:var(--bg-body);border:1px solid var(--border-color);border-radius:12px;padding:16px;margin-bottom:20px;">
-        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-color);">
-          <span style="font-size:12px;color:var(--text-secondary);">School</span>
-          <span id="rev_school" style="font-size:12px;font-weight:700;color:var(--text-primary);max-width:220px;text-align:right;"></span>
-        </div>
-        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-color);">
-          <span style="font-size:12px;color:var(--text-secondary);">Principal</span>
-          <span id="rev_principal" style="font-size:12px;font-weight:700;color:var(--text-primary);"></span>
-        </div>
-        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-color);">
-          <span style="font-size:12px;color:var(--text-secondary);">Mobile</span>
-          <span id="rev_mobile" style="font-size:12px;font-weight:700;color:var(--text-primary);"></span>
-        </div>
-        <div style="display:flex;justify-content:space-between;padding:6px 0;">
-          <span style="font-size:12px;color:var(--text-secondary);">Email</span>
-          <span id="rev_email" style="font-size:12px;font-weight:700;color:var(--text-primary);"></span>
-        </div>
+      <h2 style="font-size:14px;font-weight:700;color:var(--text-primary);margin:0 0 18px;">Step 3 of 3 · Confirm &amp; create</h2>
+      <div style="background:var(--bg-body);border:1px solid var(--border-color);border-radius:11px;padding:13px 15px;margin-bottom:14px;">
+        <div class="review-row"><span style="font-size:12px;color:var(--text-secondary);">School</span><span id="rv_school" style="font-size:12px;font-weight:700;color:var(--text-primary);max-width:220px;text-align:right;"></span></div>
+        <div class="review-row"><span style="font-size:12px;color:var(--text-secondary);">Principal</span><span id="rv_name" style="font-size:12px;font-weight:700;color:var(--text-primary);"></span></div>
+        <div class="review-row"><span style="font-size:12px;color:var(--text-secondary);">Mobile</span><span id="rv_mobile" style="font-size:12px;font-weight:700;color:var(--text-primary);"></span></div>
+        <div class="review-row"><span style="font-size:12px;color:var(--text-secondary);">Email</span><span id="rv_email" style="font-size:12px;font-weight:700;color:var(--text-primary);"></span></div>
       </div>
-      <div style="background:rgba(22,163,74,0.08);border:1px solid rgba(22,163,74,0.2);border-radius:10px;padding:12px 14px;margin-bottom:20px;font-size:12px;color:#15803d;">
-        <i class="fa-solid fa-gift mr-2"></i>
-        <strong>30-day free trial</strong> — full access. No credit card needed.
-      </div>
-      <p class="error" id="err3"></p>
-      <div style="display:flex;gap:10px;">
-        <button onclick="goToStep(2)" style="flex:1;padding:12px;border-radius:10px;background:transparent;border:1px solid var(--border-color);color:var(--text-secondary);font-weight:700;font-size:14px;cursor:pointer;">Back</button>
-        <button class="btn-primary" style="flex:2;margin-top:0;" id="submitBtn" onclick="doSignup()">
-          <i class="fa-solid fa-rocket mr-2"></i>Create Account
+      <div class="info-box"><i class="fa-solid fa-gift mr-1"></i> <strong>30-day free trial</strong> · Full access · No credit card needed.</div>
+      <p class="err" id="err3"></p>
+      <div style="display:flex;gap:9px;">
+        <button class="btn btn-outline" style="flex:1;" onclick="goStep(2)">Back</button>
+        <button class="btn btn-primary" style="flex:2;" id="submitBtn" onclick="doSignup()">
+          <i class="fa-solid fa-rocket mr-1"></i>Create Account
         </button>
       </div>
     </div>
 
-    <!-- STEP 4: Success -->
-    <div class="step" id="step4">
-      <div class="success-icon">
-        <i class="fa-solid fa-check" style="color:#16a34a;font-size:28px;"></i>
+    <!-- STEP 4a: Email confirmation sent (if Supabase email confirm is ON) -->
+    <div class="step" id="step4email">
+      <div style="text-align:center;padding:10px 0;">
+        <div style="width:56px;height:56px;border-radius:50%;background:rgba(99,102,241,.12);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">
+          <i class="fa-solid fa-envelope-open-text" style="color:#6366f1;font-size:24px;"></i>
+        </div>
+        <h2 style="font-size:17px;font-weight:800;color:var(--text-primary);margin:0 0 8px;">Check your email!</h2>
+        <p style="font-size:13px;color:var(--text-secondary);margin:0 0 6px;">We sent a confirmation link to:</p>
+        <p id="confirmedEmail" style="font-size:14px;font-weight:700;color:var(--accent);margin:0 0 18px;"></p>
+        <p style="font-size:12px;color:var(--text-secondary);margin:0 0 22px;">Click the link in the email → you will be automatically brought back here to complete setup.</p>
+        <div style="background:var(--bg-body);border:1px solid var(--border-color);border-radius:10px;padding:12px;font-size:12px;color:var(--text-secondary);text-align:left;">
+          <strong style="color:var(--text-primary);">Tip:</strong> Check your spam/junk folder if you don't see the email in 2 minutes.
+        </div>
       </div>
-      <h2 style="text-align:center;font-size:18px;font-weight:800;color:var(--text-primary);margin:0 0 8px;">Account created!</h2>
-      <p style="text-align:center;font-size:13px;color:var(--text-secondary);margin:0 0 24px;">
-        Check your email — we've sent a confirmation link.<br>
-        Click it, then come back here to login.
-      </p>
-      <a href="./index.html" style="display:block;width:100%;padding:12px;border-radius:10px;background:var(--accent);color:#fff;text-align:center;font-weight:700;font-size:14px;text-decoration:none;">
-        <i class="fa-solid fa-arrow-right-to-bracket mr-2"></i>Go to Login
-      </a>
     </div>
 
-  </div>
+    <!-- STEP 4b: Setup completing (redirected from email confirm link) -->
+    <div class="step" id="step4setup">
+      <div style="text-align:center;padding:10px 0;">
+        <div style="width:56px;height:56px;border-radius:50%;background:rgba(99,102,241,.12);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">
+          <i class="fa-solid fa-spinner fa-spin" style="color:#6366f1;font-size:24px;"></i>
+        </div>
+        <h2 style="font-size:17px;font-weight:800;color:var(--text-primary);margin:0 0 8px;">Completing setup...</h2>
+        <p style="font-size:13px;color:var(--text-secondary);">Setting up your school account. Please wait.</p>
+      </div>
+    </div>
 
-  <p style="text-align:center;font-size:12px;color:var(--text-secondary);margin-top:20px;">
+    <!-- STEP 5: All done -->
+    <div class="step" id="step5">
+      <div style="text-align:center;padding:10px 0;">
+        <div style="width:56px;height:56px;border-radius:50%;background:rgba(22,163,74,.12);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">
+          <i class="fa-solid fa-check" style="color:#16a34a;font-size:26px;"></i>
+        </div>
+        <h2 style="font-size:17px;font-weight:800;color:var(--text-primary);margin:0 0 8px;">All set! 🎉</h2>
+        <p style="font-size:13px;color:var(--text-secondary);margin:0 0 22px;">Your school account is ready. Login to access your admin panel.</p>
+        <a href="./index.html" style="display:block;padding:12px;border-radius:10px;background:var(--accent);color:#fff;text-align:center;font-weight:700;font-size:14px;text-decoration:none;">
+          <i class="fa-solid fa-arrow-right-to-bracket mr-1"></i>Login now
+        </a>
+      </div>
+    </div>
+
+  </div><!-- /card -->
+
+  <p style="text-align:center;font-size:12px;color:var(--text-secondary);margin-top:16px;">
     Already registered? <a href="./index.html" style="color:var(--accent);font-weight:600;">Login here</a>
   </p>
-</div>
+</div><!-- /wrapper -->
 
 <script type="module">
 import { sb } from './js/shared.js';
 
-const $ = id => document.getElementById(id);
-let currentStep = 1;
-const progress = { 1: '33%', 2: '66%', 3: '100%' };
+/* ── helpers ─────────────────────────────────────── */
+const $  = id => document.getElementById(id);
+const show = id => { document.querySelectorAll('.step').forEach(s => s.classList.remove('active')); $(id).classList.add('active'); };
+const pct  = { 1:'33%', 2:'66%', 3:'100%' };
 
-window.goToStep = function(n) {
-  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
-  $('step' + n).classList.add('active');
-  $('progressFill').style.width = progress[n] || '100%';
-  currentStep = n;
+window.goStep = n => { show('step'+n); $('pfill').style.width = pct[n]||'100%'; };
+window.toggleEye = () => {
+  const p = $('password'), i = $('eyeIcon');
+  p.type = p.type==='password'?'text':'password';
+  i.className = p.type==='password'?'fa-solid fa-eye':'fa-solid fa-eye-slash';
+  i.style.cssText = i.style.cssText;
 };
 
-window.togglePwd = function() {
-  const p = $('password');
-  const i = $('togglePwd');
-  if (p.type === 'password') { p.type = 'text'; i.className = 'fa-solid fa-eye-slash'; i.style.cssText = i.style.cssText; }
-  else { p.type = 'password'; i.className = 'fa-solid fa-eye'; }
-};
-
-window.goToStep2 = function() {
+/* ── Step validation ─────────────────────────────── */
+window.goStep2 = () => {
   const school = $('schoolName').value.trim();
   const name   = $('principalName').value.trim();
-  const mobile = $('mobile').value.trim();
-  const err    = $('err1');
-  if (!school || !name || mobile.length < 10) {
-    err.style.display = 'block';
-    err.textContent = !school ? 'School name is required.' : !name ? 'Your name is required.' : 'Enter a valid 10-digit mobile.';
-    return;
-  }
-  err.style.display = 'none';
-  window.goToStep(2);
+  const mob    = $('mobile').value.trim();
+  const e = $('err1');
+  if (!school) { e.style.display='block'; e.textContent='School name is required.'; return; }
+  if (!name)   { e.style.display='block'; e.textContent='Principal name is required.'; return; }
+  if (!/^\d{10}$/.test(mob)) { e.style.display='block'; e.textContent='Enter a valid 10-digit mobile number.'; return; }
+  e.style.display='none';
+  window.goStep(2);
 };
 
-window.goToStep3 = function() {
+window.goStep3 = () => {
   const email = $('email').value.trim();
   const pwd   = $('password').value;
   const cpwd  = $('confirmPwd').value;
-  const err   = $('err2');
-  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  if (!emailOk || pwd.length < 8 || pwd !== cpwd) {
-    err.style.display = 'block';
-    err.textContent = !emailOk ? 'Enter a valid email.' : pwd.length < 8 ? 'Password must be at least 8 characters.' : 'Passwords do not match.';
-    return;
-  }
-  err.style.display = 'none';
+  const e = $('err2');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { e.style.display='block'; e.textContent='Enter a valid email address.'; return; }
+  if (pwd.length < 8) { e.style.display='block'; e.textContent='Password must be at least 8 characters.'; return; }
+  if (pwd !== cpwd)   { e.style.display='block'; e.textContent='Passwords do not match.'; return; }
+  e.style.display='none';
   // Populate review
-  $('rev_school').textContent    = $('schoolName').value.trim();
-  $('rev_principal').textContent = $('principalName').value.trim();
-  $('rev_mobile').textContent    = $('mobile').value.trim();
-  $('rev_email').textContent     = email;
-  window.goToStep(3);
+  $('rv_school').textContent  = $('schoolName').value.trim();
+  $('rv_name').textContent    = $('principalName').value.trim();
+  $('rv_mobile').textContent  = $('mobile').value.trim();
+  $('rv_email').textContent   = email;
+  window.goStep(3);
 };
 
-window.doSignup = async function() {
+/* ── Helper: create tenant + profile + role ─────── */
+async function completeSetup(userId, schoolName, principalName, mobile, email) {
+  // 1. Create tenant
+  const { data: tenant, error: tErr } = await sb.from('tenants')
+    .insert({ school_name: schoolName, principal_name: principalName, mobile })
+    .select().single();
+  if (tErr) throw new Error('Tenant creation failed: ' + tErr.message);
+
+  // 2. Create / update profile with tenant_id
+  const { error: pErr } = await sb.from('profiles')
+    .upsert({ id: userId, full_name: principalName, email, tenant_id: tenant.id });
+  if (pErr) throw new Error('Profile creation failed: ' + pErr.message);
+
+  // 3. Find principal role
+  const { data: role, error: rErr } = await sb.from('roles')
+    .select('id').eq('name','principal').single();
+  if (rErr) throw new Error('Role lookup failed: ' + rErr.message);
+
+  // 4. Assign principal role
+  const { error: urErr } = await sb.from('user_roles')
+    .upsert({ user_id: userId, tenant_id: tenant.id, role_id: role.id });
+  if (urErr) throw new Error('Role assignment failed: ' + urErr.message);
+
+  return tenant.id;
+}
+
+/* ── Main signup handler ─────────────────────────── */
+window.doSignup = async () => {
   const btn = $('submitBtn');
   const err = $('err3');
   btn.disabled = true;
-  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Creating account...';
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Creating account...';
   err.style.display = 'none';
 
   const schoolName    = $('schoolName').value.trim();
@@ -213,55 +243,63 @@ window.doSignup = async function() {
   const password      = $('password').value;
 
   try {
-    // Step 1: Create Supabase auth user
-    const { data: authData, error: authErr } = await sb.auth.signUp({ email, password });
+    // Save form data to localStorage in case email confirmation redirects user away
+    localStorage.setItem('_pending_signup', JSON.stringify({ schoolName, principalName, mobile, email }));
+
+    const { data, error: authErr } = await sb.auth.signUp({
+      email, password,
+      options: {
+        emailRedirectTo: window.location.origin + '/signup'  // Vercel cleanUrls strips .html
+      }
+    });
     if (authErr) throw authErr;
 
-    const userId = authData.user?.id;
-    if (!userId) throw new Error('Signup failed — no user returned');
+    const user = data?.user;
+    const session = data?.session;
 
-    // Step 2: Create tenant row
-    const { data: tenant, error: tenantErr } = await sb
-      .from('tenants')
-      .insert({ school_name: schoolName, principal_name: principalName, mobile })
-      .select()
-      .single();
-    if (tenantErr) throw tenantErr;
-
-    const tenantId = tenant.id;
-
-    // Step 3: Create profile row with tenant_id
-    const { error: profileErr } = await sb.from('profiles').insert({
-      id: userId, full_name: principalName, email, tenant_id: tenantId
-    });
-    if (profileErr) throw profileErr;
-
-    // Step 4: Find principal role id
-    const { data: roleData, error: roleErr } = await sb
-      .from('roles')
-      .select('id')
-      .eq('name', 'principal')
-      .single();
-    if (roleErr) throw roleErr;
-
-    // Step 5: Assign principal role
-    const { error: urErr } = await sb.from('user_roles').insert({
-      user_id: userId, tenant_id: tenantId, role_id: roleData.id
-    });
-    if (urErr) throw urErr;
-
-    // Show success
-    document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
-    $('step4').classList.add('active');
-    $('progressFill').style.width = '100%';
-
+    if (session) {
+      // Email confirmation is OFF — user has a live session, complete setup now
+      await completeSetup(user.id, schoolName, principalName, mobile, email);
+      localStorage.removeItem('_pending_signup');
+      $('pfill').style.width = '100%';
+      show('step5');
+    } else {
+      // Email confirmation is ON — tell user to check email
+      $('confirmedEmail').textContent = email;
+      $('pfill').style.width = '100%';
+      show('step4email');
+    }
   } catch(e) {
     err.style.display = 'block';
-    err.textContent = 'Error: ' + (e.message || 'Something went wrong. Try again.');
+    err.textContent   = 'Error: ' + (e.message || 'Something went wrong. Please try again.');
     btn.disabled = false;
-    btn.innerHTML = '<i class="fa-solid fa-rocket mr-2"></i>Create Account';
+    btn.innerHTML = '<i class="fa-solid fa-rocket mr-1"></i>Create Account';
   }
 };
+
+/* ── Handle return from email confirmation link ───── */
+// When user clicks the Supabase email link → redirected back to this page
+// Supabase injects a session via URL hash. onAuthStateChange fires SIGNED_IN.
+sb.auth.onAuthStateChange(async (event, session) => {
+  if (event !== 'SIGNED_IN') return;
+  const pending = localStorage.getItem('_pending_signup');
+  if (!pending) return;       // normal login, not a signup completion
+
+  show('step4setup');
+  $('pfill').style.width = '100%';
+
+  try {
+    const { schoolName, principalName, mobile, email } = JSON.parse(pending);
+    await completeSetup(session.user.id, schoolName, principalName, mobile, email);
+    localStorage.removeItem('_pending_signup');
+    show('step5');
+  } catch(e) {
+    show('step3');
+    const err = $('err3');
+    err.style.display = 'block';
+    err.textContent = 'Setup error after email confirm: ' + e.message;
+  }
+});
 </script>
 </body>
 </html>

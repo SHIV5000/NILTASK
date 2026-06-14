@@ -912,6 +912,176 @@ window.saveGroupSettings = function() {
 
 
 
+// ─── SCHEDULE MODAL ────────────────────────────────────────────────────────────
+// Shows the schedule modal after validating the message editor has content
+window.showScheduleModal = function() {
+    if (!window.quillEditor) return;
+    let txt = window.quillEditor.root.innerHTML.trim();
+    txt = txt.replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
+    if (!txt) { window.showCenterToast('Type a message first.','fa-solid fa-exclamation-triangle','text-yellow-500'); return; }
+    document.getElementById('scheduleModal').classList.remove('hidden');
+    document.getElementById('scheduleModal').classList.add('flex');
+};
+window.closeScheduleModal = function() {
+    document.getElementById('scheduleModal').classList.add('hidden');
+    document.getElementById('scheduleModal').classList.remove('flex');
+};
+window.saveScheduledMessage = async function() {
+    const time = document.getElementById('scheduleDateTime').value;
+    if (!time) { window.showCenterToast('Please pick a date/time','fa-solid fa-times','text-red-500'); return; }
+    let txt = window.quillEditor.root.innerHTML.trim();
+    txt = txt.replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
+    const { error } = await sb.from('scheduled_messages').insert({
+        sender_id: window.currentUser.id,
+        room_id: window.currentRoom,
+        message_text: txt,
+        scheduled_time: new Date(time).toISOString(),
+        status: 'pending'
+    });
+    if (error) { window.showCenterToast('Failed: ' + error.message,'fa-solid fa-times','text-red-500'); return; }
+    window.closeScheduleModal();
+    window.quillEditor.root.innerHTML = '';
+    window.showCenterToast('Message Scheduled ✓ 🕐','fa-solid fa-check-circle','text-green-400');
+};
+
+// ─── DASHBOARD ─────────────────────────────────────────────────────────────────
+// Opens the personal stats dashboard modal and loads today's stats by default
+window.openDashboard = async function() {
+    const modal = document.getElementById('dashboardModal');
+    if (!modal) { window.showCenterToast('Dashboard modal not found','fa-solid fa-info-circle','text-yellow-400'); return; }
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    await window.loadDashboard('today');
+};
+window.closeDashboard = function() {
+    const modal = document.getElementById('dashboardModal');
+    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+};
+
+// Fetch and render dashboard stats for the given period (today/week/month/all)
+window.loadDashboard = async function(filter) {
+    // Update active tab styling
+    document.querySelectorAll('.dash-tab').forEach(b => {
+        const on = b.dataset.period === filter;
+        b.style.background   = on ? 'var(--accent)' : 'var(--bg-body)';
+        b.style.color        = on ? '#fff' : 'var(--text-secondary)';
+        b.style.borderColor  = on ? 'var(--accent)' : 'var(--border-color)';
+    });
+    const el = document.getElementById('dashboardContent');
+    if (!el) return;
+    el.innerHTML = '<div class="flex items-center justify-center py-12" style="color:var(--text-secondary);"><i class="fa-solid fa-spinner fa-spin mr-2 text-xl"></i> Loading stats...</div>';
+
+    const uid = window.currentUser.id;
+    const now = new Date();
+    let since = null;
+    if (filter === 'today') { const d = new Date(now); d.setHours(0,0,0,0); since = d.toISOString(); }
+    else if (filter === 'week') { const d = new Date(now); d.setDate(d.getDate()-7); since = d.toISOString(); }
+    else if (filter === 'month') { const d = new Date(now); d.setMonth(d.getMonth()-1); since = d.toISOString(); }
+
+    // Safe query helper — returns 0 on any error (missing column, RLS, etc.)
+    const q = async (fn) => { try { const {count,error} = await fn(); return error ? 0 : (count||0); } catch(e){ return 0; } };
+
+    const msgSent      = await q(() => { let x=sb.from('messages').select('*',{count:'exact',head:true}).eq('sender_id',uid); if(since)x=x.gte('created_at',since); return x; });
+    const msgRcvd      = await q(() => { let x=sb.from('messages').select('*',{count:'exact',head:true}).neq('sender_id',uid); if(since)x=x.gte('created_at',since); return x; });
+    const tasksCreated = await q(() => { let x=sb.from('tasks').select('*',{count:'exact',head:true}).eq('assigned_by',uid); if(since)x=x.gte('created_at',since); return x; });
+    const replies      = await q(() => { let x=sb.from('messages').select('*',{count:'exact',head:true}).eq('sender_id',uid).not('parent_message_id','is',null); if(since)x=x.gte('created_at',since); return x; });
+    // task_assignees has no created_at — no date filter
+    const tasksAssigned  = await q(() => sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id',uid));
+    const tasksCompleted = await q(() => sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id',uid).eq('status','accepted'));
+    const tasksPending   = await q(() => sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('assignee_id',uid).neq('status','accepted'));
+    const reactions      = await q(() => { let x=sb.from('reactions').select('*',{count:'exact',head:true}).eq('user_id',uid); if(since)x=x.gte('created_at',since); return x; });
+
+    // Calculate score
+    const completionRate  = tasksAssigned > 0 ? Math.round((tasksCompleted / tasksAssigned) * 100) : 0;
+    const engagementScore = Math.min(100, Math.round(((msgSent*2) + (replies*3) + reactions) / 5));
+    const score           = Math.round(completionRate*0.6 + engagementScore*0.4);
+    const scoreColor      = score >= 80 ? '#16a34a' : score >= 60 ? '#d97706' : '#dc2626';
+    const scoreLabel      = score >= 80 ? 'Excellent ⭐' : score >= 60 ? 'Good 👍' : 'Needs Attention ⚠️';
+
+    // Stat card helper
+    const card = (icon,color,label,val) => `
+        <div class="rounded-xl p-3 border" style="background:var(--bg-body);border-color:${color}22;">
+            <div class="flex items-center gap-2 mb-1">
+                <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${color}18;">
+                    <i class="fa-solid ${icon}" style="color:${color};font-size:12px;"></i>
+                </div>
+                <span class="text-[9px] font-black uppercase tracking-wider flex-1" style="color:${color};">${label}</span>
+            </div>
+            <div class="text-2xl font-black" style="color:var(--text-primary);">${val}</div>
+        </div>`;
+
+    // Store stats for PDF
+    window._dashStats = { msgSent, msgRcvd, tasksCreated, tasksAssigned, tasksCompleted, tasksPending, reactions, replies, score, filter };
+
+    el.innerHTML = `
+    <div id="dashboardReport">
+        <div class="rounded-2xl p-4 mb-4 text-center" style="background:linear-gradient(135deg,${scoreColor}18,${scoreColor}05);border:1px solid ${scoreColor}30;">
+            <div class="text-5xl font-black mb-1" style="color:${scoreColor};">${score}</div>
+            <div class="font-bold mb-1 text-sm" style="color:${scoreColor};">${scoreLabel}</div>
+            <div class="text-xs" style="color:var(--text-secondary);">Overall Performance · ${filter==='all'?'All Time':filter.charAt(0).toUpperCase()+filter.slice(1)}</div>
+            <div class="flex gap-4 justify-center mt-2 text-xs" style="color:var(--text-secondary);">
+                <span>Task Completion <b style="color:${scoreColor};">${completionRate}%</b></span>
+                <span>Engagement <b style="color:${scoreColor};">${engagementScore}%</b></span>
+            </div>
+            <div style="height:6px;border-radius:3px;background:var(--border-color);overflow:hidden;margin-top:10px;">
+                <div style="height:100%;border-radius:3px;background:${scoreColor};width:${score}%;transition:width 0.6s ease;"></div>
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+            ${card('fa-paper-plane','#6366f1','Messages Sent',msgSent)}
+            ${card('fa-inbox','#10b981','Messages Received',msgRcvd)}
+            ${card('fa-plus-circle','#f59e0b','Tasks Created',tasksCreated)}
+            ${card('fa-user-check','#3b82f6','Assigned to Me',tasksAssigned)}
+            ${card('fa-check-circle','#16a34a','Tasks Completed',tasksCompleted)}
+            ${card('fa-hourglass-half','#ef4444','Tasks Pending',tasksPending)}
+            ${card('fa-face-smile','#a855f7','Reactions Given',reactions)}
+            ${card('fa-reply','#0ea5e9','Replies Sent',replies)}
+        </div>
+    </div>`;
+};
+
+// Download dashboard as a PDF progress card using html2pdf.js
+window.downloadDashboardPDF = function() {
+    if (typeof html2pdf === 'undefined') {
+        window.showCenterToast('html2pdf not loaded on this page — add it to index.html','fa-solid fa-exclamation-triangle','text-yellow-500');
+        return;
+    }
+    const el = document.getElementById('dashboardReport');
+    if (!el) { window.showCenterToast('Open dashboard first','fa-solid fa-info-circle','text-blue-400'); return; }
+    const d    = window._dashStats || {};
+    const name = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'padding:24px;font-family:Inter,sans-serif;background:#fff;color:#111;max-width:700px;';
+    wrap.innerHTML = `
+        <div style="text-align:center;border-bottom:3px solid #6366f1;padding-bottom:14px;margin-bottom:20px;">
+            <h2 style="color:#6366f1;margin:0 0 4px;font-size:22px;font-weight:900;">MPGS TaskFlow — Progress Card</h2>
+            <p style="color:#6b7280;margin:0;font-size:12px;">${name} &nbsp;·&nbsp; ${new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} IST</p>
+        </div>
+        <div style="text-align:center;background:linear-gradient(135deg,#6366f118,#6366f105);border:1px solid #6366f130;border-radius:16px;padding:20px;margin-bottom:20px;">
+            <div style="font-size:52px;font-weight:900;color:#6366f1;">${d.score||0}</div>
+            <div style="font-size:13px;font-weight:700;color:#6366f1;margin-top:4px;">Overall Performance Score</div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <tr style="background:#f8f9fa;">
+                <th style="padding:10px;border:1px solid #e5e7eb;text-align:left;">Metric</th>
+                <th style="padding:10px;border:1px solid #e5e7eb;text-align:right;width:80px;">Count</th>
+            </tr>
+            ${[['Messages Sent',d.msgSent],['Messages Received',d.msgRcvd],
+               ['Tasks Created',d.tasksCreated],['Tasks Assigned to Me',d.tasksAssigned],
+               ['Tasks Completed',d.tasksCompleted],['Tasks Pending',d.tasksPending],
+               ['Reactions Given',d.reactions],['Replies Sent',d.replies]]
+              .map(([k,v]) => `<tr><td style="padding:8px 10px;border:1px solid #e5e7eb;">${k}</td>
+                  <td style="padding:8px 10px;border:1px solid #e5e7eb;text-align:right;font-weight:700;">${v||0}</td></tr>`).join('')}
+        </table>`;
+    html2pdf().from(wrap).set({
+        margin:10,
+        filename:`MPGS_Progress_${name.replace(/\s+/g,'_')}.pdf`,
+        html2canvas:{scale:2, useCORS:true},
+        jsPDF:{unit:'mm', format:'a4', orientation:'portrait'}
+    }).save().then(() => window.showCenterToast('Progress Card Downloaded!','fa-solid fa-file-pdf','text-green-500'));
+};
+
+
 // ─── GROUP SETTINGS ──────────────────────────────────────────────────────────
 // Opens group settings modal for a department — loads name, colour, members.
 window.openGroupSettings = async function(groupId) {

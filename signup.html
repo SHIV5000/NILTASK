@@ -213,52 +213,26 @@ window.goStep3 = function() {
   window.goStep(3);
 };
 
-/* ── Setup helper: creates tenant + profile + role ─── */
+/* ── Setup: single RPC call runs as postgres, bypasses RLS ── */
 async function status(msg) { $('setupStatus').textContent = msg; }
 
 async function completeSetup(userId, tenantData) {
-  const { schoolName, principalName, mobile, email } = tenantData;
+  const { schoolName, principalName, mobile } = tenantData;
 
-  // 1. Create tenant row
-  await status('Creating school record...');
-  const { data: tenant, error: tErr } = await sb
-    .from('tenants')
-    .insert({ school_name: schoolName, principal_name: principalName, mobile })
-    .select()
-    .single();
-  if (tErr) throw new Error('School record: ' + tErr.message);
+  await status('Creating school account...');
 
-  // 2. Create / update profile with tenant_id
-  await status('Setting up your profile...');
-  const { error: pErr } = await sb
-    .from('profiles')
-    .upsert({
-      id: userId, full_name: principalName,
-      email, tenant_id: tenant.id
-    }, { onConflict: 'id' });
-  if (pErr) throw new Error('Profile: ' + pErr.message);
+  // One secure server-side function handles tenant + profile + role
+  // SECURITY DEFINER means it runs as DB owner — no RLS issues
+  const { data, error } = await sb.rpc('complete_tenant_signup', {
+    p_school_name:    schoolName,
+    p_principal_name: principalName,
+    p_mobile:         mobile
+  });
 
-  // 3. Find principal role id
-  await status('Assigning Principal role...');
-  const { data: role, error: rErr } = await sb
-    .from('roles')
-    .select('id')
-    .eq('name', 'principal')
-    .single();
-  if (rErr) throw new Error('Role lookup: ' + rErr.message);
+  if (error) throw new Error(error.message);
 
-  // 4. Assign role
-  const { error: urErr } = await sb
-    .from('user_roles')
-    .upsert({
-      user_id: userId,
-      tenant_id: tenant.id,
-      role_id: role.id
-    }, { onConflict: 'user_id,tenant_id' });
-  if (urErr) throw new Error('Role assign: ' + urErr.message);
-
-  await status('Done!');
-  return tenant.id;
+  await status('Done! ✓');
+  return data?.tenant_id;
 }
 
 /* ── Main signup ────────────────────────────────────── */

@@ -863,10 +863,5 @@ window.getRoomDisplayName = function(roomId) {
     }
     if (typeof window.renderMainApp === 'function') window.renderMainApp();
     if (typeof window.startSubscriptions === 'function') window.startSubscriptions();
-        }
-    } else {
-        if (typeof window.renderMainApp === 'function') window.renderMainApp();
-        if (typeof window.startSubscriptions === 'function') window.startSubscriptions();
-    }
     if (typeof window.initScrollArrows === 'function') window.initScrollArrows();
 })();

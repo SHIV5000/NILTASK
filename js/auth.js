@@ -26,13 +26,13 @@ window.signIn = async function(email, pwd) {
             'fa-solid fa-school', 'text-yellow-400'
         );
         await sb.auth.signOut();
-        setTimeout(() => { window.location.href = './signup.html'; }, 2000);
+        setTimeout(() => { window.location.href = '/signup.html'; }, 2000);
         return false;
     }
 
     // Redirect to index — boot sequence re-runs cleanly with stored session.
     // This avoids all in-place render race conditions.
-    window.location.href = './index.html';
+    window.location.href = '/';
     return true;
 };
 

@@ -45,8 +45,9 @@ window.sendMessage = async function() {
     }
 
     let payload = {
-        room_id: roomId,
+        room_id:   roomId,
         sender_id: window.currentUser.id,
+        tenant_id: window.currentTenantId,
         text,
         created_at: new Date().toISOString()
     };
@@ -420,7 +421,8 @@ window.applyReaction = async function(msgId, value, type) {
     // Persist to reactions table for page-reload survival (optional table)
     try {
         await sb.from('reactions').insert({
-            message_id:msgId, user_id:window.currentUser.id, value, type, count:1
+            message_id:msgId, user_id:window.currentUser.id,
+            tenant_id:window.currentTenantId, value, type, count:1
         });
     } catch(e) {}
 };
@@ -555,7 +557,7 @@ window.sendForwardedMessage = async function() {
     const { data: orig } = await sb.from('messages').select('text').eq('id', window._fwdMsgId).single();
     if (!orig) return;
     const forwardText = `<p style="font-size:11px;color:#6b7280;border-left:3px solid #6366f1;padding-left:8px;margin-bottom:6px;">↪ Forwarded from ${window.escapeHtml(window._fwdFrom)}</p>${orig.text}`;
-    await sb.from('messages').insert({ room_id: sel.value, sender_id: window.currentUser.id, text: forwardText });
+    await sb.from('messages').insert({ room_id: sel.value, sender_id: window.currentUser.id, tenant_id: window.currentTenantId, text: forwardText });
     window.closeForwardModal();
     window.showCenterToast('Message forwarded','fa-solid fa-share','text-indigo-400');
 };
@@ -592,7 +594,7 @@ window.toggleBookmark = async function(mid) {
         window.bookmarkedSet.add(mid);
         if (btn) { btn.classList.add('bookmarked'); btn.innerHTML = '<i class="ti ti-bookmark-filled"></i> Bookmarked'; }
         window.showCenterToast('Message Bookmarked');
-        await sb.from('bookmarks').insert({ user_id: window.currentUser.id, message_id: mid });
+        await sb.from('bookmarks').insert({ user_id: window.currentUser.id, message_id: mid, tenant_id: window.currentTenantId });
     }
 };
 

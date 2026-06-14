@@ -30,18 +30,9 @@ window.signIn = async function(email, pwd) {
         return false;
     }
 
-    // Route by role — Phase 2 will add renderAdminScreen()
-    // Until then, everyone goes to chat app
-    const goToApp = () => {
-        if (typeof window.renderMainApp === 'function') window.renderMainApp();
-        if (typeof window.startSubscriptions === 'function') window.startSubscriptions();
-    };
-
-    if (window.currentPermissions?.admin_panel && typeof window.renderAdminScreen === 'function') {
-        window.renderAdminScreen();   // Phase 2: admin panel
-    } else {
-        goToApp();                    // Phase 1: everyone uses chat app
-    }
+    // Redirect to index — boot sequence re-runs cleanly with stored session.
+    // This avoids all in-place render race conditions.
+    window.location.href = './index.html';
     return true;
 };
 

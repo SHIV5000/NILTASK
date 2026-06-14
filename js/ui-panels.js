@@ -23,7 +23,7 @@ window.closeReminderModal = function() { document.getElementById('reminderModal'
 
 window.saveReminder = async function() {
     const dt=document.getElementById('reminderDateTime').value; if(!dt) return;
-    await sb.from('reminders').insert({user_id:window.currentUser.id,message_id:window.currentReminderId,reminder_time:new Date(dt).toISOString(),triggered:false});
+    await sb.from('reminders').insert({user_id:window.currentUser.id,message_id:window.currentReminderId,tenant_id:window.currentTenantId,reminder_time:new Date(dt).toISOString(),triggered:false});
     window.showCenterToast('Reminder Set Successfully ⏰');
     window.closeReminderModal();
 };
@@ -303,8 +303,9 @@ window.saveScheduledMessage = async function() {
     let txt = window.quillEditor.root.innerHTML.trim();
     txt = txt.replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
     const { error } = await sb.from('scheduled_messages').insert({
-        sender_id: window.currentUser.id,
-        room_id: window.currentRoom,
+        sender_id:  window.currentUser.id,
+        room_id:    window.currentRoom,
+        tenant_id:  window.currentTenantId,
         message_text: txt,
         scheduled_time: new Date(time).toISOString(),
         status: 'pending'

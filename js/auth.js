@@ -18,26 +18,29 @@ window.signIn = async function(email, pwd) {
     // Load tenant context — everything else depends on this
     const loaded = await window.loadTenantContext();
     if (!loaded) {
-        // Auth user exists but school setup was never completed.
-        // Redirect back to signup so they can finish registration.
+        // Auth succeeded but no school tenant found — setup incomplete.
+        // Show a clear message (NOT "invalid credentials") then redirect.
+        document.getElementById('authMsg').textContent = '';
         window.showCenterToast(
-            'School setup incomplete — please complete registration.',
-            'fa-solid fa-exclamation-triangle', 'text-yellow-500'
+            'School setup incomplete. Redirecting to registration...',
+            'fa-solid fa-school', 'text-yellow-400'
         );
         await sb.auth.signOut();
-        // Small delay so toast is visible, then redirect
-        setTimeout(() => { window.location.href = './signup.html'; }, 1800);
+        setTimeout(() => { window.location.href = './signup.html'; }, 2000);
         return false;
     }
 
-    // Route by role
-    if (window.currentPermissions?.admin_panel) {
-        // Principal / VP → show admin panel first
-        window.renderAdminScreen();
-    } else {
-        // Teacher / HOD → go straight to chat
-        window.renderMainApp();
+    // Route by role — Phase 2 will add renderAdminScreen()
+    // Until then, everyone goes to chat app
+    const goToApp = () => {
+        if (typeof window.renderMainApp === 'function') window.renderMainApp();
         if (typeof window.startSubscriptions === 'function') window.startSubscriptions();
+    };
+
+    if (window.currentPermissions?.admin_panel && typeof window.renderAdminScreen === 'function') {
+        window.renderAdminScreen();   // Phase 2: admin panel
+    } else {
+        goToApp();                    // Phase 1: everyone uses chat app
     }
     return true;
 };
@@ -216,7 +219,12 @@ window.renderAuthScreen = function() {
             document.getElementById('password').value
         );
         if (!ok) {
-            msg.textContent = 'Invalid credentials or account not confirmed.';
+            // Only show "invalid credentials" if no toast was already shown
+            // (toast means loadTenantContext failed, not bad password)
+            const toast = document.querySelector('.center-toast');
+            if (!toast) {
+                msg.textContent = 'Wrong email or password. Please try again.';
+            }
             btn.disabled = false;
             btn.innerHTML = '<i class="fa-solid fa-arrow-right-to-bracket mr-2"></i>Login';
         }

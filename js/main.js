@@ -828,7 +828,7 @@ window.getRoomDisplayName = function(roomId) {
     return roomId.charAt(0).toUpperCase() + roomId.slice(1);
 };
 
-// Boot Sequence
+// Boot S equence
 ;(async() => {
     const {data: {session}} = await sb.auth.getSession();
     if (!session) {

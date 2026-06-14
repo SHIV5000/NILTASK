@@ -114,9 +114,10 @@ window.renderMainApp = function() {
                         </button>
                     </div>
                     <div class="flex items-center gap-4" style="color:var(--text-secondary);">
-                        <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('scheduled')" title="Scheduled Messages">
+                        ${window.canSchedule?.() !== false ? `
+                        <div class="topbar-icon-btn top-bar-icon" id="topBarScheduleBtn" onclick="window.openTopPanel('scheduled')" title="Scheduled Messages">
                             <i class="ti ti-clock text-xl"></i><span>Schedule</span>
-                        </div>
+                        </div>` : ''}
                         <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('reminders')" title="Reminders">
                             <i class="fa-solid fa-stopwatch text-[18px]"></i><span>Remind</span>
                         </div>
@@ -168,7 +169,7 @@ window.renderMainApp = function() {
                                 <div id="richEditor" class="w-full" style="color:var(--text-primary);"></div>
                             </div>
                             <button onclick="window.openLinkModal('main')" class="p-2 transition-colors" title="Insert Link Pill" style="color:var(--text-secondary);"><i class="fa-solid fa-link text-[16px]"></i></button>
-                            <button onclick="window.showScheduleModal()" class="p-2 transition-colors" title="Schedule" style="color:var(--text-secondary);"><i class="ti ti-clock text-xl"></i></button>
+                            ${window.canSchedule?.() !== false ? '<button onclick="window.showScheduleModal()" class="p-2 transition-colors" title="Schedule" style="color:var(--text-secondary);"><i class="ti ti-clock text-xl"></i></button>' : ''}
                             <button id="sendBtn" class="text-white rounded-lg shadow-md transition-colors h-[38px] w-[46px] flex items-center justify-center mb-0.5" style="background-color:var(--accent);"><i class="ti ti-send text-lg"></i></button>
                         </div>
                     </div>
@@ -587,6 +588,8 @@ window.loadChatsList = async function() {
     const chatsListEl = document.getElementById('chatsList');
     if (chatsListEl) {
         chatsListEl.innerHTML = html;
+        // Apply group gear visibility by role after rendering
+        if (typeof window.applyGroupGearRBAC === 'function') window.applyGroupGearRBAC();
         document.querySelectorAll('.channel-item').forEach(el => {
             el.addEventListener('click', () => {
                 window.currentRoom = el.dataset.room;
@@ -828,7 +831,7 @@ window.getRoomDisplayName = function(roomId) {
     return roomId.charAt(0).toUpperCase() + roomId.slice(1);
 };
 
-// Boot S equence
+// Boot Sequence
 ;(async() => {
     const {data: {session}} = await sb.auth.getSession();
     if (!session) {
@@ -864,4 +867,6 @@ window.getRoomDisplayName = function(roomId) {
     if (typeof window.renderMainApp === 'function') window.renderMainApp();
     if (typeof window.startSubscriptions === 'function') window.startSubscriptions();
     if (typeof window.initScrollArrows === 'function') window.initScrollArrows();
+    // Apply RBAC after render — hides/shows elements by role + feature flags
+    if (typeof window.applyRBAC === 'function') window.applyRBAC();
 })();

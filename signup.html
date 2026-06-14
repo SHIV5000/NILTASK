@@ -259,20 +259,41 @@ window.doSignup = async function() {
 
     // Step A: Sign up with Supabase Auth
     await status('Creating your login account...');
-    const { data: authData, error: authErr } = await sb.auth.signUp({
+    let signupData = null;
+    let signupErr  = null;
+
+    const { data: tryData, error: tryErr } = await sb.auth.signUp({
       email: tenantData.email,
       password
     });
-    if (authErr) throw new Error(authErr.message);
 
-    const user    = authData?.user;
-    const session = authData?.session;
+    if (tryErr) {
+      const alreadyExists = tryErr.message?.toLowerCase().includes('already registered')
+                         || tryErr.message?.toLowerCase().includes('already been registered')
+                         || tryErr.status === 400;
+      if (alreadyExists) {
+        // Auth user already exists from a previous failed attempt.
+        // Sign them in so we can complete the setup.
+        await status('Account found — signing in to complete setup...');
+        const { data: loginData, error: loginErr } = await sb.auth.signInWithPassword({
+          email: tenantData.email, password
+        });
+        if (loginErr) throw new Error('Email already registered but password is wrong. Try logging in at the main page.');
+        signupData = loginData;
+      } else {
+        throw new Error(tryErr.message);
+      }
+    } else {
+      signupData = tryData;
+    }
 
-    if (!user) throw new Error('No user returned from signup. Try again.');
+    const user    = signupData?.user;
+    const session = signupData?.session;
+
+    if (!user) throw new Error('No user returned. Please try again.');
 
     if (session) {
-      // ── Email confirmation is OFF: session is live, complete setup now ──
-      // Explicitly set session to guarantee auth token is in request headers
+      // Session is live — set it explicitly then complete setup
       await sb.auth.setSession({
         access_token:  session.access_token,
         refresh_token: session.refresh_token

@@ -393,5 +393,47 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 /* =========================================
    TASK TRAIL CONTAINERS
 ========================================= */
+
+
+/* Border Flash Effect START */
+.bubble.effect-border-flash {
+    animation: borderFlash 1.5s ease-out;
+}
+
+@keyframes borderFlash {
+    0% {
+        border: 2px solid #ff5e7e;
+        box-shadow: 0 0 20px rgba(255, 94, 126, 0.6);
+    }
+    50% {
+        border: 2px solid #ffb347;
+        box-shadow: 0 0 30px rgba(255, 179, 71, 0.7);
+    }
+    100% {
+        border: 2px solid transparent;
+        box-shadow: 0 0 0 transparent;
+    }
+}
+
+
+/* Border Flash Effect ENDS */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 .trail-container { display: none; }
 .trail-container.active { display: block; }

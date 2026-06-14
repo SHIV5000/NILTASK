@@ -30,24 +30,63 @@ window.signIn = async function(email, pwd) {
         return false;
     }
 
-    // Redirect to index — boot sequence re-runs cleanly with stored session.
-    // This avoids all in-place render race conditions.
-    window.location.href = '/';
+    // Route by role then redirect — boot sequence handles rendering
+    if (window.currentPermissions?.admin_panel) {
+        window.location.href = '/admin.html';
+    } else {
+        window.location.href = '/';
+    }
     return true;
 };
 
 // ─── LOAD TENANT CONTEXT ────────────────────────────────────────
 // Fetches tenant_id, role, permissions, feature_flags for the
-// logged-in user. Stores everything on window.* for global access.
+// logged-in user. For staff, checks allowed_users whitelist.
 window.loadTenantContext = async function() {
-    const uid = window.currentUser?.id;
+    const uid   = window.currentUser?.id;
+    const email = window.currentUser?.email;
     if (!uid) return false;
 
     // Get profile (includes tenant_id)
-    const { data: profile } = await sb.from('profiles')
+    let { data: profile } = await sb.from('profiles')
         .select('*, tenant:tenants(id, school_name, principal_name)')
         .eq('id', uid)
-        .single();
+        .maybeSingle();
+
+    // If no profile with tenant_id → check allowed_users whitelist
+    if (!profile?.tenant_id && email) {
+        const { data: allowed } = await sb.from('allowed_users')
+            .select('*, tenant:tenants(id, school_name, principal_name)')
+            .eq('email', email)
+            .is('deleted_at', null)
+            .maybeSingle();
+
+        if (!allowed) {
+            window.authBlockReason = 'not_registered';
+            return false;
+        }
+        if (!allowed.approved) {
+            window.authBlockReason = 'pending_approval';
+            return false;
+        }
+
+        // Found in whitelist — create/update profile with tenant context
+        await sb.from('profiles').upsert({
+            id: uid,
+            full_name: window.currentUser?.user_metadata?.full_name || allowed.full_name,
+            email,
+            tenant_id:   allowed.tenant_id,
+            designation: allowed.designation,
+            department:  allowed.department
+        }, { onConflict: 'id' });
+
+        // Reload profile now that tenant_id is set
+        const { data: refreshed } = await sb.from('profiles')
+            .select('*, tenant:tenants(id, school_name, principal_name)')
+            .eq('id', uid)
+            .maybeSingle();
+        profile = refreshed;
+    }
 
     if (!profile?.tenant_id) return false;
 
@@ -109,15 +148,9 @@ window.signUp = async function(email, pwd) {
 // ─── LOGOUT ─────────────────────────────────────────────────────
 window.logout = async function() {
     await sb.auth.signOut();
-    // Clear all tenant context
-    window.currentUser         = null;
-    window.currentTenantId     = null;
-    window.currentRole         = null;
-    window.currentPermissions  = {};
-    window.featureFlags        = {};
-    window.currentSubscription = null;
-    window.globalUsersCache    = [];
-    window.renderAuthScreen();
+    // Clear tenant context then redirect to login
+    // Use location.href so it works from any page (admin.html, index, etc.)
+    window.location.href = '/';
 };
 
 // ─── ENSURE PROFILE ─────────────────────────────────────────────
@@ -210,14 +243,17 @@ window.renderAuthScreen = function() {
             document.getElementById('password').value
         );
         if (!ok) {
-            // Only show "invalid credentials" if no toast was already shown
-            // (toast means loadTenantContext failed, not bad password)
-            const toast = document.querySelector('.center-toast');
-            if (!toast) {
-                msg.textContent = 'Wrong email or password. Please try again.';
-            }
             btn.disabled = false;
             btn.innerHTML = '<i class="fa-solid fa-arrow-right-to-bracket mr-2"></i>Login';
+            // Show specific message based on block reason
+            if (window.authBlockReason === 'not_registered') {
+                msg.innerHTML = '⛔ Your account is not registered.<br><span style="font-size:11px;">Contact your Principal to get access.</span>';
+            } else if (window.authBlockReason === 'pending_approval') {
+                msg.innerHTML = '⏳ Your account is pending approval.<br><span style="font-size:11px;">Contact your Principal to get access.</span>';
+            } else {
+                const toast = document.querySelector('.center-toast');
+                if (!toast) msg.textContent = 'Wrong email or password. Please try again.';
+            }
         }
     };
 };

@@ -107,6 +107,10 @@ window.downloadTaskPDF = async function(taskId) {
 };
 
 window.saveTaskMultiAssignee = async function() {
+    if (window.canCreateTask && !window.canCreateTask()) {
+        window.showCenterToast('You do not have permission to create tasks','fa-solid fa-ban','text-red-500');
+        return;
+    }
     const title = document.getElementById('taskTitle').value;
     const aids = Array.from(document.querySelectorAll('.assignee-cb:checked')).map(cb => cb.value);
     if (!title || !aids.length) return window.showCenterToast('Need Title and Assignee', 'fa-solid fa-times', 'text-red-500');
@@ -234,6 +238,12 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
 
 // ─── LOAD TASKS (with sort) ────────────────────────────────────────────────
 window.loadTasksForPanel = async function() {
+    // Feature flag: if tasks disabled, hide task hub entirely
+    if (window.canSeeTaskHub && !window.canSeeTaskHub()) {
+        const panel = document.getElementById('tasksPanel');
+        if (panel) panel.innerHTML = '<p class="text-sm text-center mt-8 opacity-40"><i class="fa-solid fa-lock text-2xl block mb-2"></i>Tasks not enabled on your plan.</p>';
+        return;
+    }
     const { data: tasks } = await sb.from('tasks')
         .select('*, creator:profiles!assigned_by(full_name, email)')
         .order('created_at', { ascending: false });

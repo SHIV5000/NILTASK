@@ -10,7 +10,7 @@ let notificationSubscription = null;
 
 // Unread counts per room
 window.unreadCounts = {};
-// HIGHLIGHT START
+
 window.scrollToAndHighlight = function(elementId) {
     const element = document.getElementById(elementId);
     if (!element) {
@@ -26,8 +26,6 @@ window.scrollToAndHighlight = function(elementId) {
     }
     document.querySelectorAll('.top-panel-dropdown').forEach(p => p.remove());
 };
-
-// HIGHLIGHT ENDS
 
 window.renderMainApp = function() {
     if (typeof window.applyTheme === 'function') window.applyTheme();
@@ -49,6 +47,12 @@ window.renderMainApp = function() {
 
             <!-- LEFT SIDEBAR -->
             <div id="leftSidebar" class="left-sidebar flex-col border-r z-20 shadow-sm" style="display:${leftDisplay};width:${leftWidth};background-color:var(--bg-sidebar);border-color:var(--border-color);">
+                <!-- School Name 3D Badge -->
+                <div style="margin:10px 10px 0;background:linear-gradient(135deg,var(--accent) 0%,color-mix(in srgb,var(--accent) 55%,#000) 100%);border-radius:13px;padding:12px 15px;text-align:center;box-shadow:0 5px 0 rgba(0,0,0,.22),0 8px 20px rgba(0,0,0,.15),inset 0 1px 0 rgba(255,255,255,.16);position:relative;overflow:hidden;transform:perspective(400px) rotateX(1.5deg);">
+                    <div style="position:absolute;top:0;left:0;right:0;height:50%;background:rgba(255,255,255,.08);border-radius:13px 13px 0 0;"></div>
+                    <div style="font-size:12px;font-weight:900;color:#fff;letter-spacing:1.5px;text-transform:uppercase;text-shadow:0 2px 4px rgba(0,0,0,.4),0 -1px 0 rgba(255,255,255,.18);position:relative;z-index:1;">${window.escapeHtml(window.currentSchoolName || 'MPGS TaskFlow')}</div>
+                    <div style="font-size:8px;color:rgba(255,255,255,.6);letter-spacing:2px;text-transform:uppercase;margin-top:3px;position:relative;z-index:1;">✦ &nbsp; Powered by TaskFlow &nbsp; ✦</div>
+                </div>
                 <div class="p-4 flex justify-between items-center border-b" style="border-color:var(--border-color);">
                     <h2 class="text-xl font-bold tracking-tight flex items-center gap-2" style="color:var(--text-primary);">
                         <i class="fa-solid fa-comments" style="color:var(--accent);"></i> Conversation
@@ -58,8 +62,7 @@ window.renderMainApp = function() {
                             <i id="themeToggleIcon" class="fa-solid ${window.currentTheme === 'light' ? 'fa-sun' : (window.currentTheme === 'dark' ? 'fa-moon' : 'fa-cloud-moon')} text-sm"></i>
                         </button>
                         <button onclick="window.logout()" class="w-8 h-8 rounded-full hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-colors" style="color:var(--text-secondary);">
-                         
-                            <i class="fa-solid fa-power-off"></i>
+                            <i class="fa-solid fa-arrow-right-from-bracket text-sm"></i>
                         </button>
                     </div>
                 </div>
@@ -829,12 +832,41 @@ window.getRoomDisplayName = function(roomId) {
 ;(async() => {
     const {data: {session}} = await sb.auth.getSession();
     if (!session) {
+        // No stored session — show login screen
         if (typeof window.renderAuthScreen === 'function') window.renderAuthScreen();
+        return;
+    }
+
+    // Session exists — must load tenant context before rendering anything
+    window.currentUser = session.user;
+
+    if (typeof window.loadTenantContext === 'function') {
+        const loaded = await window.loadTenantContext();
+        if (!loaded) {
+            // Stored session but no school setup — go to signup to complete
+            if (typeof window.renderAuthScreen === 'function') window.renderAuthScreen();
+            window.showCenterToast(
+                'Please complete your school registration first.',
+                'fa-solid fa-school', 'text-yellow-400'
+            );
+            setTimeout(() => { window.location.href = './signup.html'; }, 2000);
+            return;
+        }
+    }
+
+    // Route by role
+    // ?mode=chat lets principal bypass admin panel and access chat directly
+    const chatMode = new URLSearchParams(window.location.search).get('mode') === 'chat';
+    if (window.currentPermissions?.admin_panel && !chatMode) {
+        window.location.href = '/admin.html';
+        return;
+    }
+    if (typeof window.renderMainApp === 'function') window.renderMainApp();
+    if (typeof window.startSubscriptions === 'function') window.startSubscriptions();
+        }
     } else {
-        window.currentUser = session.user;
-        if (typeof window.ensureProfile === 'function') await window.ensureProfile();
         if (typeof window.renderMainApp === 'function') window.renderMainApp();
         if (typeof window.startSubscriptions === 'function') window.startSubscriptions();
-        if (typeof window.initScrollArrows === 'function') window.initScrollArrows();
     }
+    if (typeof window.initScrollArrows === 'function') window.initScrollArrows();
 })();

@@ -3,140 +3,403 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MPGS TaskFlow — School Signup</title>
+  <title>MPGS TaskFlow — School Registration</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./css/theme.css">
   <style>
-    body { font-family:'Inter',sans-serif; background:var(--bg-body); }
-    .field { margin-bottom:14px; }
-    .field label { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-secondary); margin-bottom:5px; }
-    .field input { width:100%; padding:11px 14px; border-radius:10px; border:1px solid var(--border-color); background:var(--bg-body); color:var(--text-primary); font-size:13px; outline:none; box-sizing:border-box; transition:border-color .2s; }
-    .field input:focus { border-color:var(--accent); }
-    .btn { width:100%; padding:12px; border-radius:10px; font-size:14px; font-weight:700; border:none; cursor:pointer; transition:opacity .2s; }
-    .btn-primary { background:var(--accent); color:#fff; }
-    .btn-primary:hover:not(:disabled) { opacity:.88; }
-    .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
-    .btn-outline { background:transparent; border:1px solid var(--border-color); color:var(--text-secondary); }
-    .step { display:none; } .step.active { display:block; }
-    .pbar { height:3px; border-radius:2px; background:var(--border-color); overflow:hidden; margin-bottom:22px; }
-    .pfill { height:100%; background:var(--accent); border-radius:2px; transition:width .35s ease; }
-    .err { color:#dc2626; font-size:12px; font-weight:600; margin-top:8px; display:none; padding:8px 12px; background:#fef2f2; border-radius:8px; border:1px solid #fecaca; }
-    .info-box { background:rgba(34,197,94,.08); border:1px solid rgba(34,197,94,.25); border-radius:10px; padding:11px 14px; font-size:12px; color:#15803d; margin-bottom:16px; }
-    .review-row { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--border-color); }
-    .review-row:last-child { border-bottom:none; }
-    .spinner { width:48px; height:48px; border:3px solid var(--border-color); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; margin:0 auto 16px; }
-    @keyframes spin { to { transform:rotate(360deg); } }
+    body{font-family:'Inter',sans-serif;background:var(--bg-body);}
+    .card{background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:20px;padding:28px;box-shadow:0 4px 20px rgba(0,0,0,.06);}
+    .step{display:none;}.step.active{display:block;}
+    .pbar{height:3px;border-radius:2px;background:var(--border-color);overflow:hidden;margin-bottom:22px;}
+    .pfill{height:100%;background:var(--accent);border-radius:2px;transition:width .35s ease;}
+    .field{margin-bottom:13px;}
+    .field label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-secondary);margin-bottom:5px;}
+    .field label .opt{font-weight:400;font-size:10px;color:var(--text-secondary);text-transform:none;}
+    .fi{width:100%;padding:10px 13px;border-radius:10px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-primary);font-size:13px;outline:none;box-sizing:border-box;transition:border-color .2s;font-family:'Inter',sans-serif;}
+    .fi:focus{border-color:var(--accent);}
+    .btn-p{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:11px 18px;font-size:14px;font-weight:700;cursor:pointer;transition:opacity .2s;display:inline-flex;align-items:center;gap:7px;}
+    .btn-p:hover:not(:disabled){opacity:.88;}
+    .btn-p:disabled{opacity:.45;cursor:not-allowed;}
+    .btn-o{background:transparent;border:1px solid var(--border-color);color:var(--text-secondary);border-radius:10px;padding:11px 18px;font-size:14px;font-weight:700;cursor:pointer;transition:.2s;}
+    .btn-o:hover{border-color:var(--accent);color:var(--accent);}
+    .err{color:#dc2626;font-size:12px;font-weight:600;padding:8px 12px;background:#fef2f2;border-radius:8px;border:1px solid #fecaca;display:none;margin-top:8px;}
+    /* Plan cards */
+    .plan-card{border:1px solid var(--border-color);border-radius:14px;padding:18px;cursor:pointer;transition:.2s;position:relative;}
+    .plan-card:hover{border-color:var(--accent);}
+    .plan-card.selected{border-color:var(--accent);background:rgba(99,102,241,.04);}
+    .plan-card.featured{border-color:var(--accent);border-width:2px;}
+    .plan-price{font-size:22px;font-weight:800;color:var(--text-primary);}
+    .plan-period{font-size:11px;color:var(--text-secondary);font-weight:500;}
+    .plan-feat{font-size:12px;color:var(--text-secondary);padding:3px 0;display:flex;align-items:center;gap:7px;}
+    .check{color:#16a34a;font-size:11px;}
+    .badge-trial{position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;font-size:10px;font-weight:800;padding:2px 12px;border-radius:20px;white-space:nowrap;}
+    /* Review rows */
+    .rv-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border-color);gap:12px;}
+    .rv-row:last-child{border-bottom:none;}
+    /* Two columns */
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+    @media(max-width:480px){.grid2{grid-template-columns:1fr;}}
+    /* Spinner */
+    .spin{width:44px;height:44px;border:3px solid var(--border-color);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite;margin:0 auto 14px;}
+    @keyframes sp{to{transform:rotate(360deg)}}
   </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
-<div style="width:100%;max-width:440px;">
+<div style="width:100%;max-width:520px;">
 
+  <!-- Logo -->
   <div class="text-center mb-7">
     <div style="width:50px;height:50px;border-radius:13px;background:var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto 10px;">
       <i class="fa-solid fa-comments" style="color:#fff;font-size:20px;"></i>
     </div>
     <h1 style="font-size:21px;font-weight:800;color:var(--text-primary);margin:0 0 3px;">MPGS TaskFlow</h1>
-    <p style="font-size:12px;color:var(--text-secondary);margin:0;">Register your school · 30-day free trial</p>
+    <p style="font-size:12px;color:var(--text-secondary);margin:0;">Enterprise school communication platform</p>
   </div>
 
-  <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:18px;padding:28px;box-shadow:0 4px 20px rgba(0,0,0,.06);">
+  <div class="card">
+    <div class="pbar"><div class="pfill" id="pfill" style="width:0%"></div></div>
 
-    <div class="pbar"><div class="pfill" id="pfill" style="width:33%"></div></div>
+    <!-- ── STEP 0: Choose Plan ─────────────────────────────── -->
+    <div class="step active" id="step0">
 
-    <!-- STEP 1 -->
-    <div class="step active" id="step1">
-      <h2 style="font-size:14px;font-weight:700;color:var(--text-primary);margin:0 0 18px;">Step 1 of 3 · School details</h2>
-      <div class="field">
-        <label>School name</label>
-        <input type="text" id="schoolName" placeholder="e.g. Modern Public Global School" autocomplete="organization">
+      <!-- ★ Hero tagline ★ -->
+      <div style="text-align:center;margin-bottom:18px;padding:16px 14px 14px;
+                  background:linear-gradient(135deg,rgba(99,102,241,.07) 0%,rgba(139,92,246,.05) 100%);
+                  border:1px solid rgba(99,102,241,.2);border-radius:14px;position:relative;overflow:hidden;">
+
+        <!-- Background watermark -->
+        <div style="position:absolute;top:-8px;right:-8px;font-size:56px;opacity:.05;pointer-events:none;">☕</div>
+
+        <!-- World first line -->
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;
+                    color:var(--accent);margin-bottom:6px;">
+          🌍 &nbsp; World's Most Economical School App
+        </div>
+
+        <!-- Main formula -->
+        <div style="font-size:17px;font-weight:900;color:var(--text-primary);line-height:1.3;margin-bottom:8px;">
+          Chat + Task
+          <span style="color:var(--accent);">=</span>
+          Accountability
+        </div>
+
+        <!-- Chai line -->
+        <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:10px;">
+          ☕ &nbsp; Less than the cost of adding sugar to a cup of tea
+        </div>
+
+        <!-- Proof strip -->
+        <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;">
+          <div style="background:var(--accent);color:#fff;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:800;">
+            ₹3.30/day per user
+          </div>
+          <div style="font-size:11px;color:var(--text-secondary);">·</div>
+          <div style="font-size:11px;color:var(--text-secondary);font-weight:600;">
+            Less than 1 cup of chai
+          </div>
+          <div style="font-size:11px;color:var(--text-secondary);">·</div>
+          <div style="font-size:11px;color:var(--text-secondary);font-weight:600;">
+            30-day free trial
+          </div>
+        </div>
       </div>
-      <div class="field">
-        <label>Principal / Head name</label>
-        <input type="text" id="principalName" placeholder="Your full name" autocomplete="name">
+
+      <!-- Billing toggle -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div>
+          <h2 style="font-size:15px;font-weight:800;color:var(--text-primary);margin:0 0 2px;">Choose your plan</h2>
+          <p style="font-size:11px;color:var(--text-secondary);margin:0;">30-day free trial on all plans. No card required.</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;background:var(--bg-body);border:1px solid var(--border-color);border-radius:30px;padding:4px 6px;">
+          <button id="btnMonthly" onclick="setBilling('monthly')"
+            style="padding:5px 14px;border-radius:30px;font-size:11px;font-weight:700;border:none;cursor:pointer;background:var(--accent);color:#fff;transition:.2s;">
+            Monthly
+          </button>
+          <button id="btnYearly" onclick="setBilling('yearly')"
+            style="padding:5px 14px;border-radius:30px;font-size:11px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text-secondary);transition:.2s;">
+            Yearly
+            <span style="background:#16a34a;color:#fff;font-size:9px;padding:1px 5px;border-radius:10px;margin-left:4px;">-20%</span>
+          </button>
+        </div>
       </div>
-      <div class="field">
-        <label>Mobile number</label>
-        <input type="tel" id="mobile" placeholder="10-digit mobile" maxlength="10" autocomplete="tel">
+
+      <!-- Plan cards -->
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+
+        <!-- Pay per user -->
+        <div class="plan-card" id="plan-pay_per_user" onclick="selectPlan('pay_per_user')">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <div>
+              <div style="font-size:13px;font-weight:800;color:var(--text-primary);">Pay per User</div>
+              <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">Flexible — pay only for your team size</div>
+            </div>
+            <div style="text-align:right;">
+              <div class="plan-price"><span id="ppu-price">₹99</span><span class="plan-period">/user/month</span></div>
+              <div id="ppu-annual" style="font-size:10px;color:var(--text-secondary);display:none;">billed annually</div>
+            </div>
+          </div>
+          <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;">
+            <span style="font-size:11px;color:var(--text-secondary);"><i class="fa-solid fa-check check"></i> All features</span>
+            <span style="font-size:11px;color:var(--text-secondary);margin-left:8px;"><i class="fa-solid fa-check check"></i> Up to 500 users</span>
+            <span style="font-size:11px;color:var(--text-secondary);margin-left:8px;"><i class="fa-solid fa-check check"></i> No commitment</span>
+          </div>
+        </div>
+
+        <!-- Starter -->
+        <div class="plan-card featured selected" id="plan-starter" onclick="selectPlan('starter')">
+          <div class="badge-trial">⭐ MOST POPULAR</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <div>
+              <div style="font-size:13px;font-weight:800;color:var(--text-primary);">Starter</div>
+              <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">Up to <strong>30 users</strong>
+                <span id="starter-save" style="color:#16a34a;font-weight:700;"> · Save ~20% vs per user</span>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div class="plan-price" id="starter-price">₹2,400<span class="plan-period">/month</span></div>
+              <div id="starter-compare" style="font-size:10px;color:var(--text-secondary);">₹99×30 = ₹2,970 without plan</div>
+            </div>
+          </div>
+          <div id="starter-annual-note" style="margin-top:8px;display:none;background:rgba(22,163,74,.08);border-radius:6px;padding:5px 10px;font-size:11px;color:#15803d;">
+            <i class="fa-solid fa-gift"></i> Annual: ₹1,920/mo × 12 = <strong>₹23,040/yr</strong> — Save ₹5,760/yr
+          </div>
+        </div>
+
+        <!-- Standard -->
+        <div class="plan-card" id="plan-standard" onclick="selectPlan('standard')">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <div>
+              <div style="font-size:13px;font-weight:800;color:var(--text-primary);">Standard</div>
+              <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">Up to <strong>60 users</strong>
+                <span style="color:#16a34a;font-weight:700;"> · Save ~20% vs per user</span>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div class="plan-price" id="standard-price">₹4,800<span class="plan-period">/month</span></div>
+              <div style="font-size:10px;color:var(--text-secondary);">₹99×60 = ₹5,940 without plan</div>
+            </div>
+          </div>
+          <div id="standard-annual-note" style="margin-top:8px;display:none;background:rgba(22,163,74,.08);border-radius:6px;padding:5px 10px;font-size:11px;color:#15803d;">
+            <i class="fa-solid fa-gift"></i> Annual: ₹3,840/mo × 12 = <strong>₹46,080/yr</strong> — Save ₹11,520/yr
+          </div>
+        </div>
+
+        <!-- Professional -->
+        <div class="plan-card" id="plan-professional" onclick="selectPlan('professional')">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <div>
+              <div style="font-size:13px;font-weight:800;color:var(--text-primary);">Professional</div>
+              <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">Up to <strong>100 users</strong>
+                <span style="color:#16a34a;font-weight:700;"> · Save ~20% vs per user</span>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div class="plan-price" id="professional-price">₹8,000<span class="plan-period">/month</span></div>
+              <div style="font-size:10px;color:var(--text-secondary);">₹99×100 = ₹9,900 without plan</div>
+            </div>
+          </div>
+          <div id="professional-annual-note" style="margin-top:8px;display:none;background:rgba(22,163,74,.08);border-radius:6px;padding:5px 10px;font-size:11px;color:#15803d;">
+            <i class="fa-solid fa-gift"></i> Annual: ₹6,400/mo × 12 = <strong>₹76,800/yr</strong> — Save ₹19,200/yr
+          </div>
+        </div>
+
+        <!-- Enterprise -->
+        <div class="plan-card" id="plan-enterprise" onclick="selectPlan('enterprise')">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <div>
+              <div style="font-size:13px;font-weight:800;color:var(--text-primary);">Enterprise</div>
+              <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">100+ users · Custom solution</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:16px;font-weight:800;color:var(--text-primary);line-height:1.2;">Custom</div>
+              <div style="font-size:10px;color:var(--accent);font-weight:700;">📧 Email us for pricing</div>
+            </div>
+          </div>
+          <div style="margin-top:8px;font-size:11px;color:var(--text-secondary);">
+            <i class="fa-solid fa-check check"></i> Unlimited users &nbsp;
+            <i class="fa-solid fa-check check"></i> Dedicated support &nbsp;
+            <i class="fa-solid fa-check check"></i> Custom integrations
+          </div>
+        </div>
+
+      </div><!-- /cards -->
+
+      <div style="background:rgba(22,163,74,.07);border:1px solid rgba(22,163,74,.2);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#15803d;">
+        <i class="fa-solid fa-gift mr-1"></i>
+        <strong>30-day free trial</strong> — full access on selected plan · No credit card · Cancel any time
       </div>
-      <p class="err" id="err1"></p>
-      <button class="btn btn-primary" onclick="goStep2()">
-        Continue <i class="fa-solid fa-arrow-right ml-1"></i>
+
+      <button class="btn-p" style="width:100%;justify-content:center;" onclick="goStep(1)">
+        Start Free Trial <i class="fa-solid fa-arrow-right"></i>
       </button>
     </div>
 
-    <!-- STEP 2 -->
-    <div class="step" id="step2">
-      <h2 style="font-size:14px;font-weight:700;color:var(--text-primary);margin:0 0 18px;">Step 2 of 3 · Login credentials</h2>
+    <!-- ── STEP 1: School Details ──────────────────────────── -->
+    <div class="step" id="step1">
+      <h2 style="font-size:14px;font-weight:700;color:var(--text-primary);margin:0 0 18px;">Step 1 of 3 · School details</h2>
+
       <div class="field">
-        <label>Email address (used to login)</label>
-        <input type="email" id="email" placeholder="principal@yourschool.com" autocomplete="email">
+        <label>School name</label>
+        <input class="fi" type="text" id="schoolName" placeholder="e.g. Modern Public Global School" autocomplete="organization">
       </div>
       <div class="field">
-        <label>Password (min 8 characters)</label>
+        <label>School address</label>
+        <textarea class="fi" id="schoolAddr" rows="2" placeholder="Street address, area" style="resize:none;"></textarea>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label>City</label>
+          <input class="fi" type="text" id="schoolCity" list="cityList" placeholder="City name" autocomplete="address-level2">
+          <datalist id="cityList">
+            <option value="Agra"><option value="Ahmedabad"><option value="Ajmer">
+            <option value="Allahabad"><option value="Amritsar"><option value="Aurangabad">
+            <option value="Bengaluru"><option value="Bhopal"><option value="Bhubaneswar">
+            <option value="Chandigarh"><option value="Chennai"><option value="Coimbatore">
+            <option value="Dehradun"><option value="Delhi"><option value="Dhanbad">
+            <option value="Faridabad"><option value="Ghaziabad"><option value="Gurugram">
+            <option value="Guwahati"><option value="Gwalior"><option value="Howrah">
+            <option value="Hyderabad"><option value="Indore"><option value="Jaipur">
+            <option value="Jalandhar"><option value="Jammu"><option value="Jamshedpur">
+            <option value="Jodhpur"><option value="Kanpur"><option value="Kochi">
+            <option value="Kolkata"><option value="Kozhikode"><option value="Lucknow">
+            <option value="Ludhiana"><option value="Madurai"><option value="Mangaluru">
+            <option value="Meerut"><option value="Mumbai"><option value="Mysuru">
+            <option value="Nagpur"><option value="Nashik"><option value="Navi Mumbai">
+            <option value="Noida"><option value="Patna"><option value="Pune">
+            <option value="Raipur"><option value="Rajkot"><option value="Ranchi">
+            <option value="Srinagar"><option value="Surat"><option value="Thane">
+            <option value="Thiruvananthapuram"><option value="Varanasi"><option value="Vijayawada">
+            <option value="Visakhapatnam"><option value="Warangal">
+          </datalist>
+        </div>
+        <div class="field">
+          <label>State</label>
+          <select class="fi" id="schoolState">
+            <option value="">— Select state —</option>
+            <optgroup label="States">
+              <option>Andhra Pradesh</option><option>Arunachal Pradesh</option>
+              <option>Assam</option><option>Bihar</option><option>Chhattisgarh</option>
+              <option>Goa</option><option>Gujarat</option><option>Haryana</option>
+              <option>Himachal Pradesh</option><option>Jharkhand</option>
+              <option>Karnataka</option><option>Kerala</option>
+              <option>Madhya Pradesh</option><option>Maharashtra</option>
+              <option>Manipur</option><option>Meghalaya</option><option>Mizoram</option>
+              <option>Nagaland</option><option>Odisha</option><option>Punjab</option>
+              <option>Rajasthan</option><option>Sikkim</option><option>Tamil Nadu</option>
+              <option>Telangana</option><option>Tripura</option>
+              <option>Uttar Pradesh</option><option>Uttarakhand</option>
+              <option>West Bengal</option>
+            </optgroup>
+            <optgroup label="Union Territories">
+              <option>Andaman &amp; Nicobar Islands</option>
+              <option>Chandigarh</option>
+              <option>Dadra &amp; Nagar Haveli and Daman &amp; Diu</option>
+              <option>Delhi (NCT)</option>
+              <option>Jammu &amp; Kashmir</option>
+              <option>Ladakh</option>
+              <option>Lakshadweep</option>
+              <option>Puducherry</option>
+            </optgroup>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Affiliation number <span class="opt">(optional — CBSE / ICSE / State board)</span></label>
+        <input class="fi" type="text" id="affNo" placeholder="e.g. 2100123">
+      </div>
+
+      <p class="err" id="err1"></p>
+      <div style="display:flex;gap:9px;">
+        <button class="btn-o" style="flex:1;" onclick="goStep(0)">Back</button>
+        <button class="btn-p" style="flex:2;justify-content:center;" onclick="goStep2()">
+          Continue <i class="fa-solid fa-arrow-right"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── STEP 2: Principal + Credentials ────────────────── -->
+    <div class="step" id="step2">
+      <h2 style="font-size:14px;font-weight:700;color:var(--text-primary);margin:0 0 18px;">Step 2 of 3 · Principal &amp; login</h2>
+
+      <div class="grid2">
+        <div class="field">
+          <label>Principal / Head name</label>
+          <input class="fi" type="text" id="principalName" placeholder="Full name" autocomplete="name">
+        </div>
+        <div class="field">
+          <label>Mobile</label>
+          <input class="fi" type="tel" id="mobile" placeholder="10-digit mobile" maxlength="10" autocomplete="tel">
+        </div>
+      </div>
+      <div class="field">
+        <label>Email address <span style="font-size:10px;color:var(--accent);font-weight:600;">← this is your login ID</span></label>
+        <input class="fi" type="email" id="email" placeholder="principal@school.com" autocomplete="email">
+      </div>
+      <div class="field">
+        <label>Confirm email address</label>
+        <input class="fi" type="email" id="emailConfirm" placeholder="Re-enter email to confirm">
+      </div>
+      <div class="field">
+        <label>Password <span class="opt">(min 8 characters)</span></label>
         <div style="position:relative;">
-          <input type="password" id="password" placeholder="Choose a strong password" autocomplete="new-password" style="padding-right:40px;">
+          <input class="fi" type="password" id="password" placeholder="Choose a strong password" style="padding-right:40px;" autocomplete="new-password">
           <i class="fa-solid fa-eye" id="eyeIcon" onclick="toggleEye()" style="position:absolute;right:13px;top:50%;transform:translateY(-50%);color:var(--text-secondary);cursor:pointer;"></i>
         </div>
       </div>
       <div class="field">
         <label>Confirm password</label>
-        <input type="password" id="confirmPwd" placeholder="Repeat password" autocomplete="new-password">
+        <input class="fi" type="password" id="confirmPwd" placeholder="Repeat password" autocomplete="new-password">
       </div>
+
       <p class="err" id="err2"></p>
       <div style="display:flex;gap:9px;">
-        <button class="btn btn-outline" style="flex:1;" onclick="goStep(1)">Back</button>
-        <button class="btn btn-primary" style="flex:2;" onclick="goStep3()">
-          Continue <i class="fa-solid fa-arrow-right ml-1"></i>
+        <button class="btn-o" style="flex:1;" onclick="goStep(1)">Back</button>
+        <button class="btn-p" style="flex:2;justify-content:center;" onclick="goStep3()">
+          Continue <i class="fa-solid fa-arrow-right"></i>
         </button>
       </div>
     </div>
 
-    <!-- STEP 3: Review -->
+    <!-- ── STEP 3: Review ──────────────────────────────────── -->
     <div class="step" id="step3">
-      <h2 style="font-size:14px;font-weight:700;color:var(--text-primary);margin:0 0 18px;">Step 3 of 3 · Confirm &amp; create</h2>
-      <div style="background:var(--bg-body);border:1px solid var(--border-color);border-radius:11px;padding:13px 15px;margin-bottom:14px;">
-        <div class="review-row">
-          <span style="font-size:12px;color:var(--text-secondary);">School</span>
-          <span id="rv_school" style="font-size:12px;font-weight:700;color:var(--text-primary);max-width:230px;text-align:right;"></span>
-        </div>
-        <div class="review-row">
-          <span style="font-size:12px;color:var(--text-secondary);">Principal</span>
-          <span id="rv_name" style="font-size:12px;font-weight:700;color:var(--text-primary);"></span>
-        </div>
-        <div class="review-row">
-          <span style="font-size:12px;color:var(--text-secondary);">Mobile</span>
-          <span id="rv_mobile" style="font-size:12px;font-weight:700;color:var(--text-primary);"></span>
-        </div>
-        <div class="review-row">
-          <span style="font-size:12px;color:var(--text-secondary);">Email</span>
-          <span id="rv_email" style="font-size:12px;font-weight:700;color:var(--text-primary);"></span>
-        </div>
+      <h2 style="font-size:14px;font-weight:700;color:var(--text-primary);margin:0 0 18px;">Step 3 of 3 · Review &amp; confirm</h2>
+
+      <div style="background:var(--bg-body);border:1px solid var(--border-color);border-radius:11px;padding:13px 15px;margin-bottom:14px;font-size:12px;">
+        <div class="rv-row"><span style="color:var(--text-secondary);">Plan</span><span id="rv_plan" style="font-weight:700;color:var(--accent);"></span></div>
+        <div class="rv-row"><span style="color:var(--text-secondary);">School</span><span id="rv_school" style="font-weight:700;color:var(--text-primary);text-align:right;max-width:280px;"></span></div>
+        <div class="rv-row"><span style="color:var(--text-secondary);">City, State</span><span id="rv_location" style="font-weight:700;color:var(--text-primary);"></span></div>
+        <div class="rv-row" id="rv_aff_row"><span style="color:var(--text-secondary);">Affiliation</span><span id="rv_aff" style="font-weight:700;color:var(--text-primary);"></span></div>
+        <div class="rv-row"><span style="color:var(--text-secondary);">Principal</span><span id="rv_name" style="font-weight:700;color:var(--text-primary);"></span></div>
+        <div class="rv-row"><span style="color:var(--text-secondary);">Mobile</span><span id="rv_mobile" style="font-weight:700;color:var(--text-primary);"></span></div>
+        <div class="rv-row"><span style="color:var(--text-secondary);">Email</span><span id="rv_email" style="font-weight:700;color:var(--text-primary);"></span></div>
       </div>
-      <div class="info-box">
+
+      <div style="background:rgba(22,163,74,.07);border:1px solid rgba(22,163,74,.2);border-radius:10px;padding:11px 14px;margin-bottom:14px;font-size:12px;color:#15803d;">
         <i class="fa-solid fa-gift mr-1"></i>
-        <strong>30-day free trial</strong> · Full access · No credit card needed.
+        <strong>30-day free trial</strong> — full access · No credit card needed
       </div>
+
       <p class="err" id="err3"></p>
       <div style="display:flex;gap:9px;">
-        <button class="btn btn-outline" style="flex:1;" onclick="goStep(2)">Back</button>
-        <button class="btn btn-primary" style="flex:2;" id="submitBtn" onclick="doSignup()">
-          <i class="fa-solid fa-rocket mr-1"></i>Create Account
+        <button class="btn-o" style="flex:1;" onclick="goStep(2)">Back</button>
+        <button class="btn-p" style="flex:2;justify-content:center;" id="submitBtn" onclick="doSignup()">
+          <i class="fa-solid fa-rocket"></i> Create Account
         </button>
       </div>
     </div>
 
-    <!-- STEP 4: Setting up (shown while DB calls run) -->
+    <!-- ── STEP 4: Setting up ──────────────────────────────── -->
     <div class="step" id="step4">
       <div style="text-align:center;padding:12px 0;">
-        <div class="spinner"></div>
+        <div class="spin"></div>
         <h2 style="font-size:16px;font-weight:700;color:var(--text-primary);margin:0 0 8px;">Setting up your school...</h2>
         <p id="setupStatus" style="font-size:13px;color:var(--text-secondary);margin:0;"></p>
       </div>
     </div>
 
-    <!-- STEP 5: Success -->
+    <!-- ── STEP 5: Success ────────────────────────────────── -->
     <div class="step" id="step5">
       <div style="text-align:center;padding:12px 0;">
         <div style="width:56px;height:56px;border-radius:50%;background:rgba(22,163,74,.12);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">
@@ -144,7 +407,7 @@
         </div>
         <h2 style="font-size:17px;font-weight:800;color:var(--text-primary);margin:0 0 8px;">School registered! 🎉</h2>
         <p style="font-size:13px;color:var(--text-secondary);margin:0 0 22px;">
-          Your account is ready. You will be logged in as <strong>Principal</strong>.
+          Your account is ready. Login as <strong>Principal</strong> to add your staff.
         </p>
         <a href="/" style="display:block;padding:12px;border-radius:10px;background:var(--accent);color:#fff;text-align:center;font-weight:700;font-size:14px;text-decoration:none;">
           <i class="fa-solid fa-arrow-right-to-bracket mr-1"></i>Go to Login
@@ -152,201 +415,225 @@
       </div>
     </div>
 
-  </div>
+  </div><!-- /card -->
 
   <p style="text-align:center;font-size:12px;color:var(--text-secondary);margin-top:16px;">
-    Already registered?
-    <a href="/" style="color:var(--accent);font-weight:600;">Login here</a>
+    Already registered? <a href="/" style="color:var(--accent);font-weight:600;">Login here</a>
   </p>
 </div>
 
 <script type="module">
 import { sb } from './js/shared.js';
 
-const $    = id => document.getElementById(id);
-const pct  = { 1:'33%', 2:'66%', 3:'100%' };
+/* ── State ───────────────────────────────────────────────── */
+let selectedPlan = 'starter';
 
-/* ── Navigation ────────────────────────────────────── */
-function showStep(n) {
+const pct = { 0:'0%', 1:'33%', 2:'66%', 3:'100%' };
+
+function show(n) {
   document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
-  $('step'+n).classList.add('active');
+  document.getElementById('step'+n).classList.add('active');
+  document.getElementById('pfill').style.width = pct[n] || '100%';
 }
-window.goStep = function(n) {
-  showStep(n);
-  $('pfill').style.width = pct[n] || '100%';
+window.goStep = n => show(n);
+
+/* ── Plan selection ─────────────────────────────────────── */
+const planNames = {
+  pay_per_user:  'Pay per User — ₹99/user/month',
+  starter:       'Starter — ₹2,400/month (30 users)',
+  standard:      'Standard — ₹4,800/month (60 users)',
+  professional:  'Professional — ₹8,000/month (100 users)',
+  enterprise:    'Enterprise — Custom pricing'
 };
 
+// Billing cycle (monthly / yearly)
+let billingCycle = 'monthly';
+
+window.setBilling = function(cycle) {
+  billingCycle = cycle;
+  const isYearly = cycle === 'yearly';
+
+  // Toggle button styles
+  document.getElementById('btnMonthly').style.background = isYearly ? 'transparent' : 'var(--accent)';
+  document.getElementById('btnMonthly').style.color      = isYearly ? 'var(--text-secondary)' : '#fff';
+  document.getElementById('btnYearly').style.background  = isYearly ? 'var(--accent)' : 'transparent';
+  document.getElementById('btnYearly').style.color       = isYearly ? '#fff' : 'var(--text-secondary)';
+
+  // Update per-user price
+  document.getElementById('ppu-price').textContent  = isYearly ? '₹79' : '₹99';
+  document.getElementById('ppu-annual').style.display = isYearly ? 'block' : 'none';
+
+  // Update flat plan prices
+  const prices = {
+    starter:      { monthly:'₹2,400', yearly:'₹1,920' },
+    standard:     { monthly:'₹4,800', yearly:'₹3,840' },
+    professional: { monthly:'₹8,000', yearly:'₹6,400' },
+  };
+  for (const [plan, vals] of Object.entries(prices)) {
+    const el = document.getElementById(plan+'-price');
+    if (el) {
+      const period = isYearly ? '/month billed yearly' : '/month';
+      el.innerHTML = vals[isYearly?'yearly':'monthly'] + `<span class="plan-period">\${period}</span>`;
+    }
+    const note = document.getElementById(plan+'-annual-note');
+    if (note) note.style.display = isYearly ? 'block' : 'none';
+  }
+};
+
+window.selectPlan = function(plan) {
+  selectedPlan = plan;
+  document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById('plan-'+plan).classList.add('selected');
+};
+
+/* ── Eye toggle ─────────────────────────────────────────── */
 window.toggleEye = function() {
-  const p = $('password'), i = $('eyeIcon');
-  p.type = p.type==='password' ? 'text' : 'password';
-  i.className = p.type==='password' ? 'fa-solid fa-eye' : 'fa-solid fa-eye-slash';
+  const p = document.getElementById('password');
+  const i = document.getElementById('eyeIcon');
+  p.type = p.type === 'password' ? 'text' : 'password';
+  i.className = p.type === 'password' ? 'fa-solid fa-eye' : 'fa-solid fa-eye-slash';
 };
 
-/* ── Step 1 validation ─────────────────────────────── */
+/* ── Validation helpers ──────────────────────────────────── */
+const $ = id => document.getElementById(id);
+function showErr(id, msg) {
+  const el = $(id);
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function clearErr(id) { $(id).style.display = 'none'; }
+
+/* ── Step 1 validation ──────────────────────────────────── */
 window.goStep2 = function() {
+  clearErr('err1');
   const school = $('schoolName').value.trim();
-  const name   = $('principalName').value.trim();
-  const mob    = $('mobile').value.trim();
-  const e = $('err1');
-  if (!school) { e.style.display='block'; e.textContent='School name is required.'; return; }
-  if (!name)   { e.style.display='block'; e.textContent='Principal name is required.'; return; }
-  if (!/^\d{10}$/.test(mob)) { e.style.display='block'; e.textContent='Enter a valid 10-digit mobile number.'; return; }
-  e.style.display='none';
-  window.goStep(2);
+  const city   = $('schoolCity').value.trim();
+  const state  = $('schoolState').value;
+
+  if (!school)  { showErr('err1','School name is required.'); return; }
+  if (!city)    { showErr('err1','City is required.'); return; }
+  if (!state)   { showErr('err1','Please select a state.'); return; }
+  show(2);
 };
 
-/* ── Step 2 validation ─────────────────────────────── */
+/* ── Step 2 validation ──────────────────────────────────── */
 window.goStep3 = function() {
-  const email = $('email').value.trim();
-  const pwd   = $('password').value;
-  const cpwd  = $('confirmPwd').value;
-  const e = $('err2');
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { e.style.display='block'; e.textContent='Enter a valid email address.'; return; }
-  if (pwd.length < 8) { e.style.display='block'; e.textContent='Password must be at least 8 characters.'; return; }
-  if (pwd !== cpwd)   { e.style.display='block'; e.textContent='Passwords do not match.'; return; }
-  e.style.display='none';
-  // Populate review panel
-  $('rv_school').textContent  = $('schoolName').value.trim();
-  $('rv_name').textContent    = $('principalName').value.trim();
-  $('rv_mobile').textContent  = $('mobile').value.trim();
-  $('rv_email').textContent   = email;
-  window.goStep(3);
+  clearErr('err2');
+  const name    = $('principalName').value.trim();
+  const mob     = $('mobile').value.trim();
+  const email   = $('email').value.trim().toLowerCase();
+  const emailC  = $('emailConfirm').value.trim().toLowerCase();
+  const pwd     = $('password').value;
+  const pwdC    = $('confirmPwd').value;
+
+  if (!name) { showErr('err2','Principal name is required.'); return; }
+  if (!/^\d{10}$/.test(mob)) { showErr('err2','Enter a valid 10-digit mobile number.'); return; }
+
+  // Email validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) { showErr('err2','Enter a valid email address.'); return; }
+  if (email !== emailC)         { showErr('err2','Email addresses do not match. Please re-enter.'); return; }
+
+  if (pwd.length < 8)  { showErr('err2','Password must be at least 8 characters.'); return; }
+  if (pwd !== pwdC)    { showErr('err2','Passwords do not match.'); return; }
+
+  // Populate review
+  const billingLabel = billingCycle === 'yearly' ? ' · Billed yearly (20% off)' : ' · Billed monthly';
+  $('rv_plan').textContent = (planNames[selectedPlan] || selectedPlan) + billingLabel;
+  $('rv_school').textContent   = $('schoolName').value.trim();
+  const city  = $('schoolCity').value.trim();
+  const state = $('schoolState').value;
+  $('rv_location').textContent = `${city}, ${state}`;
+  const aff = $('affNo').value.trim();
+  if (aff) { $('rv_aff').textContent = aff; $('rv_aff_row').style.display = 'flex'; }
+  else     { $('rv_aff_row').style.display = 'none'; }
+  $('rv_name').textContent   = name;
+  $('rv_mobile').textContent = mob;
+  $('rv_email').textContent  = email;
+  show(3);
 };
 
-/* ── Setup: single RPC call runs as postgres, bypasses RLS ── */
+/* ── Setup status helper ────────────────────────────────── */
 async function status(msg) { $('setupStatus').textContent = msg; }
 
-async function completeSetup(userId, tenantData) {
-  const { schoolName, principalName, mobile } = tenantData;
-
-  await status('Creating school account...');
-
-  // One secure server-side function handles tenant + profile + role
-  // SECURITY DEFINER means it runs as DB owner — no RLS issues
-  const { data, error } = await sb.rpc('complete_tenant_signup', {
-    p_school_name:    schoolName,
-    p_principal_name: principalName,
-    p_mobile:         mobile
-  });
-
-  if (error) throw new Error(error.message);
-
-  await status('Done! ✓');
-  return data?.tenant_id;
-}
-
-/* ── Main signup ────────────────────────────────────── */
+/* ── Main signup ────────────────────────────────────────── */
 window.doSignup = async function() {
   const btn = $('submitBtn');
-  const err = $('err3');
+  clearErr('err3');
   btn.disabled = true;
-  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Creating...';
-  err.style.display = 'none';
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating...';
 
-  // Collect all form values before changing screens
-  const tenantData = {
-    schoolName:    $('schoolName').value.trim(),
-    principalName: $('principalName').value.trim(),
-    mobile:        $('mobile').value.trim(),
-    email:         $('email').value.trim()
-  };
-  const password = $('password').value;
+  const schoolName    = $('schoolName').value.trim();
+  const principalName = $('principalName').value.trim();
+  const mobile        = $('mobile').value.trim();
+  const email         = $('email').value.trim().toLowerCase();
+  const password      = $('password').value;
+  const address       = $('schoolAddr').value.trim();
+  const city          = $('schoolCity').value.trim();
+  const state         = $('schoolState').value;
+  const affNo         = $('affNo').value.trim() || null;
 
   try {
-    // Show setup screen immediately so user sees progress
-    showStep(4);
-    $('pfill').style.width = '100%';
+    show(4);
 
-    // Step A: Sign up with Supabase Auth
+    // Create Supabase auth user
     await status('Creating your login account...');
     let signupData = null;
-    let signupErr  = null;
 
-    const { data: tryData, error: tryErr } = await sb.auth.signUp({
-      email: tenantData.email,
-      password
-    });
+    const { data: tryData, error: tryErr } = await sb.auth.signUp({ email, password });
 
     if (tryErr) {
-      const msg = tryErr.message?.toLowerCase() || '';
-      const trySignIn =
-        msg.includes('already registered') ||
-        msg.includes('already been registered') ||
-        msg.includes('confirmation email') ||   // email send failed — user may exist
-        msg.includes('sending') ||
-        tryErr.status === 400 ||
-        tryErr.status === 422;
-
-      if (trySignIn) {
-        // User may already exist — try signing in to complete setup
-        await status('Checking existing account...');
-        const { data: loginData, error: loginErr } = await sb.auth.signInWithPassword({
-          email: tenantData.email, password
-        });
+      const alreadyExists = tryErr.message?.toLowerCase().includes('already registered')
+                         || tryErr.message?.toLowerCase().includes('already been registered')
+                         || tryErr.message?.toLowerCase().includes('confirmation email')
+                         || tryErr.message?.toLowerCase().includes('sending')
+                         || tryErr.status === 400 || tryErr.status === 422;
+      if (alreadyExists) {
+        await status('Account found — signing in to complete setup...');
+        const { data: loginData, error: loginErr } = await sb.auth.signInWithPassword({ email, password });
         if (loginErr) {
-          // Truly a new user but email failed — common on Supabase free tier
-          // Check if user was created despite the email error
-          if (tryData?.user) {
-            signupData = tryData;  // user created, email just failed — continue
-          } else {
-            throw new Error(
-              'Email service error. Please try again in 1 minute, or turn OFF ' +
-              '"Confirm email" in Supabase Dashboard → Authentication → Providers → Email.'
-            );
-          }
-        } else {
-          signupData = loginData;
-        }
-      } else {
-        throw new Error(tryErr.message);
-      }
-    } else {
-      signupData = tryData;
-    }
+          if (tryData?.user) { signupData = tryData; }
+          else throw new Error('Email already registered. Try logging in or use a different email.');
+        } else { signupData = loginData; }
+      } else { throw new Error(tryErr.message); }
+    } else { signupData = tryData; }
 
     const user    = signupData?.user;
     const session = signupData?.session;
-
     if (!user) throw new Error('No user returned. Please try again.');
 
     if (session) {
-      // Session is live — set it explicitly then complete setup
       await sb.auth.setSession({
         access_token:  session.access_token,
         refresh_token: session.refresh_token
       });
-
-      await completeSetup(user.id, tenantData);
-      showStep(5);
-
-    } else {
-      // ── Email confirmation is ON: tell user to check email ──
-      showStep(4);
-      $('pfill').style.width = '100%';
-      // Replace spinner content with email message
-      document.querySelector('#step4 .spinner').style.display = 'none';
-      $('setupStatus').style.fontSize = '13px';
-      $('setupStatus').style.color = 'var(--text-secondary)';
-      document.querySelector('#step4 h2').textContent = 'Check your email!';
-      $('setupStatus').innerHTML =
-        `A confirmation link has been sent to <strong style="color:var(--accent);">${tenantData.email}</strong>.<br><br>
-         Click the link → come back → login normally.<br><br>
-         <span style="font-size:11px;color:var(--text-secondary);">Check spam folder if not seen in 2 minutes.</span>`;
     }
 
+    // Complete setup via SECURITY DEFINER function
+    await status('Creating school record...');
+    const { error: rpcErr } = await sb.rpc('complete_tenant_signup', {
+      p_school_name:    schoolName,
+      p_principal_name: principalName,
+      p_mobile:         mobile,
+      p_address:        address || null,
+      p_city:           city    || null,
+      p_state:          state   || null,
+      p_affiliation_no: affNo
+    });
+    if (rpcErr) throw new Error(rpcErr.message);
+
+    await status('Done! ✓');
+    show(5);
+
   } catch(e) {
-    // Return to step 3 and show the error
-    showStep(3);
-    $('pfill').style.width = '100%';
-    err.style.display  = 'block';
-    err.textContent    = 'Error: ' + (e.message || 'Something went wrong. Please try again.');
+    show(3);
+    showErr('err3','Error: ' + (e.message || 'Something went wrong. Please try again.'));
     btn.disabled = false;
-    btn.innerHTML = '<i class="fa-solid fa-rocket mr-1"></i>Create Account';
+    btn.innerHTML = '<i class="fa-solid fa-rocket"></i> Create Account';
   }
 };
 
-/* ── On page load: clear any stale pending signup data ──
-   This prevents the old onAuthStateChange double-fire issue. */
+/* ── Clear stale session data on load ─────────────────── */
 localStorage.removeItem('_pending_signup');
 </script>
 </body>

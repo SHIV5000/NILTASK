@@ -1,0 +1,15 @@
+{
+  "name": "TaskFlow — School Communication",
+  "short_name": "TaskFlow",
+  "description": "Chat + Task = Accountability. School communication platform.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4F46E5",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "categories": ["education", "productivity", "business"],
+  "lang": "en-IN"
+}

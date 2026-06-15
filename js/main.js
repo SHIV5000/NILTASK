@@ -110,6 +110,11 @@ window.renderMainApp = function() {
             <div class="flex-1 flex flex-col relative min-w-0 chat-area">
                 <div class="p-4 border-b z-10 flex justify-between items-center shadow-sm backdrop-blur" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
                     <div class="flex items-center gap-3">
+                        <!-- Mobile hamburger (shown by CSS on mobile only) -->
+                        <button id="mobileSidebarToggle" onclick="window.toggleMobileSidebar()"
+                            style="display:none;background:none;border:none;cursor:pointer;padding:4px;color:var(--text-secondary);font-size:22px;line-height:1;">
+                            <i class="fa-solid fa-bars"></i>
+                        </button>
                         <i class="ti ti-layout-sidebar-left cursor-pointer pr-3 border-r" onclick="window.toggleLeftSidebar()" title="Toggle Sidebar" style="color:var(--text-secondary);border-color:var(--border-color);"></i>
                         <span id="roomTitleDisplay" class="text-lg font-bold tracking-tight" style="color:var(--text-primary);">Loading...</span>
                         <button id="groupSettingsBtn" onclick="window.openGroupSettings()" title="Group Settings"
@@ -510,6 +515,28 @@ window.renderMainApp = function() {
     if (typeof window.loadChatsList === 'function') window.loadChatsList();
     if (typeof window.loadMessages === 'function') window.loadMessages();
     if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel();
+
+    // ── Mobile: inject overlay backdrop ──────────────────────
+    if (!document.getElementById('mobileOverlay')) {
+        const ov = document.createElement('div');
+        ov.id = 'mobileOverlay';
+        ov.onclick = () => window.closeMobileSidebar();
+        document.body.appendChild(ov);
+    }
+};
+
+// ── Mobile sidebar toggle ─────────────────────────────────
+window.toggleMobileSidebar = function() {
+    const sb   = document.querySelector('.left-sidebar');
+    const ov   = document.getElementById('mobileOverlay');
+    const open = sb?.classList.contains('mobile-open');
+    if (open) { window.closeMobileSidebar(); }
+    else { sb?.classList.add('mobile-open'); ov?.classList.add('visible'); }
+};
+
+window.closeMobileSidebar = function() {
+    document.querySelector('.left-sidebar')?.classList.remove('mobile-open');
+    document.getElementById('mobileOverlay')?.classList.remove('visible');
 };
 
 // ─── SIDEBAR SEARCH ────────────────────────────────────────────────────────

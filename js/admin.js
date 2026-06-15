@@ -305,8 +305,11 @@ function renderStaffTable(staff) {
         exam_controller:'exam_controller', hod:'hod', teacher:'teacher'
     };
     const roleNames = {
-        principal:'Principal', vp_admin:'VP / Admin',
-        exam_controller:'Exam Controller', hod:'HOD', teacher:'Teacher'
+        management:'Management', principal:'Principal',
+        vp_admin:'VP / Admin', coordinator:'Coordinator',
+        exam_controller:'Exam Controller', hod:'HOD',
+        teacher:'Teacher', admin_staff:'Admin Staff',
+        support_staff:'Support Staff'
     };
     const avatarColors = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899'];
 

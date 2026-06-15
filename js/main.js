@@ -82,7 +82,12 @@ window.renderMainApp = function() {
                             <div id="sidebarAvatar" class="w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px] flex-shrink-0 overflow-hidden" style="background-color:var(--accent);">
                                 ${(window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + (window.currentUser?.id||''))) ? `<img src="${window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + (window.currentUser?.id||''))}" style="width:100%;height:100%;object-fit:cover;">` : userNameDisplay.charAt(0).toUpperCase()}
                             </div>
-                            <span class="truncate" id="sidebarNameDisplay">${window.escapeHtml(userNameDisplay.toUpperCase())}</span>
+                            <div>
+                                <span class="truncate" id="sidebarNameDisplay">${window.escapeHtml(userNameDisplay.toUpperCase())}</span>
+                                <div style="font-size:9px;font-weight:700;color:var(--accent);letter-spacing:.06em;text-transform:uppercase;margin-top:1px;opacity:.85;">
+                                    ${window.currentRoleName || ''}
+                                </div>
+                            </div>
                         </div>
                         <button onclick="window.openSettings()" title="Profile Settings"
                             class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border hover:bg-gray-100 transition-colors"

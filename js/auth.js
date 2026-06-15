@@ -30,6 +30,9 @@ window.signIn = async function(email, pwd) {
         return false;
     }
 
+    // Record last login timestamp (fire and forget — don't block routing)
+    sb.rpc('record_last_login').catch(() => {});
+
     // Route by role then redirect — boot sequence handles rendering
     if (window.currentPermissions?.admin_panel) {
         window.location.href = '/admin.html';

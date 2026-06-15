@@ -75,8 +75,9 @@ window.insertLinkPill = function() {
 
 window.openSettings = async function() {
     const modal = document.getElementById('settingsModal'); if (!modal) return;
-    const { data: profile } = await sb.from('profiles').select('*').eq('id', window.currentUser.id).single();
+    const { data: profile } = await sb.from('profiles').select('*').eq('id', window.currentUser.id).eq('tenant_id', window.currentTenantId).single();
     document.getElementById('settingsName').value = profile?.full_name || window.currentUser?.user_metadata?.full_name || '';
+    document.getElementById('settingsDesignation').value = profile?.designation || '';
     document.getElementById('settingsEmail').value = window.currentUser?.email || '';
     const photoEl = document.getElementById('settingsPhotoPreview');
     const placeholderEl = document.getElementById('settingsPhotoPlaceholder');
@@ -92,6 +93,17 @@ window.openSettings = async function() {
         if (placeholderEl) placeholderEl.style.display = 'flex';
     }
     modal.classList.remove('hidden'); modal.classList.add('flex');
+    // Add change password link if not already present
+    if (!document.getElementById('pwdChangeLink')) {
+        const link = document.createElement('button');
+        link.id = 'pwdChangeLink';
+        link.style.cssText = 'width:100%;text-align:center;padding:7px;font-size:12px;font-weight:600;color:var(--text-secondary);background:none;border:1px solid var(--border-color);border-radius:10px;cursor:pointer;margin-top:8px;';
+        link.innerHTML = '<i class="fa-solid fa-key" style="margin-right:6px;color:var(--accent);"></i>Change Password';
+        link.onclick = window.openChangePassword;
+        modal.querySelector('form, div.modal-content, div')?.appendChild(link);
+        // Fallback: append to modal directly
+        if (!modal.querySelector('#pwdChangeLink')?.parentNode) modal.appendChild(link);
+    }
 };
 
 window.closeSettings = function() {
@@ -138,8 +150,8 @@ window.saveSettings = async function() {
     try { const { data: { user } } = await sb.auth.getUser(); if (user) window.currentUser = user; } catch(e) {}
 
     // Update profiles table (name always; avatar_url only if column exists)
-    try { await sb.from('profiles').update({ full_name: name }).eq('id', window.currentUser.id); } catch(e) {}
-    try { if (avatarDataUrl) await sb.from('profiles').update({ full_name: name, avatar_url: avatarDataUrl }).eq('id', window.currentUser.id); } catch(e) {}
+    try { const desig = document.getElementById('settingsDesignation')?.value?.trim() || ''; await sb.from('profiles').update({ full_name: name, designation: desig }).eq('id', window.currentUser.id); } catch(e) {}
+    try { const desig = document.getElementById('settingsDesignation')?.value?.trim() || ''; if (avatarDataUrl) await sb.from('profiles').update({ full_name: name, avatar_url: avatarDataUrl, designation: desig }).eq('id', window.currentUser.id); } catch(e) {}
 
     // Update sidebar DOM immediately — no page reload needed
     window._userAvatarUrl = avatarDataUrl;
@@ -273,4 +285,92 @@ window.selectGroupColor = function(color) {
         b.style.boxShadow   = active ? '0 0 0 2px ' + color : 'none';
         b.style.transform   = active ? 'scale(1.2)' : 'scale(1)';
     });
+};
+
+
+
+// ─── CHANGE PASSWORD ──────────────────────────────────────────
+// Staff self-service password change using Supabase auth.updateUser()
+window.openChangePassword = function() {
+    const existing = document.getElementById('changePwdSection');
+    if (existing) {
+        existing.style.display = existing.style.display === 'none' ? 'block' : 'none';
+        return;
+    }
+
+    // Insert change password section into settings modal
+    const settingsModal = document.getElementById('settingsModal');
+    if (!settingsModal) return;
+
+    const section = document.createElement('div');
+    section.id = 'changePwdSection';
+    section.style.cssText = 'margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color);';
+    section.innerHTML = `
+        <h4 style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+                   color:var(--text-secondary);margin:0 0 12px;">Change Password</h4>
+        <div class="mb-3">
+            <label class="block text-xs font-bold mb-1" style="color:var(--text-secondary);">New Password</label>
+            <div style="position:relative;">
+                <input id="newPwdInput" type="password" placeholder="Min 8 characters"
+                    class="w-full px-3 py-2 rounded-lg border text-sm"
+                    style="background:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);padding-right:40px;">
+                <i class="fa-solid fa-eye" id="newPwdEye" onclick="window.toggleNewPwdEye()"
+                   style="position:absolute;right:12px;top:50%;transform:translateY(-50%);
+                          color:var(--text-secondary);cursor:pointer;"></i>
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="block text-xs font-bold mb-1" style="color:var(--text-secondary);">Confirm New Password</label>
+            <input id="confirmPwdInput" type="password" placeholder="Repeat new password"
+                class="w-full px-3 py-2 rounded-lg border text-sm"
+                style="background:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+        </div>
+        <div id="pwdChangeErr" style="color:#dc2626;font-size:12px;font-weight:600;display:none;
+             padding:7px 12px;background:#fef2f2;border-radius:8px;border:1px solid #fecaca;margin-bottom:10px;"></div>
+        <button onclick="window.saveNewPassword()"
+            class="w-full py-2 rounded-xl text-white font-bold text-sm"
+            style="background:var(--accent);" id="savePwdBtn">
+            <i class="fa-solid fa-lock"></i> Update Password
+        </button>`;
+
+    settingsModal.appendChild(section);
+};
+
+window.toggleNewPwdEye = function() {
+    const p = document.getElementById('newPwdInput');
+    const i = document.getElementById('newPwdEye');
+    if (!p) return;
+    p.type = p.type === 'password' ? 'text' : 'password';
+    i.className = p.type === 'password' ? 'fa-solid fa-eye' : 'fa-solid fa-eye-slash';
+};
+
+window.saveNewPassword = async function() {
+    const newPwd  = document.getElementById('newPwdInput')?.value  || '';
+    const confirm = document.getElementById('confirmPwdInput')?.value || '';
+    const errEl   = document.getElementById('pwdChangeErr');
+    const btn     = document.getElementById('savePwdBtn');
+
+    errEl.style.display = 'none';
+    if (newPwd.length < 8)  { errEl.textContent = 'Password must be at least 8 characters.'; errEl.style.display='block'; return; }
+    if (newPwd !== confirm)  { errEl.textContent = 'Passwords do not match.';                 errEl.style.display='block'; return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Updating...';
+
+    const { error } = await sb.auth.updateUser({ password: newPwd });
+    if (error) {
+        errEl.textContent = 'Error: ' + error.message;
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-lock"></i> Update Password';
+        return;
+    }
+
+    // Success
+    document.getElementById('newPwdInput').value    = '';
+    document.getElementById('confirmPwdInput').value = '';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-lock"></i> Update Password';
+    document.getElementById('changePwdSection').style.display = 'none';
+    window.showCenterToast('Password updated successfully ✓','fa-solid fa-check','text-green-500');
 };

@@ -1,0 +1,148 @@
+/* ============================================================
+   TASKFLOW — Mobile Responsive CSS
+   Loaded after theme.css — overrides desktop layout on mobile
+   ============================================================ */
+
+/* ── Hide scrollbars on mobile (touch) ───────────────────── */
+@media (max-width: 768px) {
+  html, body { overflow: hidden; height: 100%; }
+
+  /* ── ROOT layout ─────────────────────────────────────────── */
+  #root > div, .flex.h-screen { flex-direction: row; }
+
+  /* ── LEFT SIDEBAR — becomes full overlay on mobile ──────── */
+  .left-sidebar {
+    position: fixed !important;
+    left: -100vw !important;
+    top: 0; bottom: 0;
+    width: 85vw !important;
+    max-width: 320px !important;
+    z-index: 300 !important;
+    transition: left 0.28s cubic-bezier(.4,0,.2,1) !important;
+    box-shadow: 4px 0 24px rgba(0,0,0,.18) !important;
+    overflow-y: auto;
+  }
+  .left-sidebar.mobile-open {
+    left: 0 !important;
+  }
+
+  /* ── Overlay backdrop when sidebar open ──────────────────── */
+  #mobileOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.45);
+    z-index: 299;
+    backdrop-filter: blur(2px);
+  }
+  #mobileOverlay.visible { display: block; }
+
+  /* ── Hide resizer handles on mobile ──────────────────────── */
+  .drag-resizer, #leftResizer, #rightResizer { display: none !important; }
+
+  /* ── RIGHT SIDEBAR — hidden on mobile ────────────────────── */
+  .right-sidebar { display: none !important; }
+
+  /* ── CHAT AREA — full width ──────────────────────────────── */
+  .chat-area {
+    width: 100vw !important;
+    min-width: 0 !important;
+    flex: 1 !important;
+  }
+
+  /* ── TOP BAR tweaks ──────────────────────────────────────── */
+  .topbar-icon-btn span { display: none; }       /* hide text labels */
+  .topbar-icon-btn { padding: 6px 8px !important; }
+
+  /* Show hamburger toggle button on mobile */
+  #mobileSidebarToggle { display: flex !important; }
+
+  /* ── Messages area ───────────────────────────────────────── */
+  .message-bubble { max-width: 85% !important; }
+  .msg-actions    { opacity: 1 !important; }    /* always show on touch */
+
+  /* ── Input area ──────────────────────────────────────────── */
+  .ql-editor { min-height: 44px !important; max-height: 120px !important; }
+  .ql-toolbar { padding: 4px !important; }
+
+  /* ── Modals full screen on mobile ────────────────────────── */
+  .modal-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    border-radius: 20px 20px 0 0 !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+  }
+
+  /* ── School badge ────────────────────────────────────────── */
+  .school-badge-area { padding: 6px 8px 0 !important; }
+
+  /* ── Group settings panel ────────────────────────────────── */
+  #groupSettingsPanel {
+    width: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
+    border-radius: 20px 20px 0 0 !important;
+  }
+
+  /* ── Task panel ──────────────────────────────────────────── */
+  .right-sidebar {
+    position: fixed !important;
+    bottom: 0; left: 0; right: 0;
+    height: 70vh !important;
+    width: 100% !important;
+    border-radius: 20px 20px 0 0 !important;
+    z-index: 250 !important;
+    transform: translateY(100%);
+    transition: transform 0.3s ease !important;
+  }
+  .right-sidebar.mobile-task-open {
+    display: flex !important;
+    transform: translateY(0) !important;
+  }
+
+  /* ── PWA install banner ──────────────────────────────────── */
+  #pwaInstallBanner {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--bg-sidebar);
+    border-top: 1px solid var(--border-color);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    z-index: 500;
+    box-shadow: 0 -4px 20px rgba(0,0,0,.12);
+    transform: translateY(100%);
+    transition: transform 0.3s ease;
+  }
+  #pwaInstallBanner.show { transform: translateY(0); }
+
+  /* ── Reduce font sizes slightly on small screens ─────────── */
+  .text-xl  { font-size: 1.1rem !important; }
+  .text-2xl { font-size: 1.25rem !important; }
+}
+
+/* ── Tablet (768–1024px) ─────────────────────────────────── */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .right-sidebar {
+    width: 300px !important;
+    min-width: 280px !important;
+  }
+  .left-sidebar {
+    width: 260px !important;
+    min-width: 240px !important;
+  }
+  .topbar-icon-btn span { font-size: 9px !important; }
+}
+
+/* ── PWA install banner — desktop hidden ─────────────────── */
+@media (min-width: 769px) {
+  #pwaInstallBanner { display: none !important; }
+  #mobileSidebarToggle { display: none !important; }
+}

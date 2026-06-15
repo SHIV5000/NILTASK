@@ -164,7 +164,7 @@ function renderAdmin() {
     const resetModal = document.createElement('div');
     resetModal.id = 'resetPwdModal';
     resetModal.className = 'modal-wrap';
-    resetModal.innerHTML = \`
+    resetModal.innerHTML = `
         <div class="modal-card" style="max-width:380px;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
                 <h3 style="font-size:15px;font-weight:800;color:var(--text-primary);margin:0;">
@@ -188,7 +188,7 @@ function renderAdmin() {
                     <i class="fa-solid fa-key"></i> Reset Password
                 </button>
             </div>
-        </div>\`;
+        </div>`;
     document.body.appendChild(resetModal);
 }
 

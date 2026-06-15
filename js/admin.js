@@ -251,17 +251,34 @@ async function loadSubscription() {
 }
 
 async function loadStaff() {
-    // Join allowed_users with profiles to get last_login
-    const { data, error } = await sb
+    // Query 1: allowed_users (no join — profiles linked by email only, no FK)
+    const { data: staff, error } = await sb
         .from('allowed_users')
-        .select('*, profile:profiles!inner(last_login)')
+        .select('*')
         .eq('tenant_id', window.currentTenantId)
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
     if (error) { console.error('loadStaff:', error); return; }
 
-    allStaff = data || [];
+    // Query 2: profiles for last_login — merge by email
+    const emails = (staff || []).map(s => s.email).filter(Boolean);
+    let profileMap = {};
+    if (emails.length) {
+        const { data: profiles } = await sb
+            .from('profiles')
+            .select('email, last_login')
+            .eq('tenant_id', window.currentTenantId)
+            .in('email', emails);
+        (profiles || []).forEach(p => { profileMap[p.email] = p; });
+    }
+
+    // Merge last_login into each staff row
+    allStaff = (staff || []).map(s => ({
+        ...s,
+        last_login: profileMap[s.email]?.last_login || null
+    }));
+
     renderStaffTable(allStaff);
     updateStats(allStaff);
 }
@@ -352,7 +369,7 @@ function renderStaffTable(staff) {
                     <span class="toggle-slider"></span>
                 </label>
             </td>
-            <td>${fmtLogin(s.profile?.last_login)}</td>
+            <td>${fmtLogin(s.last_login)}</td>
             <td>
                 <div style="display:flex;gap:6px;flex-wrap:wrap;">
                     <button class="btn-outline btn-sm" onclick="openEditStaffModal('${s.id}')" title="Edit">

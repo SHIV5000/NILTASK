@@ -406,6 +406,10 @@ window.renderMainApp = function() {
                     <label class="text-xs font-bold mb-1 block" style="color:var(--text-secondary);">Display Name</label>
                     <input type="text" id="settingsName" class="w-full p-2.5 rounded-xl border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
                 </div>
+                <div class="mb-3">
+                    <label class="text-xs font-bold mb-1 block" style="color:var(--text-secondary);">Designation</label>
+                    <input type="text" id="settingsDesignation" placeholder="e.g. Physics Teacher, HOD Science" class="w-full p-2.5 rounded-xl border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                </div>
                 <div class="mb-5">
                     <label class="text-xs font-bold mb-1 block" style="color:var(--text-secondary);">Email (read-only)</label>
                     <input type="email" id="settingsEmail" disabled class="w-full p-2.5 rounded-xl border outline-none text-sm opacity-60" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">

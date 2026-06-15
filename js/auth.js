@@ -31,7 +31,8 @@ window.signIn = async function(email, pwd) {
     }
 
     // Record last login timestamp (fire and forget — don't block routing)
-    sb.rpc('record_last_login').catch(() => {});
+    // .catch() doesn't exist on PostgrestFilterBuilder — use .then(null, fn) instead
+    sb.rpc('record_last_login').then(null, () => {});
 
     // Route by role then redirect — boot sequence handles rendering
     if (window.currentPermissions?.admin_panel) {

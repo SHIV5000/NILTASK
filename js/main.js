@@ -516,27 +516,94 @@ window.renderMainApp = function() {
     if (typeof window.loadMessages === 'function') window.loadMessages();
     if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel();
 
-    // ── Mobile: inject overlay backdrop ──────────────────────
-    if (!document.getElementById('mobileOverlay')) {
-        const ov = document.createElement('div');
-        ov.id = 'mobileOverlay';
-        ov.onclick = () => window.closeMobileSidebar();
-        document.body.appendChild(ov);
+    // ── Initialise mobile layout after render ────────────────
+    window.initMobile();
+};
+
+// ── MOBILE LAYOUT ──────────────────────────────────────────
+// Uses setProperty('important') to beat dynamic inline styles
+window.initMobile = function() {
+    const isMobile = window.innerWidth <= 768;
+    const leftSB  = document.getElementById('leftSidebar');
+    const rightSB = document.getElementById('rightSidebar');
+    const leftR   = document.getElementById('leftResizer');
+    const rightR  = document.getElementById('rightResizer');
+    if (!leftSB) return;
+
+    if (isMobile) {
+        // ── RIGHT SIDEBAR: completely hidden ─────────────────
+        if (rightSB) { rightSB.style.setProperty('display','none','important'); }
+        if (rightR)  { rightR.style.setProperty('display','none','important'); }
+        if (leftR)   { leftR.style.setProperty('display','none','important'); }
+
+        // ── LEFT SIDEBAR: fixed overlay off-screen left ──────
+        leftSB.style.setProperty('position','fixed','important');
+        leftSB.style.setProperty('top','0','important');
+        leftSB.style.setProperty('bottom','0','important');
+        leftSB.style.setProperty('left','-100vw','important');
+        leftSB.style.setProperty('height','100%','important');
+        leftSB.style.setProperty('width','82vw','important');
+        leftSB.style.setProperty('max-width','320px','important');
+        leftSB.style.setProperty('z-index','300','important');
+        leftSB.style.setProperty('transition','left 0.28s cubic-bezier(.4,0,.2,1)','important');
+        leftSB.style.setProperty('box-shadow','4px 0 24px rgba(0,0,0,.2)','important');
+        leftSB.style.setProperty('overflow-y','auto','important');
+
+        // ── OVERLAY backdrop ─────────────────────────────────
+        if (!document.getElementById('mobileOverlay')) {
+            const ov = document.createElement('div');
+            ov.id = 'mobileOverlay';
+            Object.assign(ov.style, {
+                display:'none', position:'fixed', inset:'0',
+                background:'rgba(0,0,0,.5)', zIndex:'299',
+                backdropFilter:'blur(2px)', transition:'opacity .25s'
+            });
+            ov.onclick = () => window.closeMobileSidebar();
+            document.body.appendChild(ov);
+        }
+
+        // ── TOP BAR: show hamburger, hide text labels ────────
+        const ham = document.getElementById('mobileSidebarToggle');
+        if (ham) ham.style.setProperty('display','flex','important');
+        document.querySelectorAll('.topbar-icon-btn span').forEach(s => {
+            s.style.setProperty('display','none','important');
+        });
+
+        // ── HIDE school badge 3D tilt (looks bad on narrow) ──
+        const badge = document.querySelector('.school-badge-area');
+        if (badge) badge.style.setProperty('transform','none','important');
+
+    } else {
+        // ── DESKTOP: restore defaults ─────────────────────────
+        if (rightSB) rightSB.style.removeProperty('display');
+        leftSB.style.removeProperty('position');
+        leftSB.style.removeProperty('left');
+        leftSB.style.removeProperty('transition');
     }
 };
 
-// ── Mobile sidebar toggle ─────────────────────────────────
+// ── Mobile sidebar open / close ────────────────────────────
 window.toggleMobileSidebar = function() {
-    const sb   = document.querySelector('.left-sidebar');
-    const ov   = document.getElementById('mobileOverlay');
-    const open = sb?.classList.contains('mobile-open');
-    if (open) { window.closeMobileSidebar(); }
-    else { sb?.classList.add('mobile-open'); ov?.classList.add('visible'); }
+    const isOpen = document.getElementById('leftSidebar')
+                           ?.style.getPropertyValue('left') === '0px';
+    if (isOpen) window.closeMobileSidebar();
+    else        window.openMobileSidebar();
+};
+
+window.openMobileSidebar = function() {
+    const leftSB = document.getElementById('leftSidebar');
+    const ov     = document.getElementById('mobileOverlay');
+    if (!leftSB) return;
+    leftSB.style.setProperty('left','0','important');
+    if (ov) { ov.style.display = 'block'; requestAnimationFrame(() => { ov.style.opacity='1'; }); }
 };
 
 window.closeMobileSidebar = function() {
-    document.querySelector('.left-sidebar')?.classList.remove('mobile-open');
-    document.getElementById('mobileOverlay')?.classList.remove('visible');
+    const leftSB = document.getElementById('leftSidebar');
+    const ov     = document.getElementById('mobileOverlay');
+    if (!leftSB) return;
+    leftSB.style.setProperty('left','-100vw','important');
+    if (ov) { ov.style.opacity='0'; setTimeout(() => { ov.style.display='none'; }, 280); }
 };
 
 // ─── SIDEBAR SEARCH ────────────────────────────────────────────────────────
@@ -905,4 +972,9 @@ window.getRoomDisplayName = function(roomId) {
     if (typeof window.initScrollArrows === 'function') window.initScrollArrows();
     // Apply RBAC after render — hides/shows elements by role + feature flags
     if (typeof window.applyRBAC === 'function') window.applyRBAC();
+
+    // Re-apply mobile layout on orientation change
+    window.addEventListener('resize', () => {
+        if (typeof window.initMobile === 'function') window.initMobile();
+    }, { passive: true });
 })();

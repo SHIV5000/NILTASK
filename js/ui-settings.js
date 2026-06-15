@@ -77,7 +77,7 @@ window.openSettings = async function() {
     const modal = document.getElementById('settingsModal'); if (!modal) return;
     const { data: profile } = await sb.from('profiles').select('*').eq('id', window.currentUser.id).eq('tenant_id', window.currentTenantId).single();
     document.getElementById('settingsName').value = profile?.full_name || window.currentUser?.user_metadata?.full_name || '';
-    document.getElementById('settingsDesignation').value = profile?.designation || '';
+    const desigEl = document.getElementById('settingsDesignation'); if (desigEl) desigEl.value = profile?.designation || '';
     document.getElementById('settingsEmail').value = window.currentUser?.email || '';
     const photoEl = document.getElementById('settingsPhotoPreview');
     const placeholderEl = document.getElementById('settingsPhotoPlaceholder');

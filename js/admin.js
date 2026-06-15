@@ -159,6 +159,37 @@ function renderAdmin() {
             They can change their password from Profile Settings.
         </p>
     </div>`;
+
+    // Inject reset password modal (separate from add/edit modal)
+    const resetModal = document.createElement('div');
+    resetModal.id = 'resetPwdModal';
+    resetModal.className = 'modal-wrap';
+    resetModal.innerHTML = \`
+        <div class="modal-card" style="max-width:380px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+                <h3 style="font-size:15px;font-weight:800;color:var(--text-primary);margin:0;">
+                    <i class="fa-solid fa-key" style="color:#f59e0b;margin-right:8px;"></i>Reset Password
+                </h3>
+                <button onclick="closeResetPwdModal()" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text-secondary);">✕</button>
+            </div>
+            <p id="resetPwdForName" style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;"></p>
+            <div class="field">
+                <label>New Password (min 8 characters)</label>
+                <div style="position:relative;">
+                    <input type="password" id="resetNewPwd" placeholder="Enter new password" style="padding-right:40px;">
+                    <i class="fa-solid fa-eye" id="resetEye" onclick="toggleResetEye()"
+                       style="position:absolute;right:13px;top:50%;transform:translateY(-50%);color:var(--text-secondary);cursor:pointer;"></i>
+                </div>
+            </div>
+            <div class="err-msg" id="resetPwdErr"></div>
+            <div style="display:flex;gap:10px;margin-top:8px;">
+                <button class="btn-outline" style="flex:1;" onclick="closeResetPwdModal()">Cancel</button>
+                <button class="btn-accent" style="flex:2;" id="resetPwdBtn" onclick="doResetPassword()">
+                    <i class="fa-solid fa-key"></i> Reset Password
+                </button>
+            </div>
+        </div>\`;
+    document.body.appendChild(resetModal);
 }
 
 // ─── LOAD DATA ────────────────────────────────────────────────
@@ -235,9 +266,36 @@ function renderStaffTable(staff) {
     if (!tbody) return;
 
     if (!staff.length) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-secondary);">
-            <i class="fa-solid fa-users-slash" style="font-size:28px;margin-bottom:10px;display:block;opacity:.3;"></i>
-            No staff members yet. Click <strong>Add Staff</strong> to get started.
+        tbody.innerHTML = `<tr><td colspan="6">
+            <div style="padding:32px 24px;text-align:center;">
+                <div style="width:56px;height:56px;border-radius:50%;background:rgba(var(--accent-rgb,.1));
+                     display:flex;align-items:center;justify-content:center;margin:0 auto 14px;
+                     background:rgba(99,102,241,.1);">
+                    <i class="fa-solid fa-users" style="font-size:22px;color:var(--accent);"></i>
+                </div>
+                <h3 style="font-size:14px;font-weight:800;color:var(--text-primary);margin:0 0 6px;">
+                    Welcome! Let's add your first staff member.
+                </h3>
+                <p style="font-size:12px;color:var(--text-secondary);margin:0 0 16px;max-width:320px;margin-left:auto;margin-right:auto;">
+                    Add each teacher's name, email and a temporary password. They will login at
+                    <strong>niltask.vercel.app</strong> and can change their password from settings.
+                </p>
+                <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;">
+                    <button class="btn-accent" onclick="openAddStaffModal()" style="font-size:12px;padding:8px 18px;">
+                        <i class="fa-solid fa-user-plus"></i> Add First Staff Member
+                    </button>
+                </div>
+                <div style="margin-top:20px;background:var(--bg-body);border:1px solid var(--border-color);
+                     border-radius:10px;padding:12px 16px;text-align:left;font-size:11px;
+                     color:var(--text-secondary);max-width:400px;margin-left:auto;margin-right:auto;">
+                    <div style="font-weight:700;color:var(--text-primary);margin-bottom:6px;">
+                        <i class="fa-solid fa-circle-info" style="color:var(--accent);"></i> Quick steps
+                    </div>
+                    <div>1. Add staff → set role (Teacher / HOD / VP)</div>
+                    <div>2. Share their email + password with them directly</div>
+                    <div>3. Toggle <strong>Approved</strong> ON when they are ready to login</div>
+                </div>
+            </div>
         </td></tr>`;
         return;
     }
@@ -278,11 +336,14 @@ function renderStaffTable(staff) {
                 </label>
             </td>
             <td>
-                <div style="display:flex;gap:6px;">
-                    <button class="btn-outline btn-sm" onclick="openEditStaffModal('${s.id}')">
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <button class="btn-outline btn-sm" onclick="openEditStaffModal('${s.id}')" title="Edit">
                         <i class="fa-solid fa-pen"></i>
                     </button>
-                    <button class="btn-danger" onclick="softDeleteStaff('${s.id}','${window.escapeHtml(s.full_name)}')">
+                    <button class="btn-outline btn-sm" onclick="openResetPwdModal('${s.id}','${window.escapeHtml(s.full_name)}')" title="Reset Password" style="color:#f59e0b;border-color:#fde68a;">
+                        <i class="fa-solid fa-key"></i>
+                    </button>
+                    <button class="btn-danger" onclick="softDeleteStaff('${s.id}','${window.escapeHtml(s.full_name)}')" title="Remove">
                         <i class="fa-solid fa-ban"></i>
                     </button>
                 </div>
@@ -453,6 +514,73 @@ window.softDeleteStaff = async function(id, name) {
     if (error) { showToast('Remove failed: ' + error.message, '#dc2626'); return; }
     showToast(`${name} removed from school`, '#f59e0b');
     await loadStaff();
+};
+
+// ─── RESET PASSWORD ──────────────────────────────────────────
+let _resetTargetId = null;
+
+window.openResetPwdModal = function(userId, name) {
+    _resetTargetId = userId;
+    document.getElementById('resetPwdForName').textContent = `Resetting password for: ${name}`;
+    document.getElementById('resetNewPwd').value = '';
+    document.getElementById('resetPwdErr').style.display = 'none';
+    document.getElementById('resetPwdModal').classList.add('open');
+};
+
+window.closeResetPwdModal = function() {
+    document.getElementById('resetPwdModal').classList.remove('open');
+    _resetTargetId = null;
+};
+
+window.toggleResetEye = function() {
+    const p = document.getElementById('resetNewPwd');
+    const i = document.getElementById('resetEye');
+    p.type = p.type === 'password' ? 'text' : 'password';
+    i.className = p.type === 'password' ? 'fa-solid fa-eye' : 'fa-solid fa-eye-slash';
+};
+
+window.doResetPassword = async function() {
+    const btn      = document.getElementById('resetPwdBtn');
+    const errEl    = document.getElementById('resetPwdErr');
+    const newPwd   = document.getElementById('resetNewPwd').value;
+    errEl.style.display = 'none';
+
+    if (newPwd.length < 8) {
+        errEl.textContent = 'Password must be at least 8 characters.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Resetting...';
+
+    try {
+        const { data: { session } } = await sb.auth.getSession();
+        const resp = await fetch(`${SUPABASE_URL}/functions/v1/create-school-user`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`
+            },
+            body: JSON.stringify({
+                mode:         'reset_password',
+                user_id:      _resetTargetId,
+                new_password: newPwd
+            })
+        });
+        const result = await resp.json();
+        if (!resp.ok || result.error) throw new Error(result.error || 'Reset failed');
+
+        window.closeResetPwdModal();
+        showToast('Password reset successfully ✓', '#16a34a');
+
+    } catch(e) {
+        errEl.textContent = 'Error: ' + e.message;
+        errEl.style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-key"></i> Reset Password';
+    }
 };
 
 // ─── TOAST ───────────────────────────────────────────────────

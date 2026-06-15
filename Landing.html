@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+  <title>TaskFlow – NOT an ERP | 5min teacher adoption | ₹99/user/month</title>
+  <meta name="description" content="Lightweight chat+task system for schools. NOT an ERP. Teachers love the simplicity. Principals get accountability. ₹99/user/month. 30-day trial.">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: white;
+      color: #1A1A2C;
+      line-height: 1.4;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 24px;
+      background: white;
+      border-bottom: 1px solid #F0EBE8;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 800;
+      font-size: 20px;
+      text-decoration: none;
+      color: #1A1A2C;
+    }
+    .logo-icon {
+      background: #A11A2F;
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+    }
+    .nav-links {
+      display: flex;
+      gap: 28px;
+      align-items: center;
+    }
+    .nav-links a {
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      color: #4B5565;
+    }
+    .btn-outline-sm {
+      border: 1px solid #A11A2F;
+      padding: 6px 14px;
+      border-radius: 40px;
+      color: #A11A2F;
+      font-weight: 600;
+      font-size: 13px;
+      background: white;
+    }
+    .btn-primary-sm {
+      background: #A11A2F;
+      color: white;
+      padding: 6px 18px;
+      border-radius: 40px;
+      font-weight: 600;
+      font-size: 13px;
+      text-decoration: none;
+    }
+    @media (max-width: 680px) {
+      .nav-links { display: none; }
+      nav { padding: 12px 20px; }
+    }
+    .btn-primary {
+      background: #A11A2F;
+      color: white;
+      padding: 12px 28px;
+      border-radius: 60px;
+      font-weight: 700;
+      font-size: 15px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: 0.2s;
+      border: none;
+      cursor: pointer;
+    }
+    .btn-primary:hover { background: #7E1324; transform: scale(0.98); }
+    .btn-outline {
+      border: 1.5px solid #A11A2F;
+      background: white;
+      color: #A11A2F;
+      padding: 10px 24px;
+      border-radius: 60px;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-demo {
+      background: white;
+      border: 1.5px solid #A11A2F;
+      color: #A11A2F;
+      padding: 12px 28px;
+      border-radius: 60px;
+      font-weight: 700;
+      font-size: 15px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    section {
+      padding: 56px 0;
+    }
+    .hero {
+      text-align: center;
+      padding: 32px 0 24px;
+    }
+    .principal-badge {
+      display: inline-block;
+      background: #A11A2F10;
+      color: #A11A2F;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.2px;
+      padding: 8px 20px;
+      border-radius: 80px;
+      margin-bottom: 20px;
+      border: 1px solid #F0D3CC;
+    }
+    .not-erp-badge {
+      background: #FEF3F2;
+      color: #A11A2F;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 40px;
+      font-size: 14px;
+      font-weight: 800;
+      margin-bottom: 20px;
+    }
+    h1 {
+      font-size: clamp(32px, 5.5vw, 48px);
+      font-weight: 800;
+      line-height: 1.2;
+      margin-bottom: 16px;
+      color: #1A1A2C;
+    }
+    .accent {
+      color: #A11A2F;
+    }
+    .hero-sub {
+      font-size: 16px;
+      color: #4B5565;
+      max-width: 600px;
+      margin: 0 auto 24px;
+      line-height: 1.5;
+    }
+    .price-love-card {
+      background: #FFF0E6;
+      border-radius: 60px;
+      padding: 12px 24px;
+      display: inline-flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 28px;
+    }
+    .price-big {
+      font-size: 32px;
+      font-weight: 800;
+      color: #A11A2F;
+    }
+    .love-text {
+      font-weight: 700;
+      font-size: 14px;
+      background: white;
+      padding: 6px 16px;
+      border-radius: 40px;
+      color: #A11A2F;
+    }
+    .trust-bar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 28px;
+      margin: 32px 0 16px;
+      font-size: 14px;
+      font-weight: 500;
+      color: #2D2A3E;
+    }
+    .workflow-card {
+      background: #FEFAF8;
+      border-radius: 36px;
+      padding: 32px 28px;
+      margin: 32px 0;
+      border: 1px solid #F2E2DA;
+    }
+    .steps-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      justify-content: space-between;
+      margin: 28px 0 20px;
+    }
+    .step {
+      flex: 1;
+      min-width: 200px;
+      background: white;
+      border-radius: 28px;
+      padding: 20px 18px;
+      border: 1px solid #F0E2DC;
+    }
+    .step-number {
+      background: #A11A2F;
+      color: white;
+      width: 40px;
+      height: 40px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 60px;
+      font-weight: 800;
+      font-size: 20px;
+      margin-bottom: 16px;
+    }
+    .step h3 {
+      font-size: 18px;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+    .scorecard-preview {
+      background: #F9F9FC;
+      border-radius: 28px;
+      padding: 24px;
+      margin: 28px 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      align-items: center;
+    }
+    .mini-table {
+      background: white;
+      border-radius: 20px;
+      padding: 12px;
+      flex: 2;
+      border: 1px solid #E9E1DC;
+    }
+    .mini-table table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .mini-table th, .mini-table td {
+      padding: 8px 6px;
+      text-align: left;
+      border-bottom: 1px solid #F0E2DC;
+    }
+    .grade {
+      background: #E9F7EF;
+      color: #1E7B48;
+      padding: 2px 8px;
+      border-radius: 30px;
+      font-weight: 700;
+      font-size: 11px;
+    }
+    .compare-full-table {
+      background: white;
+      border-radius: 24px;
+      overflow-x: auto;
+      border: 1px solid #EDE3DE;
+      margin: 28px 0;
+    }
+    .compare-full-table table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      min-width: 700px;
+    }
+    .compare-full-table th, .compare-full-table td {
+      padding: 14px 16px;
+      text-align: left;
+      border-bottom: 1px solid #F0EBE8;
+    }
+    .compare-full-table th {
+      background: #FDF8F6;
+      font-weight: 800;
+    }
+    .testimonial {
+      background: #FEFAF8;
+      border-radius: 28px;
+      padding: 28px;
+      margin: 32px 0;
+      text-align: center;
+    }
+    .features-short {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px,1fr));
+      gap: 16px;
+      margin: 32px 0;
+    }
+    .feat {
+      background: #FCFAFA;
+      padding: 18px;
+      border-radius: 20px;
+      border: 1px solid #F0E2DC;
+    }
+    .feat i {
+      font-size: 22px;
+      color: #A11A2F;
+      margin-bottom: 12px;
+    }
+    .pricing-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 18px;
+      justify-content: center;
+      margin: 32px 0;
+    }
+    .price-card {
+      background: white;
+      border: 1px solid #E9E1DC;
+      border-radius: 28px;
+      padding: 24px;
+      min-width: 230px;
+      flex: 1;
+      text-align: center;
+    }
+    .price-card.popular {
+      border: 2px solid #A11A2F;
+      position: relative;
+    }
+    .popular-badge {
+      background: #A11A2F;
+      color: white;
+      font-size: 10px;
+      padding: 2px 12px;
+      border-radius: 30px;
+      position: absolute;
+      top: -10px;
+      left: 20px;
+      font-weight: 800;
+    }
+    .price {
+      font-size: 34px;
+      font-weight: 800;
+      color: #A11A2F;
+    }
+    .plan-features {
+      font-size: 12px;
+      margin: 16px 0;
+      text-align: left;
+      list-style: none;
+    }
+    .plan-features li {
+      padding: 4px 0;
+      display: flex;
+      gap: 8px;
+    }
+    .billing-toggle {
+      display: inline-flex;
+      background: #F1F5F9;
+      border-radius: 60px;
+      padding: 4px;
+      margin: 16px auto;
+    }
+    .toggle-btn {
+      padding: 6px 20px;
+      border-radius: 60px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+    }
+    .toggle-btn.active {
+      background: white;
+      color: #A11A2F;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .cta-small {
+      background: #A11A2F;
+      color: white;
+      padding: 8px 20px;
+      border-radius: 40px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 13px;
+      display: inline-block;
+      margin-top: 12px;
+    }
+    footer {
+      background: #0F0A0C;
+      color: #AD9A9F;
+      padding: 32px 0;
+      text-align: center;
+      font-size: 12px;
+    }
+    hr {
+      margin: 20px 0;
+      border-color: #2E2226;
+    }
+    .sticky-mobile-cta {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: white;
+      padding: 12px;
+      display: none;
+      gap: 12px;
+      justify-content: center;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+      z-index: 200;
+      border-top: 1px solid #EDE3DE;
+    }
+    @media (max-width: 680px) {
+      .sticky-mobile-cta { display: flex; }
+      body { padding-bottom: 70px; }
+      section { padding: 40px 0; }
+      .steps-row { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="logo">
+    <div class="logo-icon"><i class="fas fa-comments"></i></div>
+    <span>TaskFlow</span>
+  </a>
+  <div class="nav-links">
+    <a href="#why">Compare</a>
+    <a href="#howitworks">Workflow</a>
+    <a href="#pricing">Pricing</a>
+    <a href="#faq">FAQ</a>
+    <a href="/login" class="btn-outline-sm">Login</a>
+    <a href="/signup" class="btn-primary-sm">Free trial</a>
+  </div>
+</nav>
+
+<main class="container">
+  <!-- Hero: NOT ERP, 5min teacher adoption, price love -->
+  <div class="hero">
+    <span><div class="principal-badge">👑 BUILT FOR SCHOOL PRINCIPALS</div></span>
+	
+    <div class="not-erp-badge">
+      <i class="fas fa-ban"></i> NOT AN ERP — lightweight Chat + Task system.
+    </div>
+    <h1>Turn messages into tracked tasks, proof, and staff scorecards</h1>
+    <div class="price-love-card">
+      <span><span class="price-big">₹99</span> /user/month · ₹3.30/day</span>
+      <span class="love-text"><i class="fas fa-heart" style="color:#A11A2F;"></i> Reason for you to love this app</span>
+    </div>
+    <p class="hero-sub">Teachers learn in <strong>5 minutes</strong>. They will love to reply. You get full accountability. No training, no IT headache.</p>
+    <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+      <a href="/signup" class="btn-primary"><i class="fas fa-calendar-week"></i> Start 30-day free trial</a>
+      <a href="#demo" class="btn-demo" onclick="alert('Book a 15-min principal demo: email vardansuri26@gmail.com'); return false;"><i class="fas fa-video"></i> Book principal demo</a>
+    </div>
+    <div class="trust-bar">
+      <span><i class="fas fa-check-circle" style="color:#A11A2F;"></i> 5min teacher learning</span>
+      <span><i class="fas fa-smile"></i> Teachers love the simplicity</span>
+      <span><i class="fas fa-chart-line"></i> Auto scorecard</span>
+      <span><i class="fas fa-file-export"></i> Inspection ready</span>
+    </div>
+  </div>
+
+  <!-- Comparison: WhatsApp, Slack, ERP -->
+  <div id="why">
+    <div style="text-align: center;">
+      <div class="badge" style="background:#FEF3F2; display:inline-block; padding:4px 14px; border-radius:40px; font-weight:700;">📊 TaskFlow vs. WhatsApp, Slack, ERP</div>
+      <h2 style="font-size: 26px; font-weight: 800; margin-top: 16px;">No more “I didn't see the message”. No heavy ERP modules.</h2>
+    </div>
+    <div class="compare-full-table">
+      <table>
+        <thead>
+          <tr><th>Feature</th><th>TaskFlow</th><th>WhatsApp Groups</th><th>Slack / Teams</th><th>School ERP</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Task assignment & tracking</td><td><i class="fas fa-check-circle" style="color:#A11A2F;"></i> Full lifecycle</td><td><i class="fas fa-times-circle" style="color:#D97706;"></i> None</td><td><i class="fas fa-exclamation-triangle"></i> Limited</td><td><i class="fas fa-check-circle" style="color:#A11A2F;"></i> Heavy</td></tr>
+          <tr><td>Proof upload (PDF/photo)</td><td><i class="fas fa-check-circle" style="color:#A11A2F;"></i> 1-click</td><td><i class="fas fa-times-circle"></i> No</td><td><i class="fas fa-check-circle"></i> Files</td><td><i class="fas fa-check-circle"></i> Usually</td></tr>
+          <tr><td>Staff performance scorecard</td><td><i class="fas fa-check-circle" style="color:#A11A2F;"></i> Auto-generated</td><td><i class="fas fa-times-circle"></i> No</td><td><i class="fas fa-times-circle"></i> No</td><td><i class="fas fa-times-circle"></i> Rare</td></tr>
+          <tr><td>Learning time for teachers</td><td><strong>5 minutes</strong></td><td>Already know</td><td>1-2 hours</td><td>Weeks + training</td></tr>
+          <tr><td>Mobile friendly (no app)</td><td><i class="fas fa-check-circle"></i> Browser</td><td>App required</td><td>App required</td><td>Often clunky</td></tr>
+          <tr><td>Audit trail for CBSE/NAAC</td><td><i class="fas fa-check-circle"></i> One-click export</td><td><i class="fas fa-times-circle"></i> No</td><td><i class="fas fa-times-circle"></i> No</td><td>Possible but complex</td></tr>
+          <tr><td>Setup time</td><td><strong>5 minutes</strong></td><td>Instant</td><td>Days</td><td>Months</td></tr>
+          <tr><td>Cost for 50 staff</td><td><strong>₹4,950/month</strong></td><td>Free (chaos)</td><td>₹40k+/month</td><td>₹2-8 lakh/year</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="background:#FEFAF8; border-radius: 20px; padding: 16px; text-align: center;">
+      <p><i class="fas fa-lightbulb" style="color:#A11A2F;"></i> <strong>TaskFlow is NOT an ERP.</strong> No payroll, no inventory, no bloat. Just chat + tasks + scorecard. Teachers will love how fast it is.</p>
+    </div>
+  </div>
+
+  <!-- Workflow: Principal → HOD → Teachers -->
+  <div id="howitworks" class="workflow-card">
+    <div style="text-align: center;">
+      <div class="badge" style="background:#FFF0E6; display:inline-block; padding:4px 14px; border-radius:40px;"><i class="fas fa-diagram-project"></i> Real school workflow</div>
+      <h2 style="font-size: 26px; font-weight: 800; margin-top: 12px;">Principal → HOD → Teachers → Verified. No back-and-forth.</h2>
+    </div>
+    <div class="steps-row">
+      <div class="step"><div class="step-number">1</div><h3><i class="fas fa-envelope"></i> Principal tasks HOD</h3><p>“Prepare SA1 Maths QP” → one click converts message to task with deadline.</p><div style="font-size:12px; background:#F7F0EB; border-radius:12px; padding:6px; margin-top:8px;">📱 Task created: due 25 Nov</div></div>
+      <div class="step"><div class="step-number">2</div><h3><i class="fas fa-users"></i> HOD delegates to teachers</h3><p>Assign subtasks to 3 teachers. Each gets own notification & deadline.</p><div style="font-size:12px; margin-top:8px;"><i class="fas fa-check-circle" style="color:#A11A2F;"></i> Delegated to Rajesh, Neha, Ankit</div></div>
+      <div class="step"><div class="step-number">3</div><h3><i class="fas fa-file-pdf"></i> Teachers ACK + upload proof</h3><p>Each uploads QP as PDF. HOD reviews, marks complete or requests changes.</p><div style="background:#EFF6F0; border-radius:12px; padding:6px; margin-top:8px;">✅ 3 PDFs uploaded · HOD verified · Task closed</div></div>
+    </div>
+    <div class="quote-note" style="background:#FFF0E6; padding:12px 20px; border-radius:24px; text-align:center;">
+      <i class="fas fa-clock"></i> Teachers take <strong>5 minutes</strong> to learn. They reply from mobile browser. No app install.
+    </div>
+  </div>
+
+  <!-- Principal dashboard + scorecard -->
+  <div>
+    <div style="text-align: center;">
+      <div class="badge" style="background:#F1F0FF; display:inline-block; padding:4px 14px; border-radius:40px;">📊 Principal dashboard</div>
+      <h2 style="font-size: 26px; font-weight: 800; margin-top: 12px;">See pending work across departments. In one view.</h2>
+    </div>
+    <div class="scorecard-preview">
+      <div class="mini-table">
+        <div style="font-weight:700; margin-bottom:8px;"><i class="fas fa-chart-line"></i> Staff scorecard – December 2026</div>
+        <table>
+          <thead><tr><th>Staff</th><th>Tasks</th><th>On time</th><th>Score</th><th>Grade</th></tr></thead>
+          <tbody>
+            <tr><td>Mr. Ramesh (HOD)</td><td>24</td><td>22</td><td>92%</td><td><span class="grade">A</span></td></tr>
+            <tr><td>Ms. Priya (Teacher)</td><td>18</td><td>17</td><td>94%</td><td><span class="grade">A+</span></td></tr>
+            <tr><td>Mr. Sunil (Teacher)</td><td>15</td><td>10</td><td>67%</td><td><span style="background:#FFF0E6; color:#B45309; padding:2px 8px; border-radius:30px;">C</span></td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:10px; margin-top:8px;">Score = (on-time×4 + delayed×1)/total ×25. Auto-calculated.</p>
+      </div>
+      <div style="flex:1; background:#FEFAF8; padding:20px; border-radius:24px;">
+        <i class="fas fa-heart" style="font-size:28px; color:#A11A2F;"></i>
+        <p style="font-weight:700; margin:8px 0;">Reason principals love TaskFlow</p>
+        <p style="font-size:13px;">No more chasing. No more arguments on increments. Teachers adopt it in 5 minutes because it's as easy as WhatsApp.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Testimonial -->
+  <div class="testimonial">
+    <i class="fas fa-quote-left" style="font-size:28px; color:#A11A2F; opacity:0.5;"></i>
+    <p style="font-size:16px; max-width:600px; margin:12px auto;">“I was tired of WhatsApp chaos. TaskFlow took 5 minutes to explain to my teachers. Now every task has proof. My follow-up time dropped by 70%.”</p>
+    <p style="font-weight:800; margin-top:8px;">— Principal, Gurgaon school (45 staff)</p>
+    <div style="margin-top:16px; font-size:13px; color:#4B5565;"><i class="fas fa-chart-line"></i> <strong>Before:</strong> Tasks lost. <strong>After:</strong> 92% on-time completion.</div>
+  </div>
+
+  <!-- Features for each role -->
+  <div class="features-short">
+    <div class="feat"><i class="fas fa-user-tie"></i><h3>For principals</h3><p>One dashboard to monitor all departments. See pending/delayed tasks instantly.</p></div>
+    <div class="feat"><i class="fas fa-users-between"></i><h3>For HODs</h3><p>Delegate once, track submissions, request changes, mark complete.</p></div>
+    <div class="feat"><i class="fas fa-chalkboard-user"></i><h3>For teachers</h3><p>Receive tasks, upload proof (PDF/image), mark done in 2 clicks. No training.</p></div>
+    <div class="feat"><i class="fas fa-file-alt"></i><h3>For inspections & appraisals</h3><p>Export complete task history and scorecards for CBSE/NAAC audits.</p></div>
+  </div>
+
+  <!-- Pricing with toggle -->
+  <div id="pricing">
+    <div style="text-align: center;">
+      <div class="badge" style="background:#FEF3F2; display:inline-block; padding:4px 14px;"><i class="fas fa-tag"></i> Simple, transparent pricing</div>
+      <h2 style="font-size: 26px; font-weight: 800; margin-top: 12px;">Affordable for every school size</h2>
+      <div class="billing-toggle" id="billingToggle">
+        <button class="toggle-btn active" data-cycle="monthly">Monthly</button>
+        <button class="toggle-btn" data-cycle="yearly">Yearly (Save 20%)</button>
+      </div>
+    </div>
+    <div class="pricing-row" id="pricingCards">
+      <!-- dynamic via JS -->
+    </div>
+    <p style="text-align: center; font-size: 12px; margin-top: 16px;"><i class="fas fa-credit-card"></i> 30-day free trial · No credit card required · Cancel anytime</p>
+  </div>
+
+  <!-- FAQ focused on objections -->
+  <div id="faq" style="max-width: 700px; margin: 0 auto; padding: 40px 0;">
+    <div class="badge" style="background:#F1F0FF; display:table; margin:0 auto;">Quick answers</div>
+    <h2 style="text-align: center; font-size: 24px; font-weight: 800;">What principals ask us</h2>
+    <div style="margin-top: 24px;">
+      <div style="border-bottom: 1px solid #EDE3DE; padding: 14px 0;"><details><summary style="font-weight:700; cursor:pointer;">How is TaskFlow different from an ERP?</summary><p style="margin-top:8px; color:#4B5565;">TaskFlow is NOT an ERP. It has no fees, no inventory, no attendance modules. It's a lightweight chat+task system designed for accountability. Teachers learn in 5 minutes.</p></details></div>
+      <div style="border-bottom: 1px solid #EDE3DE; padding: 14px 0;"><details><summary style="font-weight:700; cursor:pointer;">Will teachers really use it?</summary><p style="margin-top:8px; color:#4B5565;">Yes — because it's simpler than WhatsApp. They open a browser, see tasks, upload files. No app, no password hassle. Schools report 95% adoption within a week.</p></details></div>
+      <div style="border-bottom: 1px solid #EDE3DE; padding: 14px 0;"><details><summary style="font-weight:700; cursor:pointer;">What if a teacher delays tasks?</summary><p style="margin-top:8px; color:#4B5565;">The dashboard highlights delays. Scorecard automatically reduces their on-time percentage. You have data for coaching or appraisal.</p></details></div>
+      <div style="border-bottom: 1px solid #EDE3DE; padding: 14px 0;"><details><summary style="font-weight:700; cursor:pointer;">Can we export for CBSE inspection?</summary><p style="margin-top:8px; color:#4B5565;">Yes. One-click export of task history, completion logs, and staff scorecards in CSV/PDF.</p></details></div>
+      <div style="padding: 14px 0;"><details><summary style="font-weight:700; cursor:pointer;">Is there a free trial?</summary><p style="margin-top:8px; color:#4B5565;">30-day full-feature trial. No credit card required. We can even import your staff list for you.</p></details></div>
+    </div>
+  </div>
+
+  <!-- Final CTA -->
+  <div style="background: #A11A2F; color: white; border-radius: 40px; padding: 48px 24px; text-align: center; margin-bottom: 56px;">
+    <h2 style="font-size: 28px; font-weight: 800; max-width: 500px; margin: 0 auto 12px;">Stop chasing. Start tracking.</h2>
+    <p style="margin-bottom: 24px;">5 minutes for teachers to learn. 30-day free trial. Or book a personal demo.</p>
+    <div style="display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;">
+      <a href="/signup" class="btn-primary" style="background: white; color:#A11A2F;"><i class="fas fa-calendar-week"></i> Free trial</a>
+      <a href="#" class="btn-outline" style="background:transparent; border-color:white; color:white;" onclick="alert('Book a 15-min demo: email vardansuri26@gmail.com'); return false;"><i class="fas fa-video"></i> Book demo</a>
+    </div>
+    <p style="margin-top: 20px; font-size: 12px; opacity:0.8;">We set up your staff for you. Setup in 1 day.</p>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 20px;">
+      <div><strong>TaskFlow</strong><br>Chat + Task = Accountability · NOT an ERP</div>
+      <div><a href="#why" style="color:#AD9A9F;">Compare</a> | <a href="#howitworks" style="color:#AD9A9F;">Workflow</a> | <a href="#pricing" style="color:#AD9A9F;">Pricing</a></div>
+      <div><a href="mailto:vardansuri26@gmail.com" style="color:#AD9A9F;">Contact</a> | © 2026 TaskFlow</div>
+    </div>
+    <hr>
+    <p style="font-size: 11px;">₹99/user/month · ₹3.30/day · 5min teacher learning · Loved by principals & teachers</p>
+  </div>
+</footer>
+
+<div class="sticky-mobile-cta">
+  <a href="/signup" class="btn-primary" style="padding: 8px 16px; font-size:13px;">Free trial</a>
+  <a href="#" class="btn-outline" style="padding: 8px 16px; font-size:13px;" onclick="alert('Book demo: vardansuri26@gmail.com'); return false;">Book demo</a>
+</div>
+
+<script>
+  // Pricing data
+  const pricingData = {
+    monthly: {
+      peruser: { price: "99", period: "/user/month", desc: "Pay per active staff" },
+      starter: { price: "2,400", period: "/month", desc: "Up to 30 users", savings: "₹80/user, saves ₹570" },
+      standard: { price: "4,800", period: "/month", desc: "Up to 60 users", savings: "₹80/user" },
+      pro: { price: "8,000", period: "/month", desc: "Up to 100 users", savings: "₹80/user" }
+    },
+    yearly: {
+      peruser: { price: "79", period: "/user/month (yearly)", desc: "Save 20%" },
+      starter: { price: "1,920", period: "/month (₹23,040/year)", desc: "Up to 30 users", savings: "Save ₹5,760/year" },
+      standard: { price: "3,840", period: "/month (₹46,080/year)", desc: "Up to 60 users", savings: "Save ₹11,520/year" },
+      pro: { price: "6,400", period: "/month (₹76,800/year)", desc: "Up to 100 users", savings: "Save ₹19,200/year" }
+    }
+  };
+
+  function renderPricing(cycle) {
+    const data = pricingData[cycle];
+    const container = document.getElementById('pricingCards');
+    if (!container) return;
+    container.innerHTML = `
+      <div class="price-card"><div class="price">₹${data.peruser.price}</div><div>${data.peruser.period}</div><div style="font-size:12px;">${data.peruser.desc}</div><ul class="plan-features"><li><i class="fas fa-check"></i> Chat + tasks</li><li><i class="fas fa-check"></i> Scorecard</li><li><i class="fas fa-check"></i> Exports</li></ul><a href="/signup" class="cta-small">Start trial</a></div>
+      <div class="price-card popular"><div class="popular-badge">⭐ Most popular</div><div class="price">₹${data.starter.price}</div><div>${data.starter.period}</div><div style="font-size:12px;">${data.starter.desc}</div><div style="font-size:11px; color:#1E7B48;">${data.starter.savings}</div><ul class="plan-features"><li><i class="fas fa-check"></i> Up to 30 staff</li><li><i class="fas fa-check"></i> Priority support</li></ul><a href="/signup" class="cta-small">Start trial</a></div>
+      <div class="price-card"><div class="price">₹${data.standard.price}</div><div>${data.standard.period}</div><div style="font-size:12px;">${data.standard.desc}</div><div style="font-size:11px;">${data.standard.savings}</div><ul class="plan-features"><li><i class="fas fa-check"></i> Up to 60 staff</li><li><i class="fas fa-check"></i> Department analytics</li></ul><a href="/signup" class="cta-small">Start trial</a></div>
+      <div class="price-card"><div class="price">₹${data.pro.price}</div><div>${data.pro.period}</div><div style="font-size:12px;">${data.pro.desc}</div><div style="font-size:11px;">${data.pro.savings}</div><ul class="plan-features"><li><i class="fas fa-check"></i> Up to 100 staff</li><li><i class="fas fa-check"></i> Advanced reports</li></ul><a href="/signup" class="cta-small">Start trial</a></div>
+    `;
+  }
+
+  const monthlyBtn = document.querySelector('[data-cycle="monthly"]');
+  const yearlyBtn = document.querySelector('[data-cycle="yearly"]');
+  if (monthlyBtn && yearlyBtn) {
+    monthlyBtn.addEventListener('click', () => {
+      monthlyBtn.classList.add('active');
+      yearlyBtn.classList.remove('active');
+      renderPricing('monthly');
+    });
+    yearlyBtn.addEventListener('click', () => {
+      yearlyBtn.classList.add('active');
+      monthlyBtn.classList.remove('active');
+      renderPricing('yearly');
+    });
+  }
+  renderPricing('monthly');
+
+  // Smooth scroll
+  document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function(e) {
+      const target = document.querySelector(this.getAttribute('href'));
+      if (target && this.getAttribute('href') !== '#') {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+</script>
+</body>
+</html>

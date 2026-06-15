@@ -2,6 +2,12 @@
 <html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#4F46E5">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MPGS TaskFlow — School Registration</title>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -635,6 +641,21 @@ window.doSignup = async function() {
 
 /* ── Clear stale session data on load ─────────────────── */
 localStorage.removeItem('_pending_signup');
+
+/* ── Pre-select plan from URL (?plan=starter etc.) ── */
+(function() {
+  const urlPlan = new URLSearchParams(window.location.search).get('plan')
+               || sessionStorage.getItem('preselect_plan');
+  if (urlPlan && ['pay_per_user','starter','standard','professional','enterprise'].includes(urlPlan)) {
+    sessionStorage.removeItem('preselect_plan');
+    requestAnimationFrame(() => {
+      selectedPlan = urlPlan;
+      document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
+      const el = document.getElementById('plan-' + urlPlan);
+      if (el) { el.classList.add('selected'); el.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+    });
+  }
+})();
 </script>
 </body>
 </html>

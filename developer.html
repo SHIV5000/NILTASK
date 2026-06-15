@@ -377,6 +377,7 @@ function renderSchools(schools) {
                     <span class="pill pill-gray"><i class="fa-solid fa-users"></i> ${s.user_count||0} users</span>
                     <span class="pill pill-gray"><i class="fa-solid fa-message"></i> ${s.message_count||0} msgs</span>
                     <span class="pill pill-gray"><i class="fa-solid fa-list-check"></i> ${s.task_count||0} tasks</span>
+                    ${s.last_activity ? `<span class="pill pill-gray" title="Last login by any user"><i class="fa-solid fa-clock"></i> ${devFmtLogin(s.last_activity)}</span>` : ''}
                     <i class="fa-solid fa-chevron-down" style="color:var(--text2);transition:.2s;" id="chev-${s.id}"></i>
                 </div>
             </div>
@@ -588,6 +589,7 @@ window.loadSchoolUsers = async function(tenantId) {
             <div style="flex:1;min-width:0;">
                 <div class="user-name">${esc(u.full_name || 'Unknown')}</div>
                 <div class="user-meta">${esc(u.email||'')} ${u.designation ? '· '+esc(u.designation) : ''}</div>
+            <div class="user-meta" style="font-size:10px;margin-top:2px;">Last login: ${devFmtLogin(u.last_login)}</div>
             </div>
             <span class="role-tag role-${role}">${roleName}</span>
             <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:6px;
@@ -598,6 +600,17 @@ window.loadSchoolUsers = async function(tenantId) {
         </div>`;
     }).join('');
 };
+
+// ── FORMAT LAST LOGIN ─────────────────────────────────────────
+function devFmtLogin(ts) {
+    if (!ts) return 'Never';
+    const diff = (Date.now() - new Date(ts)) / 1000;
+    if (diff < 60)     return 'Just now';
+    if (diff < 3600)   return Math.floor(diff/60) + 'm ago';
+    if (diff < 86400)  return Math.floor(diff/3600) + 'h ago';
+    if (diff < 604800) return Math.floor(diff/86400) + 'd ago';
+    return new Date(ts).toLocaleDateString('en-IN');
+}
 
 // ── SEARCH ────────────────────────────────────────────────────
 window.filterSchools = function(term) {

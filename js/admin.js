@@ -10,6 +10,17 @@ import { sb } from './shared.js';
 // ── SUPABASE PROJECT URL (needed to call Edge Function) ───────
 const SUPABASE_URL = 'https://apfymygzwkzjhhgmtkaj.supabase.co';
 
+// Format last login timestamp into human-readable string
+function fmtLogin(ts) {
+    if (!ts) return '<span style="color:var(--text-secondary);font-size:11px;">Never</span>';
+    const diff = (Date.now() - new Date(ts)) / 1000;
+    if (diff < 60)    return '<span style="color:#16a34a;font-size:11px;font-weight:700;">Just now</span>';
+    if (diff < 3600)  return `<span style="font-size:11px;">${Math.floor(diff/60)}m ago</span>`;
+    if (diff < 86400) return `<span style="font-size:11px;">${Math.floor(diff/3600)}h ago</span>`;
+    if (diff < 604800)return `<span style="font-size:11px;">${Math.floor(diff/86400)}d ago</span>`;
+    return `<span style="font-size:11px;">${new Date(ts).toLocaleDateString('en-IN')}</span>`;
+}
+
 // ─── BOOT ──────────────────────────────────────────────────────
 ;(async () => {
     const { data: { session } } = await sb.auth.getSession();
@@ -141,11 +152,12 @@ function renderAdmin() {
                             <th>Designation</th>
                             <th>Department</th>
                             <th>Approved</th>
+                            <th>Last Login</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody id="staffTableBody">
-                        <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-secondary);">
+                        <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary);">
                             <i class="fa-solid fa-spinner fa-spin"></i> Loading staff...
                         </td></tr>
                     </tbody>
@@ -239,8 +251,10 @@ async function loadSubscription() {
 }
 
 async function loadStaff() {
-    const { data, error } = await sb.from('allowed_users')
-        .select('*')
+    // Join allowed_users with profiles to get last_login
+    const { data, error } = await sb
+        .from('allowed_users')
+        .select('*, profile:profiles!inner(last_login)')
         .eq('tenant_id', window.currentTenantId)
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
@@ -266,7 +280,7 @@ function renderStaffTable(staff) {
     if (!tbody) return;
 
     if (!staff.length) {
-        tbody.innerHTML = `<tr><td colspan="6">
+        tbody.innerHTML = `<tr><td colspan="7">
             <div style="padding:32px 24px;text-align:center;">
                 <div style="width:56px;height:56px;border-radius:50%;background:rgba(var(--accent-rgb,.1));
                      display:flex;align-items:center;justify-content:center;margin:0 auto 14px;
@@ -338,6 +352,7 @@ function renderStaffTable(staff) {
                     <span class="toggle-slider"></span>
                 </label>
             </td>
+            <td>${fmtLogin(s.profile?.last_login)}</td>
             <td>
                 <div style="display:flex;gap:6px;flex-wrap:wrap;">
                     <button class="btn-outline btn-sm" onclick="openEditStaffModal('${s.id}')" title="Edit">

@@ -170,6 +170,60 @@ function renderAdmin() {
             Staff login at <strong>niltask.vercel.app</strong> using their email and the password you set.
             They can change their password from Profile Settings.
         </p>
+        <!-- ── SCORECARD SECTION ──────────────────────────── -->
+        <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;margin-top:24px;">
+            <div style="padding:16px 20px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+                <div>
+                    <h2 style="font-size:15px;font-weight:800;color:var(--text-primary);margin:0 0 2px;">
+                        🏆 Staff Scorecard
+                        <span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 7px;border-radius:10px;margin-left:6px;font-weight:700;vertical-align:middle;">WORLD FIRST</span>
+                    </h2>
+                    <p style="font-size:11px;color:var(--text-secondary);margin:0;">Objective task-based performance scores for transparent promotions &amp; increments</p>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <select id="scMonth" style="padding:7px 10px;border-radius:9px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-primary);font-size:12px;outline:none;">
+                        <option value="this_month">This Month</option>
+                        <option value="last_month">Last Month</option>
+                        <option value="this_quarter">This Quarter</option>
+                        <option value="this_year">This Year</option>
+                    </select>
+                    <button class="btn-accent" onclick="loadScorecard()" style="font-size:12px;padding:8px 14px;">
+                        <i class="fa-solid fa-chart-bar"></i> Generate Scorecard
+                    </button>
+                </div>
+            </div>
+            <div style="padding:8px 20px;background:var(--bg-body);border-bottom:1px solid var(--border-color);display:flex;gap:14px;flex-wrap:wrap;align-items:center;">
+                <span style="font-size:11px;font-weight:700;color:var(--text-secondary);">Grade:</span>
+                <span style="font-size:11px;"><span style="background:#dcfce7;color:#16a34a;padding:1px 8px;border-radius:10px;font-weight:700;">A+</span> 90–100%</span>
+                <span style="font-size:11px;"><span style="background:#dbeafe;color:#1d4ed8;padding:1px 8px;border-radius:10px;font-weight:700;">A</span> 80–89%</span>
+                <span style="font-size:11px;"><span style="background:#fef9c3;color:#854d0e;padding:1px 8px;border-radius:10px;font-weight:700;">B</span> 65–79%</span>
+                <span style="font-size:11px;"><span style="background:#ffedd5;color:#c2410c;padding:1px 8px;border-radius:10px;font-weight:700;">C</span> 50–64%</span>
+                <span style="font-size:11px;"><span style="background:#fee2e2;color:#b91c1c;padding:1px 8px;border-radius:10px;font-weight:700;">D</span> &lt;50%</span>
+                <span style="font-size:10px;color:var(--text-secondary);margin-left:auto;">On-time ×4 + Delayed ×1 ÷ Total ×4 × 100</span>
+            </div>
+            <div style="overflow-x:auto;">
+                <table class="staff-table">
+                    <thead><tr>
+                        <th>Staff Member</th><th>Role</th>
+                        <th style="text-align:center;">Tasks</th>
+                        <th style="text-align:center;color:#16a34a;">On Time</th>
+                        <th style="text-align:center;color:#f59e0b;">Delayed</th>
+                        <th style="text-align:center;color:#ef4444;">Pending</th>
+                        <th style="text-align:center;">Score</th>
+                        <th style="text-align:center;">Grade</th>
+                    </tr></thead>
+                    <tbody id="scorecardBody">
+                        <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-secondary);">
+                            Select period and click <strong>Generate Scorecard</strong>
+                        </td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div id="scorecardNote" style="padding:12px 20px;font-size:11px;color:var(--text-secondary);border-top:1px solid var(--border-color);display:none;">
+                📊 Scores are calculated automatically from task data — objective, transparent, unchallengeable. Share with staff for fair increment &amp; promotion decisions.
+            </div>
+        </div>
+
     </div>`;
 
     // Inject reset password modal (separate from add/edit modal)
@@ -616,6 +670,97 @@ window.doResetPassword = async function() {
         btn.disabled = false;
         btn.innerHTML = '<i class="fa-solid fa-key"></i> Reset Password';
     }
+};
+
+// ─── SCORECARD ───────────────────────────────────────────────
+window.loadScorecard = async function() {
+    const tbody = document.getElementById('scorecardBody');
+    const note  = document.getElementById('scorecardNote');
+    if (!tbody) return;
+
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-secondary);">
+        <i class="fa-solid fa-spinner fa-spin"></i> Calculating scores...
+    </td></tr>`;
+
+    // Calculate date range from selector
+    const sel   = document.getElementById('scMonth').value;
+    const today = new Date();
+    let fromDate, toDate = today.toISOString().split('T')[0];
+
+    if (sel === 'this_month') {
+        fromDate = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+    } else if (sel === 'last_month') {
+        const d = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        fromDate = d.toISOString().split('T')[0];
+        toDate = new Date(today.getFullYear(), today.getMonth(), 0).toISOString().split('T')[0];
+    } else if (sel === 'this_quarter') {
+        const q = Math.floor(today.getMonth() / 3);
+        fromDate = new Date(today.getFullYear(), q * 3, 1).toISOString().split('T')[0];
+    } else { // this_year
+        fromDate = new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0];
+    }
+
+    const { data, error } = await sb.rpc('get_staff_scorecard', {
+        p_tenant_id: window.currentTenantId,
+        p_from:      fromDate,
+        p_to:        toDate
+    });
+
+    if (error) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:#dc2626;">
+            Error: ${error.message}
+        </td></tr>`;
+        return;
+    }
+
+    const staff = Array.isArray(data) ? data : JSON.parse(data || '[]');
+
+    if (!staff.length) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-secondary);">
+            No task data found for this period. Assign tasks to staff to start tracking scores.
+        </td></tr>`;
+        return;
+    }
+
+    const gradeColors = {
+        'A+': { bg:'#dcfce7', color:'#16a34a' },
+        'A':  { bg:'#dbeafe', color:'#1d4ed8' },
+        'B':  { bg:'#fef9c3', color:'#854d0e' },
+        'C':  { bg:'#ffedd5', color:'#c2410c' },
+        'D':  { bg:'#fee2e2', color:'#b91c1c' },
+        'N/A':{ bg:'#f1f5f9', color:'#64748b' },
+    };
+
+    tbody.innerHTML = staff.map(s => {
+        const gc  = gradeColors[s.grade] || gradeColors['N/A'];
+        const pct = s.score ?? 0;
+        const barColor = pct >= 90 ? '#16a34a' : pct >= 65 ? '#f59e0b' : '#ef4444';
+
+        return `<tr>
+            <td>
+                <div style="font-weight:700;font-size:13px;">${window.escapeHtml(s.staff_name || '—')}</div>
+                <div style="font-size:11px;color:var(--text-secondary);">${window.escapeHtml(s.email || '')}</div>
+                ${s.designation ? `<div style="font-size:10px;color:var(--text-secondary);">${window.escapeHtml(s.designation)}</div>` : ''}
+            </td>
+            <td><span class="role-pill role-${(s.role||'teacher').toLowerCase().replace(/ /g,'_')}" style="font-size:10px;">${window.escapeHtml(s.role||'')}</span></td>
+            <td style="text-align:center;font-weight:700;">${s.tasks_total || 0}</td>
+            <td style="text-align:center;color:#16a34a;font-weight:700;">${s.tasks_on_time || 0}</td>
+            <td style="text-align:center;color:#f59e0b;font-weight:700;">${s.tasks_delayed || 0}</td>
+            <td style="text-align:center;color:#ef4444;font-weight:700;">${s.tasks_pending || 0}</td>
+            <td style="text-align:center;">
+                <div style="font-size:15px;font-weight:800;color:${barColor};">${s.score !== null ? s.score + '%' : '—'}</div>
+                ${s.tasks_total > 0 ? `<div style="width:60px;height:4px;background:var(--border-color);border-radius:4px;margin:3px auto 0;overflow:hidden;">
+                    <div style="width:${pct}%;height:100%;background:${barColor};border-radius:4px;transition:width .5s;"></div>
+                </div>` : ''}
+            </td>
+            <td style="text-align:center;">
+                <span style="background:${gc.bg};color:${gc.color};padding:3px 12px;border-radius:20px;font-size:12px;font-weight:800;">${s.grade}</span>
+            </td>
+        </tr>`;
+    }).join('');
+
+    if (note) note.style.display = 'block';
+    showToast('Scorecard generated ✓', '#16a34a');
 };
 
 // ─── TOAST ───────────────────────────────────────────────────

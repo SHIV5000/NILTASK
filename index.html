@@ -48,54 +48,80 @@
     <script type="module" src="./js/main.js"></script>
 
 <script>
-// ── Service Worker (PWA) ──────────────────────────────────
+// ── Service Worker registration ───────────────────────────
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  });
+  navigator.serviceWorker.register('/sw.js')
+    .then(r => console.log('SW registered:', r.scope))
+    .catch(e => console.log('SW error:', e));
 }
 
-// ── PWA Install Prompt ────────────────────────────────────
-let deferredInstallPrompt = null;
-
+// ── Android/Chrome: capture install prompt ────────────────
+let _installPrompt = null;
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
-  deferredInstallPrompt = e;
-  // Show banner after 8 seconds on mobile
-  setTimeout(() => {
-    const banner = document.getElementById('pwaInstallBanner');
-    if (banner) banner.classList.add('show');
-  }, 8000);
+  _installPrompt = e;
+  if (!sessionStorage.getItem('pwa_dismissed')) {
+    setTimeout(() => {
+      document.getElementById('pwaInstallBanner')?.classList.add('show');
+    }, 5000);
+  }
 });
 
-window.installPWA = async function() {
-  const banner = document.getElementById('pwaInstallBanner');
-  if (deferredInstallPrompt) {
-    deferredInstallPrompt.prompt();
-    const { outcome } = await deferredInstallPrompt.userChoice;
-    deferredInstallPrompt = null;
-    if (banner) banner.classList.remove('show');
+window.installPWA = async () => {
+  const b = document.getElementById('pwaInstallBanner');
+  if (_installPrompt) {
+    _installPrompt.prompt();
+    await _installPrompt.userChoice;
+    _installPrompt = null;
+    b?.classList.remove('show');
   }
 };
 
-window.dismissInstall = function() {
-  const banner = document.getElementById('pwaInstallBanner');
-  if (banner) banner.classList.remove('show');
+window.dismissInstall = () => {
+  document.getElementById('pwaInstallBanner')?.classList.remove('show');
+  document.getElementById('iosInstallHint')?.classList.remove('show');
   sessionStorage.setItem('pwa_dismissed', '1');
 };
+
+// ── iOS Safari: show manual instruction ──────────────────
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+           && !window.MSStream;
+const isInApp = window.navigator.standalone === true;
+if (isIOS && !isInApp && !sessionStorage.getItem('pwa_dismissed')) {
+  setTimeout(() => {
+    document.getElementById('iosInstallHint')?.classList.add('show');
+    setTimeout(() => {
+      document.getElementById('iosInstallHint')?.classList.remove('show');
+    }, 7000);
+  }, 4000);
+}
+
+window.addEventListener('appinstalled', () => {
+  document.getElementById('pwaInstallBanner')?.classList.remove('show');
+  _installPrompt = null;
+});
 </script>
 
-<!-- PWA install banner (mobile only, shown by CSS) -->
+<!-- Android install banner -->
 <div id="pwaInstallBanner">
-  <div style="width:36px;height:36px;border-radius:9px;background:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+  <div style="width:36px;height:36px;border-radius:9px;background:var(--accent,#6366f1);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
     <i class="fa-solid fa-comments" style="color:#fff;font-size:14px;"></i>
   </div>
   <div style="flex:1;min-width:0;">
-    <div style="font-size:13px;font-weight:700;color:var(--text-primary);">Install TaskFlow</div>
-    <div style="font-size:11px;color:var(--text-secondary);">Add to home screen for app-like experience</div>
+    <div style="font-size:13px;font-weight:700;color:var(--text-primary,#111);">Install TaskFlow App</div>
+    <div style="font-size:11px;color:var(--text-secondary,#666);">Works offline · No app store needed</div>
   </div>
-  <button onclick="window.installPWA()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;">Install</button>
-  <button onclick="window.dismissInstall()" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:18px;padding:4px;flex-shrink:0;">✕</button>
+  <button onclick="window.installPWA()" style="background:var(--accent,#6366f1);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">
+    <i class="fa-solid fa-download"></i> Install
+  </button>
+  <button onclick="window.dismissInstall()" style="background:none;border:none;color:var(--text-secondary,#666);cursor:pointer;font-size:20px;padding:4px 6px;flex-shrink:0;line-height:1;">×</button>
+</div>
+
+<!-- iOS install hint (auto-hides after 7s) -->
+<div id="iosInstallHint">
+  <i class="fa-solid fa-share-from-square"></i>
+  Tap Share → "Add to Home Screen" to install
+  <button onclick="window.dismissInstall()" style="background:none;border:none;color:#fff;cursor:pointer;font-size:16px;margin-left:8px;">×</button>
 </div>
 
 </body>

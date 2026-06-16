@@ -760,10 +760,22 @@ window.startSubscriptions = function() {
             const incomingRoom = p.new.room_id;
             if (incomingRoom === window.currentRoom) {
                 if (typeof window.loadMessages === 'function') window.loadMessages();
-                if (p.new.sender_id !== window.currentUser.id) window.playSound('message');
+                if (p.new.sender_id !== window.currentUser.id) {
+                    window.playSound('message');
+                    // Trigger system notification + sound when screen may be off
+                    if (typeof window.triggerMessageNotification === 'function') {
+                        window.triggerMessageNotification(p.new);
+                    }
+                }
             } else {
                 window.unreadCounts = window.unreadCounts || {};
                 window.unreadCounts[incomingRoom] = (window.unreadCounts[incomingRoom] || 0) + 1;
+                // Notification for message in OTHER room (always notify)
+                if (p.new.sender_id !== window.currentUser?.id) {
+                    if (typeof window.triggerMessageNotification === 'function') {
+                        window.triggerMessageNotification(p.new);
+                    }
+                }
                 if (typeof window.loadChatsList === 'function') window.loadChatsList();
                 if (incomingRoom.startsWith('dm_') && incomingRoom.includes(window.currentUser.id) && p.new.sender_id !== window.currentUser.id) {
                     window.playSound('message');

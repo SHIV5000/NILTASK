@@ -189,12 +189,55 @@ window.goToMessage = async function(messageId, notifId, roomId) {
     }
 };
 
-// ─── THEME: Apply light / dark / sober-dark theme to document root ───────────
+// ─── THEME: 8-theme system (light, soft-slate, sky-breeze, warm-neutral, ───
+// ─── ocean-teal, dark, sober-dark, midnight) — VER 2.0 ──────────────────────
+
+window.THEME_LIST = [
+    { id: 'light',        label: 'Light',    swatch: '#800020' },
+    { id: 'soft-slate',   label: 'Slate',    swatch: '#64748b' },
+    { id: 'sky-breeze',   label: 'Sky',      swatch: '#0ea5e9' },
+    { id: 'warm-neutral', label: 'Warm',     swatch: '#b45309' },
+    { id: 'ocean-teal',   label: 'Ocean',    swatch: '#0d9488' },
+    { id: 'dark',         label: 'Dark',     swatch: '#2f81f7' },
+    { id: 'sober-dark',   label: 'Sober',    swatch: '#5a5a5a' },
+    { id: 'midnight',     label: 'Midnight', swatch: '#7c6df0' },
+];
 
 window.applyTheme = function() {
-    document.documentElement.setAttribute('data-theme', window.currentTheme);
+    // 'light' has no data-theme attribute (it's the :root default) — every
+    // other theme sets data-theme to its own id.
+    if (window.currentTheme === 'light') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', window.currentTheme);
+
     const icon = document.getElementById('themeToggleIcon');
-    if (icon) icon.className = `fa-solid ${window.currentTheme==='light'?'fa-sun':window.currentTheme==='dark'?'fa-moon':'fa-cloud-moon'} text-sm`;
+    if (icon) icon.className = 'fa-solid fa-palette text-sm';
+
+    // Populate / refresh the theme picker panel (if it exists in the DOM)
+    const wrap = document.getElementById('themeToggleWrap');
+    if (wrap) {
+        wrap.innerHTML = window.THEME_LIST.map(t => `
+            <button class="theme-pill ${window.currentTheme===t.id?'active':''}" onclick="window.setTheme('${t.id}')">
+                <span class="swatch-dot" style="background:${t.swatch};"></span>${t.label}
+            </button>`).join('');
+    }
+};
+
+window.setTheme = function(themeId) {
+    window.currentTheme = themeId;
+    localStorage.setItem('theme', themeId);
+    window.applyTheme();
+    const label = (window.THEME_LIST.find(t => t.id === themeId) || {}).label || themeId;
+    window.showCenterToast(`${label} theme activated`, 'fa-solid fa-palette');
+    const panel = document.getElementById('themePanel');
+    if (panel) panel.style.display = 'none';
+};
+
+window.toggleThemePanel = function() {
+    const panel = document.getElementById('themePanel');
+    if (!panel) return;
+    const willOpen = panel.style.display === 'none' || !panel.style.display;
+    panel.style.display = willOpen ? 'block' : 'none';
+    if (willOpen) window.applyTheme(); // refresh active-state highlighting
 };
 
 // ─── TOAST: Show a temporary centred notification toast ───────────────────────
@@ -209,15 +252,6 @@ window.showCenterToast = function(msg, icon='fa-solid fa-check-circle', color='t
     document.body.appendChild(t);
     setTimeout(() => t.classList.remove('opacity-0'), 10);
     setTimeout(() => { t.style.opacity='0'; setTimeout(()=>t.remove(),500); }, 4000);
-};
-
-window.toggleTheme = function() {
-    if (window.currentTheme==='light') window.currentTheme='dark';
-    else if (window.currentTheme==='dark') window.currentTheme='sober-dark';
-    else window.currentTheme='light';
-    localStorage.setItem('theme', window.currentTheme);
-    window.applyTheme();
-    window.showCenterToast(`${window.currentTheme==='light'?'Light':window.currentTheme==='dark'?'Original Dark':'Sober Dark'} mode activated`,'fa-solid fa-palette');
 };
 
 window.openSecureFile = async function(path) {
@@ -276,4 +310,4 @@ window.toggleDateFilter = function() {
     if(typeof window.loadTasksForPanel==='function') window.loadTasksForPanel();
 };
 
-// ─── LINK PILL MODAL ───────────────────────────────────────────────────────
+// ─── LINK PILL MODAL ───────────────────────────────────────────────────────S

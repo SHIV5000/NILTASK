@@ -57,10 +57,16 @@ window.renderMainApp = function() {
                     <h2 class="text-xl font-bold tracking-tight flex items-center gap-2" style="color:var(--text-primary);">
                         <i class="fa-solid fa-comments" style="color:var(--accent);"></i> Conversation
                     </h2>
-                    <div class="flex gap-2">
-                        <button onclick="window.toggleTheme()" class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors" title="Toggle Theme" style="color:var(--text-secondary);">
-                            <i id="themeToggleIcon" class="fa-solid ${window.currentTheme === 'light' ? 'fa-sun' : (window.currentTheme === 'dark' ? 'fa-moon' : 'fa-cloud-moon')} text-sm"></i>
-                        </button>
+                    <div class="flex gap-2" style="position:relative;">
+                        <div class="menu-wrap">
+                            <button onclick="window.toggleThemePanel()" class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors" title="Choose Theme" style="color:var(--text-secondary);">
+                                <i id="themeToggleIcon" class="fa-solid fa-palette text-sm"></i>
+                            </button>
+                            <div id="themePanel" class="top-panel-dropdown" style="display:none; right:0; top:38px; padding:10px; min-width:240px;">
+                                <div class="theme-panel-title">Choose Theme</div>
+                                <div class="theme-toggle-wrap" id="themeToggleWrap"></div>
+                            </div>
+                        </div>
                         <button onclick="window.logout()" class="w-8 h-8 rounded-full hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-colors" style="color:var(--text-secondary);">
                             <i class="fa-solid fa-arrow-right-from-bracket text-sm"></i>
                         </button>
@@ -506,7 +512,12 @@ window.renderMainApp = function() {
         if (!e.target.closest('.menu-wrap')) { if (typeof window.closeDropdowns === 'function') window.closeDropdowns(); }
         const ep = document.getElementById('inputEmojiPicker');
         if (ep && !e.target.closest('#inputEmojiPicker') && !e.target.closest('[onclick="window.toggleInputEmojiPicker()"]')) ep.classList.add('hidden');
-        const panel = document.querySelector('.top-panel-dropdown');
+        const themePanel = document.getElementById('themePanel');
+        if (themePanel && themePanel.style.display !== 'none' &&
+            !e.target.closest('#themePanel') && !e.target.closest('[onclick="window.toggleThemePanel()"]')) {
+            themePanel.style.display = 'none';
+        }
+        const panel = document.querySelector('.top-panel-dropdown:not(#themePanel)');
         if (!panel) return;
         if (!panel.contains(e.target) && !e.target.closest('.top-bar-icon')) panel.remove();
     });

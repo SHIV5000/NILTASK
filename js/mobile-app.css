@@ -1,0 +1,144 @@
+/* ============================================================
+   TaskFlow — Mobile App CSS  VER 2.0
+   Pure mobile styles — bottom nav, panels, touch targets
+   ============================================================ */
+
+/* ── BOTTOM NAV ────────────────────────────────────────────── */
+#mobileBottomNav {
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: var(--bg-sidebar);
+  border-top: 1px solid var(--border-color);
+  z-index: 200;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-shadow: 0 -2px 12px rgba(0,0,0,.08);
+}
+
+.mob-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 4px 6px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  position: relative;
+  gap: 3px;
+  transition: opacity .15s;
+}
+.mob-tab-icon {
+  font-size: 20px;
+  color: var(--text-secondary);
+  transition: color .15s, transform .15s;
+}
+.mob-tab-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: .02em;
+}
+.mob-tab.active .mob-tab-icon  { color: var(--accent); transform: scale(1.1); }
+.mob-tab.active .mob-tab-label { color: var(--accent); }
+.mob-tab:active { opacity: .7; }
+
+.mob-badge {
+  position: absolute;
+  top: 5px; right: calc(50% - 16px);
+  min-width: 16px; height: 16px;
+  background: #ef4444; color: #fff;
+  font-size: 9px; font-weight: 800;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 3px;
+}
+
+/* ── BACK BUTTON ───────────────────────────────────────────── */
+#mobBackBtn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 18px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+#mobBackBtn:active { background: var(--bg-body); }
+
+/* ── MOBILE LAYOUT ─────────────────────────────────────────── */
+@media (max-width: 768px) {
+
+  /* Show bottom nav on mobile */
+  #mobileBottomNav { display: flex; }
+
+  /* Push root content above bottom nav + safe area */
+  #root { padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px)); }
+
+  /* Hide desktop-only elements */
+  #leftResizer, #rightResizer,
+  #mobileSidebarToggle { display: none !important; }
+
+  /* Top bar room title — smaller on mobile */
+  #roomTitleDisplay { font-size: 15px !important; max-width: 45vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Hide some topbar icons on very small screens */
+  @media (max-width: 360px) {
+    .topbar-icon-btn { padding: 5px 6px !important; }
+    .topbar-icon-btn span { display: none !important; }
+  }
+
+  /* ── Chat message bubbles ─────────────────────────────── */
+  .message-bubble { max-width: 86% !important; }
+  .msg-actions    { opacity: 1 !important; }
+
+  /* ── Quill editor ─────────────────────────────────────── */
+  .ql-toolbar.ql-snow  { padding: 4px 6px !important; }
+  .ql-editor           { min-height: 44px !important; max-height: 100px !important; font-size: 15px !important; -webkit-overflow-scrolling: touch; }
+
+  /* ── Channels list — full screen ──────────────────────── */
+  .left-sidebar { overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
+
+  /* ── School badge — no 3D tilt (too wide) ─────────────── */
+  .left-sidebar > div:first-child [style*="perspective"],
+  .left-sidebar [style*="rotateX"]
+    { transform: none !important; }
+
+  /* ── Modals — bottom sheet style ─────────────────────── */
+  .modal-content {
+    position: fixed !important;
+    bottom: 0 !important; left: 0 !important; right: 0 !important;
+    width: 100% !important; max-width: 100% !important;
+    border-radius: 20px 20px 0 0 !important;
+    max-height: 85vh !important; overflow-y: auto !important;
+    margin: 0 !important;
+  }
+
+  /* ── Task panel — full screen ─────────────────────────── */
+  .right-sidebar { overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
+
+  /* ── Emoji picker — full width ─────────────────────────── */
+  .emoji-picker-wrap { width: 100% !important; left: 0 !important; right: 0 !important; }
+
+  /* ── Input area ────────────────────────────────────────── */
+  #inputArea, [id="inputArea"] { padding: 8px !important; }
+
+  /* ── Touch targets min 44px ────────────────────────────── */
+  button, [onclick] { min-height: 36px; }
+
+  /* ── Task cards in task panel ──────────────────────────── */
+  .task-card { margin: 6px 8px !important; }
+}
+
+/* ── TABLET (769–1024px) ─────────────────────────────────── */
+@media (min-width: 769px) and (max-width: 1024px) {
+  #leftSidebar  { width: 260px !important; min-width: 240px !important; }
+  #rightSidebar { width: 300px !important; min-width: 280px !important; }
+  #mobileBottomNav { display: none !important; }
+}

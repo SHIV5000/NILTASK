@@ -35,6 +35,35 @@ self.addEventListener('activate', e => {
   );
 });
 
+// ── Push event (from future push server) ─────────────────
+self.addEventListener('push', e => {
+  const data = e.data?.json() || {};
+  e.waitUntil(
+    self.registration.showNotification(data.title || 'TaskFlow', {
+      body:    data.body || 'New message',
+      icon:    '/favicon.svg',
+      badge:   '/favicon.svg',
+      vibrate: [200, 100, 200],
+      tag:     data.tag || 'taskflow',
+      data:    { url: data.url || '/' }
+    })
+  );
+});
+
+// ── Notification click ─────────────────────────────────────
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(
+    clients.matchAll({ type:'window', includeUncontrolled:true })
+      .then(clientList => {
+        const url = e.notification.data?.url || '/';
+        const existing = clientList.find(c => c.url.includes(url) && 'focus' in c);
+        if (existing) return existing.focus();
+        return clients.openWindow(url);
+      })
+  );
+});
+
 // Fetch — network first, cache fallback
 self.addEventListener('fetch', e => {
   // Only handle GET, skip Supabase API calls

@@ -34,6 +34,9 @@ window.signIn = async function(email, pwd) {
     // .catch() doesn't exist on PostgrestFilterBuilder — use .then(null, fn) instead
     sb.rpc('record_last_login').then(null, () => {});
 
+    // Request notification permission after login
+    if (typeof window.initNotifications === 'function') window.initNotifications();
+
     // Route by role then redirect — boot sequence handles rendering
     if (window.currentPermissions?.admin_panel) {
         window.location.href = '/admin.html';

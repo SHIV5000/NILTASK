@@ -517,7 +517,8 @@ window.renderMainApp = function() {
     if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel();
 
     // ── Initialise mobile layout after render ────────────────
-    window.initMobile();
+    if (typeof window.initMobileApp === "function") window.initMobileApp();
+    else if (typeof window.initMobile === "function") window.initMobile();
 };
 
 // ── MOBILE LAYOUT ──────────────────────────────────────────
@@ -693,6 +694,8 @@ window.loadChatsList = async function() {
         chatsListEl.innerHTML = html;
         // Apply group gear visibility by role after rendering
         if (typeof window.applyGroupGearRBAC === 'function') window.applyGroupGearRBAC();
+        // Patch mobile channel clicks after every re-render
+        if (window.isMobileView?.() && typeof window._mobileChannelPatch === 'function') window._mobileChannelPatch();
         document.querySelectorAll('.channel-item').forEach(el => {
             el.addEventListener('click', () => {
                 window.currentRoom = el.dataset.room;

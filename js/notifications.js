@@ -1,19 +1,43 @@
 /**
- * notifications.js — TaskFlow Push & In-App Notifications  VER 1.0
+ * notifications.js — TaskFlow Push & In-App Notifications  VER 1.1
  * ─────────────────────────────────────────────────────────────
  * Handles:
  *   1. Notification permission request (on login)
  *   2. System notification when message received (wakes screen)
  *   3. Notification sound (in-app + background via SW)
  *   4. Vibration pattern on mobile
+ * v1.1: FIXED silent chime — mobile (and many desktop) browsers start a
+ *   freshly-created AudioContext "suspended" unless it's created inside a
+ *   direct user-gesture call stack. _makeChime() created a brand new one on
+ *   every call from a realtime DB callback (never a gesture), so it almost
+ *   certainly never produced sound. Now a single shared context is created
+ *   once and resumed on the user's first tap anywhere on the page, then
+ *   reused — same pattern used for mobile in mobile.js, now centralized
+ *   here so it covers desktop too.
  * ─────────────────────────────────────────────────────────────
  */
+
+// ── SHARED AUDIO CONTEXT — unlocked once on first user gesture ────
+let _sharedCtx = null;
+function _unlockSharedAudio() {
+    if (_sharedCtx) return;
+    try {
+        _sharedCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (_sharedCtx.state === 'suspended') _sharedCtx.resume();
+    } catch(e) { /* Web Audio unsupported */ }
+}
+document.addEventListener('touchstart', _unlockSharedAudio, { once:true, passive:true });
+document.addEventListener('click', _unlockSharedAudio, { once:true });
+document.addEventListener('keydown', _unlockSharedAudio, { once:true });
 
 // ── NOTIFICATION SOUND ─────────────────────────────────────────
 // Generates a gentle chime via Web Audio API — no file needed
 function _makeChime(vol = 0.4) {
     try {
-        const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+        if (!_sharedCtx) _unlockSharedAudio();
+        const ctx = _sharedCtx;
+        if (!ctx) return;
+        if (ctx.state === 'suspended') ctx.resume();
         const gain = ctx.createGain();
         gain.gain.setValueAtTime(vol, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
@@ -29,7 +53,7 @@ function _makeChime(vol = 0.4) {
             osc.stop(ctx.currentTime + i * 0.15 + 0.6);
         });
     } catch(e) {
-        // Silent fail — AudioContext blocked before user interaction
+        // Silent fail — Web Audio unsupported in this browser
     }
 }
 

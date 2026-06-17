@@ -1,231 +1,37 @@
-/* ============================================================
-   TaskFlow — Mobile App CSS  VER 3.0
-   Bigger touch targets, larger icons, comfortable text sizes
-   ============================================================ */
+/* IMPORTANT: do not add a blanket "#root{display:none}" media-query rule
+   here. #root is also where the LOGIN FORM renders (see auth.js) — a rule
+   that hides #root on any mobile-width viewport hides the login screen
+   itself before the user has even logged in, with nothing else on screen
+   to replace it (mobile.js's UI only gets built *after* a successful
+   login). That exact bug shipped once already and made the app
+   unusable on mobile until login.
+   The correct, safely-scoped fix lives in mobile.js's initMobileApp():
+   #root is hidden via JS only at the instant mobile.js actually takes
+   over (i.e. only post-login), which can't block the login screen. */
 
-/* ── BOTTOM NAV ────────────────────────────────────────────── */
-#mobileBottomNav {
+/* These banners were missing CSS entirely, so they had no default-hidden
+   state and rendered unconditionally on every page load regardless of the
+   platform-detection JS in index.html (beforeinstallprompt / isIOS) — this
+   was invisible before only because #mobileApp's z-index happened to cover
+   it. Now explicitly hidden until JS adds .show. */
+#pwaInstallBanner, #iosInstallHint {
   display: none;
   position: fixed;
-  bottom: 0; left: 0; right: 0;
-  height: 68px;
-  background: var(--bg-sidebar);
-  border-top: 1.5px solid var(--border-color);
-  z-index: 200;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-  box-shadow: 0 -3px 16px rgba(0,0,0,.1);
+  left: 12px; right: 12px;
+  z-index: 10500;
+  border-radius: 14px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.18);
 }
-
-.mob-tab {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 6px 5px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  position: relative;
-  gap: 4px;
-  transition: opacity .15s;
-  -webkit-tap-highlight-color: transparent;
-  min-height: 68px;
+#pwaInstallBanner.show, #iosInstallHint.show { display: flex; align-items: center; gap: 10px; }
+#pwaInstallBanner {
+  bottom: 16px;
+  background: var(--bg-body, #fff);
+  padding: 12px 14px;
 }
-
-.mob-tab-icon {
-  font-size: 26px;                      /* ← bigger icons */
-  color: var(--text-secondary);
-  transition: color .15s, transform .15s;
-  line-height: 1;
-}
-
-.mob-tab-label {
-  font-size: 11px;                      /* ← bigger label */
-  font-weight: 600;
-  color: var(--text-secondary);
-  letter-spacing: .01em;
-}
-
-.mob-tab.active .mob-tab-icon  { color: var(--accent); transform: scale(1.12); }
-.mob-tab.active .mob-tab-label { color: var(--accent); font-weight: 700; }
-.mob-tab:active { opacity: .65; }
-
-.mob-badge {
-  position: absolute;
-  top: 6px; right: calc(50% - 18px);
-  min-width: 18px; height: 18px;
-  background: #ef4444; color: #fff;
-  font-size: 10px; font-weight: 800;
-  border-radius: 9px;
-  display: flex; align-items: center; justify-content: center;
-  padding: 0 4px;
-  border: 2px solid var(--bg-sidebar);
-}
-
-/* ── BACK BUTTON ───────────────────────────────────────────── */
-#mobBackBtn {
-  width: 40px; height: 40px;
-  border-radius: 50%;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--accent);
-  font-size: 22px;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  -webkit-tap-highlight-color: transparent;
-}
-#mobBackBtn:active { background: var(--bg-body); }
-
-/* ── MOBILE LAYOUT ─────────────────────────────────────────── */
-@media (max-width: 768px) {
-
-  /* Show bottom nav */
-  #mobileBottomNav { display: flex; }
-
-  /* Push content above bottom nav + safe area */
-  #root { padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }
-
-  /* Hide desktop-only resize handles */
-  #leftResizer, #rightResizer,
-  #mobileSidebarToggle { display: none !important; }
-
-  /* ── CHANNEL LIST ────────────────────────────────────────── */
-  /* Bigger channel/group items */
-  .channel-item {
-    padding: 12px 14px !important;       /* more breathing room */
-    min-height: 68px !important;          /* tall enough to tap */
-  }
-
-  /* Bigger group avatar circles */
-  .channel-item .w-9,
-  .channel-item [class*="w-9"] {
-    width: 52px !important;
-    height: 52px !important;
-    border-radius: 14px !important;
-    font-size: 15px !important;
-  }
-
-  /* Channel name bigger */
-  .channel-item .font-bold,
-  .channel-item [class*="font-bold"] {
-    font-size: 16px !important;
-    line-height: 1.3 !important;
-  }
-
-  /* Subtitle / last message preview */
-  .channel-item .text-xs,
-  .channel-item [class*="text-xs"] {
-    font-size: 13px !important;
-    line-height: 1.4 !important;
-  }
-
-  /* Unread badge */
-  .channel-item .unread-badge { font-size: 12px !important; min-width: 22px !important; height: 22px !important; }
-
-  /* Section labels */
-  .sidebar-section-label { font-size: 12px !important; padding: 10px 16px 6px !important; }
-
-  /* ── TOP BAR ─────────────────────────────────────────────── */
-  /* Bigger room title */
-  #roomTitleDisplay {
-    font-size: 17px !important;
-    font-weight: 800 !important;
-    max-width: 50vw;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-
-  /* Bigger top bar icons */
-  .topbar-icon-btn {
-    padding: 8px 10px !important;
-    font-size: 22px !important;
-  }
-  .topbar-icon-btn i { font-size: 22px !important; }
-  .topbar-icon-btn span { font-size: 11px !important; }
-
-  /* ── MESSAGES ────────────────────────────────────────────── */
-  .message-bubble  { max-width: 86% !important; }
-  .msg-actions     { opacity: 1 !important; }
-
-  /* Bigger message text */
-  .message-bubble .msg-text,
-  .message-bubble [class*="msg-text"],
-  .message-bubble p {
-    font-size: 15px !important;
-    line-height: 1.55 !important;
-  }
-
-  /* Sender name */
-  .message-bubble .sender-name,
-  .message-bubble [class*="font-bold"] {
-    font-size: 13px !important;
-  }
-
-  /* Message timestamp */
-  .message-bubble .text-xs { font-size: 11px !important; }
-
-  /* ── INPUT AREA ──────────────────────────────────────────── */
-  .ql-toolbar.ql-snow    { padding: 6px 8px !important; }
-  .ql-editor             {
-    min-height: 50px !important;
-    max-height: 120px !important;
-    font-size: 16px !important;           /* matches iOS default to avoid zoom */
-    -webkit-overflow-scrolling: touch;
-  }
-
-  /* Bigger send button */
-  button[onclick*="sendMessage"],
-  #sendBtn {
-    min-width: 44px !important;
-    min-height: 44px !important;
-    font-size: 20px !important;
-  }
-
-  /* File attach + emoji buttons */
-  .ql-toolbar button, .ql-toolbar .ql-picker {
-    min-width: 32px !important;
-    min-height: 32px !important;
-  }
-
-  /* ── MODALS — bottom sheet ────────────────────────────────── */
-  .modal-content {
-    position: fixed !important;
-    bottom: 0 !important; left: 0 !important; right: 0 !important;
-    width: 100% !important; max-width: 100% !important;
-    border-radius: 22px 22px 0 0 !important;
-    max-height: 88vh !important; overflow-y: auto !important;
-    margin: 0 !important;
-  }
-
-  /* ── ALL BUTTONS — minimum tap size ─────────────────────── */
-  button, [role="button"] {
-    min-height: 40px;
-    font-size: 14px !important;
-  }
-
-  /* ── SCHOOL BADGE ────────────────────────────────────────── */
-  .left-sidebar [style*="perspective"] { transform: none !important; }
-  .left-sidebar [style*="font-size:12px"][style*="font-weight:900"] {
-    font-size: 13px !important;
-  }
-
-  /* ── TASK CARDS ──────────────────────────────────────────── */
-  .task-card { margin: 8px 10px !important; }
-  .task-card .task-title { font-size: 15px !important; }
-  .task-card .text-xs    { font-size: 12px !important; }
-
-  /* ── SMALL SCREEN (≤ 380px) ──────────────────────────────── */
-  @media (max-width: 380px) {
-    .topbar-icon-btn span { display: none !important; }
-    #roomTitleDisplay { font-size: 15px !important; max-width: 55vw; }
-  }
-}
-
-/* ── TABLET ───────────────────────────────────────────────── */
-@media (min-width: 769px) {
-  #mobileBottomNav { display: none !important; }
-  #mobBackBtn      { display: none !important; }
+#iosInstallHint {
+  top: 16px;
+  background: #111;
+  color: #fff;
+  padding: 12px 16px;
+  font-size: 13px;
 }

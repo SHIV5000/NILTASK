@@ -4,7 +4,7 @@ export const SUPABASE_URL = 'https://apfymygzwkzjhhgmtkaj.supabase.co';
 export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwZnlteWd6d2t6amhoZ210a2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5MjM5MTIsImV4cCI6MjA5NjQ5OTkxMn0.RiV6kDDeSq5ZIP68RGwtpLtqPALFloq23owoNm2aA-c';
 export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Global State
+// Define Global State
 window.currentUser = null;
 window.currentRoom = 'general'; 
 window.globalUsersCache = [];
@@ -39,18 +39,6 @@ window.getISTDate = function(dateStr) {
     const str = d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: '2-digit' });
     return str.replace(/\//g, '-').split(',')[0]; 
 }
-
-// FIXED: _ago now always treats timestamp as UTC
-window._ago = function(ts) {
-    if (!ts) return '';
-    const d = new Date(ts + (ts.includes('Z') || ts.includes('+') ? '' : 'Z'));
-    const diff = (Date.now() - d.getTime()) / 1000;
-    if (diff < 60)    return 'just now';
-    if (diff < 3600)  return Math.floor(diff/60) + 'm ago';
-    if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
-    if (diff < 604800)return Math.floor(diff/86400) + 'd ago';
-    return d.toLocaleDateString('en-IN');
-};
 
 window.showCenterToast = function(msg, icon = 'fa-solid fa-check-circle', color = 'text-green-400') { 
     const t = document.createElement('div'); 

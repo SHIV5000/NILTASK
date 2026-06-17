@@ -1262,11 +1262,26 @@ function _richClear() {
 }
 
 // ── SANITIZER (uses DOMPurify if available) ────────────────
+// ── SANITIZER (safe HTML, keeps formatting) ────────────────
 function _sanitize(html) {
     if (typeof DOMPurify !== 'undefined') {
-        return DOMPurify.sanitize(html);
+        return DOMPurify.sanitize(html, {
+            ALLOWED_TAGS: ['p','br','strong','em','u','ul','ol','li','a','span','div','h1','h2','h3','h4','h5','h6','blockquote','code','pre','img'],
+            ALLOWED_ATTR: ['href','target','src','alt','title','class','id']
+        });
     }
-    return x(html);
+    // Fallback: remove <script> and on* attributes, but keep tags
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    // Remove <script>
+    div.querySelectorAll('script').forEach(el => el.remove());
+    // Remove on* attributes from all elements
+    div.querySelectorAll('*').forEach(el => {
+        for (let attr of el.attributes) {
+            if (attr.name.startsWith('on')) el.removeAttribute(attr);
+        }
+    });
+    return div.innerHTML;
 }
 
 // ══════════════════════════════════════════════════════════════

@@ -25,6 +25,21 @@ function _unlockSharedAudio() {
         _sharedCtx = new (window.AudioContext || window.webkitAudioContext)();
         if (_sharedCtx.state === 'suspended') _sharedCtx.resume();
     } catch(e) { /* Web Audio unsupported */ }
+    // Separately, main.js's playSound() plays real MP3 files via plain
+    // <audio> elements (new Audio(url).play()) — a totally different browser
+    // autoplay gate from the Web Audio API context above. It was never
+    // unlocked, so every playSound() call triggered from a realtime
+    // callback (not a direct tap) was silently rejected by the browser —
+    // this is the actual reason message/reminder/task/scheduled sounds were
+    // missing, separate from the chime fix. A muted, near-silent play+pause
+    // during this same first gesture satisfies the browser's "user has
+    // engaged with media" requirement for the rest of the page session.
+    try {
+        const warm = new Audio();
+        warm.muted = true;
+        warm.src = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAACAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA//8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAASDs90hvAAAAAAAAAAAAAAAAAAAA';
+        warm.play().catch(()=>{}).finally(() => { warm.pause(); });
+    } catch(e) {}
 }
 document.addEventListener('touchstart', _unlockSharedAudio, { once:true, passive:true });
 document.addEventListener('click', _unlockSharedAudio, { once:true });

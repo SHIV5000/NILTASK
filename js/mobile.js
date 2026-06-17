@@ -95,10 +95,11 @@ window.initMobileApp = async function() {
     }, { passive: true });
 };
 
+let _usersLoaded = false;
 async function _ctx() {
     _uid = window.currentUser?.id;
     _tid = window.currentTenantId;
-    _users = window.globalUsersCache || [];
+    if (!_usersLoaded) _users = window.globalUsersCache || [];
     if (!_uid) {
         const { data: { user } } = await sb.auth.getUser();
         _uid = user?.id;
@@ -114,6 +115,7 @@ async function _ctx() {
         _users = data || [];
         window.globalUsersCache = _users;
     }
+    if (_users.length) _usersLoaded = true;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -143,8 +145,8 @@ function _buildShell() {
         <button class="m-sb-icon" id="mSBLens" title="Search" onclick="window._toggleInlineSearch()"><i class="fa-solid fa-magnifying-glass"></i></button>
         <button class="m-sb-icon" title="Theme" onclick="window._openThemeSheet()"><i class="fa-solid fa-palette"></i></button>
         <button class="m-sb-icon" title="Sign out" onclick="window._confirmLogout()"><i class="fa-solid fa-right-from-bracket"></i></button>
+        <div id="mSBResults"></div>
       </div>
-      <div id="mSBResults"></div>
       <div id="mStage"></div>
       <div id="mNav">
         ${tabs.map(t=>`
@@ -176,6 +178,11 @@ function _buildShell() {
         if (e.target.id === 'mSheet') window._closeSheet();
     });
     _el('mSheetInner').addEventListener('click', _onSheetClick);
+    _el('mSheetInner').addEventListener('focusin', e => {
+        if (e.target.matches('input,select,textarea')) {
+            setTimeout(() => e.target.scrollIntoView({ block:'center', behavior:'smooth' }), 300);
+        }
+    });
     app.addEventListener('click', _onShellClick);
     app.addEventListener('pointerdown', _onPressStart);
     app.addEventListener('pointerup', _onPressEnd);
@@ -244,7 +251,7 @@ async function _render(screen, params, dir='forward') {
         marks: _bookmarks, scheduled: _scheduled,
         settings: _settings, dashboard: _dashboard,
         groupChat: _groupChat, thread: _thread,
-        dm: _dm, taskDetail: _taskDetail, remindEdit: _remindEdit,
+        dm: _dm, taskDetail: _taskDetail, remindEdit: _remindEdit, scheduledEdit: _scheduledEdit,
     };
     const html = await (fns[screen]?.(params) || Promise.resolve('<div style="padding:40px;text-align:center;">Coming soon</div>'));
     const scr  = document.createElement('div');
@@ -486,8 +493,10 @@ function _bubbleHTML(m, reactionsMap, maxLen=150) {
     const me = m.sender_id === _uid;
     const nm = me ? 'You' : _uname(m.sender_id);
     const cl = _snip(m.text, maxLen);
+    const sender = !me ? _users.find(u=>u.id===m.sender_id) : null;
     return `
       <div class="m-bubble-row ${me?'snt':'rcv'}" id="row-${m.id}">
+        ${!me ? _avatarHTML(sender?.avatar_url, nm, 'var(--accent)', 'm-av-tiny') : ''}
         <div class="m-bubble ${me?'snt':'rcv'}">
           <div class="m-bmeta">${x(nm)} · ${_ago(m.created_at)}</div>
           <div class="m-btext">${x(cl)}</div>
@@ -505,7 +514,7 @@ function _composerHTML(ceId, placeholder, sendAction, sendData) {
     return `
     <div class="m-composer">
       <div class="m-ce-wrap">
-        <button class="m-cic" data-caction="emoji" data-target="${ceId}"><i class="fa-regular fa-face-smile"></i></button>
+        <button class="m-cic" data-caction="schedule" data-target="${ceId}"><i class="fa-solid fa-clock"></i></button>
         <div class="m-ce" id="${ceId}" contenteditable="true" data-placeholder="${x(placeholder)}"></div>
         <button class="m-cic" data-caction="link" data-target="${ceId}"><i class="fa-solid fa-link"></i></button>
         <button class="m-cic" data-caction="attach" data-target="${ceId}"><i class="fa-solid fa-paperclip"></i></button>
@@ -686,6 +695,7 @@ async function _taskDetail(p) {
       <div class="m-hdr">
         <button class="m-back" onclick="window._back()"><i class="fa-solid fa-arrow-left"></i></button>
         <div class="m-htitle">Task Details</div>
+        <button class="m-sb-icon" title="Download PDF" data-action="downloadTaskPdf" data-id="${p.id}"><i class="fa-solid fa-file-pdf"></i></button>
       </div>
       <div style="padding:16px;">
         <h2 style="font-size:20px;font-weight:800;margin-bottom:16px;">${x(t.title||p.title)}</h2>
@@ -718,7 +728,7 @@ async function _taskDetail(p) {
       <div style="padding:4px 16px 16px;">
         <div class="m-sl" style="padding:8px 0 6px;">Activity</div>
         ${trails.map(tr => `
-          <div style="padding:8px 0;border-bottom:1px solid var(--border-color);font-size:14px;">
+          <div style="padding:8px 0;border-bottom:1px solid var(--border-color);font-size:15px;">
             <div style="color:var(--text-secondary);font-size:11px;margin-bottom:2px;">${_ago(tr.created_at)}</div>
             ${tr.action==='FILE' ? `<button class="m-file-link" data-action="openTaskFile" data-path="${x((tr.comment||'').split('|')[1]||'')}">📎 ${x((tr.comment||'').split('|')[0])} <i class="fa-solid fa-arrow-up-right-from-square"></i></button>` : x(tr.comment||'')}
           </div>`).join('')}
@@ -810,23 +820,49 @@ async function _bookmarks() {
 // ══════════════════════════════════════════════════════════════
 async function _scheduled() {
     const { data } = await sb.from('scheduled_messages')
-        .select('id,text,room_id,send_at').eq('tenant_id',_tid).eq('sender_id',_uid)
-        .gt('send_at', new Date().toISOString()).order('send_at',{ascending:true}).limit(20);
+        .select('id,message_text,room_id,scheduled_time').eq('tenant_id',_tid).eq('sender_id',_uid)
+        .eq('status','pending').order('scheduled_time',{ascending:true}).limit(20);
     return `<div class="mScr-inner">
       <div class="m-hdr m-hdr-plain"><div class="m-htitle">Scheduled Messages</div></div>
       ${(data||[]).length ? (data||[]).map(s => {
-        const d = new Date(s.send_at);
+        const dept = DEPTS.find(d=>d.id===s.room_id);
+        const roomName = dept ? dept.name : (s.room_id?.startsWith('dm_') ? 'Direct message' : s.room_id);
         return `
         <div class="m-row">
           <div class="m-av" style="background:#6366f1;border-radius:12px;font-size:18px;">🕐</div>
-          <div class="m-ri">
-            <div class="m-rn">${_snip(s.text,50)}</div>
-            <div class="m-rs">${s.room_id} · ${_fmtIST(s.send_at)}</div>
+          <div class="m-ri" data-action="editScheduled" data-id="${s.id}" data-text="${x(s.message_text)}" data-at="${s.scheduled_time}" data-room="${x(roomName)}">
+            <div class="m-rn">${_snip(s.message_text,50)}</div>
+            <div class="m-rs">${x(roomName)} · ${_fmtIST(s.scheduled_time)}</div>
           </div>
+          <button class="m-icon-btn" data-action="editScheduled" data-id="${s.id}" data-text="${x(s.message_text)}" data-at="${s.scheduled_time}" data-room="${x(roomName)}">
+            <i class="fa-solid fa-pen"></i>
+          </button>
           <button class="m-icon-btn" style="color:#ef4444;" data-action="cancelScheduled" data-id="${s.id}">
-            <i class="fa-solid fa-xmark"></i>
+            <i class="fa-solid fa-trash"></i>
           </button>
         </div>`; }).join('') : '<div class="m-empty">No scheduled messages.</div>'}
+    </div>`;
+}
+async function _scheduledEdit(p) {
+    return `<div class="mScr-inner">
+      <div class="m-hdr">
+        <button class="m-back" onclick="window._back()"><i class="fa-solid fa-arrow-left"></i></button>
+        <div class="m-htitle">Edit Scheduled Message</div>
+      </div>
+      <div style="padding:20px;display:flex;flex-direction:column;gap:14px;">
+        <div class="m-field"><label class="m-label">To</label>
+          <div style="font-size:15px;font-weight:600;">${x(p.room)}</div></div>
+        <div class="m-field"><label class="m-label">Message</label>
+          <textarea class="m-inp" id="sTxt" rows="4" style="resize:vertical;">${x(p.text)}</textarea></div>
+        <div class="m-field"><label class="m-label">Send at</label>
+          <input class="m-inp" id="sAt" type="datetime-local" value="${p.at ? new Date(p.at).toISOString().slice(0,16) : ''}"></div>
+        <button class="m-action-btn" style="background:#6366f1;" data-action="saveScheduled" data-id="${p.id}">
+          <i class="fa-solid fa-save"></i> Save Changes
+        </button>
+        <button class="m-action-btn" style="background:#ef4444;" data-action="cancelScheduled" data-id="${p.id}">
+          <i class="fa-solid fa-trash"></i> Cancel Message
+        </button>
+      </div>
     </div>`;
 }
 
@@ -1013,6 +1049,39 @@ function _showInsertTagPicker(targetId) {
       </div>`;
     _openSheet();
 }
+function _showScheduleSheet(targetId) {
+    const text = _ceHTML(targetId);
+    if (!text) { _toast('Type a message first','err'); return; }
+    const top = _stack[_stack.length-1];
+    const room = top?.params?.room;
+    if (!room) { _toast('Could not determine which chat this is for','err'); return; }
+    const sheet = _el('mSheetInner');
+    sheet.innerHTML = `
+      <div class="m-sheet-handle"></div>
+      <div class="m-sheet-title">Schedule Message</div>
+      <div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:12px;">
+        <div style="font-size:13px;color:var(--text-secondary);">${_snip(text,80)}</div>
+        <input class="m-inp" id="schAt" type="datetime-local">
+        <button class="m-action-btn" style="background:#6366f1;" data-action="confirmSchedule" data-target="${targetId}" data-room="${room}">
+          <i class="fa-solid fa-clock"></i> Schedule
+        </button>
+      </div>`;
+    _openSheet();
+}
+async function _confirmSchedule(targetId, room) {
+    const at = _el('schAt')?.value;
+    if (!at) { _toast('Pick a date and time','err'); return; }
+    const message_text = _ceHTML(targetId);
+    if (!message_text) { _toast('Message is empty','err'); return; }
+    const { error } = await sb.from('scheduled_messages').insert({
+        sender_id:_uid, room_id:room, tenant_id:_tid,
+        message_text, scheduled_time:new Date(at).toISOString(), status:'pending'
+    });
+    if (error) { _toast('Could not schedule: '+error.message,'err'); return; }
+    _ceClear(targetId);
+    window._closeSheet();
+    _toast('Message scheduled ✓ 🕐');
+}
 function _showForwardSheet(text) {
     const sheet = _el('mSheetInner');
     const others = _users.filter(u=>u.id!==_uid);
@@ -1132,11 +1201,17 @@ async function _onShellClick(e) {
         case 'saveReminder':   await _saveReminder(a.id); break;
         case 'removeBookmark': _removeBookmark(parseInt(a.idx)); break;
         case 'cancelScheduled': await _cancelScheduled(a.id); break;
+        case 'editScheduled': await _navTo('scheduledEdit',{id:a.id,text:a.text,at:a.at,room:a.room}); break;
+        case 'saveScheduled': await _saveScheduled(a.id); break;
         case 'openTaskFile': await _openTaskFile(a.path); break;
         case 'saveProfile':    await _saveProfile(); break;
         case 'setMyPhoto':   _el('mMyPhotoInput')?.click(); break;
         case 'setDeptPhoto': _pendingDeptPhoto = a.dept; _el('mDeptPhotoInput')?.click(); break;
         case 'changePassword': await _changePassword(); break;
+        case 'downloadTaskPdf':
+            if (typeof window.downloadTaskPDF === 'function') await window.downloadTaskPDF(a.id);
+            else _toast('PDF export not available','err');
+            break;
         case 'confirmLogout': await window._confirmLogout(); break;
         case 'pickTheme':
             if (typeof window.setTheme === 'function') window.setTheme(a.theme);
@@ -1149,6 +1224,7 @@ async function _onShellClick(e) {
 async function _handleComposerIcon(caction, targetId) {
     const ceEl = _el(targetId);
     switch (caction) {
+        case 'schedule': _showScheduleSheet(targetId); break;
         case 'emoji': _showInsertEmojiPicker(targetId); break;
         case 'tag':   _showInsertTagPicker(targetId); break;
         case 'link': {
@@ -1203,6 +1279,7 @@ async function _onSheetClick(e) {
         case 'convertTask': window._closeSheet(); _showConvertTask(a.id, a.text); break;
         case 'forwardMsg':  _showForwardSheet(a.text); break;
         case 'doForward':   await _doForward(a.room, a.text); break;
+        case 'confirmSchedule': await _confirmSchedule(a.target, a.room); break;
         case 'bookmarkMsg': {
             const bms = JSON.parse(localStorage.getItem('tf_bookmarks_'+_uid)||'[]');
             bms.unshift({msgId:a.id,text:a.text,room:a.room,rname:a.rname,rcol:a.rcol,uid:a.room?.startsWith('dm_')?a.room.replace('dm_','').split('_').find(p=>p!==_uid):'',time:_ago(new Date().toISOString())});
@@ -1375,14 +1452,12 @@ function _wireScreen(screen, params, container) {
     if (myPhotoInp) myPhotoInp.onchange = async () => {
         const file = myPhotoInp.files[0]; myPhotoInp.value = '';
         if (!file) return;
-        _toast('Uploading photo…');
-        const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g,'_');
-        const filePath = `profiles/${_uid}/${Date.now()}_${safeName}`;
-        const { error: upErr } = await sb.storage.from('avatars').upload(filePath, file, { upsert:true });
-        if (upErr) { _toast('Upload failed: '+upErr.message,'err'); return; }
-        const { data: pub } = sb.storage.from('avatars').getPublicUrl(filePath);
-        const { error: dbErr } = await sb.from('profiles').update({ avatar_url: pub.publicUrl }).eq('id',_uid);
-        if (dbErr) { _toast('Saved photo but could not update profile: '+dbErr.message,'err'); return; }
+        _toast('Processing photo…');
+        let dataUrl;
+        try { dataUrl = await _compressImageToDataURL(file); }
+        catch(e) { _toast('Could not read that image','err'); return; }
+        const { error: dbErr } = await sb.from('profiles').update({ avatar_url: dataUrl }).eq('id',_uid);
+        if (dbErr) { _toast('Could not save photo: '+dbErr.message,'err'); return; }
         _toast('Photo updated ✓');
         await _navTo('settings',null,true);
     };
@@ -1392,17 +1467,44 @@ function _wireScreen(screen, params, container) {
         const file = deptPhotoInp.files[0]; deptPhotoInp.value = '';
         const deptId = _pendingDeptPhoto; _pendingDeptPhoto = null;
         if (!file || !deptId) return;
-        _toast('Uploading photo…');
-        const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g,'_');
-        const filePath = `departments/${deptId}/${Date.now()}_${safeName}`;
-        const { error: upErr } = await sb.storage.from('avatars').upload(filePath, file, { upsert:true });
-        if (upErr) { _toast('Upload failed: '+upErr.message,'err'); return; }
-        const { data: pub } = sb.storage.from('avatars').getPublicUrl(filePath);
-        localStorage.setItem('dept_photo_'+deptId, pub.publicUrl);
-        const d = DEPTS.find(d=>d.id===deptId); if (d) d.photo = pub.publicUrl;
+        _toast('Processing photo…');
+        let dataUrl;
+        try { dataUrl = await _compressImageToDataURL(file); }
+        catch(e) { _toast('Could not read that image','err'); return; }
+        try {
+            localStorage.setItem('dept_photo_'+deptId, dataUrl);
+        } catch(e) {
+            _toast('Image too large for local storage — try a smaller photo','err'); return;
+        }
+        const d = DEPTS.find(d=>d.id===deptId); if (d) d.photo = dataUrl;
         _toast('Department photo updated ✓');
         await _navTo('home',null,true);
     };
+}
+// Resizes/compresses an uploaded image client-side and returns it as a small
+// base64 JPEG data URL — stored directly in the DB/localStorage. Avoids
+// needing any Supabase Storage bucket at all, which was the actual cause of
+// the "bucket not found" error (no 'avatars' bucket had been created).
+function _compressImageToDataURL(file, maxSize=240, quality=0.72) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('read failed'));
+        reader.onload = () => {
+            const img = new Image();
+            img.onerror = () => reject(new Error('decode failed'));
+            img.onload = () => {
+                let { width, height } = img;
+                if (width > height) { if (width > maxSize) { height = Math.round(height*maxSize/width); width = maxSize; } }
+                else { if (height > maxSize) { width = Math.round(width*maxSize/height); height = maxSize; } }
+                const canvas = document.createElement('canvas');
+                canvas.width = width; canvas.height = height;
+                canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/jpeg', quality));
+            };
+            img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+    });
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1416,6 +1518,7 @@ async function _doSendGroup(a) {
         room_id:a.room, sender_id:_uid, tenant_id:_tid, text:val, created_at:new Date().toISOString()
     }).select().single();
     if (error) { _toast('Send failed: '+error.message,'err'); return; }
+    window.playSound?.('message');
     _appendOwnMessage('mMsgArea', m);
 }
 async function _doSendReply(a) {
@@ -1425,6 +1528,7 @@ async function _doSendReply(a) {
         room_id:a.room, parent_message_id:a.pid, sender_id:_uid, tenant_id:_tid, text:val, created_at:new Date().toISOString()
     }).select().single();
     if (error) { _toast('Send failed: '+error.message,'err'); return; }
+    window.playSound?.('message');
     _appendOwnMessage('mThreadArea', m, 160);
 }
 async function _doSendDM(a) {
@@ -1434,6 +1538,7 @@ async function _doSendDM(a) {
         room_id:a.room, sender_id:_uid, tenant_id:_tid, text:val, created_at:new Date().toISOString()
     }).select().single();
     if (error) { _toast('Send failed: '+error.message,'err'); return; }
+    window.playSound?.('message');
     _appendOwnMessage('mDMArea', m);
 }
 // Appends the just-sent message to the currently-open screen without
@@ -1524,6 +1629,16 @@ async function _cancelScheduled(id) {
     await sb.from('scheduled_messages').delete().eq('id',id).eq('tenant_id',_tid);
     _toast('Scheduled message cancelled'); _navTo('scheduled',null,true);
 }
+async function _saveScheduled(id) {
+    const message_text = _el('sTxt')?.value?.trim();
+    const scheduled_time = _el('sAt')?.value;
+    if (!message_text || !scheduled_time) { _toast('Fill in both fields','err'); return; }
+    const { error } = await sb.from('scheduled_messages')
+        .update({ message_text, scheduled_time: new Date(scheduled_time).toISOString() })
+        .eq('id',id).eq('tenant_id',_tid);
+    if (error) { _toast('Could not save: '+error.message,'err'); return; }
+    _toast('Scheduled message updated ✓'); _navTo('scheduled',null,true);
+}
 async function _saveProfile() {
     const full_name   = _el('sName')?.value?.trim();
     const designation = _el('sDesig')?.value?.trim();
@@ -1555,6 +1670,16 @@ function _sentenceCase(s){ s=(s||'').trim(); return s ? s[0].toUpperCase()+s.sli
 // (DD/MM order etc), not which timezone the clock is read in.
 function _fmtIST(ts, withTime=true) {
     if (!ts) return '';
+    // Prefer the app's own established IST formatter (shared.js) so mobile
+    // matches desktop exactly rather than running a separate parallel
+    // implementation that could drift from whatever convention the rest of
+    // the app actually relies on.
+    if (typeof window.getISTDate === 'function') {
+        const datePart = window.getISTDate(ts);
+        if (!withTime) return datePart;
+        const timePart = (typeof window.getISTTime === 'function') ? window.getISTTime(ts) : '';
+        return timePart ? `${datePart} ${timePart}` : datePart;
+    }
     const d = new Date(ts);
     const parts = new Intl.DateTimeFormat('en-GB', {
         day:'2-digit', month:'short', year:'2-digit',
@@ -1695,13 +1820,16 @@ function _injectCSS(){
 
 /* ── Chat messages ───────────────────────────────────────────────────── */
 .m-msgs{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 0;position:relative;}
-.m-bubble-row{display:flex;margin:8px 12px;}
+.m-bubble-row{display:flex;margin:8px 12px;gap:6px;align-items:flex-end;}
+.m-av-tiny{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:700;font-size:10.5px;flex-shrink:0;}
 .m-bubble-row.snt{justify-content:flex-end;}
 .m-bubble-row.rcv{justify-content:flex-start;}
 .m-bubble{max-width:98%;padding:11px 14px;border-radius:12px;position:relative;
   font-size:16px;line-height:1.5;
   background:var(--card-bg,#fff);box-shadow:var(--card-shadow,0 2px 8px rgba(0,0,0,.07));
-  border:1px solid var(--border-color,#e5e7eb);}
+  border:1px solid var(--border-color,#e5e7eb);
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
 .m-bubble.snt{border-left:4px solid var(--accent,#6366f1);border-right-width:1px;}
 .m-bubble.rcv{border-right:4px solid var(--accent,#6366f1);border-left-width:1px;}
 .m-bmeta{font-size:11.5px;font-weight:600;color:var(--text-secondary,#6b7280);margin-bottom:4px;}
@@ -1711,7 +1839,8 @@ function _injectCSS(){
   60%  { background:color-mix(in srgb, var(--accent) 22%, var(--card-bg)); box-shadow:0 0 0 2px var(--accent); }
   100% { background:var(--card-bg); box-shadow:none; }
 }
-.m-btext{font-size:17px;line-height:1.5;color:var(--text-primary,#111);}
+.m-btext{font-size:18px;line-height:1.55;color:var(--text-primary,#111);
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
 .m-divider{text-align:center;font-size:11px;color:var(--text-secondary);padding:8px 0;}
 
 /* ── Scroll-to-bottom arrow (WhatsApp-style) ────────────────────────── */
@@ -1772,9 +1901,9 @@ function _injectCSS(){
   border-right:1px solid var(--border-color,#e5e7eb);border-bottom:1px solid var(--border-color,#e5e7eb);}
 .m-taskcard:active{opacity:.85;}
 .m-tc-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
-.m-tc-title{font-size:16px;font-weight:700;flex:1;line-height:1.4;}
+.m-tc-title{font-size:17px;font-weight:700;flex:1;line-height:1.4;}
 .m-badge{font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap;flex-shrink:0;}
-.m-tc-meta{display:flex;gap:12px;margin-top:8px;font-size:13px;color:var(--text-secondary,#6b7280);}
+.m-tc-meta{display:flex;gap:12px;margin-top:8px;font-size:14px;color:var(--text-secondary,#6b7280);}
 .m-file-link{background:var(--bg-sidebar,#f6f8fa);border:1px solid var(--border-color,#e5e7eb);
   border-radius:8px;padding:6px 12px;font-size:13.5px;color:var(--accent,#6366f1);font-weight:600;
   cursor:pointer;display:inline-flex;align-items:center;gap:6px;-webkit-tap-highlight-color:transparent;}
@@ -1821,7 +1950,7 @@ function _injectCSS(){
   pointer-events:none;transition:background .25s;display:flex;align-items:flex-end;}
 #mSheet.open{background:rgba(0,0,0,.45);pointer-events:all;}
 #mSheetInner{width:100%;background:var(--bg-body,#fff);
-  border-radius:22px 22px 0 0;max-height:85vh;overflow-y:auto;
+  border-radius:22px 22px 0 0;max-height:85vh;max-height:85dvh;overflow-y:auto;
   transform:translateY(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);
   padding-bottom:env(safe-area-inset-bottom,0);}
 #mSheet.open #mSheetInner{transform:translateY(0);}

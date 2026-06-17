@@ -172,6 +172,9 @@ function _buildShell() {
     app.addEventListener('pointerdown', _onPressStart);
     app.addEventListener('pointerup', _onPressEnd);
     app.addEventListener('pointerleave', _onPressEnd);
+    app.addEventListener('pointercancel', _onPressEnd);
+    app.addEventListener('pointermove', _onPressMove, { passive:true });
+    app.addEventListener('scroll', _onPressEnd, { passive:true, capture:true });
     document.addEventListener('selectionchange', _onSelectionChange);
 
     const lensInp = _el('mSBSearchInp');
@@ -230,8 +233,8 @@ async function _render(screen, params, dir='forward') {
 
     // Thread is a true full-screen reply view — hide chrome, restore on any other screen
     const immersive = screen === 'thread';
-    _el('mSB')?.style.setProperty('display', immersive ? 'none' : 'flex');
-    _el('mNav')?.style.setProperty('display', immersive ? 'none' : 'flex');
+    _el('mSB')?.style.setProperty('display', immersive ? 'none' : 'flex', 'important');
+    _el('mNav')?.style.setProperty('display', immersive ? 'none' : 'flex', 'important');
 
     _wireScreen(screen, params, scr);
     _scrollTop('mStage');
@@ -243,9 +246,8 @@ function _scrollAndGlow(msgId, attempt=0) {
     if (!row) { if (attempt<5) setTimeout(()=>_scrollAndGlow(msgId,attempt+1), 120); return; }
     const card = row.querySelector('.m-bubble') || row;
     row.scrollIntoView({ behavior:'smooth', block:'center' });
-    setTimeout(() => card.classList.add('glow-target'), 50);
-    setTimeout(() => card.classList.add('active-glow'), 100);
-    setTimeout(() => card.classList.remove('glow-target','active-glow'), 3100);
+    setTimeout(() => card.classList.add('m-highlight'), 50);
+    setTimeout(() => card.classList.remove('m-highlight'), 2050);
 }
 function _setTab(screen) {
     const map = { home:'home', groupChat:'home', thread:'home', dm:'home',
@@ -417,8 +419,13 @@ function _chipsHTML(msgId, reactionsMap) {
 }
 async function _toggleReaction(msgId, value, type) {
     const { data: existing } = await sb.from('reactions').select('id').eq('message_id',msgId).eq('value',value).eq('user_id',_uid);
-    if (existing && existing.length) await sb.from('reactions').delete().eq('message_id',msgId).eq('value',value).eq('user_id',_uid);
-    else await sb.from('reactions').insert({ message_id:msgId, user_id:_uid, tenant_id:_tid, value, type, count:1 });
+    let error;
+    if (existing && existing.length) {
+        ({ error } = await sb.from('reactions').delete().eq('message_id',msgId).eq('value',value).eq('user_id',_uid));
+    } else {
+        ({ error } = await sb.from('reactions').insert({ message_id:msgId, user_id:_uid, tenant_id:_tid, value, type, count:1 }));
+    }
+    if (error) { _toast('Could not save reaction: '+error.message, 'err'); return; }
     await _refreshChips(msgId);
 }
 async function _refreshChips(msgId) {
@@ -457,13 +464,13 @@ function _bubbleHTML(m, reactionsMap, maxLen=150) {
 function _composerHTML(ceId, placeholder, sendAction, sendData) {
     return `
     <div class="m-composer">
-      <button class="m-cic" data-caction="attach" data-target="${ceId}"><i class="fa-solid fa-paperclip"></i></button>
-      <button class="m-cic" data-caction="link" data-target="${ceId}"><i class="fa-solid fa-link"></i></button>
       <div class="m-ce-wrap">
+        <button class="m-cic" data-caction="emoji" data-target="${ceId}"><i class="fa-regular fa-face-smile"></i></button>
         <div class="m-ce" id="${ceId}" contenteditable="true" data-placeholder="${x(placeholder)}"></div>
+        <button class="m-cic" data-caction="tag" data-target="${ceId}"><i class="fa-solid fa-tag"></i></button>
+        <button class="m-cic" data-caction="link" data-target="${ceId}"><i class="fa-solid fa-link"></i></button>
+        <button class="m-cic" data-caction="attach" data-target="${ceId}"><i class="fa-solid fa-paperclip"></i></button>
       </div>
-      <button class="m-cic" data-caction="emoji" data-target="${ceId}"><i class="fa-regular fa-face-smile"></i></button>
-      <button class="m-cic" data-caction="tag" data-target="${ceId}"><i class="fa-solid fa-tag"></i></button>
       <button class="m-sendbtn" data-action="${sendAction}" data-target="${ceId}" ${sendData}>
         <i class="fa-solid fa-paper-plane"></i>
       </button>
@@ -475,6 +482,22 @@ function _ceHTML(id) {
     return (html==='' || html==='<br>') ? '' : html;
 }
 function _ceClear(id) { const el = _el(id); if (el) el.innerHTML=''; }
+// Reliable emoji/tag insertion — appends a text node at the end of the
+// composer and moves the cursor there. Doesn't depend on execCommand or any
+// prior selection existing, which is what made insertion silently fail on
+// some mobile browsers when the picker sheet had just taken focus away.
+function _ceInsertText(targetId, value) {
+    const el = _el(targetId);
+    if (!el) return;
+    el.appendChild(document.createTextNode(value + ' '));
+    el.focus();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+}
 
 // ══════════════════════════════════════════════════════════════
 // GROUP CHAT (Department)
@@ -1120,10 +1143,8 @@ async function _onSheetClick(e) {
         case 'reactEmoji':  await _toggleReaction(a.id, a.value, 'emoji'); window._closeSheet(); break;
         case 'reactTag':    await _toggleReaction(a.id, a.value, 'tag');   window._closeSheet(); break;
         case 'insertEmoji': case 'insertTag': {
-            const ceEl = _el(a.target);
             window._closeSheet();
-            ceEl?.focus();
-            document.execCommand('insertText', false, a.value + ' ');
+            _ceInsertText(a.target, a.value);
             break;
         }
         case 'replyThread': window._closeSheet(); await _navTo('thread',{id:a.id,text:a.text,room:a.room,rname:a.rname,rcol:a.rcol,sender:'',time:''}); break;
@@ -1163,12 +1184,14 @@ async function _onSheetClick(e) {
 // does nothing special, so normal text selection/copy works, matching
 // WhatsApp and fixing the old DM-bubble tap-hijack inconsistency.
 // ══════════════════════════════════════════════════════════════
-let _pressTimer = null, _pressRow = null;
+let _pressTimer = null, _pressRow = null, _pressX = 0, _pressY = 0;
 function _onPressStart(e) {
     const row = e.target.closest('.m-bubble-row');
     if (!row) return;
     _pressRow = row;
+    _pressX = e.clientX; _pressY = e.clientY;
     _pressTimer = setTimeout(() => {
+        _pressTimer = null;
         const id = row.id.replace('row-','');
         const me = row.classList.contains('snt');
         const text = row.querySelector('.m-btext')?.textContent || '';
@@ -1178,7 +1201,16 @@ function _onPressStart(e) {
         navigator.vibrate?.(35);
     }, 550);
 }
-function _onPressEnd() { clearTimeout(_pressTimer); _pressRow = null; }
+// Cancel the long-press the moment the finger actually moves — this is what was
+// opening the menu mid-scroll: a scroll gesture that starts on a bubble was
+// treated as a press because nothing checked for movement before the timer fired.
+function _onPressMove(e) {
+    if (!_pressTimer) return;
+    if (Math.abs(e.clientX-_pressX) > 10 || Math.abs(e.clientY-_pressY) > 10) {
+        clearTimeout(_pressTimer); _pressTimer = null;
+    }
+}
+function _onPressEnd() { clearTimeout(_pressTimer); _pressTimer = null; _pressRow = null; }
 
 // ══════════════════════════════════════════════════════════════
 // FLOATING FORMAT POPUP — appears only when text is selected inside a
@@ -1289,29 +1321,38 @@ function _wireScreen(screen, params, container) {
 async function _doSendGroup(a) {
     const val = _ceHTML(a.target); if (!val) return;
     _ceClear(a.target);
-    const { error } = await sb.from('messages').insert({
+    const { data: m, error } = await sb.from('messages').insert({
         room_id:a.room, sender_id:_uid, tenant_id:_tid, text:val, created_at:new Date().toISOString()
-    });
+    }).select().single();
     if (error) { _toast('Send failed: '+error.message,'err'); return; }
-    await _render('groupChat', {room:a.room, name:a.name, color:a.color}, 'forward');
+    _appendOwnMessage('mMsgArea', m);
 }
 async function _doSendReply(a) {
     const val = _ceHTML(a.target); if (!val) return;
     _ceClear(a.target);
-    const { error } = await sb.from('messages').insert({
+    const { data: m, error } = await sb.from('messages').insert({
         room_id:a.room, parent_message_id:a.pid, sender_id:_uid, tenant_id:_tid, text:val, created_at:new Date().toISOString()
-    });
+    }).select().single();
     if (error) { _toast('Send failed: '+error.message,'err'); return; }
-    await _render('thread', {id:a.pid,room:a.room,rname:a.rname,rcol:a.rcol,text:a.text,sender:a.sender,time:a.time});
+    _appendOwnMessage('mThreadArea', m, 160);
 }
 async function _doSendDM(a) {
     const val = _ceHTML(a.target); if (!val) return;
     _ceClear(a.target);
-    const { error } = await sb.from('messages').insert({
+    const { data: m, error } = await sb.from('messages').insert({
         room_id:a.room, sender_id:_uid, tenant_id:_tid, text:val, created_at:new Date().toISOString()
-    });
+    }).select().single();
     if (error) { _toast('Send failed: '+error.message,'err'); return; }
-    await _render('dm', {uid:a.uid, name:a.name, room:a.room});
+    _appendOwnMessage('mDMArea', m);
+}
+// Appends the just-sent message to the currently-open screen without
+// re-rendering it — re-rendering was what caused the whole screen to replay
+// its slide-in animation on every single send.
+function _appendOwnMessage(areaId, m, maxLen=150) {
+    const area = _el(areaId);
+    if (!area) return;
+    area.insertAdjacentHTML('beforeend', _bubbleHTML(m, {}, maxLen));
+    area.scrollTo({ top: area.scrollHeight, behavior:'smooth' });
 }
 async function _doForward(room, text) {
     window._closeSheet();
@@ -1524,13 +1565,19 @@ function _injectCSS(){
 .m-bubble-row{display:flex;margin:8px 12px;}
 .m-bubble-row.snt{justify-content:flex-end;}
 .m-bubble-row.rcv{justify-content:flex-start;}
-.m-bubble{max-width:84%;padding:11px 14px;border-radius:12px;position:relative;
+.m-bubble{max-width:98%;padding:11px 14px;border-radius:12px;position:relative;
   font-size:16px;line-height:1.5;
   background:var(--card-bg,#fff);box-shadow:var(--card-shadow,0 2px 8px rgba(0,0,0,.07));
   border:1px solid var(--border-color,#e5e7eb);}
 .m-bubble.snt{border-left:4px solid var(--accent,#6366f1);border-right-width:1px;}
 .m-bubble.rcv{border-right:4px solid var(--accent,#6366f1);border-left-width:1px;}
 .m-bmeta{font-size:11.5px;font-weight:600;color:var(--text-secondary,#6b7280);margin-bottom:4px;}
+.m-highlight{animation:m-glow-pulse 2s ease-out;}
+@keyframes m-glow-pulse{
+  0%   { background:color-mix(in srgb, var(--accent) 35%, var(--card-bg)); box-shadow:0 0 0 3px var(--accent); }
+  60%  { background:color-mix(in srgb, var(--accent) 22%, var(--card-bg)); box-shadow:0 0 0 2px var(--accent); }
+  100% { background:var(--card-bg); box-shadow:none; }
+}
 .m-btext{font-size:16px;line-height:1.5;color:var(--text-primary,#111);}
 .m-divider{text-align:center;font-size:11px;color:var(--text-secondary);padding:8px 0;}
 
@@ -1556,19 +1603,20 @@ function _injectCSS(){
   border-radius:20px;cursor:pointer;}
 
 /* ── WhatsApp-style composer ─────────────────────────────────────────── */
-.m-composer{display:flex;align-items:flex-end;gap:4px;padding:8px 8px;
+.m-composer{display:flex;align-items:center;gap:8px;padding:8px 10px;
   background:var(--bg-sidebar,#f6f8fa);border-top:1px solid var(--border-color,#e5e7eb);flex-shrink:0;}
-.m-cic{background:none;border:none;font-size:19px;color:var(--text-secondary,#6b7280);
-  cursor:pointer;padding:9px 6px;flex-shrink:0;-webkit-tap-highlight-color:transparent;min-height:44px;}
-.m-cic:active{opacity:.6;}
 .m-ce-wrap{flex:1;background:var(--bg-body,#fff);border:1.5px solid var(--border-color,#e5e7eb);
-  border-radius:20px;display:flex;align-items:center;min-height:42px;max-height:120px;overflow-y:auto;}
-.m-ce{flex:1;outline:none;font-size:16px;line-height:1.4;padding:10px 14px;
+  border-radius:24px;display:flex;align-items:flex-end;min-height:44px;max-height:130px;
+  padding:2px 4px;}
+.m-cic{background:none;border:none;font-size:18px;color:var(--text-secondary,#6b7280);
+  cursor:pointer;padding:9px 5px;flex-shrink:0;-webkit-tap-highlight-color:transparent;min-height:40px;align-self:flex-end;}
+.m-cic:active{opacity:.6;}
+.m-ce{flex:1;outline:none;font-size:16px;line-height:1.4;padding:11px 4px;max-height:120px;overflow-y:auto;
   color:var(--text-primary,#111);word-break:break-word;}
 .m-ce:empty:before{content:attr(data-placeholder);color:var(--text-secondary,#9ca3af);}
 .m-ce a{color:var(--accent,#6366f1);text-decoration:underline;}
 .m-sendbtn{background:var(--accent,#6366f1);border:none;color:#fff;flex-shrink:0;
-  width:42px;height:42px;border-radius:50%;font-size:16px;cursor:pointer;
+  width:44px;height:44px;border-radius:50%;font-size:17px;cursor:pointer;
   display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
 .m-sendbtn:active{opacity:.8;}
 

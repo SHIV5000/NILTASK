@@ -11,6 +11,7 @@ let _dark   = localStorage.getItem('tf_theme') === 'dark';
 let _uid    = null;
 let _tid    = null;
 let _users  = [];
+let _pendingUploadTaskId = null;
 
 // ══════════════════════════════════════════════════════════════
 // ENTRY POINT
@@ -334,25 +335,30 @@ async function _dm(p) {
 // TASKS
 // ══════════════════════════════════════════════════════════════
 async function _tasks() {
-    const { data } = await sb.from('tasks')
-        .select('id,title,state,priority,deadline,created_at,assigned_by')
-        .eq('tenant_id',_tid).is('deleted_at',null)
-        .order('created_at',{ascending:false}).limit(50);
+    // Per-user task progress lives in task_assignees (status field) —
+    // tasks.state is never written by the desktop app, so we read
+    // the same source of truth it uses.
+    const { data } = await sb.from('task_assignees')
+        .select('status, tasks!inner(id,title,priority,deadline,created_at,require_proof,assigned_by)')
+        .eq('assignee_id',_uid).eq('tenant_id',_tid)
+        .order('created_at',{ascending:false,foreignTable:'tasks'}).limit(50);
 
-    const stMap = { pending:{bg:'#fef9c3',fg:'#854d0e',lbl:'⏳ Pending'},
+    const stMap = { pending_ack:{bg:'#fef9c3',fg:'#854d0e',lbl:'⏳ Needs Ack'},
                     in_progress:{bg:'#dbeafe',fg:'#1d4ed8',lbl:'🔄 In Progress'},
-                    done:{bg:'#dcfce7',fg:'#16a34a',lbl:'✅ Done'},
-                    overdue:{bg:'#fee2e2',fg:'#b91c1c',lbl:'🔴 Overdue'} };
+                    submitted:  {bg:'#ffedd5',fg:'#9a3412',lbl:'📬 Pending Review'},
+                    needs_review:{bg:'#fee2e2',fg:'#991b1b',lbl:'🔄 Changes Needed'},
+                    accepted:   {bg:'#dcfce7',fg:'#16a34a',lbl:'🎉 Done'},
+                    overdue:    {bg:'#fee2e2',fg:'#b91c1c',lbl:'🔴 Overdue'} };
     const now = new Date();
     return `<div class="mScr-inner">
       <div class="m-hdr m-hdr-plain"><div class="m-htitle">My Tasks</div></div>
-      ${(data||[]).length ? (data||[]).map(t => {
-        const isOverdue = t.deadline && new Date(t.deadline)<now && t.state!=='done';
-        const st = isOverdue ? stMap.overdue : (stMap[t.state]||stMap.pending);
+      ${(data||[]).length ? (data||[]).map(row => {
+        const t = row.tasks;
+        const isOverdue = t.deadline && new Date(t.deadline)<now && row.status!=='accepted';
+        const st = isOverdue ? stMap.overdue : (stMap[row.status]||stMap.pending_ack);
         return `
         <div class="m-taskcard" data-action="taskDetail" data-id="${t.id}"
-             data-title="${x(t.title)}" data-state="${t.state}"
-             data-priority="${t.priority||''}" data-deadline="${t.deadline||''}">
+             data-title="${x(t.title)}">
           <div class="m-tc-top">
             <div class="m-tc-title">${x(t.title)}</div>
             <span class="m-badge" style="background:${st.bg};color:${st.fg};">${st.lbl}</span>
@@ -360,60 +366,80 @@ async function _tasks() {
           <div class="m-tc-meta">
             ${t.deadline ? `<span>📅 ${new Date(t.deadline).toLocaleDateString('en-IN')}</span>` : ''}
             ${t.priority  ? `<span>⚡ ${t.priority}</span>` : ''}
+            ${t.require_proof ? `<span>📎 Proof required</span>` : ''}
           </div>
         </div>`; }).join('') : '<div class="m-empty">No tasks assigned to you yet.</div>'}
     </div>`;
 }
 
 async function _taskDetail(p) {
-    const { data: t } = await sb.from('tasks')
-        .select('*, task_assignees(assignee_id)')
-        .eq('id',p.id).single();
+    const [{ data: ta }, { data: trails }] = await Promise.all([
+        sb.from('task_assignees').select('*, tasks(*)').eq('task_id',p.id).eq('assignee_id',_uid).single(),
+        sb.from('task_trails').select('*').eq('task_id',p.id).order('created_at',{ascending:false}).limit(10),
+    ]);
+    const t = ta?.tasks || {};
+    const status = ta?.status || 'pending_ack';
+    const stLbl = { pending_ack:'⏳ Needs acknowledgement', in_progress:'🔄 In progress',
+                    submitted:'📬 Submitted — pending review', needs_review:'🔄 Changes needed',
+                    accepted:'🎉 Accepted — done' }[status] || status;
 
-    const stMap = { pending:'⏳ Pending', in_progress:'🔄 In Progress', done:'✅ Done' };
+    const hasProof = (trails||[]).some(tr => tr.action==='FILE');
+    const needsProofWarning = t.require_proof && !hasProof && status==='in_progress';
+
     return `<div class="mScr-inner">
       <div class="m-hdr">
         <button class="m-back" onclick="window._back()"><i class="fa-solid fa-arrow-left"></i></button>
         <div class="m-htitle">Task Details</div>
       </div>
       <div style="padding:16px;">
-        <h2 style="font-size:19px;font-weight:800;margin-bottom:16px;">${x(t?.title||p.title)}</h2>
+        <h2 style="font-size:19px;font-weight:800;margin-bottom:16px;">${x(t.title||p.title)}</h2>
         <div class="m-detail-row"><span class="m-detail-lbl">Status</span>
-          <select class="m-sel" id="mTaskState">
-            ${['pending','in_progress','done'].map(s=>`<option value="${s}" ${(t?.state||'pending')===s?'selected':''}>${stMap[s]||s}</option>`).join('')}
-          </select>
-        </div>
+          <span class="m-detail-val">${stLbl}</span></div>
         <div class="m-detail-row"><span class="m-detail-lbl">Priority</span>
-          <span class="m-detail-val">${t?.priority||'Normal'}</span></div>
+          <span class="m-detail-val">${x(t.priority||'Normal')}</span></div>
         <div class="m-detail-row"><span class="m-detail-lbl">Deadline</span>
-          <span class="m-detail-val">${t?.deadline ? new Date(t.deadline).toLocaleDateString('en-IN') : 'No deadline'}</span></div>
-        ${t?.description ? `<div class="m-detail-row" style="flex-direction:column;gap:6px;">
-          <span class="m-detail-lbl">Description</span>
-          <span style="font-size:14px;line-height:1.6;">${x(t.description)}</span>
-        </div>` : ''}
+          <span class="m-detail-val">${t.deadline ? new Date(t.deadline).toLocaleDateString('en-IN') : 'No deadline'}</span></div>
+        ${t.require_proof ? `<div class="m-detail-row"><span class="m-detail-lbl">Proof required</span>
+          <span class="m-detail-val">${hasProof?'✅ Attached':'⚠️ Not yet attached'}</span></div>` : ''}
       </div>
-      <div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:10px;">
-        <button class="m-action-btn" style="background:#6366f1;"
-          data-action="updateTaskState" data-id="${p.id}">
-          <i class="fa-solid fa-rotate"></i> Update Status
-        </button>
-        <button class="m-action-btn" style="background:#16a34a;"
-          data-action="ackTask" data-id="${p.id}">
+
+      <div style="padding:0 16px 8px;display:flex;flex-direction:column;gap:10px;">
+        ${status==='pending_ack' ? `
+        <button class="m-action-btn" style="background:#16a34a;" data-action="mobTaskAction" data-task="${p.id}" data-act="ack">
           <i class="fa-solid fa-check-double"></i> Acknowledge Task
+        </button>` : ''}
+
+        ${(status==='in_progress'||status==='needs_review') ? `
+        <input type="text" class="m-inp" id="mTaskNote" placeholder="Add an update or comment…" style="font-size:14px;">
+        <button class="m-action-btn" style="background:#f59e0b;" data-action="mobTaskAction" data-task="${p.id}" data-act="update">
+          <i class="fa-solid fa-comment"></i> Post Update
         </button>
-        <button class="m-action-btn" style="background:#0ea5e9;"
-          data-action="uploadProof" data-id="${p.id}">
+        <button class="m-action-btn" style="background:#0ea5e9;" data-action="mobTaskAction" data-task="${p.id}" data-act="upload">
           <i class="fa-solid fa-upload"></i> Upload Proof / File
         </button>
-        <input type="text" class="m-inp" id="mTaskNote" placeholder="Add a note or update…" style="font-size:14px;">
-        <button class="m-action-btn" style="background:#f59e0b;"
-          data-action="addTaskNote" data-id="${p.id}">
-          <i class="fa-solid fa-comment"></i> Post Note
-        </button>
+        ${needsProofWarning ? `<div style="font-size:12px;color:#b91c1c;text-align:center;">⚠️ This task requires proof before you can submit</div>` : ''}
+        <button class="m-action-btn" style="background:#6366f1;" data-action="mobTaskAction" data-task="${p.id}" data-act="submit">
+          <i class="fa-solid fa-paper-plane"></i> ${status==='needs_review'?'Resubmit':'Submit for Review'}
+        </button>` : ''}
+
+        ${status==='submitted' ? `<div class="m-empty" style="padding:12px;">Waiting for the task creator to review your submission.</div>` : ''}
+        ${status==='accepted' ? `<div class="m-empty" style="padding:12px;">🎉 This task is complete — no further action needed.</div>` : ''}
       </div>
+
+      ${(trails||[]).length ? `
+      <div style="padding:4px 16px 16px;">
+        <div class="m-sl" style="padding:8px 0 6px;">Activity</div>
+        ${trails.map(tr => `
+          <div style="padding:8px 0;border-bottom:1px solid var(--border-color);font-size:13px;">
+            <div style="color:var(--text-secondary);font-size:11px;margin-bottom:2px;">${_ago(tr.created_at)}</div>
+            ${tr.action==='FILE' ? `📎 ${x((tr.comment||'').split('|')[0])}` : x(tr.comment||'')}
+          </div>`).join('')}
+      </div>` : ''}
+
       <input type="file" id="mFileInput" style="display:none;" accept="image/*,application/pdf">
     </div>`;
 }
+
 
 // ══════════════════════════════════════════════════════════════
 // REMINDERS
@@ -711,10 +737,10 @@ function _attachEvents(screen, params, container) {
             case 'sendDM':    await _doSendDM(a); break;
 
             // Task actions
-            case 'ackTask':        await _ackTask(a.id); break;
-            case 'updateTaskState':await _updateTaskState(a.id); break;
-            case 'uploadProof':    _el('mFileInput')?.click(); break;
-            case 'addTaskNote':    await _addTaskNote(a.id); break;
+            case 'mobTaskAction':
+                if (a.act === 'upload') { _pendingUploadTaskId = a.task; _el('mFileInput')?.click(); }
+                else await _mobTaskAction(a.task, a.act);
+                break;
 
             // Reminder actions
             case 'deleteReminder': await _deleteReminder(a.id); break;
@@ -756,16 +782,25 @@ function _attachEvents(screen, params, container) {
         });
     });
 
-    // File upload for task proof
+    // File upload for task proof — mirrors desktop's task-proofs convention
+    // (filePath pattern + task_trails 'FILE' row) so both surfaces agree on
+    // where proof lives and how submit() checks for it.
     const fi = _el('mFileInput');
     if (fi) {
         fi.onchange = async () => {
             const file = fi.files[0]; if (!file) return;
+            const taskId = _pendingUploadTaskId; fi.value = '';
+            if (!taskId) return;
             _toast('Uploading…');
-            const path = `${_tid}/${Date.now()}_${file.name}`;
-            const { error } = await sb.storage.from('task-proofs').upload(path, file);
-            if (!error) _toast('File uploaded ✓');
-            else _toast('Upload failed');
+            const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g,'_');
+            const filePath = `tasks/${taskId}/${Date.now()}_${safeName}`;
+            const { error } = await sb.storage.from('task-proofs').upload(filePath, file);
+            if (error) { _toast('Upload failed: '+error.message,'err'); return; }
+            await sb.from('task_trails').insert({ task_id:taskId, user_id:_uid, tenant_id:_tid, action:'FILE', comment:`${file.name}|${filePath}` });
+            const { data: taskData } = await sb.from('tasks').select('title,assigned_by,original_message_id').eq('id',taskId).single();
+            if (window.notifyUser && taskData) await window.notifyUser(taskData.assigned_by, `📎 File uploaded on task: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
+            _toast('File uploaded ✓');
+            await _navTo('taskDetail',{id:taskId,title:taskData?.title},true);
         };
     }
 
@@ -835,22 +870,44 @@ async function _doSendDM(a) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// TASK ACTIONS
+// TASK ACTIONS — mirrors window.taskAction() in tasks.js so mobile
+// and desktop write to the same task_assignees / task_trails schema
 // ══════════════════════════════════════════════════════════════
-async function _ackTask(id) {
-    await sb.from('tasks').update({acknowledged:true, acknowledged_at:new Date().toISOString()}).eq('id',id);
-    _toast('Task acknowledged ✓');
-}
-async function _updateTaskState(id) {
-    const state = _el('mTaskState')?.value; if (!state) return;
-    await sb.from('tasks').update({state}).eq('id',id).eq('tenant_id',_tid);
-    _toast('Status updated to: '+state);
-}
-async function _addTaskNote(id) {
-    const note = _el('mTaskNote')?.value?.trim(); if (!note) return;
-    _el('mTaskNote').value = '';
-    await sb.from('task_trails').insert({ task_id:id, user_id:_uid, tenant_id:_tid, action:'note', note });
-    _toast('Note added ✓');
+async function _mobTaskAction(taskId, action) {
+    const { data: taskData } = await sb.from('tasks').select('*').eq('id',taskId).single();
+    if (!taskData) { _toast('Task not found','err'); return; }
+    const creatorId = taskData.assigned_by;
+    let newStatus = '', comment = '';
+
+    if (action === 'ack') {
+        newStatus = 'in_progress'; comment = 'Acknowledged the task';
+    } else if (action === 'update') {
+        const note = _el('mTaskNote')?.value?.trim();
+        if (!note) { _toast('Write something first','err'); return; }
+        comment = note;
+        await sb.from('task_trails').insert({ task_id:taskId, user_id:_uid, tenant_id:_tid, action:'UPDATE', comment });
+        if (window.notifyUser) await window.notifyUser(creatorId, `💬 Task update: ${taskData.title} — ${comment.substring(0,60)}`, taskData.original_message_id, 'task', taskId);
+        _toast('Update posted ✓');
+        await _navTo('taskDetail',{id:taskId,title:taskData.title},true);
+        return;
+    } else if (action === 'submit') {
+        if (taskData.require_proof) {
+            const { data: ftrails } = await sb.from('task_trails').select('id').eq('task_id',taskId).eq('user_id',_uid).eq('action','FILE');
+            if (!ftrails || !ftrails.length) { _toast('Proof required — upload a file first','err'); return; }
+        }
+        newStatus = 'submitted'; comment = 'Submitted for review';
+    }
+
+    if (newStatus) {
+        const { error } = await sb.from('task_assignees')
+            .update({ status:newStatus, state:newStatus, ...(action==='ack'?{acked:true}:{}) })
+            .eq('task_id',taskId).eq('assignee_id',_uid);
+        if (error) { _toast('Update failed — check permissions','err'); return; }
+        await sb.from('task_trails').insert({ task_id:taskId, user_id:_uid, tenant_id:_tid, action:'UPDATE', comment });
+        if (window.notifyUser) await window.notifyUser(creatorId, `${action==='ack'?'✅':'📬'} ${comment}: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
+        _toast(action==='ack' ? 'Task acknowledged ✓' : 'Submitted for review ✓');
+    }
+    await _navTo('taskDetail',{id:taskId,title:taskData.title},true);
 }
 function _showConvertTask(msgId, text) {
     const sheet = _el('mSheetInner');

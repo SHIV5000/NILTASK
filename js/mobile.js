@@ -58,14 +58,15 @@ let _uid    = null;
 let _tid    = null;
 let _users  = [];
 let _pendingUploadTaskId = null;
+let _pendingDeptPhoto = null;
 let _rtChannel = null;
 let _searchMode = false;
 
 const DEPTS = [
-    {id:'general',   name:localStorage.getItem('dept_name_general')   ||'General',   col:localStorage.getItem('dept_color_general')   ||'#6366f1'},
-    {id:'math',      name:localStorage.getItem('dept_name_math')      ||'Mathematics',col:localStorage.getItem('dept_color_math')      ||'#0ea5e9'},
-    {id:'science',   name:localStorage.getItem('dept_name_science')   ||'Science',   col:localStorage.getItem('dept_color_science')   ||'#10b981'},
-    {id:'leadership',name:localStorage.getItem('dept_name_leadership')||'Leadership',col:localStorage.getItem('dept_color_leadership')||'#f59e0b'},
+    {id:'general',   name:localStorage.getItem('dept_name_general')   ||'General',   col:localStorage.getItem('dept_color_general')   ||'#6366f1', photo:localStorage.getItem('dept_photo_general')||''},
+    {id:'math',      name:localStorage.getItem('dept_name_math')      ||'Mathematics',col:localStorage.getItem('dept_color_math')      ||'#0ea5e9', photo:localStorage.getItem('dept_photo_math')||''},
+    {id:'science',   name:localStorage.getItem('dept_name_science')   ||'Science',   col:localStorage.getItem('dept_color_science')   ||'#10b981', photo:localStorage.getItem('dept_photo_science')||''},
+    {id:'leadership',name:localStorage.getItem('dept_name_leadership')||'Leadership',col:localStorage.getItem('dept_color_leadership')||'#f59e0b', photo:localStorage.getItem('dept_photo_leadership')||''},
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -99,7 +100,7 @@ async function _ctx() {
         window.currentTenantId = _tid;
     }
     if (!_users.length && _tid) {
-        const { data } = await sb.from('profiles').select('id,full_name,email,designation').eq('tenant_id',_tid).is('deleted_at',null);
+        const { data } = await sb.from('profiles').select('id,full_name,email,designation,avatar_url').eq('tenant_id',_tid).is('deleted_at',null);
         _users = data || [];
         window.globalUsersCache = _users;
     }
@@ -112,22 +113,19 @@ async function _ctx() {
 function _buildShell() {
     if (_el('mobileApp')) return;
     const tabs = [
-        { id:'home',      icon:'fa-house',      lbl:'Home'     },
-        { id:'activity',  icon:'fa-bolt',        lbl:'Activity' },
-        { id:'tasks',     icon:'fa-list-check',  lbl:'Tasks'    },
-        { id:'remind',    icon:'fa-bell',        lbl:'Remind'   },
-        { id:'marks',     icon:'fa-bookmark',    lbl:'Marks'    },
-        { id:'scheduled', icon:'fa-clock',       lbl:'Sched'    },
-        { id:'settings',  icon:'fa-gear',        lbl:'Settings' },
-        { id:'dashboard', icon:'fa-chart-bar',   lbl:'Stats'    },
+        { id:'home',      icon:'fa-house',      lbl:'Home',     action:"window._navTo('home')" },
+        { id:'activity',  icon:'fa-bolt',        lbl:'Activity', action:"window._navTo('activity')" },
+        { id:'tasks',     icon:'fa-list-check',  lbl:'Tasks',    action:"window._navTo('tasks')" },
+        { id:'remind',    icon:'fa-bell',        lbl:'Remind',   action:"window._navTo('remind')" },
+        { id:'more',      icon:'fa-ellipsis',    lbl:'More',     action:"window._openMoreSheet()" },
     ];
     const app = document.createElement('div');
     app.id = 'mobileApp';
     app.innerHTML = `
       <div id="mSB">
         <div id="mSBInfo" class="m-sb-info" onclick="window._navTo('home')">
-          <div class="m-sb-user">${x(window.currentUser?.full_name || window.currentUser?.email?.split('@')[0] || 'User')}</div>
-          <div class="m-sb-school">${x(window.currentSchoolName || 'School')}</div>
+          <div class="m-sb-user">${x(_sentenceCase(window.currentUser?.full_name || window.currentUser?.email?.split('@')[0] || 'User'))}</div>
+          <div class="m-sb-school-card">${x(window.currentSchoolName || 'School')}</div>
         </div>
         <div id="mSBSearch" class="m-sb-search" style="display:none;">
           <input id="mSBSearchInp" placeholder="Search messages, staff…">
@@ -140,7 +138,7 @@ function _buildShell() {
       <div id="mStage"></div>
       <div id="mNav">
         ${tabs.map(t=>`
-          <button class="mn-btn" id="mnt-${t.id}" onclick="window._navTo('${t.id}')">
+          <button class="mn-btn" id="mnt-${t.id}" onclick="${t.action}">
             <i class="fa-solid ${t.icon}"></i>
             <span class="mn-lbl">${t.lbl}</span>
           </button>`).join('')}
@@ -174,6 +172,7 @@ function _buildShell() {
     app.addEventListener('pointerleave', _onPressEnd);
     app.addEventListener('pointercancel', _onPressEnd);
     app.addEventListener('pointermove', _onPressMove, { passive:true });
+    app.addEventListener('touchmove', _onPressEnd, { passive:true });
     app.addEventListener('scroll', _onPressEnd, { passive:true, capture:true });
     document.addEventListener('selectionchange', _onSelectionChange);
 
@@ -203,16 +202,30 @@ window._navTo = async function(screen, params, replace = false) {
     if (_searchMode) window._toggleInlineSearch();
     if (replace) _stack.pop();
     _stack.push({ screen, params });
+    if (replace) history.replaceState({ mobDepth:_stack.length }, '', location.href);
+    else history.pushState({ mobDepth:_stack.length }, '', location.href);
     await _render(screen, params, 'forward');
     _setTab(screen);
 };
+// The on-screen back button and the phone's hardware back button now share
+// this exact same path — both just ask the browser to go back one virtual
+// state, and the actual stack-pop + re-render happens once, in 'popstate'.
+// Popping the stack directly from two places was what risked the in-app
+// stack and the browser's real history drifting out of sync.
 window._back = function() {
     if (_stack.length < 2) return;
-    _stack.pop();
-    const prev = _stack[_stack.length-1];
-    _render(prev.screen, prev.params, 'back');
-    _setTab(prev.screen);
+    history.back();
 };
+window.addEventListener('popstate', () => {
+    if (_stack.length > 1) {
+        _stack.pop();
+        const prev = _stack[_stack.length-1];
+        _render(prev.screen, prev.params, 'back');
+        _setTab(prev.screen);
+    }
+    // At the root screen there's nothing left to pop — default behaviour
+    // (exiting the app / leaving the page) is correct there.
+});
 async function _render(screen, params, dir='forward') {
     const stage = _el('mStage');
     if (!stage) return;
@@ -225,14 +238,17 @@ async function _render(screen, params, dir='forward') {
     };
     const html = await (fns[screen]?.(params) || Promise.resolve('<div style="padding:40px;text-align:center;">Coming soon</div>'));
     const scr  = document.createElement('div');
-    scr.className = `mScr ${dir==='back'?'slide-back':'slide-fwd'}`;
+    const slideClass = screen === 'thread'
+        ? (dir==='back' ? 'slide-down' : 'slide-up')
+        : (dir==='back' ? 'slide-back' : 'slide-fwd');
+    scr.className = `mScr ${slideClass}`;
     scr.dataset.screen = screen;
     scr.innerHTML  = html;
     stage.innerHTML = '';
     stage.appendChild(scr);
 
     // Thread is a true full-screen reply view — hide chrome, restore on any other screen
-    const immersive = screen === 'thread';
+    const immersive = screen === 'thread' || screen === 'groupChat' || screen === 'dm';
     _el('mSB')?.style.setProperty('display', immersive ? 'none' : 'flex', 'important');
     _el('mNav')?.style.setProperty('display', immersive ? 'none' : 'flex', 'important');
 
@@ -251,14 +267,25 @@ function _scrollAndGlow(msgId, attempt=0) {
 }
 function _setTab(screen) {
     const map = { home:'home', groupChat:'home', thread:'home', dm:'home',
-                  activity:'activity',
+                  activity:'activity', search:'activity',
                   tasks:'tasks', taskDetail:'tasks',
-                  remind:'remind', remindEdit:'remind',
-                  marks:'marks', scheduled:'scheduled',
-                  settings:'settings', dashboard:'dashboard' };
-    const active = map[screen] || screen;
-    document.querySelectorAll('.mn-btn').forEach(b => b.classList.toggle('active', b.id === 'mnt-'+active));
+                  remind:'remind', remindEdit:'remind' };
+    const active = map[screen] || null; // marks/scheduled/settings/dashboard live in More — no tab to highlight
+    document.querySelectorAll('.mn-btn').forEach(b => b.classList.toggle('active', active && b.id === 'mnt-'+active));
 }
+window._openMoreSheet = function() {
+    const sheet = _el('mSheetInner');
+    sheet.innerHTML = `
+      <div class="m-sheet-handle"></div>
+      <div class="m-sheet-title">More</div>
+      <div style="padding:0 8px 16px;display:flex;flex-direction:column;gap:2px;">
+        <div class="m-sheet-row" data-action="navMore" data-screen="marks"><i class="fa-solid fa-bookmark" style="color:#f59e0b;"></i> Bookmarks</div>
+        <div class="m-sheet-row" data-action="navMore" data-screen="scheduled"><i class="fa-solid fa-clock" style="color:#6366f1;"></i> Scheduled Messages</div>
+        <div class="m-sheet-row" data-action="navMore" data-screen="settings"><i class="fa-solid fa-gear" style="color:#6b7280;"></i> Profile & Settings</div>
+        <div class="m-sheet-row" data-action="navMore" data-screen="dashboard"><i class="fa-solid fa-chart-bar" style="color:#16a34a;"></i> Dashboard</div>
+      </div>`;
+    _openSheet();
+};
 
 // ══════════════════════════════════════════════════════════════
 // HOME — Departments + Staff
@@ -277,31 +304,34 @@ async function _home() {
     return `<div class="mScr-inner">
       <div class="m-sl">DEPARTMENTS</div>
       ${DEPTS.map(d => { const lm=last[d.id]; return `
-        <div class="m-row" data-action="groupChat" data-room="${d.id}"
-             data-name="${x(d.name)}" data-color="${d.col}">
-          <div class="m-av sq" style="background:${d.col};">${d.name[0].toUpperCase()}</div>
-          <div class="m-ri">
+        <div class="m-row">
+          <div class="m-av-wrap" data-action="setDeptPhoto" data-dept="${d.id}">
+            ${_avatarHTML(d.photo, d.name, d.col, 'm-av sq')}
+            <span class="m-av-cam"><i class="fa-solid fa-camera"></i></span>
+          </div>
+          <div class="m-ri" data-action="groupChat" data-room="${d.id}" data-name="${x(d.name)}" data-color="${d.col}">
             <div class="m-rn">${x(d.name)}</div>
             <div class="m-rs">${lm ? _snip(lm.text,38)+' · '+_ago(lm.created_at) : 'No messages yet'}</div>
           </div>
-          <i class="fa-solid fa-chevron-right m-chv"></i>
+          <i class="fa-solid fa-chevron-right m-chv" data-action="groupChat" data-room="${d.id}" data-name="${x(d.name)}" data-color="${d.col}"></i>
         </div>`; }).join('')}
 
       <div class="m-sl" style="margin-top:4px;">STAFF MEMBERS</div>
       ${others.length ? others.map(u => {
         const dm = _dmRoom(u.id);
         const lm = last[dm];
-        const init = _init(u.full_name||u.email);
+        const nm = u.full_name||u.email.split('@')[0];
         return `
         <div class="m-row" data-action="dm"
-             data-uid="${u.id}" data-name="${x(u.full_name||u.email.split('@')[0])}" data-room="${dm}">
-          <div class="m-av" style="background:var(--accent);">${init}</div>
+             data-uid="${u.id}" data-name="${x(nm)}" data-room="${dm}">
+          ${_avatarHTML(u.avatar_url, nm, 'var(--accent)')}
           <div class="m-ri">
-            <div class="m-rn">${x(u.full_name||u.email.split('@')[0])}</div>
+            <div class="m-rn">${x(nm)}</div>
             <div class="m-rs">${lm ? _snip(lm.text,38)+' · '+_ago(lm.created_at) : x(u.designation||'Staff')}</div>
           </div>
           <i class="fa-solid fa-chevron-right m-chv"></i>
         </div>`; }).join('') : '<div class="m-empty">No staff added yet</div>'}
+      <input type="file" id="mDeptPhotoInput" style="display:none;" accept="image/*">
     </div>`;
 }
 
@@ -467,7 +497,6 @@ function _composerHTML(ceId, placeholder, sendAction, sendData) {
       <div class="m-ce-wrap">
         <button class="m-cic" data-caction="emoji" data-target="${ceId}"><i class="fa-regular fa-face-smile"></i></button>
         <div class="m-ce" id="${ceId}" contenteditable="true" data-placeholder="${x(placeholder)}"></div>
-        <button class="m-cic" data-caction="tag" data-target="${ceId}"><i class="fa-solid fa-tag"></i></button>
         <button class="m-cic" data-caction="link" data-target="${ceId}"><i class="fa-solid fa-link"></i></button>
         <button class="m-cic" data-caction="attach" data-target="${ceId}"><i class="fa-solid fa-paperclip"></i></button>
       </div>
@@ -514,7 +543,7 @@ async function _groupChat(p) {
     return `<div class="mFlex">
       <div class="m-hdr">
         <button class="m-back" onclick="window._back()"><i class="fa-solid fa-arrow-left"></i></button>
-        <div class="m-av-sm sq" style="background:${p.color||'var(--accent)'};">${(p.name||'D')[0]}</div>
+        ${_avatarHTML(DEPTS.find(d=>d.id===p.room)?.photo, p.name, p.color, 'm-av-sm sq')}
         <div class="m-htitle">${x(p.name)}</div>
       </div>
       <div class="m-msgs" id="mMsgArea">
@@ -565,11 +594,11 @@ async function _dm(p) {
         .is('deleted_at',null).order('created_at',{ascending:true}).limit(80);
 
     const reactionsMap = await _fetchReactions((msgs||[]).map(m=>m.id));
-    const init = _init(p.name);
+    const otherUser = _users.find(u=>u.id===p.uid);
     return `<div class="mFlex">
       <div class="m-hdr">
         <button class="m-back" onclick="window._back()"><i class="fa-solid fa-arrow-left"></i></button>
-        <div class="m-av-sm" style="background:var(--accent);">${init}</div>
+        ${_avatarHTML(otherUser?.avatar_url, p.name, 'var(--accent)', 'm-av-sm')}
         <div class="m-htitle">${x(p.name)}</div>
       </div>
       <div class="m-msgs" id="mDMArea">
@@ -589,6 +618,13 @@ async function _tasks() {
         .eq('assignee_id',_uid).eq('tenant_id',_tid)
         .order('created_at',{ascending:false,foreignTable:'tasks'}).limit(50);
 
+    const taskIds = (data||[]).map(r=>r.tasks.id);
+    let assigneeMap = {};
+    if (taskIds.length) {
+        const { data: allAssignees } = await sb.from('task_assignees').select('task_id,assignee_id').in('task_id', taskIds);
+        (allAssignees||[]).forEach(a => { (assigneeMap[a.task_id] = assigneeMap[a.task_id]||[]).push(_uname(a.assignee_id)); });
+    }
+
     const stMap = { pending_ack:{bg:'#fef9c3',fg:'#854d0e',lbl:'⏳ Needs Ack'},
                     in_progress:{bg:'#dbeafe',fg:'#1d4ed8',lbl:'🔄 In Progress'},
                     submitted:  {bg:'#ffedd5',fg:'#9a3412',lbl:'📬 Pending Review'},
@@ -602,6 +638,7 @@ async function _tasks() {
         const t = row.tasks;
         const isOverdue = t.deadline && new Date(t.deadline)<now && row.status!=='accepted';
         const st = isOverdue ? stMap.overdue : (stMap[row.status]||stMap.pending_ack);
+        const assignees = (assigneeMap[t.id]||[]).join(', ');
         return `
         <div class="m-taskcard" data-action="taskDetail" data-id="${t.id}" data-title="${x(t.title)}">
           <div class="m-tc-top">
@@ -609,9 +646,14 @@ async function _tasks() {
             <span class="m-badge" style="background:${st.bg};color:${st.fg};">${st.lbl}</span>
           </div>
           <div class="m-tc-meta">
-            ${t.deadline ? `<span>📅 ${new Date(t.deadline).toLocaleDateString('en-IN')}</span>` : ''}
+            ${t.deadline ? `<span>📅 ${_fmtIST(t.deadline,false)}</span>` : ''}
             ${t.priority  ? `<span>⚡ ${t.priority}</span>` : ''}
             ${t.require_proof ? `<span>📎 Proof required</span>` : ''}
+          </div>
+          <div class="m-tc-people">
+            <div>👤 Created by ${x(_uname(t.assigned_by))}</div>
+            ${assignees ? `<div>👥 Assigned to ${x(assignees)}</div>` : ''}
+            <div>🕐 ${_fmtIST(t.created_at)}</div>
           </div>
         </div>`; }).join('') : '<div class="m-empty">No tasks assigned to you yet.</div>'}
     </div>`;
@@ -639,7 +681,7 @@ async function _taskDetail(p) {
         <h2 style="font-size:20px;font-weight:800;margin-bottom:16px;">${x(t.title||p.title)}</h2>
         <div class="m-detail-row"><span class="m-detail-lbl">Status</span><span class="m-detail-val" id="mTaskStatusVal">${stLbl}</span></div>
         <div class="m-detail-row"><span class="m-detail-lbl">Priority</span><span class="m-detail-val">${x(t.priority||'Normal')}</span></div>
-        <div class="m-detail-row"><span class="m-detail-lbl">Deadline</span><span class="m-detail-val">${t.deadline ? new Date(t.deadline).toLocaleDateString('en-IN') : 'No deadline'}</span></div>
+        <div class="m-detail-row"><span class="m-detail-lbl">Deadline</span><span class="m-detail-val">${t.deadline ? _fmtIST(t.deadline,false) : 'No deadline'}</span></div>
         ${t.require_proof ? `<div class="m-detail-row"><span class="m-detail-lbl">Proof required</span><span class="m-detail-val">${hasProof?'✅ Attached':'⚠️ Not yet attached'}</span></div>` : ''}
       </div>
       <div style="padding:0 16px 8px;display:flex;flex-direction:column;gap:10px;">
@@ -668,7 +710,7 @@ async function _taskDetail(p) {
         ${trails.map(tr => `
           <div style="padding:8px 0;border-bottom:1px solid var(--border-color);font-size:14px;">
             <div style="color:var(--text-secondary);font-size:11px;margin-bottom:2px;">${_ago(tr.created_at)}</div>
-            ${tr.action==='FILE' ? `📎 ${x((tr.comment||'').split('|')[0])}` : x(tr.comment||'')}
+            ${tr.action==='FILE' ? `<button class="m-file-link" data-action="openTaskFile" data-path="${x((tr.comment||'').split('|')[1]||'')}">📎 ${x((tr.comment||'').split('|')[0])} <i class="fa-solid fa-arrow-up-right-from-square"></i></button>` : x(tr.comment||'')}
           </div>`).join('')}
       </div>` : ''}
       <input type="file" id="mFileInput" style="display:none;" accept="image/*,application/pdf">
@@ -693,7 +735,7 @@ async function _reminders() {
           <div class="m-av" style="background:${past?'#9ca3af':'#f59e0b'};border-radius:12px;font-size:18px;">⏰</div>
           <div class="m-ri">
             <div class="m-rn" style="${past?'text-decoration:line-through;opacity:.6;':''}">${x(r.title)}</div>
-            <div class="m-rs">${d.toLocaleDateString('en-IN')} at ${d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</div>
+            <div class="m-rs">${_fmtIST(r.remind_at)}</div>
             ${r.note?`<div class="m-rs" style="margin-top:2px;">${x(r.note)}</div>`:''}
           </div>
           <div style="display:flex;flex-direction:column;gap:6px;">
@@ -769,7 +811,7 @@ async function _scheduled() {
           <div class="m-av" style="background:#6366f1;border-radius:12px;font-size:18px;">🕐</div>
           <div class="m-ri">
             <div class="m-rn">${_snip(s.text,50)}</div>
-            <div class="m-rs">${s.room_id} · ${d.toLocaleDateString('en-IN')} ${d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</div>
+            <div class="m-rs">${s.room_id} · ${_fmtIST(s.send_at)}</div>
           </div>
           <button class="m-icon-btn" style="color:#ef4444;" data-action="cancelScheduled" data-id="${s.id}">
             <i class="fa-solid fa-xmark"></i>
@@ -783,16 +825,19 @@ async function _scheduled() {
 // ══════════════════════════════════════════════════════════════
 async function _settings() {
     const { data: p } = await sb.from('profiles').select('*').eq('id',_uid).single();
-    const init = _init(p?.full_name||p?.email||'?');
     const permState = ('Notification' in window) ? Notification.permission : 'unsupported';
     const permLabel = { granted:'✅ Enabled', denied:'🚫 Blocked in browser settings', default:'⚠️ Not yet enabled', unsupported:'Not supported on this browser' }[permState];
     return `<div class="mScr-inner">
       <div class="m-hdr m-hdr-plain"><div class="m-htitle">Profile & Settings</div></div>
       <div style="display:flex;flex-direction:column;align-items:center;padding:28px 20px 20px;">
-        <div style="width:72px;height:72px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;font-size:26px;font-weight:700;margin-bottom:12px;">${init}</div>
-        <div style="font-size:18px;font-weight:700;">${x(p?.full_name||'')}</div>
+        <div class="m-av-wrap m-av-wrap-lg" data-action="setMyPhoto">
+          ${_avatarHTML(p?.avatar_url, p?.full_name||p?.email, 'var(--accent)', 'm-av m-av-lg')}
+          <span class="m-av-cam"><i class="fa-solid fa-camera"></i></span>
+        </div>
+        <div style="font-size:18px;font-weight:700;margin-top:12px;">${x(p?.full_name||'')}</div>
         <div style="font-size:13px;color:var(--text-secondary);margin-top:3px;">${x(p?.email||'')}</div>
         <div style="font-size:12px;color:var(--accent);margin-top:4px;font-weight:600;">${x(p?.designation||'Staff')}</div>
+        <input type="file" id="mMyPhotoInput" style="display:none;" accept="image/*">
       </div>
 
       <div class="m-sl">APPEARANCE</div>
@@ -809,11 +854,8 @@ async function _settings() {
       <div style="padding:0 16px 8px;">
         <div class="m-detail-row"><span class="m-detail-lbl">Status</span><span class="m-detail-val">${permLabel}</span></div>
         <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;padding:4px 0 10px;">
-          When enabled, you'll get a phone notification (with sound + vibration) for new messages and task updates — even if TaskFlow isn't open on screen. Without it, you'll only see updates when you're actively looking at the app.
+          When enabled, you'll get a phone notification (with sound + vibration) for new messages and task updates — even if TaskFlow isn't open on screen. Without it, you'll only see updates when you're actively looking at the app. This is requested automatically once when you first log in.
         </div>
-        ${permState==='default' ? `<button class="m-action-btn" style="background:#16a34a;" data-action="enableNotifs">
-          <i class="fa-solid fa-bell"></i> Enable Notifications
-        </button>` : ''}
       </div>
 
       <div class="m-sl">PROFILE</div>
@@ -846,7 +888,7 @@ async function _dashboard() {
         sb.from('messages').select('*',{count:'exact',head:true}).eq('tenant_id',_tid).is('deleted_at',null),
         sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('tenant_id',_tid),
         sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('tenant_id',_tid).eq('status','accepted'),
-        sb.from('profiles').select('full_name,last_login').eq('tenant_id',_tid).is('deleted_at',null).order('last_login',{ascending:false}).limit(5),
+        sb.from('profiles').select('full_name,last_login,avatar_url').eq('tenant_id',_tid).is('deleted_at',null).order('last_login',{ascending:false}).limit(5),
     ]);
     const pct = taskCount ? Math.round((doneCount/taskCount)*100) : 0;
     return `<div class="mScr-inner">
@@ -865,7 +907,7 @@ async function _dashboard() {
         <div class="m-sl">RECENTLY ACTIVE</div>
         ${(recent||[]).map(u=>`
           <div class="m-row" style="padding:10px 0;">
-            <div class="m-av-sm" style="background:var(--accent);">${_init(u.full_name)}</div>
+            ${_avatarHTML(u.avatar_url, u.full_name, 'var(--accent)', 'm-av-sm')}
             <div class="m-ri"><div class="m-rn">${x(u.full_name||'Staff')}</div><div class="m-rs">${u.last_login?_ago(u.last_login):'Never logged in'}</div></div>
           </div>`).join('')}
       </div>
@@ -1080,12 +1122,11 @@ async function _onShellClick(e) {
         case 'saveReminder':   await _saveReminder(a.id); break;
         case 'removeBookmark': _removeBookmark(parseInt(a.idx)); break;
         case 'cancelScheduled': await _cancelScheduled(a.id); break;
+        case 'openTaskFile': await _openTaskFile(a.path); break;
         case 'saveProfile':    await _saveProfile(); break;
+        case 'setMyPhoto':   _el('mMyPhotoInput')?.click(); break;
+        case 'setDeptPhoto': _pendingDeptPhoto = a.dept; _el('mDeptPhotoInput')?.click(); break;
         case 'changePassword': await _changePassword(); break;
-        case 'enableNotifs':
-            if (window.requestNotificationPermission) await window.requestNotificationPermission();
-            await _navTo('settings',null,true);
-            break;
         case 'confirmLogout': await window._confirmLogout(); break;
         case 'pickTheme':
             if (typeof window.setTheme === 'function') window.setTheme(a.theme);
@@ -1138,6 +1179,7 @@ async function _onSheetClick(e) {
     if (!el) return;
     const a = el.dataset;
     switch (a.action) {
+        case 'navMore': window._closeSheet(); await _navTo(a.screen); break;
         case 'addEmoji':    _showReactionEmojiPicker(a.id); break;
         case 'addTag':      _showReactionTagPicker(a.id); break;
         case 'reactEmoji':  await _toggleReaction(a.id, a.value, 'emoji'); window._closeSheet(); break;
@@ -1186,7 +1228,13 @@ async function _onSheetClick(e) {
 // ══════════════════════════════════════════════════════════════
 let _pressTimer = null, _pressRow = null, _pressX = 0, _pressY = 0;
 function _onPressStart(e) {
-    const row = e.target.closest('.m-bubble-row');
+    // Only the visible card counts — .m-bubble-row spans the full message
+    // width as a flex wrapper, so a tap on the blank space beside a bubble
+    // was also matching and opening the menu for messages the user never
+    // actually touched.
+    const card = e.target.closest('.m-bubble');
+    if (!card) return;
+    const row = card.closest('.m-bubble-row');
     if (!row) return;
     _pressRow = row;
     _pressX = e.clientX; _pressY = e.clientY;
@@ -1206,7 +1254,7 @@ function _onPressStart(e) {
 // treated as a press because nothing checked for movement before the timer fired.
 function _onPressMove(e) {
     if (!_pressTimer) return;
-    if (Math.abs(e.clientX-_pressX) > 10 || Math.abs(e.clientY-_pressY) > 10) {
+    if (Math.abs(e.clientX-_pressX) > 6 || Math.abs(e.clientY-_pressY) > 6) {
         clearTimeout(_pressTimer); _pressTimer = null;
     }
 }
@@ -1312,6 +1360,39 @@ function _wireScreen(screen, params, container) {
             await _navTo('taskDetail',{id:taskId,title:taskData?.title},true);
         };
     }
+
+    const myPhotoInp = _el('mMyPhotoInput');
+    if (myPhotoInp) myPhotoInp.onchange = async () => {
+        const file = myPhotoInp.files[0]; myPhotoInp.value = '';
+        if (!file) return;
+        _toast('Uploading photo…');
+        const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g,'_');
+        const filePath = `profiles/${_uid}/${Date.now()}_${safeName}`;
+        const { error: upErr } = await sb.storage.from('avatars').upload(filePath, file, { upsert:true });
+        if (upErr) { _toast('Upload failed: '+upErr.message,'err'); return; }
+        const { data: pub } = sb.storage.from('avatars').getPublicUrl(filePath);
+        const { error: dbErr } = await sb.from('profiles').update({ avatar_url: pub.publicUrl }).eq('id',_uid);
+        if (dbErr) { _toast('Saved photo but could not update profile: '+dbErr.message,'err'); return; }
+        _toast('Photo updated ✓');
+        await _navTo('settings',null,true);
+    };
+
+    const deptPhotoInp = _el('mDeptPhotoInput');
+    if (deptPhotoInp) deptPhotoInp.onchange = async () => {
+        const file = deptPhotoInp.files[0]; deptPhotoInp.value = '';
+        const deptId = _pendingDeptPhoto; _pendingDeptPhoto = null;
+        if (!file || !deptId) return;
+        _toast('Uploading photo…');
+        const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g,'_');
+        const filePath = `departments/${deptId}/${Date.now()}_${safeName}`;
+        const { error: upErr } = await sb.storage.from('avatars').upload(filePath, file, { upsert:true });
+        if (upErr) { _toast('Upload failed: '+upErr.message,'err'); return; }
+        const { data: pub } = sb.storage.from('avatars').getPublicUrl(filePath);
+        localStorage.setItem('dept_photo_'+deptId, pub.publicUrl);
+        const d = DEPTS.find(d=>d.id===deptId); if (d) d.photo = pub.publicUrl;
+        _toast('Department photo updated ✓');
+        await _navTo('home',null,true);
+    };
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1423,6 +1504,12 @@ function _removeBookmark(i) {
     localStorage.setItem('tf_bookmarks_'+_uid, JSON.stringify(bms));
     _navTo('marks',null,true);
 }
+async function _openTaskFile(path) {
+    if (!path) { _toast('File path missing','err'); return; }
+    const { data, error } = await sb.storage.from('task-proofs').createSignedUrl(path, 60);
+    if (error || !data?.signedUrl) { _toast('Could not open file: '+(error?.message||'unknown error'),'err'); return; }
+    window.open(data.signedUrl, '_blank');
+}
 async function _cancelScheduled(id) {
     await sb.from('scheduled_messages').delete().eq('id',id).eq('tenant_id',_tid);
     _toast('Scheduled message cancelled'); _navTo('scheduled',null,true);
@@ -1448,6 +1535,26 @@ async function _changePassword() {
 function _el(id) { return document.getElementById(id); }
 function x(s)    { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function _init(n){ return (n||'?').split(' ').map(w=>w[0]).join('').toUpperCase().substring(0,2)||'?'; }
+function _avatarHTML(photoUrl, name, bg, cls='m-av') {
+    if (photoUrl) return `<div class="${cls} m-av-photo" style="background-image:url('${x(photoUrl)}');"></div>`;
+    return `<div class="${cls}" style="background:${bg||'var(--accent)'};">${_init(name)}</div>`;
+}
+function _sentenceCase(s){ s=(s||'').trim(); return s ? s[0].toUpperCase()+s.slice(1).toLowerCase() : s; }
+// Always formats in true IST (Asia/Kolkata), regardless of the device's own
+// timezone setting — locale ('en-IN') only controls display convention
+// (DD/MM order etc), not which timezone the clock is read in.
+function _fmtIST(ts, withTime=true) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        day:'2-digit', month:'short', year:'2-digit',
+        hour:'2-digit', minute:'2-digit', hour12:false,
+        timeZone:'Asia/Kolkata'
+    }).formatToParts(d);
+    const get = t => parts.find(p=>p.type===t)?.value || '';
+    const datePart = `${get('day')}-${get('month')}-${get('year')}`;
+    return withTime ? `${datePart} ${get('hour')}:${get('minute')}` : datePart;
+}
 function _uname(id){ const u=_users.find(u=>u.id===id); return u?.full_name||u?.email?.split('@')[0]||'Someone'; }
 function _dmRoom(uid){ return ['dm',...[_uid,uid].sort()].join('_'); }
 function _snip(h,n){ const t=(h||'').replace(/<[^>]*>/g,'').trim(); return t.length>n?t.substring(0,n)+'…':t; }
@@ -1458,7 +1565,7 @@ function _ago(ts){
     if(d<3600)  return Math.floor(d/60)+'m ago';
     if(d<86400) return Math.floor(d/3600)+'h ago';
     if(d<604800)return Math.floor(d/86400)+'d ago';
-    return new Date(ts).toLocaleDateString('en-IN');
+    return _fmtIST(ts, false);
 }
 function _scrollTop(id){ const el=_el(id); if(el) el.scrollTop=0; }
 function _toast(msg, type='ok'){
@@ -1486,11 +1593,16 @@ function _injectCSS(){
 #mSB{display:flex;align-items:center;gap:6px;
   padding:10px 12px;flex-shrink:0;position:relative;
   background:var(--bg-sidebar,#f6f8fa);border-bottom:1px solid var(--border-color,#e5e7eb);}
-.m-sb-info{flex:1;min-width:0;display:flex;flex-direction:column;cursor:pointer;}
+.m-sb-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;cursor:pointer;}
 .m-sb-user{font-size:15px;font-weight:700;color:var(--text-primary,#111);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.m-sb-school{font-size:11.5px;color:var(--text-secondary,#6b7280);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.m-sb-school-card{font-size:10.5px;font-weight:700;letter-spacing:.03em;
+  color:var(--accent,#6366f1);background:linear-gradient(145deg,var(--bg-body,#fff),var(--bg-sidebar,#eef0f3));
+  border:1px solid var(--border-color,#e5e7eb);border-radius:8px;
+  padding:3px 9px;display:inline-block;width:fit-content;
+  box-shadow:0 1px 0 rgba(255,255,255,.7) inset, 0 2px 4px rgba(0,0,0,.12), 0 1px 0 rgba(0,0,0,.04);
+  text-shadow:0 1px 0 rgba(255,255,255,.4);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
 .m-sb-search{flex:1;display:flex;}
 .m-sb-search input{flex:1;border:1.5px solid var(--border-color,#e5e7eb);
   border-radius:18px;padding:8px 14px;font-size:14px;background:var(--bg-body,#fff);
@@ -1512,21 +1624,25 @@ function _injectCSS(){
 .mFlex{display:flex;flex-direction:column;height:100%;overflow:hidden;}
 .slide-fwd{animation:sfwd .25s cubic-bezier(.4,0,.2,1);}
 .slide-back{animation:sback .25s cubic-bezier(.4,0,.2,1);}
+.slide-up{animation:sup .28s cubic-bezier(.4,0,.2,1);}
+.slide-down{animation:sdown .22s cubic-bezier(.4,0,.2,1);}
+@keyframes sup{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@keyframes sdown{from{transform:translateY(40%);opacity:.4}to{transform:translateY(0);opacity:1}}
 @keyframes sfwd{from{transform:translateX(100%)}to{transform:translateX(0)}}
 @keyframes sback{from{transform:translateX(-30%)}to{transform:translateX(0)}}
 
-/* ── Bottom nav — 8 tabs WITH labels ────────────────────────────────── */
+/* ── Bottom nav — 5 tabs WITH labels, bigger now that there's room ─── */
 #mNav{display:flex;background:var(--bg-sidebar,#f6f8fa);
   border-top:1.5px solid var(--border-color,#e5e7eb);
   padding-bottom:env(safe-area-inset-bottom,0);flex-shrink:0;}
 .mn-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:2px;padding:8px 1px 7px;font-size:20px;
+  gap:4px;padding:9px 1px 8px;font-size:25px;
   color:var(--text-secondary,#6b7280);border:none;background:none;
   cursor:pointer;-webkit-tap-highlight-color:transparent;
-  transition:color .15s;min-height:54px;}
-.mn-lbl{font-size:9.5px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;}
+  transition:color .15s;min-height:60px;}
+.mn-lbl{font-size:11px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;}
 .mn-btn.active{color:var(--accent,#6366f1);}
-.mn-btn.active i{transform:scale(1.1);}
+.mn-btn.active i{transform:scale(1.12);}
 .mn-btn:active{opacity:.6;}
 .mn-btn i{transition:transform .2s;}
 
@@ -1553,6 +1669,13 @@ function _injectCSS(){
 .m-av-sm{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;
   color:#fff;font-weight:700;font-size:13px;flex-shrink:0;}
 .sq{border-radius:14px!important;}
+.m-av-photo{background-size:cover;background-position:center;color:transparent!important;}
+.m-av-wrap{position:relative;flex-shrink:0;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.m-av-cam{position:absolute;bottom:-2px;right:-2px;width:20px;height:20px;border-radius:50%;
+  background:var(--accent,#6366f1);color:#fff;display:flex;align-items:center;justify-content:center;
+  font-size:9px;border:2px solid var(--bg-body,#fff);}
+.m-av-wrap-lg{width:84px;height:84px;}
+.m-av-lg{width:84px!important;height:84px!important;font-size:30px!important;}
 .m-ri{flex:1;min-width:0;}
 .m-rn{font-size:16px;font-weight:600;color:var(--text-primary,#111);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -1578,7 +1701,7 @@ function _injectCSS(){
   60%  { background:color-mix(in srgb, var(--accent) 22%, var(--card-bg)); box-shadow:0 0 0 2px var(--accent); }
   100% { background:var(--card-bg); box-shadow:none; }
 }
-.m-btext{font-size:16px;line-height:1.5;color:var(--text-primary,#111);}
+.m-btext{font-size:17px;line-height:1.5;color:var(--text-primary,#111);}
 .m-divider{text-align:center;font-size:11px;color:var(--text-secondary);padding:8px 0;}
 
 /* ── Scroll-to-bottom arrow (WhatsApp-style) ────────────────────────── */
@@ -1597,7 +1720,7 @@ function _injectCSS(){
 .m-chip.mine{background:color-mix(in srgb, var(--accent) 12%, var(--bg-sidebar));border-color:var(--accent);}
 .m-chip-cnt{font-size:11px;color:var(--text-secondary);}
 .m-chip-tag{background:none;}
-.m-emoji-btn{font-size:28px;background:none;border:none;cursor:pointer;padding:6px;border-radius:8px;}
+.m-emoji-btn{font-size:34px;background:none;border:none;cursor:pointer;padding:8px;border-radius:10px;line-height:1;}
 .m-emoji-btn:active{background:var(--bg-sidebar);}
 .m-tag-btn{font-size:13px;font-weight:700;background:none;border:1.5px solid;padding:8px 14px;
   border-radius:20px;cursor:pointer;}
@@ -1642,6 +1765,13 @@ function _injectCSS(){
 .m-tc-title{font-size:16px;font-weight:700;flex:1;line-height:1.4;}
 .m-badge{font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap;flex-shrink:0;}
 .m-tc-meta{display:flex;gap:12px;margin-top:8px;font-size:13px;color:var(--text-secondary,#6b7280);}
+.m-file-link{background:var(--bg-sidebar,#f6f8fa);border:1px solid var(--border-color,#e5e7eb);
+  border-radius:8px;padding:6px 12px;font-size:13.5px;color:var(--accent,#6366f1);font-weight:600;
+  cursor:pointer;display:inline-flex;align-items:center;gap:6px;-webkit-tap-highlight-color:transparent;}
+.m-file-link:active{opacity:.7;}
+.m-file-link i{font-size:11px;}
+.m-tc-people{margin-top:8px;padding-top:8px;border-top:1px solid var(--border-color,#e5e7eb);
+  display:flex;flex-direction:column;gap:3px;font-size:12.5px;color:var(--text-secondary,#6b7280);}
 
 /* ── Theme picker grid (Settings + sheet) ────────────────────────────── */
 .m-theme-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}

@@ -28,16 +28,6 @@
 <body class="antialiased overflow-hidden">
 
     <div id="root" class="h-screen flex overflow-hidden"></div>
-    <script>
-      // Belt-and-suspenders for the FOUC fix in css/mobile-app.css: that CSS
-      // media-query rule covers the steady state, but a PWA's very first
-      // viewport-width read can occasionally lag a frame behind the actual
-      // device width right at launch. This runs synchronously, before any
-      // other script, and doesn't depend on the media query having resolved.
-      if (window.innerWidth <= 768) {
-        document.getElementById('root').style.setProperty('display', 'none', 'important');
-      }
-    </script>
     <div id="pdf-generation-container" style="display:none;"></div>
 
     <!--

@@ -74,6 +74,15 @@ const DEPTS = [
 // ══════════════════════════════════════════════════════════════
 window.initMobileApp = async function() {
     if (window.innerWidth > MOB) return;
+    // Hide the desktop UI the instant we know mobile.js is taking over —
+    // synchronous, before any await, so there's no flash. This must NOT be
+    // done unconditionally via CSS/inline-script on every mobile pageview:
+    // the login form also renders into #root, and a blanket "#root{display:
+    // none}" on any mobile width hides the login screen itself, before the
+    // user has even logged in. initMobileApp() only ever runs after a
+    // successful login (called from renderMainApp), so hiding #root here
+    // is correctly scoped and can't block login.
+    _el('root')?.style.setProperty('display', 'none', 'important');
     await _ctx();
     _injectCSS();
     _buildShell();
@@ -82,6 +91,7 @@ window.initMobileApp = async function() {
     window.addEventListener('resize', () => {
         const m = window.innerWidth <= MOB;
         _el('mobileApp')?.style.setProperty('display', m ? 'flex' : 'none', 'important');
+        if (m) _el('root')?.style.setProperty('display', 'none', 'important');
     }, { passive: true });
 };
 

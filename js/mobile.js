@@ -773,24 +773,24 @@ async function _taskDetail(p) {
 // ══════════════════════════════════════════════════════════════
 async function _reminders() {
     const { data } = await sb.from('reminders')
-        .select('id,title,remind_at,note')
-        .eq('tenant_id',_tid).order('remind_at',{ascending:true}).limit(30);
+        .select('id,reminder_time,message_id,messages(text,room_id)')
+        .eq('user_id',_uid).eq('triggered',false)
+        .order('reminder_time',{ascending:true}).limit(30);
 
     return `<div class="mScr-inner">
       <div class="m-hdr m-hdr-plain"><div class="m-htitle">Reminders</div></div>
       ${(data||[]).length ? (data||[]).map(r => {
-        const d = new Date(r.remind_at);
-        const past = d < new Date();
+        const past = new Date(r.reminder_time) < new Date();
+        const snippet = _snip(r.messages?.text || '(original message unavailable)', 60);
         return `
         <div class="m-row" style="gap:12px;">
           <div class="m-av" style="background:${past?'#9ca3af':'#f59e0b'};border-radius:12px;font-size:18px;">⏰</div>
           <div class="m-ri">
-            <div class="m-rn" style="${past?'text-decoration:line-through;opacity:.6;':''}">${x(r.title)}</div>
-            <div class="m-rs">${_fmtIST(r.remind_at)}</div>
-            ${r.note?`<div class="m-rs" style="margin-top:2px;">${x(r.note)}</div>`:''}
+            <div class="m-rn" style="${past?'text-decoration:line-through;opacity:.6;':''}">${x(snippet)}</div>
+            <div class="m-rs">${_fmtIST(r.reminder_time)}</div>
           </div>
           <div style="display:flex;flex-direction:column;gap:6px;">
-            <button class="m-icon-btn" data-action="editReminder" data-id="${r.id}" data-title="${x(r.title)}" data-at="${r.remind_at}" data-note="${x(r.note||'')}">
+            <button class="m-icon-btn" data-action="editReminder" data-id="${r.id}" data-at="${r.reminder_time}" data-text="${x(snippet)}">
               <i class="fa-solid fa-pen"></i>
             </button>
             <button class="m-icon-btn" style="color:#ef4444;" data-action="deleteReminder" data-id="${r.id}">
@@ -807,12 +807,10 @@ async function _remindEdit(p) {
         <div class="m-htitle">Edit Reminder</div>
       </div>
       <div style="padding:20px;display:flex;flex-direction:column;gap:14px;">
-        <div class="m-field"><label class="m-label">Title</label>
-          <input class="m-inp" id="rTitle" value="${x(p.title)}" placeholder="Reminder title"></div>
+        <div class="m-field"><label class="m-label">Reminder for</label>
+          <div style="font-size:14px;color:var(--text-secondary);">${x(p.text||'')}</div></div>
         <div class="m-field"><label class="m-label">Date & Time</label>
           <input class="m-inp" id="rAt" type="datetime-local" value="${p.at ? new Date(p.at).toISOString().slice(0,16) : ''}"></div>
-        <div class="m-field"><label class="m-label">Note (optional)</label>
-          <input class="m-inp" id="rNote" value="${x(p.note||'')}" placeholder="Add a note"></div>
         <button class="m-action-btn" style="background:#6366f1;" data-action="saveReminder" data-id="${p.id}">
           <i class="fa-solid fa-save"></i> Save Changes
         </button>
@@ -1018,6 +1016,9 @@ window._showMsgActions = function(params) {
         <div class="m-sheet-row" data-action="convertTask" data-id="${params.id}" data-text="${x(params.text)}">
           <i class="fa-solid fa-list-check" style="color:#16a34a;"></i> Convert to Task
         </div>
+        <div class="m-sheet-row" data-action="setReminder" data-id="${params.id}" data-text="${x(params.text)}">
+          <i class="fa-solid fa-bell" style="color:#f59e0b;"></i> Set Reminder
+        </div>
         <div class="m-sheet-row" data-action="forwardMsg" data-id="${params.id}" data-text="${x(params.text)}">
           <i class="fa-solid fa-share" style="color:#0ea5e9;"></i> Forward Message
         </div>
@@ -1112,6 +1113,31 @@ async function _confirmSchedule(targetId, room) {
     _ceClear(targetId);
     window._closeSheet();
     _toast('Message scheduled ✓ 🕐');
+}
+function _showReminderSheet(mid, text) {
+    const sheet = _el('mSheetInner');
+    sheet.innerHTML = `
+      <div class="m-sheet-handle"></div>
+      <div class="m-sheet-title">Set Reminder</div>
+      <div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:12px;">
+        <div style="font-size:13px;color:var(--text-secondary);">${_snip(text,80)}</div>
+        <input class="m-inp" id="remAt" type="datetime-local">
+        <button class="m-action-btn" style="background:#f59e0b;" data-action="confirmReminder" data-id="${mid}">
+          <i class="fa-solid fa-bell"></i> Set Reminder
+        </button>
+      </div>`;
+    _openSheet();
+}
+async function _confirmReminder(mid) {
+    const at = _el('remAt')?.value;
+    if (!at) { _toast('Pick a date and time','err'); return; }
+    const { error } = await sb.from('reminders').insert({
+        user_id:_uid, message_id:mid, tenant_id:_tid,
+        reminder_time:new Date(at).toISOString(), triggered:false
+    });
+    if (error) { _toast('Could not set reminder: '+error.message,'err'); return; }
+    window._closeSheet();
+    _toast('Reminder set ✓ ⏰');
 }
 function _showForwardSheet(text) {
     const sheet = _el('mSheetInner');
@@ -1211,7 +1237,7 @@ async function _onShellClick(e) {
         case 'dm':        await _navTo('dm',{uid:a.uid,name:a.name,room:a.room,scrollTo:a.scroll||undefined}); break;
         case 'thread':    await _navTo('thread',{id:a.id,text:a.text,sender:a.sender,time:a.time,room:a.room,rname:a.rname,rcol:a.rcol}); break;
         case 'taskDetail':await _navTo('taskDetail',{id:a.id,title:a.title}); break;
-        case 'editReminder': await _navTo('remindEdit',{id:a.id,title:a.title,at:a.at,note:a.note}); break;
+        case 'editReminder': await _navTo('remindEdit',{id:a.id,text:a.text,at:a.at}); break;
         case 'gotoBookmark':
             if (a.isdm === '1') await _navTo('dm',{uid:a.uid,name:a.rname,room:a.room,scrollTo:a.scroll});
             else await _navTo('groupChat',{room:a.room,name:a.rname,color:a.rcol,scrollTo:a.scroll});
@@ -1313,6 +1339,8 @@ async function _onSheetClick(e) {
         }
         case 'replyThread': window._closeSheet(); await _navTo('thread',{id:a.id,text:a.text,room:a.room,rname:a.rname,rcol:a.rcol,sender:'',time:''}); break;
         case 'convertTask': window._closeSheet(); _showConvertTask(a.id, a.text); break;
+        case 'setReminder': _showReminderSheet(a.id, a.text); break;
+        case 'confirmReminder': await _confirmReminder(a.id); break;
         case 'forwardMsg':  _showForwardSheet(a.text); break;
         case 'doForward':   await _doForward(a.room, a.text); break;
         case 'confirmSchedule': await _confirmSchedule(a.target, a.room); break;
@@ -1639,14 +1667,13 @@ async function _mobTaskAction(taskId, action) {
 // REMINDER / BOOKMARK / SCHEDULED / PROFILE ACTIONS
 // ══════════════════════════════════════════════════════════════
 async function _deleteReminder(id) {
-    await sb.from('reminders').delete().eq('id',id).eq('tenant_id',_tid);
+    await sb.from('reminders').delete().eq('id',id).eq('user_id',_uid);
     _toast('Reminder deleted'); await _navTo('remind',null,true);
 }
 async function _saveReminder(id) {
-    const title = _el('rTitle')?.value?.trim(); if(!title) return;
-    const remind_at = _el('rAt')?.value;
-    const note = _el('rNote')?.value?.trim()||null;
-    await sb.from('reminders').update({title, remind_at, note}).eq('id',id).eq('tenant_id',_tid);
+    const at = _el('rAt')?.value; if (!at) { _toast('Pick a date and time','err'); return; }
+    const { error } = await sb.from('reminders').update({ reminder_time:new Date(at).toISOString() }).eq('id',id).eq('user_id',_uid);
+    if (error) { _toast('Could not save: '+error.message,'err'); return; }
     _toast('Reminder saved ✓'); _back();
 }
 function _removeBookmark(i) {

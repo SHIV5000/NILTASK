@@ -4,7 +4,7 @@ import './auth.js';
 import './tasks.js';
 import './messages.js';
 
-// v1.55.0 - Mobile/Tenant Baseline + Dynamic DB Groups + Universal Avatars + RBAC
+// v1.56.0 - Forward Modal Linked, File Rename Trigger Restored, Groups Cached
 
 let messageSubscription = null;
 let taskSubscription = null;
@@ -45,9 +45,10 @@ window.renderMainApp = function() {
     document.documentElement.style.setProperty('--wm-light', `url('data:image/svg+xml;utf8,${svgL}')`);
     document.documentElement.style.setProperty('--wm-dark', `url('data:image/svg+xml;utf8,${svgD}')`);
 
+    const userAvatar = window._userAvatarUrl || window.currentUser?.user_metadata?.avatar_url || null;
+
     document.getElementById('root').innerHTML = `
         <div class="flex h-full w-full" style="background-color:var(--bg-body);">
-
             <div id="leftSidebar" class="left-sidebar flex-col border-r z-20 shadow-sm" style="display:${leftDisplay};width:${leftWidth};background-color:var(--bg-sidebar);border-color:var(--border-color);">
                 <div style="margin:10px 10px 0;background:linear-gradient(135deg,var(--accent) 0%,color-mix(in srgb,var(--accent) 55%,#000) 100%);border-radius:13px;padding:12px 15px;text-align:center;box-shadow:0 5px 0 rgba(0,0,0,.22),0 8px 20px rgba(0,0,0,.15),inset 0 1px 0 rgba(255,255,255,.16);position:relative;overflow:hidden;transform:perspective(400px) rotateX(1.5deg);">
                     <div style="position:absolute;top:0;left:0;right:0;height:50%;background:rgba(255,255,255,.08);border-radius:13px 13px 0 0;"></div>
@@ -73,40 +74,25 @@ window.renderMainApp = function() {
                         </button>
                     </div>
                 </div>
-
                 <div class="p-3">
-                    <input type="text" id="sidebarSearch" placeholder="Search departments & staff..."
-                        class="ui-input w-full p-2 rounded-xl text-sm outline-none"
-                        oninput="window.filterSidebar(this.value)">
+                    <input type="text" id="sidebarSearch" placeholder="Search departments & staff..." class="ui-input w-full p-2 rounded-xl text-sm outline-none" oninput="window.filterSidebar(this.value)">
                 </div>
-
                 <div id="chatsList" class="flex-1 overflow-y-auto px-2 pb-4"></div>
-
                 <div class="p-3 border-t flex flex-col gap-1.5" style="border-color:var(--border-color);background-color:var(--bg-body);">
                     <div class="flex items-center gap-2 w-full">
                         <div class="flex-1 text-[12px] font-bold flex items-center gap-2 border shadow-sm px-2 py-1.5 rounded-full justify-center min-w-0" style="color:var(--text-primary);border-color:var(--border-color);background-color:var(--bg-sidebar);">
                             <div id="sidebarAvatar" class="w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px] flex-shrink-0 overflow-hidden" style="background-color:var(--accent);">
-                                ${(window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + (window.currentUser?.id||''))) ? `<img src="${window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + (window.currentUser?.id||''))}" style="width:100%;height:100%;object-fit:cover;">` : userNameDisplay.charAt(0).toUpperCase()}
+                                ${userAvatar ? `<img src="${userAvatar}" style="width:100%;height:100%;object-fit:cover;">` : userNameDisplay.charAt(0).toUpperCase()}
                             </div>
                             <div>
                                 <span class="truncate" id="sidebarNameDisplay">${window.escapeHtml(userNameDisplay.toUpperCase())}</span>
-                                <div style="font-size:9px;font-weight:700;color:var(--accent);letter-spacing:.06em;text-transform:uppercase;margin-top:1px;opacity:.85;">
-                                    ${window.currentRoleName || ''}
-                                </div>
+                                <div style="font-size:9px;font-weight:700;color:var(--accent);letter-spacing:.06em;text-transform:uppercase;margin-top:1px;opacity:.85;">${window.currentRoleName || ''}</div>
                             </div>
                         </div>
-                        <button onclick="window.openSettings()" title="Profile Settings"
-                            class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border hover:bg-gray-100 transition-colors"
-                            style="color:var(--text-secondary);border-color:var(--border-color);background-color:var(--bg-sidebar);">
-                            <i class="fa-solid fa-gear text-sm"></i>
-                        </button>
-                        <button onclick="window.openDashboard()" title="My Dashboard"
-                            class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border hover:bg-gray-100 transition-colors"
-                            style="color:var(--text-secondary);border-color:var(--border-color);background-color:var(--bg-sidebar);">
-                            <i class="fa-solid fa-chart-bar text-sm"></i>
-                        </button>
+                        <button onclick="window.openSettings()" title="Profile Settings" class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border hover:bg-gray-100 transition-colors" style="color:var(--text-secondary);border-color:var(--border-color);background-color:var(--bg-sidebar);"><i class="fa-solid fa-gear text-sm"></i></button>
+                        <button onclick="window.openDashboard()" title="My Dashboard" class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border hover:bg-gray-100 transition-colors" style="color:var(--text-secondary);border-color:var(--border-color);background-color:var(--bg-sidebar);"><i class="fa-solid fa-chart-bar text-sm"></i></button>
                     </div>
-                    <div class="text-[9px] font-bold tracking-wider uppercase text-center" style="color:var(--text-secondary);">VER 1.55.0</div>
+                    <div class="text-[9px] font-bold tracking-wider uppercase text-center" style="color:var(--text-secondary);">VER 1.56.0</div>
                 </div>
             </div>
 
@@ -115,40 +101,18 @@ window.renderMainApp = function() {
             <div class="flex-1 flex flex-col relative min-w-0 chat-area">
                 <div class="p-4 border-b z-10 flex justify-between items-center shadow-sm backdrop-blur" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
                     <div class="flex items-center gap-3">
-                        <button id="mobileSidebarToggle" onclick="window.toggleMobileSidebar()"
-                            style="display:none;background:none;border:none;cursor:pointer;padding:4px;color:var(--text-secondary);font-size:22px;line-height:1;">
-                            <i class="fa-solid fa-bars"></i>
-                        </button>
+                        <button id="mobileSidebarToggle" onclick="window.toggleMobileSidebar()" style="display:none;background:none;border:none;cursor:pointer;padding:4px;color:var(--text-secondary);font-size:22px;line-height:1;"><i class="fa-solid fa-bars"></i></button>
                         <i class="ti ti-layout-sidebar-left cursor-pointer pr-3 border-r" onclick="window.toggleLeftSidebar()" title="Toggle Sidebar" style="color:var(--text-secondary);border-color:var(--border-color);"></i>
                         <span id="roomTitleDisplay" class="text-lg font-bold tracking-tight" style="color:var(--text-primary);">Loading...</span>
-                        <button id="groupSettingsBtn" onclick="window.openGroupSettings()" title="Group Settings"
-                            class="ml-1 w-6 h-6 rounded flex items-center justify-center hover:bg-gray-100 transition-colors hidden"
-                            style="color:var(--text-secondary);">
-                            <i class="fa-solid fa-sliders text-xs"></i>
-                        </button>
+                        <button id="groupSettingsBtn" onclick="window.openGroupSettings()" title="Group Settings" class="ml-1 w-6 h-6 rounded flex items-center justify-center hover:bg-gray-100 transition-colors hidden" style="color:var(--text-secondary);"><i class="fa-solid fa-sliders text-xs"></i></button>
                     </div>
                     <div class="flex items-center gap-4" style="color:var(--text-secondary);">
-                        ${window.canSchedule?.() !== false ? `
-                        <div class="topbar-icon-btn top-bar-icon" id="topBarScheduleBtn" onclick="window.openTopPanel('scheduled')" title="Scheduled Messages">
-                            <i class="ti ti-clock text-xl"></i><span>Schedule</span>
-                        </div>` : ''}
-                        <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('reminders')" title="Reminders">
-                            <i class="fa-solid fa-stopwatch text-[18px]"></i><span>Remind</span>
-                        </div>
-                        <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('bookmarks')" title="Bookmarks">
-                            <i class="ti ti-bookmark text-xl"></i><span>Bookmarks</span>
-                        </div>
-                        <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('alerts')" title="Notifications">
-                            <i class="ti ti-bell text-xl"></i><span>Alerts</span>
-                        </div>
-                        <div class="topbar-icon-btn top-bar-icon" onclick="window.openActivityFeed()" title="Activity Feed">
-                            <i class="fa-solid fa-bolt text-[17px]"></i><span>Activity</span>
-                        </div>
-                        <div class="border-l pl-4 ml-1 flex gap-3" style="border-color:var(--border-color);">
-                            <div class="topbar-icon-btn" onclick="window.toggleRightSidebar()" title="Toggle Task Panel">
-                                <i class="ti ti-layout-sidebar-right text-xl"></i><span>Tasks</span>
-                            </div>
-                        </div>
+                        ${window.canSchedule?.() !== false ? `<div class="topbar-icon-btn top-bar-icon" id="topBarScheduleBtn" onclick="window.openTopPanel('scheduled')" title="Scheduled Messages"><i class="ti ti-clock text-xl"></i><span>Schedule</span></div>` : ''}
+                        <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('reminders')" title="Reminders"><i class="fa-solid fa-stopwatch text-[18px]"></i><span>Remind</span></div>
+                        <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('bookmarks')" title="Bookmarks"><i class="ti ti-bookmark text-xl"></i><span>Bookmarks</span></div>
+                        <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('alerts')" title="Notifications"><i class="ti ti-bell text-xl"></i><span>Alerts</span></div>
+                        <div class="topbar-icon-btn top-bar-icon" onclick="window.openActivityFeed()" title="Activity Feed"><i class="fa-solid fa-bolt text-[17px]"></i><span>Activity</span></div>
+                        <div class="border-l pl-4 ml-1 flex gap-3" style="border-color:var(--border-color);"><div class="topbar-icon-btn" onclick="window.toggleRightSidebar()" title="Toggle Task Panel"><i class="ti ti-layout-sidebar-right text-xl"></i><span>Tasks</span></div></div>
                         <input type="text" id="messageSearchBar" placeholder="Search messages..." class="ui-input px-3 py-1 rounded-full text-sm w-40 outline-none ml-1">
                     </div>
                 </div>
@@ -160,9 +124,7 @@ window.renderMainApp = function() {
                 <div class="flex flex-col relative border-t p-3 px-5 z-20" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
                     <div id="replyBanner" class="hidden mx-0 mt-0 mb-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl flex justify-between items-center z-0 relative shadow-sm text-xs">
                         <div class="text-indigo-700 flex items-center gap-2 overflow-hidden">
-                            <i class="fa-solid fa-reply"></i>
-                            <span class="font-bold whitespace-nowrap">Replying to:</span>
-                            <span id="replyBannerText" class="italic truncate text-indigo-500 max-w-[200px]"></span>
+                            <i class="fa-solid fa-reply"></i><span class="font-bold whitespace-nowrap">Replying to:</span><span id="replyBannerText" class="italic truncate text-indigo-500 max-w-[200px]"></span>
                         </div>
                         <i class="fa-solid fa-times text-indigo-400 hover:text-red-500 cursor-pointer p-1" onclick="window.cancelReply()"></i>
                     </div>
@@ -179,9 +141,7 @@ window.renderMainApp = function() {
                             <button onclick="window.toggleInputEmojiPicker()" class="p-2 transition-colors" title="Emoji" style="color:var(--text-secondary);"><i class="ti ti-mood-smile text-xl"></i></button>
                             <button onclick="document.getElementById('fileAttachment').click()" class="p-2 transition-colors" title="Attach File" style="color:var(--text-secondary);"><i class="ti ti-paperclip text-xl"></i></button>
                             <input type="file" id="fileAttachment" class="hidden">
-                            <div class="flex-1 min-w-0 bg-transparent py-1">
-                                <div id="richEditor" class="w-full" style="color:var(--text-primary);"></div>
-                            </div>
+                            <div class="flex-1 min-w-0 bg-transparent py-1"><div id="richEditor" class="w-full" style="color:var(--text-primary);"></div></div>
                             <button onclick="window.openLinkModal('main')" class="p-2 transition-colors" title="Insert Link Pill" style="color:var(--text-secondary);"><i class="fa-solid fa-link text-[16px]"></i></button>
                             ${window.canSchedule?.() !== false ? '<button onclick="window.showScheduleModal()" class="p-2 transition-colors" title="Schedule" style="color:var(--text-secondary);"><i class="ti ti-clock text-xl"></i></button>' : ''}
                             <button id="sendBtn" class="text-white rounded-lg shadow-md transition-colors h-[38px] w-[46px] flex items-center justify-center mb-0.5" style="background-color:var(--accent);"><i class="ti ti-send text-lg"></i></button>
@@ -195,49 +155,205 @@ window.renderMainApp = function() {
             <div id="rightSidebar" class="right-sidebar border-l flex-col z-20 shadow-sm" style="display:${rightDisplay};width:${rightWidth};background-color:var(--bg-sidebar);border-color:var(--border-color);">
                 <div class="w-full h-full flex flex-col min-w-0">
                     <div id="rightSidebarFilters" class="border-b" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
-                        <select id="taskFilter" class="hidden" onchange="window.loadTasksForPanel()">
-                            <option value="all">All Tasks</option><option value="today">Today</option>
-                            <option value="pending">Pending</option><option value="completed">Completed</option>
-                            <option value="allotted_by_me">Allotted by Me</option><option value="allotted_to_me">Allotted to Me</option>
-                            <option value="delegated">Delegated</option><option value="transferred">Transferred</option>
-                            <option value="date_range">Date Range</option>
-                        </select>
-                        <select id="taskSort" class="hidden" onchange="window.loadTasksForPanel()">
-                            <option value="deadline_asc">deadline_asc</option><option value="deadline_desc">deadline_desc</option>
-                            <option value="created_desc">created_desc</option><option value="created_asc">created_asc</option>
-                        </select>
+                        <select id="taskFilter" class="hidden" onchange="window.loadTasksForPanel()"><option value="all">All Tasks</option><option value="today">Today</option><option value="pending">Pending</option><option value="completed">Completed</option><option value="allotted_by_me">Allotted by Me</option><option value="allotted_to_me">Allotted to Me</option><option value="delegated">Delegated</option><option value="transferred">Transferred</option><option value="date_range">Date Range</option></select>
+                        <select id="taskSort" class="hidden" onchange="window.loadTasksForPanel()"><option value="deadline_asc">deadline_asc</option><option value="deadline_desc">deadline_desc</option><option value="created_desc">created_desc</option><option value="created_asc">created_asc</option></select>
                         <div class="px-3 pt-2.5 pb-1">
-                            <div class="text-[9px] font-black tracking-widest uppercase mb-1.5 flex items-center gap-1" style="color:var(--text-secondary);">
-                                <i class="fa-solid fa-filter" style="font-size:8px;color:var(--accent);"></i> Filter
-                            </div>
+                            <div class="text-[9px] font-black tracking-widest uppercase mb-1.5 flex items-center gap-1" style="color:var(--text-secondary);"><i class="fa-solid fa-filter" style="font-size:8px;color:var(--accent);"></i> Filter</div>
                             <div class="flex gap-1 flex-wrap pb-1">
-                                <button class="filter-pill fp-active" data-filter="all" onclick="window.setTaskFilter('all')">All</button>
-                                <button class="filter-pill" data-filter="today" onclick="window.setTaskFilter('today')">Today</button>
-                                <button class="filter-pill" data-filter="pending" onclick="window.setTaskFilter('pending')">Pending</button>
-                                <button class="filter-pill" data-filter="completed" onclick="window.setTaskFilter('completed')">Done</button>
-                                <button class="filter-pill" data-filter="allotted_by_me" onclick="window.setTaskFilter('allotted_by_me')">By Me</button>
-                                <button class="filter-pill" data-filter="allotted_to_me" onclick="window.setTaskFilter('allotted_to_me')">To Me</button>
-                                <button class="filter-pill" data-filter="delegated" onclick="window.setTaskFilter('delegated')">Delegated</button>
-                                <button class="filter-pill" data-filter="transferred" onclick="window.setTaskFilter('transferred')">Transferred</button>
-                                <button class="filter-pill" data-filter="date_range" onclick="window.setTaskFilter('date_range')">Date Range</button>
+                                <button class="filter-pill fp-active" data-filter="all" onclick="window.setTaskFilter('all')">All</button><button class="filter-pill" data-filter="today" onclick="window.setTaskFilter('today')">Today</button><button class="filter-pill" data-filter="pending" onclick="window.setTaskFilter('pending')">Pending</button><button class="filter-pill" data-filter="completed" onclick="window.setTaskFilter('completed')">Done</button><button class="filter-pill" data-filter="allotted_by_me" onclick="window.setTaskFilter('allotted_by_me')">By Me</button><button class="filter-pill" data-filter="allotted_to_me" onclick="window.setTaskFilter('allotted_to_me')">To Me</button><button class="filter-pill" data-filter="delegated" onclick="window.setTaskFilter('delegated')">Delegated</button><button class="filter-pill" data-filter="transferred" onclick="window.setTaskFilter('transferred')">Transferred</button><button class="filter-pill" data-filter="date_range" onclick="window.setTaskFilter('date_range')">Date Range</button>
                             </div>
                         </div>
                         <div class="px-3 pb-2.5">
                             <div class="text-[9px] font-black tracking-widest uppercase mb-1.5" style="color:var(--text-secondary);">Sort by</div>
                             <div class="flex gap-1 flex-wrap">
-                                <button class="filter-pill fp-active" data-sort="deadline_asc" onclick="window.setTaskSort('deadline_asc')" title="Deadline: Earliest"><i class="fa-solid fa-arrow-up text-[8px]"></i> Deadline ↑</button>
-                                <button class="filter-pill" data-sort="deadline_desc" onclick="window.setTaskSort('deadline_desc')" title="Deadline: Latest"><i class="fa-solid fa-arrow-down text-[8px]"></i> Deadline ↓</button>
-                                <button class="filter-pill" data-sort="created_desc" onclick="window.setTaskSort('created_desc')" title="Newest first">Newest</button>
-                                <button class="filter-pill" data-sort="created_asc" onclick="window.setTaskSort('created_asc')" title="Oldest first">Oldest</button>
+                                <button class="filter-pill fp-active" data-sort="deadline_asc" onclick="window.setTaskSort('deadline_asc')" title="Deadline: Earliest"><i class="fa-solid fa-arrow-up text-[8px]"></i> Deadline ↑</button><button class="filter-pill" data-sort="deadline_desc" onclick="window.setTaskSort('deadline_desc')" title="Deadline: Latest"><i class="fa-solid fa-arrow-down text-[8px]"></i> Deadline ↓</button><button class="filter-pill" data-sort="created_desc" onclick="window.setTaskSort('created_desc')" title="Newest first">Newest</button><button class="filter-pill" data-sort="created_asc" onclick="window.setTaskSort('created_asc')" title="Oldest first">Oldest</button>
                             </div>
                         </div>
                     </div>
                     <div id="dateRangeFilter" class="hidden px-3 pt-2 pb-3 border-b flex gap-2 items-center" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
-                        <input type="date" id="filterStartDate" onchange="window.loadTasksForPanel()" class="text-xs px-2 py-1.5 rounded w-full border outline-none" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
-                        <span class="text-[10px] font-bold" style="color:var(--text-secondary);">TO</span>
-                        <input type="date" id="filterEndDate" onchange="window.loadTasksForPanel()" class="text-xs px-2 py-1.5 rounded w-full border outline-none" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                        <input type="date" id="filterStartDate" onchange="window.loadTasksForPanel()" class="text-xs px-2 py-1.5 rounded w-full border outline-none" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);"><span class="text-[10px] font-bold" style="color:var(--text-secondary);">TO</span><input type="date" id="filterEndDate" onchange="window.loadTasksForPanel()" class="text-xs px-2 py-1.5 rounded w-full border outline-none" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
                     </div>
                     <div id="tasksPanel" class="flex-1 overflow-y-auto p-4" style="background-color:var(--bg-body);"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="fileRenameModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+            <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+                <h3 class="text-xl font-bold mb-4" style="color:var(--text-primary);">Rename Attachment</h3>
+                <input type="text" id="newFileNameInput" class="w-full p-3 rounded-xl mb-6 border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                <div class="flex gap-3">
+                    <button onclick="window.cancelFileRename()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
+                    <button onclick="window.confirmFileRename()" class="flex-1 py-2.5 rounded-xl font-bold text-white shadow-md" style="background-color:var(--accent);">Upload</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="scheduleModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+            <div class="rounded-2xl p-6 w-full max-w-sm mx-4 text-center shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+                <i class="fa-regular fa-clock text-4xl mb-4" style="color:var(--accent);"></i>
+                <h3 class="text-xl font-bold mb-2" style="color:var(--text-primary);">Schedule Message</h3>
+                <input type="datetime-local" id="scheduleDateTime" class="w-full p-3 rounded-xl mb-6 border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                <div class="flex gap-3">
+                    <button onclick="window.closeScheduleModal()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
+                    <button onclick="window.saveScheduledMessage()" class="flex-1 py-2.5 rounded-xl font-bold text-white shadow-md" style="background-color:var(--accent);">Confirm</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="dashboardModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+            <div class="rounded-2xl w-full max-w-2xl shadow-2xl border flex flex-col max-h-[90vh]" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+                <div class="p-5 border-b flex items-center justify-between flex-shrink-0" style="border-color:var(--border-color);">
+                    <h3 class="text-lg font-bold flex items-center gap-2" style="color:var(--text-primary);"><i class="fa-solid fa-chart-bar" style="color:var(--accent);"></i> My Dashboard</h3>
+                    <div class="flex items-center gap-2">
+                        <button onclick="window.downloadDashboardPDF()" class="text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 hover:opacity-80 transition-opacity" style="background:var(--accent);color:#fff;" title="Download Progress Card"><i class="fa-solid fa-download text-[10px]"></i> Download PDF</button>
+                        <button onclick="window.closeDashboard()" class="w-7 h-7 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors" style="color:var(--text-secondary);"><i class="fa-solid fa-times text-sm"></i></button>
+                    </div>
+                </div>
+                <div class="flex gap-1 p-4 pb-0 flex-shrink-0">
+                    ${['today','week','month','all'].map(p => `<button class="dash-tab px-3 py-1.5 rounded-lg text-xs font-bold border transition-all" data-period="${p}" onclick="window.loadDashboard('${p}')" style="border-color:var(--border-color);color:var(--text-secondary);background:var(--bg-body);">${p==='all'?'All Time':p.charAt(0).toUpperCase()+p.slice(1)}</button>`).join('')}
+                </div>
+                <div id="dashboardContent" class="flex-1 overflow-y-auto p-4"></div>
+            </div>
+        </div>
+
+        <div id="taskModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+            <div class="rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+                <h3 class="text-xl font-bold mb-4" style="color:var(--text-primary);">Create Task</h3>
+                <input id="taskTitle" class="w-full p-3 rounded-xl mb-3 border outline-none text-sm font-medium" placeholder="Task Title" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                <p class="text-xs font-bold mb-1 ml-1" style="color:var(--text-secondary);">Assigned To:</p>
+                <div class="border rounded-xl mb-3 overflow-hidden" style="border-color:var(--border-color);">
+                    <input type="text" id="assigneeSearch" onkeyup="window.filterAssignees()" placeholder="Search users..." class="w-full p-2.5 text-xs border-b outline-none font-medium" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                    <div id="assigneeCheckboxList" class="max-h-32 overflow-y-auto p-2 flex flex-col gap-1" style="background-color:var(--bg-sidebar);"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                        <p class="text-xs font-bold mb-1 ml-1" style="color:var(--text-secondary);">Deadline:</p>
+                        <input type="date" id="taskDeadline" class="w-full p-2.5 rounded-xl border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                    </div>
+                    <div>
+                        <p class="text-xs font-bold mb-1 ml-1" style="color:var(--text-secondary);">Priority:</p>
+                        <select id="taskPriority" class="w-full p-2.5 rounded-xl border outline-none text-sm font-medium" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                            <option value="Low">Low</option><option value="Medium" selected>Medium</option><option value="High">High</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex gap-3 mt-4 pt-2">
+                    <button onclick="window.closeTaskModal()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
+                    <button onclick="window.saveTaskMultiAssignee()" class="flex-1 py-2.5 rounded-xl text-white font-bold shadow-md" style="background-color:var(--accent);">Create Ticket</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="linkPillModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+            <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+                <h3 class="text-lg font-bold mb-1" style="color:var(--text-primary);">Insert Link</h3>
+                <p class="text-xs mb-4" style="color:var(--text-secondary);">URL is hidden — only the name appears as a pill to recipients.</p>
+                <input type="text" id="linkPillName" placeholder="Display name (e.g. View Report)" class="w-full p-3 rounded-xl mb-3 border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                <input type="url" id="linkPillUrl" placeholder="https://..." class="w-full p-3 rounded-xl mb-5 border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                <div class="flex gap-3">
+                    <button onclick="window.closeLinkModal()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
+                    <button onclick="window.insertLinkPill()" class="flex-1 py-2.5 rounded-xl font-bold text-white shadow-md" style="background-color:var(--accent);">Insert Pill</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="groupSettingsModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+            <div class="rounded-2xl w-full max-w-sm mx-4 shadow-2xl border flex flex-col max-h-[90vh]" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+                <div class="p-5 border-b flex items-center justify-between flex-shrink-0" style="border-color:var(--border-color);">
+                    <h3 class="text-base font-bold flex items-center gap-2" style="color:var(--text-primary);"><i class="fa-solid fa-users-gear" style="color:var(--accent);"></i> Group Configuration</h3>
+                    <button onclick="window.closeGroupSettings()" class="w-7 h-7 rounded-full flex items-center justify-center hover:bg-gray-100" style="color:var(--text-secondary);"><i class="fa-solid fa-times text-sm"></i></button>
+                </div>
+                <div class="flex-1 overflow-y-auto p-5">
+                    <input type="hidden" id="groupSettingsId">
+                    <div class="mb-4 flex flex-col items-center">
+                        <div class="relative mb-3">
+                            <img id="groupSettingsPhotoPreview" src="" alt="Group" style="display:none;width:72px;height:72px;border-radius:12px;object-fit:cover;border:3px solid var(--border-color);">
+                            <div id="groupSettingsPhotoPlaceholder" class="w-18 h-18 rounded-xl flex items-center justify-center text-white text-2xl font-bold" style="width:72px;height:72px;border-radius:12px;background:var(--accent);">G</div>
+                        </div>
+                        <label class="cursor-pointer text-xs font-bold px-3 py-1.5 rounded-full border transition-colors hover:opacity-80" style="color:var(--accent);border-color:var(--accent);">
+                            <i class="fa-solid fa-camera text-[10px] mr-1"></i> Upload Group Photo
+                            <input type="file" id="groupSettingsPhotoInput" class="hidden" accept="image/*" onchange="window.previewGroupPhoto(this)">
+                        </label>
+                    </div>
+                    <div class="mb-4">
+                        <label class="text-[10px] font-black tracking-wider uppercase mb-1.5 block" style="color:var(--text-secondary);">Display Name</label>
+                        <input type="text" id="groupSettingsName" class="w-full p-2.5 rounded-xl border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-black tracking-wider uppercase mb-1.5 flex items-center justify-between" style="color:var(--text-secondary);">
+                            <span>Members & Admins</span><span class="text-[9px] normal-case font-normal" style="color:var(--text-secondary);">☑ = Member &nbsp;★ = Admin</span>
+                        </div>
+                        <div id="groupMembersList" class="border rounded-xl overflow-hidden" style="border-color:var(--border-color);background-color:var(--bg-body);">
+                            <p class="text-xs italic p-3" style="color:var(--text-secondary);">Loading members...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-4 border-t flex gap-3 flex-shrink-0" style="border-color:var(--border-color);">
+                    <button onclick="window.closeGroupSettings()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
+                    <button onclick="window.saveGroupSettings()" class="flex-1 py-2.5 rounded-xl font-bold text-white" style="background-color:var(--accent);">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="settingsModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+            <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+                <div class="flex items-center justify-between mb-5">
+                    <h3 class="text-lg font-bold flex items-center gap-2" style="color:var(--text-primary);"><i class="fa-solid fa-gear" style="color:var(--accent);"></i> Profile Settings</h3>
+                    <button onclick="window.closeSettings()" class="w-7 h-7 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors" style="color:var(--text-secondary);"><i class="fa-solid fa-times text-sm"></i></button>
+                </div>
+                <div class="flex flex-col items-center mb-5">
+                    <div class="relative mb-3">
+                        <img id="settingsPhotoPreview" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="Profile" style="display:none;width:72px;height:72px;border-radius:50%;object-fit:cover;border:3px solid var(--accent);">
+                        <div id="settingsPhotoPlaceholder" class="w-18 h-18 rounded-full flex items-center justify-center text-white text-2xl font-bold" style="width:72px;height:72px;border-radius:50%;background:var(--accent);">${userNameDisplay.charAt(0).toUpperCase()}</div>
+                    </div>
+                    <label class="cursor-pointer text-xs font-bold px-3 py-1.5 rounded-full border transition-colors hover:opacity-80" style="color:var(--accent);border-color:var(--accent);">
+                        <i class="fa-solid fa-camera text-[10px] mr-1"></i> Change Photo
+                        <input type="file" id="settingsPhotoInput" class="hidden" accept="image/*" onchange="window.previewSettingsPhoto(this)">
+                    </label>
+                </div>
+                <div class="mb-3">
+                    <label class="text-xs font-bold mb-1 block" style="color:var(--text-secondary);">Display Name</label>
+                    <input type="text" id="settingsName" class="w-full p-2.5 rounded-xl border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                </div>
+                <div class="mb-3">
+                    <label class="text-xs font-bold mb-1 block" style="color:var(--text-secondary);">Designation</label>
+                    <input type="text" id="settingsDesignation" placeholder="e.g. Physics Teacher, HOD Science" class="w-full p-2.5 rounded-xl border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                </div>
+                <div class="mb-5">
+                    <label class="text-xs font-bold mb-1 block" style="color:var(--text-secondary);">Email (read-only)</label>
+                    <input type="email" id="settingsEmail" disabled class="w-full p-2.5 rounded-xl border outline-none text-sm opacity-60" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="window.closeSettings()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
+                    <button onclick="window.saveSettings()" class="flex-1 py-2.5 rounded-xl font-bold text-white shadow-md" style="background-color:var(--accent);">Save Globally</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="forwardModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+            <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+                <h3 class="text-lg font-bold mb-1" style="color:var(--text-primary);">Forward Message</h3>
+                <p class="text-xs mb-3" style="color:var(--text-secondary);">Select a department or staff member to forward to:</p>
+                <div class="border p-3 rounded-xl mb-4 italic text-xs" id="forwardPreview" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-secondary);max-height:60px;overflow:hidden;"></div>
+                <select id="forwardRoomSelect" class="w-full p-2.5 rounded-xl border outline-none text-sm mb-5" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);"></select>
+                <div class="flex gap-3">
+                    <button onclick="window.closeForwardModal()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
+                    <button onclick="window.sendForwardedMessage()" class="flex-1 py-2.5 rounded-xl font-bold text-white shadow-md" style="background-color:var(--accent);">Forward</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="reminderModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+            <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+                <h3 class="text-xl font-bold mb-4" style="color:var(--text-primary);">Set Reminder</h3>
+                <div class="border p-3 rounded-xl mb-4" style="background-color:var(--bg-body);border-color:var(--border-color);">
+                    <p id="reminderMessagePreview" class="text-xs line-clamp-2 italic font-medium" style="color:var(--text-secondary);"></p>
+                </div>
+                <input type="datetime-local" id="reminderDateTime" class="w-full p-3 rounded-xl mb-6 border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                <div class="flex gap-3">
+                    <button onclick="window.closeReminderModal()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
+                    <button onclick="window.saveReminder()" class="flex-1 py-2.5 rounded-xl text-white font-bold shadow-md" style="background-color:var(--accent);">Set Alarm</button>
                 </div>
             </div>
         </div>
@@ -266,22 +382,19 @@ window.renderMainApp = function() {
     });
     document.getElementById('sendBtn').onclick = () => { if (typeof window.sendMessage === 'function') window.sendMessage(); };
 
-    document.getElementById('fileAttachment').addEventListener('change', async (e) => {
+    // UPDATED: Triggers file rename modal instead of blind upload
+    document.getElementById('fileAttachment').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        window.showCenterToast('Uploading...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
-        const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-        const filePath = `chat/${Date.now()}_${safeName}`;
-        const sizeKB = Math.round(file.size / 1024);
-        const { error } = await sb.storage.from('task-proofs').upload(filePath, file);
-        if (error) { window.showCenterToast('Upload failed: ' + error.message, 'fa-solid fa-times', 'text-red-500'); return; }
-        if (window.quillEditor) {
-            window.quillEditor.focus();
-            const range = window.quillEditor.getSelection();
-            const index = range ? range.index : window.quillEditor.getLength();
-            window.quillEditor.insertText(index, `📁 ${file.name} (${sizeKB} KB)\n`, 'link', `https://secure-file.local/${filePath}`);
+        window.pendingFileUpload = file;
+        const modal = document.getElementById('fileRenameModal');
+        const input = document.getElementById('newFileNameInput');
+        if(modal && input) {
+            const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+            input.value = nameWithoutExt;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
         }
-        window.showCenterToast('File attached!', 'fa-solid fa-check-circle', 'text-green-500');
         e.target.value = '';
     });
 
@@ -401,23 +514,20 @@ window.filterSidebar = function(term) {
     });
 };
 
-// DATABASE GROUPS UPGRADE + RBAC
 window.loadChatsList = async function() {
-    // 1. Fetch Users
     const {data: users} = await sb.from('profiles').select('id, email, full_name, avatar_url, role, designation');
     window.globalUsersCache = users || [];
 
-    // 2. Identify Current User for RBAC Group Button logic
     const myId = window.currentUser.id;
     const myRole = (window.currentRoleName || '').toLowerCase();
     const isLeadership = ['principal', 'vice principal', 'hod', 'academic coordinator'].some(r => myRole.includes(r));
 
-    // 3. Fetch Database Groups instead of LocalStorage Array
     const { data: dbGroups } = await sb.from('chat_groups').select('*').order('created_at', { ascending: true });
     const groups = dbGroups || [];
     const visibleGroups = groups.filter(g => !g.members || g.members.length === 0 || g.members.includes(myId));
+    
+    window._cachedGroups = visibleGroups; // Cache for the forward modal
 
-    // Dynamic Top Section
     let html = `
     <div class="sidebar-section-label flex items-center justify-between px-4 py-2 mt-2">
         <span class="text-[10px] font-black tracking-widest uppercase" style="color:var(--text-secondary);">Departments</span>
@@ -716,7 +826,6 @@ window.getRoomDisplayName = function(roomId) {
         if (other) return window.toSentenceCase?.(other.full_name || other.email?.split('@')[0]) || 'Direct Message';
         return 'Direct Message';
     }
-    // Check if it's a DB group name
     const dbGroup = document.querySelector(`.channel-item[data-room="${roomId}"]`);
     if (dbGroup) return dbGroup.dataset.name;
 

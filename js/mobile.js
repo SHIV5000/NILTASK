@@ -143,6 +143,10 @@ function _buildShell() {
           <input id="mSBSearchInp" placeholder="Search messages, staff…">
         </div>
         <button class="m-sb-icon" id="mSBLens" title="Search" onclick="window._toggleInlineSearch()"><i class="fa-solid fa-magnifying-glass"></i></button>
+        <button class="m-sb-icon" id="mSBBell" title="Notifications" data-action="openNotifs" style="position:relative;">
+          <i class="fa-solid fa-bell"></i>
+          <span id="mNotifBadge" class="m-notif-badge" style="display:none;"></span>
+        </button>
         <button class="m-sb-icon" title="Theme" onclick="window._openThemeSheet()"><i class="fa-solid fa-palette"></i></button>
         <button class="m-sb-icon" title="Sign out" onclick="window._confirmLogout()"><i class="fa-solid fa-right-from-bracket"></i></button>
         <div id="mSBResults"></div>
@@ -251,7 +255,7 @@ async function _render(screen, params, dir='forward') {
         marks: _bookmarks, scheduled: _scheduled,
         settings: _settings, dashboard: _dashboard,
         groupChat: _groupChat, thread: _thread,
-        dm: _dm, taskDetail: _taskDetail, remindEdit: _remindEdit, scheduledEdit: _scheduledEdit,
+        dm: _dm, taskDetail: _taskDetail, remindEdit: _remindEdit, scheduledEdit: _scheduledEdit, notifications: _notifications,
     };
     const html = await (fns[screen]?.(params) || Promise.resolve('<div style="padding:40px;text-align:center;">Coming soon</div>'));
     const scr  = document.createElement('div');
@@ -497,7 +501,7 @@ function _bubbleHTML(m, reactionsMap, maxLen=150) {
     const cl = _renderLinkPills(m.text || '');
     const sender = !me ? _users.find(u=>u.id===m.sender_id) : null;
     return `
-      <div class="m-bubble-row ${me?'snt':'rcv'}" id="row-${m.id}">
+      <div class="m-bubble-row ${me?'snt':'rcv'}" id="row-${m.id}" data-time="${m.created_at}">
         ${!me ? _avatarHTML(sender?.avatar_url, nm, 'var(--accent)', 'm-av-tiny') : ''}
         <div class="m-bubble ${me?'snt':'rcv'}">
           <div class="m-bmeta">${x(nm)} · ${_ago(m.created_at)}</div>
@@ -829,6 +833,35 @@ async function _remindEdit(p) {
 // ══════════════════════════════════════════════════════════════
 // BOOKMARKS — tap to scroll to + highlight the saved message
 // ══════════════════════════════════════════════════════════════
+async function _notifications() {
+    const { data } = await sb.from('notifications').select('*').eq('user_id',_uid).order('created_at',{ascending:false}).limit(30);
+    const iconMap = {reminder:'fa-stopwatch',task:'fa-clipboard-check',message:'fa-comment',general:'fa-bell'};
+    const colorMap = {reminder:'#a855f7',task:'#3b82f6',message:'#22c55e',general:'#f59e0b'};
+
+    // Mark all as read once the list is opened (matches desktop behaviour)
+    const unreadIds = (data||[]).filter(d=>!d.is_read).map(d=>d.id);
+    if (unreadIds.length) {
+        sb.from('notifications').update({is_read:true}).in('id',unreadIds).then(()=>_refreshNotifBadge());
+    }
+
+    return `<div class="mScr-inner">
+      <div class="m-hdr m-hdr-plain"><div class="m-htitle">Notifications</div></div>
+      ${(data||[]).length ? (data||[]).map(d => {
+        const tp = d.type || 'general';
+        const ic = iconMap[tp] || 'fa-bell', co = colorMap[tp] || '#f59e0b';
+        const action = tp === 'task' ? 'goToTaskNotif' : 'goToMsgNotif';
+        return `
+        <div class="m-row" data-action="${action}" data-mid="${d.message_id||''}" data-tid="${d.task_id||''}" style="${d.is_read?'opacity:.6;':''}">
+          <div class="m-av" style="background:${co};border-radius:12px;">
+            <i class="fa-solid ${ic}" style="font-size:16px;color:#fff;"></i>
+          </div>
+          <div class="m-ri">
+            <div class="m-rn">${x(_snip(d.message,70))}</div>
+            <div class="m-rs">${_fmtIST(d.created_at)}${!d.is_read?' · <span style="color:#16a34a;font-weight:700;">NEW</span>':''}</div>
+          </div>
+        </div>`; }).join('') : '<div class="m-empty">All caught up! 🎉</div>'}
+    </div>`;
+}
 async function _bookmarks() {
     const bms = JSON.parse(localStorage.getItem('tf_bookmarks_'+_uid)||'[]');
     return `<div class="mScr-inner">
@@ -1002,6 +1035,8 @@ window._closeSheet = () => _el('mSheet')?.classList.remove('open');
 
 window._showMsgActions = function(params) {
     const isMe = params.me === 'true' || params.me === true;
+    const ageMs = params.time ? (Date.now() - new Date(params.time).getTime()) : Infinity;
+    const withinEditWindow = ageMs <= 30*60*1000;
     const sheet = _el('mSheetInner');
     sheet.innerHTML = `
       <div class="m-sheet-handle"></div>
@@ -1033,13 +1068,16 @@ window._showMsgActions = function(params) {
           data-rname="${x(params.rname||'')}" data-rcol="${params.rcol||''}">
           <i class="fa-solid fa-bookmark" style="color:#f59e0b;"></i> Bookmark
         </div>
-        ${isMe ? `
+        ${isMe ? (withinEditWindow ? `
         <div class="m-sheet-row" data-action="editMsg" data-id="${params.id}" data-text="${x(params.text)}">
           <i class="fa-solid fa-pen" style="color:#6366f1;"></i> Edit Message
         </div>
         <div class="m-sheet-row" style="color:#ef4444;" data-action="deleteMsg" data-id="${params.id}">
           <i class="fa-solid fa-trash" style="color:#ef4444;"></i> Delete Message
-        </div>` : ''}
+        </div>` : `
+        <div class="m-sheet-row" style="opacity:.45;">
+          <i class="fa-solid fa-lock" style="color:var(--text-secondary);"></i> Edit/Delete unavailable (30 min limit passed)
+        </div>`) : ''}
       </div>`;
     _openSheet();
 };
@@ -1267,6 +1305,9 @@ async function _onShellClick(e) {
         case 'editScheduled': await _navTo('scheduledEdit',{id:a.id,text:a.text,at:a.at,room:a.room}); break;
         case 'saveScheduled': await _saveScheduled(a.id); break;
         case 'openTaskFile': await _openTaskFile(a.path); break;
+        case 'openNotifs': await _navTo('notifications'); break;
+        case 'goToMsgNotif': await _goToMessage(a.mid); break;
+        case 'goToTaskNotif': await _goToTask(a.tid); break;
         case 'saveProfile':    await _saveProfile(); break;
         case 'setMyPhoto':   _el('mMyPhotoInput')?.click(); break;
         case 'setDeptPhoto': _pendingDeptPhoto = a.dept; _el('mDeptPhotoInput')?.click(); break;
@@ -1400,9 +1441,10 @@ function _onPressStart(e) {
         const id = row.id.replace('row-','');
         const me = row.classList.contains('snt');
         const text = row.querySelector('.m-btext')?.textContent || '';
+        const time = row.dataset.time || '';
         const top = _stack[_stack.length-1];
         const params = top?.params || {};
-        window._showMsgActions({ id, text, me, room: params.room||'', rname: params.name||'', rcol: params.color||'' });
+        window._showMsgActions({ id, text, me, time, room: params.room||'', rname: params.name||'', rcol: params.color||'' });
         navigator.vibrate?.(35);
     }, 550);
 }
@@ -1449,7 +1491,43 @@ function _initRealtime() {
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => _onNewMessage(p.new))
         .on('postgres_changes', { event:'*', schema:'public', table:'reactions', filter:`tenant_id=eq.${_tid}` }, p => _onReactionChange(p.new||p.old))
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'task_assignees', filter:`tenant_id=eq.${_tid}` }, p => _onTaskAssigneeUpdate(p.new))
+        .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`user_id=eq.${_uid}` }, () => _refreshNotifBadge())
         .subscribe();
+    _refreshNotifBadge();
+}
+async function _refreshNotifBadge() {
+    const { count } = await sb.from('notifications').select('*',{count:'exact',head:true}).eq('user_id',_uid).eq('is_read',false);
+    const badge = _el('mNotifBadge');
+    if (!badge) return;
+    if (count && count > 0) { badge.textContent = count > 9 ? '9+' : String(count); badge.style.display = 'flex'; }
+    else badge.style.display = 'none';
+}
+// Resolves a room from a message id (if needed) and navigates to it,
+// scrolling to and highlighting the specific message — reuses the same
+// scrollTo/_scrollAndGlow mechanism already built for search result taps.
+async function _goToMessage(messageId, roomIdHint) {
+    if (!messageId) { _toast('No message linked to this notification','err'); return; }
+    let room = roomIdHint;
+    if (!room) {
+        const { data } = await sb.from('messages').select('room_id').eq('id',messageId).single();
+        room = data?.room_id;
+    }
+    if (!room) { _toast('That message could not be found','err'); return; }
+    const dept = DEPTS.find(d=>d.id===room);
+    if (dept) {
+        await _navTo('groupChat',{room:dept.id,name:dept.name,color:dept.col,scrollTo:messageId});
+    } else if (room.startsWith('dm_')) {
+        const otherUid = room.replace('dm_','').split('_').find(p=>p!==_uid);
+        const otherUser = _users.find(u=>u.id===otherUid);
+        const nm = otherUser ? (otherUser.full_name||otherUser.email.split('@')[0]) : 'Direct Message';
+        await _navTo('dm',{uid:otherUid,name:nm,room,scrollTo:messageId});
+    } else {
+        _toast('Could not open that conversation','err');
+    }
+}
+async function _goToTask(taskId) {
+    if (!taskId) { _toast('No task linked to this notification','err'); return; }
+    await _navTo('taskDetail',{id:taskId});
 }
 async function _onNewMessage(m) {
     if (!m || m.sender_id === _uid) return; // own sends are already shown by the post-send refresh
@@ -1458,7 +1536,20 @@ async function _onNewMessage(m) {
     const inGroup  = top.screen==='groupChat' && m.room_id===top.params?.room && !m.parent_message_id;
     const inDM     = top.screen==='dm'        && m.room_id===top.params?.room;
     const inThread = top.screen==='thread'    && m.parent_message_id===top.params?.id;
-    if (!inGroup && !inDM && !inThread) return;
+    if (!inGroup && !inDM && !inThread) {
+        // Not the conversation currently open — chime/vibrate already fire via
+        // the shared notifications.js mechanism, but that intentionally
+        // suppresses the OS-level banner while the app is visible, leaving
+        // no visual cue at all. Show an in-app toast to fill that gap.
+        if (!m.parent_message_id) {
+            const sender = _users.find(u=>u.id===m.sender_id);
+            const name = sender ? (sender.full_name||sender.email?.split('@')[0]) : 'Someone';
+            const dept = DEPTS.find(d=>d.id===m.room_id);
+            const roomLabel = dept ? dept.name : 'a direct message';
+            _toast(`${name} — ${roomLabel}: ${_snip(m.text,50)}`);
+        }
+        return;
+    }
     const areaId = top.screen==='groupChat' ? 'mMsgArea' : top.screen==='dm' ? 'mDMArea' : 'mThreadArea';
     const area = _el(areaId); if (!area) return;
     const wasNearBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 150;
@@ -1528,6 +1619,17 @@ function _wireScreen(screen, params, container) {
         catch(e) { _toast('Could not read that image','err'); return; }
         const { error: dbErr } = await sb.from('profiles').update({ avatar_url: dataUrl }).eq('id',_uid);
         if (dbErr) { _toast('Could not save photo: '+dbErr.message,'err'); return; }
+        // Update the cached user list in place — without this, the new photo
+        // only showed in Settings (which re-fetches fresh each time) while
+        // every other view kept reading the stale cached entry until a full
+        // reload. Also updates the shared global cache so desktop doesn't
+        // have the same staleness if it's open in another tab.
+        const cached = _users.find(u=>u.id===_uid);
+        if (cached) cached.avatar_url = dataUrl;
+        if (window.globalUsersCache) {
+            const gc = window.globalUsersCache.find(u=>u.id===_uid);
+            if (gc) gc.avatar_url = dataUrl;
+        }
         _toast('Photo updated ✓');
         await _navTo('settings',null,true);
     };
@@ -1819,6 +1921,10 @@ function _injectCSS(){
   color:var(--text-secondary,#6b7280);padding:6px;flex-shrink:0;min-width:36px;min-height:36px;
   -webkit-tap-highlight-color:transparent;}
 .m-sb-icon:active{opacity:.6;}
+.m-notif-badge{position:absolute;top:2px;right:2px;background:#ef4444;color:#fff;
+  font-size:10px;font-weight:800;min-width:16px;height:16px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;padding:0 4px;
+  border:2px solid var(--bg-sidebar,#f6f8fa);line-height:1;}
 #mSBResults{position:absolute;top:100%;left:0;right:0;max-height:0;overflow:hidden;
   background:var(--bg-body,#fff);border-bottom:1px solid var(--border-color,#e5e7eb);
   box-shadow:0 8px 20px rgba(0,0,0,.12);z-index:50;transition:max-height .2s;}

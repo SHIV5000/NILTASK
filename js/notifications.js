@@ -49,10 +49,18 @@ document.addEventListener('keydown', _unlockSharedAudio, { once:true });
 // Generates a gentle chime via Web Audio API — no file needed
 function _makeChime(vol = 0.4) {
     try {
-        if (!_sharedCtx) _unlockSharedAudio();
+        // Don't call _unlockSharedAudio() here — if this fires before the
+        // user has tapped anything (e.g. a message arrives from a realtime
+        // callback on first load), creating/resuming an AudioContext outside
+        // a real user gesture is exactly what produced the "AudioContext was
+        // not allowed to start" warning. The document-level gesture
+        // listeners above are the only place this should be unlocked; if
+        // that hasn't happened yet, just skip the chime this one time.
         const ctx = _sharedCtx;
-        if (!ctx) return;
-        if (ctx.state === 'suspended') ctx.resume();
+        if (!ctx) return; // not unlocked by a real gesture yet — skip silently
+        if (ctx.state === 'suspended') ctx.resume(); // safe: resuming an
+            // already-gesture-created context isn't the same restriction
+            // as creating a brand new one outside a gesture
         const gain = ctx.createGain();
         gain.gain.setValueAtTime(vol, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);

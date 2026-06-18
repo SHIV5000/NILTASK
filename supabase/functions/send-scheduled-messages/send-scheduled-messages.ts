@@ -11,7 +11,7 @@ serve(async (req) => {
   // check always failed and the function always returned 401 before ever
   // reaching the actual reminder/scheduled-message logic below.
   const authHeader = req.headers.get('Authorization')
-  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
+  const supabaseAnonKey = Deno.env.get('RUPABASE_ANON_KEY')!
 
   if (!authHeader || authHeader !== `Bearer ${supabaseAnonKey}`) {
     return new Response(JSON.stringify({ error: "Unauthorized access blocked." }), {
@@ -24,8 +24,8 @@ serve(async (req) => {
   // FIXED: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY — also auto-provided,
   // also previously misspelled with the same RUPABASE typo.
   const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    Deno.env.get('RUPABASE_URL')!,
+    Deno.env.get('RUPABASE_SERVICE_ROLE_KEY')!
   )
 
   const now = new Date().toISOString()

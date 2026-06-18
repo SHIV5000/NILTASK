@@ -1,5 +1,5 @@
 /**
- * ui.js — MPGS TaskFlow v1.64.0
+ * ui.js — MPGS TaskFlow v1.65.0
  * ─────────────────────────────────────────────────────────────────────────────
  * Utility / UI layer — injected onto window.* so all other modules can call it.
  */
@@ -223,6 +223,98 @@ window.toggleTaskTrail = function(id) {
     else{el.classList.add('hidden');el.style.setProperty('display','none','important');}
 };
 window.toggleTrail = window.toggleTaskTrail;
+
+// ─── FILE ATTACHMENT MODAL (RESTORED) ───────────────────────────────────────
+window.cancelFileRename = function() {
+    const modal = document.getElementById('fileRenameModal');
+    if(modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+    window.pendingFileUpload = null;
+};
+
+window.confirmFileRename = async function() {
+    const input = document.getElementById('newFileNameInput');
+    if(!input || !window.pendingFileUpload) return;
+    const newName = input.value.trim();
+    if(!newName) { window.showCenterToast('Name cannot be empty', 'fa-solid fa-times', 'text-red-500'); return; }
+
+    const file = window.pendingFileUpload;
+    window.pendingFileUpload = null;
+    const modal = document.getElementById('fileRenameModal');
+    if(modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+
+    window.showCenterToast('Uploading...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
+    const safeExt = file.name.split('.').pop();
+    const safeName = newName.replace(/[^a-zA-Z0-9.\-_ ]/g, '_') + '.' + safeExt;
+    const filePath = `chat/${Date.now()}_${safeName}`;
+    const sizeKB = Math.round(file.size / 1024);
+    
+    const { error } = await sb.storage.from('task-proofs').upload(filePath, file);
+    if (error) { window.showCenterToast('Upload failed: ' + error.message, 'fa-solid fa-times', 'text-red-500'); return; }
+    
+    if (window.quillEditor) {
+        window.quillEditor.focus();
+        const range = window.quillEditor.getSelection() || {index: window.quillEditor.getLength()};
+        window.quillEditor.insertText(range.index, `📁 ${safeName} (${sizeKB} KB)\n`, 'link', `https://secure-file.local/${filePath}`);
+    }
+    window.showCenterToast('File attached!', 'fa-solid fa-check-circle', 'text-green-500');
+};
+
+// ─── FORWARD MODAL (RESTORED) ─────────────────────────────────────────────
+window.openForwardModal = function(mid, rawText) {
+    window.currentForwardMessageId = mid;
+    window.currentForwardText = rawText;
+    const preview = document.getElementById('forwardPreview');
+    if(preview) preview.innerText = window.stripHtml(rawText).substring(0, 100) + '...';
+
+    const sel = document.getElementById('forwardRoomSelect');
+    if(sel) {
+        let opts = '';
+        if (window._cachedGroups) {
+            window._cachedGroups.forEach(g => {
+                opts += `<option value="${g.id}">Group: ${g.name}</option>`;
+            });
+        }
+        if(window.globalUsersCache) {
+            window.globalUsersCache.forEach(u => {
+                if(u.id !== window.currentUser.id) {
+                    const dmId = window.getDmRoomId(u.id);
+                    const name = window.toSentenceCase?.(u.full_name || u.email.split('@')[0]) || u.email.split('@')[0];
+                    opts += `<option value="${dmId}">User: ${name}</option>`;
+                }
+            });
+        }
+        sel.innerHTML = opts;
+    }
+
+    const modal = document.getElementById('forwardModal');
+    if(modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+    window.closeDropdowns();
+};
+
+window.closeForwardModal = function() {
+    const modal = document.getElementById('forwardModal');
+    if(modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+};
+
+window.sendForwardedMessage = async function() {
+    const sel = document.getElementById('forwardRoomSelect');
+    if(!sel || !sel.value) return;
+    const targetRoom = sel.value;
+    const text = window.currentForwardText;
+
+    window.showCenterToast('Forwarding...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
+    const { error } = await sb.from('messages').insert({
+        room_id: targetRoom,
+        sender_id: window.currentUser.id,
+        text: text
+    });
+
+    if (error) { window.showCenterToast('Failed to forward', 'fa-solid fa-times', 'text-red-500'); }
+    else {
+        window.showCenterToast('Message forwarded!', 'fa-solid fa-check', 'text-green-500');
+        window.closeForwardModal();
+    }
+};
 
 window.toggleInputEmojiPicker = function() {
     const ep = document.getElementById('inputEmojiPicker');
@@ -803,7 +895,6 @@ window.openSettings = async function() {
     const { data: profile } = await sb.from('profiles').select('*').eq('id', window.currentUser.id).single();
     document.getElementById('settingsName').value = profile?.full_name || window.currentUser?.user_metadata?.full_name || '';
     
-    // Check if designation field exists in the DOM before setting it
     const desigInput = document.getElementById('settingsDesignation');
     if (desigInput) desigInput.value = profile?.designation || '';
 
@@ -1018,6 +1109,7 @@ window.saveGroupSettings = async function() {
     };
 
     if (isNew) {
+        payload.id = name.toLowerCase().replace(/[^a-z0-9]/g, '-');
         payload.created_by = window.currentUser.id;
         const { error } = await sb.from('chat_groups').insert(payload);
         if (error) { window.showCenterToast('Failed to create group','fa-solid fa-times','text-red-500'); return; }

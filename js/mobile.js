@@ -111,7 +111,7 @@ async function _ctx() {
         window.currentTenantId = _tid;
     }
     if (!_users.length && _tid) {
-        const { data } = await sb.from('profiles').select('id,full_name,email,designation,avatar_url').eq('tenant_id',_tid).is('deleted_at',null);
+        const { data } = await sb.from('profiles').select('*').eq('tenant_id',_tid).is('deleted_at',null);
         _users = data || [];
         window.globalUsersCache = _users;
     }
@@ -492,17 +492,48 @@ async function _refreshChips(msgId) {
 function _bubbleHTML(m, reactionsMap, maxLen=150) {
     const me = m.sender_id === _uid;
     const nm = me ? 'You' : _uname(m.sender_id);
-    const cl = _snip(m.text, maxLen);
+    const cl = _renderLinkPills(m.text || '');
     const sender = !me ? _users.find(u=>u.id===m.sender_id) : null;
     return `
       <div class="m-bubble-row ${me?'snt':'rcv'}" id="row-${m.id}">
         ${!me ? _avatarHTML(sender?.avatar_url, nm, 'var(--accent)', 'm-av-tiny') : ''}
         <div class="m-bubble ${me?'snt':'rcv'}">
           <div class="m-bmeta">${x(nm)} · ${_ago(m.created_at)}</div>
-          <div class="m-btext">${x(cl)}</div>
+          <div class="m-btext">${cl}</div>
           ${_chipsHTML(m.id, reactionsMap)}
         </div>
       </div>`;
+}
+// Matches the web version's link-pill convention exactly (see ui-settings.js
+// insertLinkPill / messages.js renderMessages): the composer encodes links as
+// <a href="https://link-pill.local/NAME|||URL-encoded">NAME</a>, and this
+// decodes that into the same styled gradient pill button web shows, instead
+// of an exposed raw link. Message text itself is trusted HTML from our own
+// contenteditable composer (same trust level the web version already
+// applies), with a minimal strip of <script> as a defensive backstop.
+function _renderLinkPills(html) {
+    let safe = (html || '').replace(/<script[\s\S]*?<\/script>/gi, '');
+    return safe.replace(
+        /<a\s+href="https:\/\/link-pill\.local\/([^"]+)"[^>]*>([^<]*)<\/a>/g,
+        (match, encoded, anchorText) => {
+            try {
+                const decoded = decodeURIComponent(encoded);
+                const sepIdx  = decoded.indexOf('|||');
+                const name = sepIdx > -1 ? decoded.substring(0, sepIdx) : (anchorText || decoded);
+                const url  = sepIdx > -1 ? decoded.substring(sepIdx + 3) : decoded;
+                const fileExts = /\.(pdf|doc|docx|xlsx|xls|ppt|pptx|zip|rar|png|jpg|jpeg|gif|mp4|mp3)$/i;
+                const isFile = fileExts.test(url.split('?')[0]);
+                const label  = isFile ? 'Download' : 'Visit';
+                const icon   = isFile ? 'fa-download' : 'fa-arrow-up-right-from-square';
+                const safeUrl = url.replace(/'/g, '%27');
+                return `<a href="javascript:void(0);" onclick="window.open('${safeUrl}','_blank')" title="${x(url)}"
+                    style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;text-decoration:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,.35);white-space:nowrap;vertical-align:middle;">
+                    <i class="fa-solid ${icon}" style="font-size:9px;"></i><span>${x(name)}</span>
+                    <span style="font-size:9px;opacity:.75;border-left:1px solid rgba(255,255,255,.35);padding-left:7px;margin-left:3px;">${label}</span>
+                </a>`;
+            } catch(e) { return match; }
+        }
+    );
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -593,7 +624,7 @@ async function _thread(p) {
         <div class="m-bubble-row rcv">
           <div class="m-bubble rcv">
             <div class="m-bmeta">${x(p.sender||'')} · ${p.time||''}</div>
-            <div class="m-btext">${x(p.text||'')}</div>
+            <div class="m-btext">${_renderLinkPills(p.text||'')}</div>
           </div>
         </div>
         ${replies?.length ? `<div class="m-divider">── ${replies.length} ${replies.length===1?'Reply':'Replies'} ──</div>` : ''}
@@ -934,7 +965,7 @@ async function _dashboard() {
         sb.from('messages').select('*',{count:'exact',head:true}).eq('tenant_id',_tid).is('deleted_at',null),
         sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('tenant_id',_tid),
         sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('tenant_id',_tid).eq('status','accepted'),
-        sb.from('profiles').select('full_name,last_login,avatar_url').eq('tenant_id',_tid).is('deleted_at',null).order('last_login',{ascending:false}).limit(5),
+        sb.from('profiles').select('*').eq('tenant_id',_tid).is('deleted_at',null).order('last_login',{ascending:false}).limit(5),
     ]);
     const pct = taskCount ? Math.round((doneCount/taskCount)*100) : 0;
     return `<div class="mScr-inner">
@@ -1229,9 +1260,14 @@ async function _handleComposerIcon(caction, targetId) {
         case 'tag':   _showInsertTagPicker(targetId); break;
         case 'link': {
             const url = prompt('Paste a link:'); if (!url) return;
-            const label = prompt('Link text (optional):', url) || url;
+            const name = prompt('Link text (optional):', url) || url;
             ceEl?.focus();
-            document.execCommand('insertHTML', false, `<a href="${x(url)}" target="_blank">${x(label)}</a>&nbsp;`);
+            // Match the web version's convention exactly: encode as a fake
+            // link-pill.local URL carrying "name|||url", which renderMessages
+            // (and our own _renderLinkPills below) detect and transform into
+            // a styled pill button — instead of an exposed raw <a href>.
+            const encoded = encodeURIComponent(name + '|||' + url);
+            document.execCommand('insertHTML', false, `<a href="https://link-pill.local/${encoded}">${x(name)}</a>&nbsp;`);
             break;
         }
         case 'attach': {

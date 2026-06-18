@@ -127,7 +127,7 @@ function _buildShell() {
     const tabs = [
         { id:'home',      icon:'fa-house',      lbl:'Home',     action:"window._navTo('home')" },
         { id:'activity',  icon:'fa-bolt',        lbl:'Activity', action:"window._navTo('activity')" },
-        { id:'tasks',     icon:'fa-list-check',  lbl:'Tasks',    action:"window._navTo('tasks')" },
+        ...(window.canSeeTaskHub?.() ?? true ? [{ id:'tasks', icon:'fa-list-check', lbl:'Tasks', action:"window._navTo('tasks')" }] : []),
         { id:'remind',    icon:'fa-bell',        lbl:'Remind',   action:"window._navTo('remind')" },
         { id:'more',      icon:'fa-ellipsis',    lbl:'More',     action:"window._openMoreSheet()" },
     ];
@@ -318,14 +318,16 @@ async function _home() {
     (lastMsgs||[]).forEach(m => { if(!last[m.room_id]) last[m.room_id]=m; });
     const others = _users.filter(u=>u.id!==_uid);
 
+    const canGear = window.canSeeGroupGear?.() ?? true;
     return `<div class="mScr-inner">
       <div class="m-sl">DEPARTMENTS</div>
       ${DEPTS.map(d => { const lm=last[d.id]; return `
         <div class="m-row">
+          ${canGear ? `
           <div class="m-av-wrap" data-action="setDeptPhoto" data-dept="${d.id}">
             ${_avatarHTML(d.photo, d.name, d.col, 'm-av sq')}
             <span class="m-av-cam"><i class="fa-solid fa-camera"></i></span>
-          </div>
+          </div>` : _avatarHTML(d.photo, d.name, d.col, 'm-av sq')}
           <div class="m-ri" data-action="groupChat" data-room="${d.id}" data-name="${x(d.name)}" data-color="${d.col}">
             <div class="m-rn">${x(d.name)}</div>
             <div class="m-rs">${lm ? _snip(lm.text,38)+' · '+_ago(lm.created_at) : 'No messages yet'}</div>
@@ -542,15 +544,18 @@ function _renderLinkPills(html) {
 // when text is selected, instead of a permanent toolbar.
 // ══════════════════════════════════════════════════════════════
 function _composerHTML(ceId, placeholder, sendAction, sendData) {
+    const showSchedule = window.canSchedule?.() ?? true;
+    const showUpload = window.canUpload?.() ?? true;
+    const expired = !!window._trialExpired;
     return `
     <div class="m-composer">
       <div class="m-ce-wrap">
-        <button class="m-cic" data-caction="schedule" data-target="${ceId}"><i class="fa-solid fa-clock"></i></button>
-        <div class="m-ce" id="${ceId}" contenteditable="true" data-placeholder="${x(placeholder)}"></div>
-        <button class="m-cic" data-caction="link" data-target="${ceId}"><i class="fa-solid fa-link"></i></button>
-        <button class="m-cic" data-caction="attach" data-target="${ceId}"><i class="fa-solid fa-paperclip"></i></button>
+        ${showSchedule ? `<button class="m-cic" data-caction="schedule" data-target="${ceId}" ${expired?'disabled':''}><i class="fa-solid fa-clock"></i></button>` : ''}
+        <div class="m-ce" id="${ceId}" contenteditable="${expired?'false':'true'}" data-placeholder="${x(expired ? 'Trial expired — contact developer to upgrade' : placeholder)}" style="${expired?'opacity:.5;':''}"></div>
+        <button class="m-cic" data-caction="link" data-target="${ceId}" ${expired?'disabled':''}><i class="fa-solid fa-link"></i></button>
+        ${showUpload ? `<button class="m-cic" data-caction="attach" data-target="${ceId}" ${expired?'disabled':''}><i class="fa-solid fa-paperclip"></i></button>` : ''}
       </div>
-      <button class="m-sendbtn" data-action="${sendAction}" data-target="${ceId}" ${sendData}>
+      <button class="m-sendbtn" data-action="${sendAction}" data-target="${ceId}" ${sendData} ${expired?'disabled style="opacity:.4;"':''}>
         <i class="fa-solid fa-paper-plane"></i>
       </button>
     </div>`;
@@ -1013,9 +1018,10 @@ window._showMsgActions = function(params) {
           data-rname="${x(params.rname||'')}" data-rcol="${params.rcol||''}">
           <i class="fa-solid fa-reply" style="color:#6366f1;"></i> Reply in Thread
         </div>
+        ${(window.canCreateTask?.() ?? true) ? `
         <div class="m-sheet-row" data-action="convertTask" data-id="${params.id}" data-text="${x(params.text)}">
           <i class="fa-solid fa-list-check" style="color:#16a34a;"></i> Convert to Task
-        </div>
+        </div>` : ''}
         <div class="m-sheet-row" data-action="setReminder" data-id="${params.id}" data-text="${x(params.text)}">
           <i class="fa-solid fa-bell" style="color:#f59e0b;"></i> Set Reminder
         </div>
@@ -1576,6 +1582,7 @@ function _compressImageToDataURL(file, maxSize=240, quality=0.72) {
 // parent_message_id column (was the root cause of "group send broken")
 // ══════════════════════════════════════════════════════════════
 async function _doSendGroup(a) {
+    if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }
     const val = _ceHTML(a.target); if (!val) return;
     _ceClear(a.target);
     const { data: m, error } = await sb.from('messages').insert({
@@ -1586,6 +1593,7 @@ async function _doSendGroup(a) {
     _appendOwnMessage('mMsgArea', m);
 }
 async function _doSendReply(a) {
+    if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }
     const val = _ceHTML(a.target); if (!val) return;
     _ceClear(a.target);
     const { data: m, error } = await sb.from('messages').insert({
@@ -1596,6 +1604,7 @@ async function _doSendReply(a) {
     _appendOwnMessage('mThreadArea', m, 160);
 }
 async function _doSendDM(a) {
+    if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }
     const val = _ceHTML(a.target); if (!val) return;
     _ceClear(a.target);
     const { data: m, error } = await sb.from('messages').insert({

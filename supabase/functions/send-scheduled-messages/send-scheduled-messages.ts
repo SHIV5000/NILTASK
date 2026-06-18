@@ -11,7 +11,7 @@ serve(async (req) => {
   // check always failed and the function always returned 401 before ever
   // reaching the actual reminder/scheduled-message logic below.
   const authHeader = req.headers.get('Authorization')
-  const supabaseAnonKey = Deno.env.get('RUPABASE_ANON_KEY')!
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
 
   if (!authHeader || authHeader !== `Bearer ${supabaseAnonKey}`) {
     return new Response(JSON.stringify({ error: "Unauthorized access blocked." }), {
@@ -24,8 +24,8 @@ serve(async (req) => {
   // FIXED: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY — also auto-provided,
   // also previously misspelled with the same RUPABASE typo.
   const supabase = createClient(
-    Deno.env.get('RUPABASE_URL')!,
-    Deno.env.get('RUPABASE_SERVICE_ROLE_KEY')!
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   )
 
   const now = new Date().toISOString()
@@ -56,15 +56,28 @@ serve(async (req) => {
 
   if (scheduled?.length) {
     await Promise.all(scheduled.map(async (m) => {
+      // FIXED: tenant_id was missing here. The messages table requires it
+      // (multi-tenant isolation), so this insert was almost certainly
+      // failing a NOT NULL constraint on every single scheduled message —
+      // silently, since the function only records the failure into
+      // scheduled_messages.status rather than surfacing it, and the
+      // function's own HTTP response is still 200 OK regardless of whether
+      // any individual message succeeded.
       const { error: insertError } = await supabase.from('messages').insert({
         room_id: m.room_id,
         sender_id: m.sender_id,
-        text: m.message_text
+        tenant_id: m.tenant_id,
+        text: m.message_text,
+        created_at: new Date().toISOString()
       })
 
       await supabase.from('scheduled_messages')
         .update({ status: insertError ? 'failed' : 'sent' })
         .eq('id', m.id)
+
+      if (insertError) {
+        console.error(`Failed to send scheduled message ${m.id}:`, insertError.message)
+      }
     }))
   }
 

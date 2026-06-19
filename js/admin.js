@@ -45,24 +45,30 @@ function renderAdmin() {
                     || window.currentUser?.email?.split('@')[0] || 'Admin';
 
     document.getElementById('adminRoot').innerHTML = `
-    <div style="max-width:1100px;margin:0 auto;padding:20px 16px;">
+    <div style="max-width:100%;margin:0 auto;padding:20px 24px;">
 
         <!-- Top bar -->
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
 
             <!-- School badge -->
-            <div class="school-badge" style="flex:1;min-width:220px;max-width:380px;">
+            <div class="school-badge" style="flex:1;min-width:220px;max-width:480px;">
                 <div class="school-badge-name">${window.escapeHtml(schoolName)}</div>
                 <div class="school-badge-sub">✦ &nbsp; Powered by TaskFlow &nbsp; ✦</div>
             </div>
 
             <!-- Right actions -->
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                <div style="font-size:12px;font-weight:600;color:var(--text-secondary);">
+                <div style="font-size:13px;font-weight:600;color:var(--text-secondary);">
                     <i class="fa-solid fa-user-shield" style="color:var(--accent);"></i>
                     ${window.escapeHtml(userName)}
-                    <span style="font-size:10px;background:rgba(99,102,241,.1);color:#6366f1;padding:2px 8px;border-radius:20px;margin-left:4px;">${window.currentRoleName || 'Admin'}</span>
+                    <span style="font-size:11px;background:rgba(99,102,241,.1);color:#6366f1;padding:2px 8px;border-radius:20px;margin-left:4px;">${window.currentRoleName || 'Admin'}</span>
                 </div>
+                <button class="btn-outline btn-sm" onclick="window.openRolesPermPanel?.()">
+                    <i class="fa-solid fa-user-shield"></i> Roles &amp; Permissions
+                </button>
+                <button class="btn-outline btn-sm" onclick="window.toggleAdminTheme()">
+                    <i class="fa-solid fa-circle-half-stroke"></i>
+                </button>
                 <button class="btn-outline btn-sm" onclick="window.location.href='/?mode=chat'">
                     <i class="fa-solid fa-comments"></i> Go to Chat
                 </button>
@@ -136,6 +142,12 @@ function renderAdmin() {
                     <input type="text" id="staffSearch" placeholder="Search name or email..."
                         oninput="filterStaff(this.value)"
                         style="padding:8px 12px;border-radius:9px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-primary);font-size:12px;outline:none;width:200px;">
+                    <button class="btn-outline btn-sm" onclick="window.printStaffTable()" title="Print staff list">
+                        <i class="fa-solid fa-print"></i> Print
+                    </button>
+                    <button class="btn-outline btn-sm" onclick="window.openBulkAddModal()" style="color:#0ea5e9;border-color:#0ea5e9;">
+                        <i class="fa-solid fa-file-csv"></i> Bulk Add
+                    </button>
                     <button class="btn-accent" onclick="openAddStaffModal()">
                         <i class="fa-solid fa-plus"></i> Add Staff
                     </button>
@@ -165,11 +177,31 @@ function renderAdmin() {
             </div>
         </div>
 
-        <!-- Footer note -->
-        <p style="text-align:center;font-size:11px;color:var(--text-secondary);margin-top:16px;">
-            Staff login at <strong>niltask.vercel.app</strong> using their email and the password you set.
-            They can change their password from Profile Settings.
-        </p>
+        <!-- Login instruction — 3D card -->
+        <div style="margin-top:16px;margin-bottom:8px;
+             background:linear-gradient(135deg,var(--accent) 0%,color-mix(in srgb,var(--accent) 60%,#000) 100%);
+             border-radius:16px;padding:20px 24px;
+             box-shadow:0 6px 0 rgba(0,0,0,.25),0 10px 24px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.18);
+             position:relative;overflow:hidden;transform:perspective(600px) rotateX(1deg);">
+            <div style="position:absolute;top:0;left:0;right:0;height:50%;background:rgba(255,255,255,.07);border-radius:16px 16px 0 0;"></div>
+            <div style="position:relative;z-index:1;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+                <div style="width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.18);
+                     display:flex;align-items:center;justify-content:center;flex-shrink:0;
+                     box-shadow:0 2px 8px rgba(0,0,0,.2);">
+                    <i class="fa-solid fa-mobile-screen" style="color:#fff;font-size:20px;"></i>
+                </div>
+                <div style="flex:1;">
+                    <div style="font-size:14px;font-weight:800;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,.3);margin-bottom:4px;">
+                        How Staff Login
+                    </div>
+                    <div style="font-size:12px;color:rgba(255,255,255,.85);line-height:1.6;">
+                        Visit <strong style="color:#fff;background:rgba(0,0,0,.2);padding:1px 8px;border-radius:6px;font-family:monospace;">niltask.vercel.app</strong>
+                        → use their <strong style="color:#fff;">email</strong> and the <strong style="color:#fff;">password you set</strong>.
+                        They can change their password from <strong style="color:#fff;">Profile → Settings</strong>.
+                    </div>
+                </div>
+            </div>
+        </div>
         <!-- ── SCORECARD SECTION ──────────────────────────── -->
         <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;margin-top:24px;">
             <div style="padding:16px 20px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
@@ -189,6 +221,9 @@ function renderAdmin() {
                     </select>
                     <button class="btn-accent" onclick="loadScorecard()" style="font-size:12px;padding:8px 14px;">
                         <i class="fa-solid fa-chart-bar"></i> Generate Scorecard
+                    </button>
+                    <button class="btn-outline btn-sm" onclick="window.printScorecard()" style="font-size:12px;">
+                        <i class="fa-solid fa-print"></i> Print
                     </button>
                 </div>
             </div>
@@ -211,6 +246,7 @@ function renderAdmin() {
                         <th style="text-align:center;color:#ef4444;">Pending</th>
                         <th style="text-align:center;">Score</th>
                         <th style="text-align:center;">Grade</th>
+                        <th style="text-align:center;">Card</th>
                     </tr></thead>
                     <tbody id="scorecardBody">
                         <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-secondary);">
@@ -756,12 +792,293 @@ window.loadScorecard = async function() {
             <td style="text-align:center;">
                 <span style="background:${gc.bg};color:${gc.color};padding:3px 12px;border-radius:20px;font-size:12px;font-weight:800;">${s.grade}</span>
             </td>
+            <td style="text-align:center;">
+                <button class="btn-outline btn-sm" onclick="window.downloadStaffScorecard(${JSON.stringify(s).replace(/"/g,'&quot;')})" title="Download scorecard" style="font-size:11px;padding:4px 10px;">
+                    <i class="fa-solid fa-download"></i>
+                </button>
+            </td>
         </tr>`;
     }).join('');
 
     if (note) note.style.display = 'block';
     showToast('Scorecard generated ✓', '#16a34a');
 };
+
+// ─── PRINT STAFF TABLE ───────────────────────────────────────
+window.printStaffTable = function() {
+    const school = window.currentSchoolName || 'School';
+    const rows = allStaff.map((s,i) => `<tr style="background:${i%2?'#f9f9f9':'#fff'}">
+        <td>${s.full_name||'—'}</td><td>${s.email||'—'}</td>
+        <td>${(s.role||'').replace('_',' ')}</td>
+        <td>${s.designation||'—'}</td><td>${s.department||'—'}</td>
+        <td>${s.last_login ? new Date(s.last_login).toLocaleDateString('en-IN') : 'Never'}</td>
+        <td>${s.approved ? 'Active' : 'Blocked'}</td>
+    </tr>`).join('');
+    const w = window.open('','_blank');
+    w.document.write(`<html><head><title>${school} — Staff</title>
+    <style>body{font-family:Arial,sans-serif;padding:20px;font-size:12px;}
+    h1{font-size:16px;}table{width:100%;border-collapse:collapse;}
+    th{padding:7px 8px;border:1px solid #ccc;background:#f0f2f5;text-align:left;font-size:11px;text-transform:uppercase;}
+    td{padding:6px 8px;border:1px solid #ddd;}</style></head><body>
+    <h1>${school} — Staff Directory</h1>
+    <p style="color:#666;font-size:11px;">Total: ${allStaff.length} · Printed ${new Date().toLocaleString('en-IN')}</p>
+    <table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Designation</th><th>Department</th><th>Last Login</th><th>Status</th></tr></thead>
+    <tbody>${rows}</tbody></table></body></html>`);
+    w.document.close(); w.print();
+};
+
+// ─── PRINT SCORECARD TABLE ───────────────────────────────────
+window.printScorecard = function() {
+    const tbody = document.getElementById('scorecardBody');
+    if (!tbody || tbody.innerHTML.includes('Generate Scorecard')) {
+        alert('Generate the scorecard first.'); return;
+    }
+    const school = window.currentSchoolName || 'School';
+    const period = document.getElementById('scMonth')?.selectedOptions[0]?.text || '';
+    const w = window.open('','_blank');
+    w.document.write(`<html><head><title>${school} Scorecard</title>
+    <style>body{font-family:Arial,sans-serif;padding:20px;font-size:12px;}
+    h1{font-size:16px;}table{width:100%;border-collapse:collapse;}
+    th{padding:7px 8px;border:1px solid #ccc;background:#f0f2f5;text-align:center;font-size:11px;text-transform:uppercase;}
+    th:first-child{text-align:left;}td{padding:6px 8px;border:1px solid #ddd;text-align:center;}
+    td:first-child{text-align:left;}</style></head><body>
+    <h1>🏆 ${school} — Staff Scorecard</h1>
+    <p style="color:#666;font-size:11px;">Period: ${period} · Printed ${new Date().toLocaleString('en-IN')}</p>
+    <p style="font-size:11px;color:#666;">Grading: A+ ≥90% · A ≥80% · B ≥65% · C ≥50% · D &lt;50%</p>
+    <table><thead><tr><th>Staff Member</th><th>Role</th><th>Tasks</th><th>On Time</th><th>Delayed</th><th>Pending</th><th>Score</th><th>Grade</th></tr></thead>
+    <tbody>${tbody.innerHTML}</tbody></table></body></html>`);
+    w.document.close(); w.print();
+};
+
+// ─── INDIVIDUAL SCORECARD DOWNLOAD ───────────────────────────
+window.downloadStaffScorecard = function(s) {
+    const school = window.currentSchoolName || 'School';
+    const period = document.getElementById('scMonth')?.selectedOptions[0]?.text || '';
+    const gradeColors = {'A+':'#16a34a','A':'#1d4ed8','B':'#854d0e','C':'#c2410c','D':'#b91c1c','N/A':'#64748b'};
+    const gc = gradeColors[s.grade] || '#64748b';
+    const pct = s.score ?? 0;
+    const bar = Math.min(100, pct);
+    const barColor = pct >= 90 ? '#16a34a' : pct >= 65 ? '#f59e0b' : '#ef4444';
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Scorecard — ${s.staff_name}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0;}
+      body{font-family:'Inter',sans-serif;background:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;}
+      .card{width:480px;background:#fff;border-radius:24px;overflow:hidden;
+            box-shadow:0 20px 60px rgba(0,0,0,.15),0 4px 12px rgba(0,0,0,.08);}
+      .header{background:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%);padding:32px 28px;color:#fff;position:relative;overflow:hidden;}
+      .header::before{content:'';position:absolute;top:-40px;right:-40px;width:180px;height:180px;
+                      border-radius:50%;background:rgba(255,255,255,.08);}
+      .header::after{content:'';position:absolute;bottom:-60px;left:-30px;width:200px;height:200px;
+                     border-radius:50%;background:rgba(255,255,255,.06);}
+      .school-name{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;opacity:.8;margin-bottom:6px;}
+      .card-title{font-size:13px;font-weight:600;opacity:.75;margin-bottom:20px;}
+      .staff-name{font-size:26px;font-weight:900;letter-spacing:-.5px;margin-bottom:4px;}
+      .staff-meta{font-size:12px;opacity:.75;}
+      .body{padding:28px;}
+      .grade-block{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;}
+      .grade-circle{width:90px;height:90px;border-radius:50%;display:flex;flex-direction:column;
+                    align-items:center;justify-content:center;
+                    background:linear-gradient(135deg,${gc}22,${gc}11);
+                    border:3px solid ${gc}44;}
+      .grade-letter{font-size:36px;font-weight:900;color:${gc};}
+      .grade-label{font-size:9px;font-weight:700;color:${gc};letter-spacing:1px;text-transform:uppercase;}
+      .score-block{text-align:right;}
+      .score-num{font-size:48px;font-weight:900;color:${barColor};line-height:1;}
+      .score-label{font-size:11px;color:#94a3b8;font-weight:600;margin-top:2px;}
+      .bar-track{height:8px;background:#f1f5f9;border-radius:8px;overflow:hidden;margin-top:6px;width:160px;margin-left:auto;}
+      .bar-fill{height:100%;width:${bar}%;background:${barColor};border-radius:8px;}
+      .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;}
+      .stat{background:#f8fafc;border-radius:12px;padding:14px 10px;text-align:center;}
+      .stat-num{font-size:22px;font-weight:800;}
+      .stat-lbl{font-size:10px;color:#94a3b8;font-weight:600;margin-top:3px;text-transform:uppercase;}
+      .period{background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:10px 14px;
+              font-size:12px;color:#0369a1;font-weight:600;margin-bottom:20px;display:flex;align-items:center;gap:8px;}
+      .footer{background:#f8fafc;border-top:1px solid #f1f5f9;padding:14px 28px;
+              font-size:10px;color:#94a3b8;text-align:center;}
+    </style></head><body>
+    <div class="card">
+      <div class="header">
+        <div class="school-name">${school}</div>
+        <div class="card-title">Performance Scorecard</div>
+        <div class="staff-name">${s.staff_name||'—'}</div>
+        <div class="staff-meta">${s.role||''} ${s.designation ? '· '+s.designation : ''}</div>
+      </div>
+      <div class="body">
+        <div class="period">📅 Period: ${period}</div>
+        <div class="grade-block">
+          <div class="grade-circle">
+            <div class="grade-letter">${s.grade}</div>
+            <div class="grade-label">Grade</div>
+          </div>
+          <div class="score-block">
+            <div class="score-num">${s.score !== null ? s.score+'%' : '—'}</div>
+            <div class="score-label">Performance Score</div>
+            <div class="bar-track"><div class="bar-fill"></div></div>
+          </div>
+        </div>
+        <div class="stats">
+          <div class="stat"><div class="stat-num" style="color:#6366f1">${s.tasks_total||0}</div><div class="stat-lbl">Total</div></div>
+          <div class="stat"><div class="stat-num" style="color:#16a34a">${s.tasks_on_time||0}</div><div class="stat-lbl">On Time</div></div>
+          <div class="stat"><div class="stat-num" style="color:#f59e0b">${s.tasks_delayed||0}</div><div class="stat-lbl">Delayed</div></div>
+          <div class="stat"><div class="stat-num" style="color:#ef4444">${s.tasks_pending||0}</div><div class="stat-lbl">Pending</div></div>
+        </div>
+        <p style="font-size:11px;color:#94a3b8;text-align:center;">Formula: (On-time×4 + Delayed×1) ÷ (Total×4) × 100</p>
+      </div>
+      <div class="footer">Generated by MPGS TaskFlow · ${new Date().toLocaleString('en-IN')} · Objective &amp; Transparent</div>
+    </div>
+    <script>window.print();<\/script>
+    </body></html>`;
+    const w = window.open('','_blank');
+    w.document.write(html);
+    w.document.close();
+};
+
+// ─── BULK ADD MODAL ──────────────────────────────────────────
+window.openBulkAddModal = function() {
+    let modal = document.getElementById('bulkAddModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'bulkAddModal';
+        modal.className = 'modal-wrap';
+        modal.innerHTML = `
+        <div class="modal-card" style="max-width:560px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+                <h3 style="font-size:15px;font-weight:800;color:var(--text-primary);margin:0;">
+                    <i class="fa-solid fa-file-csv" style="color:#0ea5e9;margin-right:8px;"></i>Bulk Add Staff
+                </h3>
+                <button onclick="document.getElementById('bulkAddModal').classList.remove('open')"
+                    style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text-secondary);">✕</button>
+            </div>
+            <div style="background:var(--bg-body);border:1px solid var(--border-color);border-radius:10px;padding:14px;margin-bottom:16px;font-size:12px;color:var(--text-secondary);">
+                <strong style="color:var(--text-primary);">How it works:</strong><br>
+                1. Download the sample CSV below<br>
+                2. Fill in name, email, role, department, designation for each staff<br>
+                3. Upload the filled CSV — passwords auto-generated as <strong>firstname123</strong> (lowercase)
+            </div>
+            <div style="margin-bottom:14px;">
+                <button class="btn-outline" onclick="window.downloadSampleCSV()" style="width:100%;justify-content:center;">
+                    <i class="fa-solid fa-download"></i> Download Sample CSV
+                </button>
+            </div>
+            <div class="field">
+                <label>Upload Filled CSV</label>
+                <input type="file" id="bulkCSVInput" accept=".csv"
+                    style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:9px;background:var(--bg-body);color:var(--text-primary);font-size:12px;">
+            </div>
+            <div id="bulkPreview" style="display:none;margin-bottom:14px;max-height:200px;overflow-y:auto;background:var(--bg-body);border:1px solid var(--border-color);border-radius:9px;padding:10px;font-size:12px;"></div>
+            <div class="err-msg" id="bulkErr"></div>
+            <div style="display:flex;gap:10px;margin-top:8px;">
+                <button class="btn-outline" style="flex:1;" onclick="document.getElementById('bulkAddModal').classList.remove('open')">Cancel</button>
+                <button class="btn-accent" style="flex:2;" id="bulkAddBtn" onclick="window.doBulkAdd()">
+                    <i class="fa-solid fa-users"></i> Add All Staff
+                </button>
+            </div>
+            <div id="bulkProgress" style="display:none;margin-top:12px;font-size:12px;color:var(--text-secondary);"></div>
+        </div>`;
+        document.body.appendChild(modal);
+
+        document.getElementById('bulkCSVInput').addEventListener('change', function() {
+            const file = this.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const lines = e.target.result.split('\n').filter(l => l.trim());
+                const preview = document.getElementById('bulkPreview');
+                preview.style.display = 'block';
+                preview.innerHTML = `<strong>${lines.length - 1} staff members detected:</strong><br><br>` +
+                    lines.slice(1,6).map(l => {
+                        const [name,email,role,dept,desig] = l.split(',').map(x=>x.trim());
+                        return `• ${name||'?'} (${email||'?'}) — ${role||'teacher'}`;
+                    }).join('<br>') +
+                    (lines.length > 6 ? `<br>... and ${lines.length - 6} more` : '');
+            };
+            reader.readAsText(file);
+        });
+    }
+    modal.classList.add('open');
+};
+
+window.downloadSampleCSV = function() {
+    const csv = `full_name,email,role,department,designation
+Mr. Rajesh Kumar,rajesh.kumar@school.com,teacher,Science,Physics Teacher
+Mrs. Priya Sharma,priya.sharma@school.com,hod,Mathematics,Head of Department
+Mr. Anil Verma,anil.verma@school.com,vp_admin,Administration,Vice Principal`;
+    const a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    a.download = 'staff_bulk_upload_sample.csv';
+    a.click();
+};
+
+window.doBulkAdd = async function() {
+    const fileInput = document.getElementById('bulkCSVInput');
+    const btn = document.getElementById('bulkAddBtn');
+    const errEl = document.getElementById('bulkErr');
+    const progress = document.getElementById('bulkProgress');
+    errEl.style.display = 'none';
+
+    if (!fileInput.files[0]) { errEl.textContent = 'Please upload a CSV file.'; errEl.style.display = 'block'; return; }
+
+    const text = await fileInput.files[0].text();
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+    const dataLines = lines.slice(1).filter(l => l);
+    if (!dataLines.length) { errEl.textContent = 'No data rows found.'; errEl.style.display = 'block'; return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Adding...';
+    progress.style.display = 'block';
+
+    const { data: { session } } = await sb.auth.getSession();
+    let added = 0, failed = 0, failedNames = [];
+
+    for (let i = 0; i < dataLines.length; i++) {
+        const [full_name, email, role, department, designation] = dataLines[i].split(',').map(x => x?.trim());
+        if (!full_name || !email) { failed++; failedNames.push(`Row ${i+2}: missing name or email`); continue; }
+
+        const firstName = full_name.split(' ').pop().toLowerCase().replace(/[^a-z]/g,'');
+        const password = firstName + '123';
+
+        progress.textContent = `Adding ${i+1} of ${dataLines.length}: ${full_name}...`;
+
+        try {
+            const resp = await fetch(`${SUPABASE_URL}/functions/v1/create-school-user`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+                body: JSON.stringify({ email, password, full_name, role: role||'teacher', designation: designation||'', department: department||'' })
+            });
+            const result = await resp.json();
+            if (!resp.ok || result.error) { failed++; failedNames.push(`${full_name}: ${result.error}`); }
+            else added++;
+        } catch(e) { failed++; failedNames.push(`${full_name}: ${e.message}`); }
+    }
+
+    progress.style.display = 'none';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-users"></i> Add All Staff';
+
+    let msg = `✓ Added ${added} staff.`;
+    if (failed) msg += ` ${failed} failed: ${failedNames.slice(0,3).join(', ')}${failedNames.length > 3 ? '...' : ''}`;
+    showToast(msg, added ? '#16a34a' : '#dc2626');
+
+    if (added) {
+        document.getElementById('bulkAddModal').classList.remove('open');
+        await loadStaff();
+    }
+};
+
+// ─── THEME TOGGLE ────────────────────────────────────────────
+window.toggleAdminTheme = function() {
+    const html = document.documentElement;
+    const cur = html.getAttribute('data-theme');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-theme', next);
+    localStorage.setItem('adminTheme', next);
+};
+;(()=>{
+    const t = localStorage.getItem('adminTheme');
+    if (t) document.documentElement.setAttribute('data-theme', t);
+})();
 
 // ─── TOAST ───────────────────────────────────────────────────
 function showToast(msg, color = '#16a34a') {

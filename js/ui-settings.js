@@ -198,28 +198,6 @@ window.saveGroupSettings = function() {
     if (typeof window.loadChatsList === 'function') window.loadChatsList();
 };
 
-window._gsPhotoSelected = function(input) {
-    const file = input.files[0]; input.value = '';
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-        const img = new Image();
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const size = Math.min(img.width, img.height, 240);
-            canvas.width = size; canvas.height = size;
-            canvas.getContext('2d').drawImage(img, 0, 0, size, size);
-            window._gsPendingPhoto = canvas.toDataURL('image/jpeg', 0.8);
-            const wrap = document.getElementById('gsPhotoWrap');
-            if (wrap) wrap.style.background = `url(${window._gsPendingPhoto}) center/cover`;
-            const icon = document.getElementById('gsPhotoIcon');
-            if (icon) icon.style.display = 'none';
-        };
-        img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-};
-
 window.openGroupSettings = async function(groupId) {
     const gid = groupId || window.currentRoom;
     if (!gid || gid.startsWith('dm_')) return;

@@ -35,6 +35,7 @@ function fmtLogin(ts) {
         }
     }
     renderAdmin();
+    renderInlineRolesTable();
     await loadAdminData();
 })();
 
@@ -44,35 +45,47 @@ function renderAdmin() {
     const userName   = window.currentUser?.user_metadata?.full_name
                     || window.currentUser?.email?.split('@')[0] || 'Admin';
 
+    const btn3d = (label, icon, onclick, color='var(--accent)') =>
+        `<button onclick="${onclick}" style="
+            display:inline-flex;align-items:center;gap:7px;padding:9px 18px;
+            border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;color:#fff;
+            background:linear-gradient(180deg,${color} 0%,color-mix(in srgb,${color} 70%,#000) 100%);
+            box-shadow:0 4px 0 color-mix(in srgb,${color} 40%,#000),0 6px 12px rgba(0,0,0,.18);
+            transform:perspective(300px) rotateX(1.5deg);transition:box-shadow .1s,transform .1s;"
+            onmousedown="this.style.transform='perspective(300px) rotateX(1.5deg) translateY(2px)';this.style.boxShadow='0 2px 0 color-mix(in srgb,${color} 40%,#000)';"
+            onmouseup="this.style.transform='perspective(300px) rotateX(1.5deg)';this.style.boxShadow='0 4px 0 color-mix(in srgb,${color} 40%,#000),0 6px 12px rgba(0,0,0,.18)';"
+        ><i class="fa-solid ${icon}"></i>${label}</button>`;
+
+    const sectionHead = (title, sub) =>
+        `<div style="background:linear-gradient(135deg,var(--accent) 0%,color-mix(in srgb,var(--accent) 60%,#000) 100%);
+            padding:18px 24px;position:relative;overflow:hidden;">
+            <div style="position:absolute;top:-30px;right:-30px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.07);pointer-events:none;"></div>
+            <h2 style="font-size:16px;font-weight:900;color:#fff;margin:0 0 3px;text-shadow:0 2px 4px rgba(0,0,0,.25);position:relative;z-index:1;">${title}</h2>
+            <p style="font-size:12px;color:rgba(255,255,255,.75);margin:0;position:relative;z-index:1;">${sub}</p>
+        </div>`;
+
     document.getElementById('adminRoot').innerHTML = `
-    <div style="max-width:1100px;margin:0 auto;padding:20px 16px;">
+    <div style="max-width:1100px;margin:0 auto;padding:20px 16px;font-size:14px;">
 
         <!-- Top bar -->
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
-
-            <!-- School badge -->
-            <div class="school-badge" style="flex:1;min-width:220px;max-width:380px;">
+            <div class="school-badge" style="flex:1;min-width:220px;max-width:420px;">
                 <div class="school-badge-name">${window.escapeHtml(schoolName)}</div>
                 <div class="school-badge-sub">✦ &nbsp; Powered by TaskFlow &nbsp; ✦</div>
             </div>
-
-            <!-- Right actions -->
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                <div style="font-size:12px;font-weight:600;color:var(--text-secondary);">
+                <span style="font-size:13px;font-weight:600;color:var(--text-secondary);">
                     <i class="fa-solid fa-user-shield" style="color:var(--accent);"></i>
                     ${window.escapeHtml(userName)}
-                    <span style="font-size:10px;background:rgba(99,102,241,.1);color:#6366f1;padding:2px 8px;border-radius:20px;margin-left:4px;">${window.currentRoleName || 'Admin'}</span>
-                </div>
-                <button class="btn-outline btn-sm" onclick="window.location.href='/?mode=chat'">
-                    <i class="fa-solid fa-comments"></i> Go to Chat
-                </button>
-                <button class="btn-outline btn-sm" onclick="window.logout?.()">
-                    <i class="fa-solid fa-arrow-right-from-bracket"></i> Logout
-                </button>
+                    <span style="font-size:11px;background:rgba(99,102,241,.1);color:#6366f1;padding:2px 8px;border-radius:20px;margin-left:4px;">${window.currentRoleName || 'Admin'}</span>
+                </span>
+                ${btn3d('','fa-circle-half-stroke','window.toggleAdminTheme()','#6366f1')}
+                ${btn3d('Chat','fa-comments',"window.location.href='/?mode=chat'",'#0ea5e9')}
+                ${btn3d('Logout','fa-arrow-right-from-bracket','window.logout?.()','#ef4444')}
             </div>
         </div>
 
-        <!-- Trial / Subscription banner -->
+        <!-- Trial banner -->
         <div id="trialBanner" class="trial-banner" style="margin-bottom:20px;">
             <div style="width:40px;height:40px;border-radius:12px;background:rgba(99,102,241,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
                 <i class="fa-solid fa-star" style="color:#6366f1;font-size:16px;"></i>
@@ -83,79 +96,34 @@ function renderAdmin() {
             </div>
         </div>
 
-        <!-- Stats row -->
+        <!-- Stats -->
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px;">
-            <div class="stat-card">
-                <div class="stat-icon" style="background:rgba(99,102,241,.1);">
-                    <i class="fa-solid fa-users" style="color:#6366f1;font-size:18px;"></i>
-                </div>
-                <div>
-                    <div class="stat-val" id="statTotal">—</div>
-                    <div class="stat-lbl">Total Staff</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon" style="background:rgba(22,163,74,.1);">
-                    <i class="fa-solid fa-user-check" style="color:#16a34a;font-size:18px;"></i>
-                </div>
-                <div>
-                    <div class="stat-val" id="statApproved">—</div>
-                    <div class="stat-lbl">Approved</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon" style="background:rgba(245,158,11,.1);">
-                    <i class="fa-solid fa-user-clock" style="color:#f59e0b;font-size:18px;"></i>
-                </div>
-                <div>
-                    <div class="stat-val" id="statPending">—</div>
-                    <div class="stat-lbl">Pending</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon" style="background:rgba(239,68,68,.1);">
-                    <i class="fa-solid fa-calendar-xmark" style="color:#ef4444;font-size:18px;"></i>
-                </div>
-                <div>
-                    <div class="stat-val" id="statDays">—</div>
-                    <div class="stat-lbl">Trial Days Left</div>
-                </div>
-            </div>
+            <div class="stat-card"><div class="stat-icon" style="background:rgba(99,102,241,.1);"><i class="fa-solid fa-users" style="color:#6366f1;font-size:18px;"></i></div><div><div class="stat-val" id="statTotal">—</div><div class="stat-lbl">Total Staff</div></div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:rgba(22,163,74,.1);"><i class="fa-solid fa-user-check" style="color:#16a34a;font-size:18px;"></i></div><div><div class="stat-val" id="statApproved">—</div><div class="stat-lbl">Approved</div></div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:rgba(245,158,11,.1);"><i class="fa-solid fa-user-clock" style="color:#f59e0b;font-size:18px;"></i></div><div><div class="stat-val" id="statPending">—</div><div class="stat-lbl">Pending</div></div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:rgba(239,68,68,.1);"><i class="fa-solid fa-calendar-xmark" style="color:#ef4444;font-size:18px;"></i></div><div><div class="stat-val" id="statDays">—</div><div class="stat-lbl">Trial Days Left</div></div></div>
         </div>
 
-        <!-- Staff management card -->
-        <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;">
-
-            <!-- Header row -->
-            <div style="padding:16px 20px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-                <div>
-                    <h2 style="font-size:15px;font-weight:800;color:var(--text-primary);margin:0 0 2px;">Staff Management</h2>
-                    <p style="font-size:11px;color:var(--text-secondary);margin:0;">Add, approve or remove staff members</p>
-                </div>
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                    <input type="text" id="staffSearch" placeholder="Search name or email..."
-                        oninput="filterStaff(this.value)"
-                        style="padding:8px 12px;border-radius:9px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-primary);font-size:12px;outline:none;width:200px;">
-                    <button class="btn-accent" onclick="openAddStaffModal()">
-                        <i class="fa-solid fa-plus"></i> Add Staff
-                    </button>
+        <!-- STAFF MANAGEMENT -->
+        <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;
+             box-shadow:0 5px 0 rgba(0,0,0,.1),0 8px 20px rgba(0,0,0,.07);">
+            ${sectionHead('👥 Staff Management','Add, approve or remove staff members')}
+            <div style="padding:14px 20px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+                <input type="text" id="staffSearch" placeholder="Search name or email..."
+                    oninput="filterStaff(this.value)"
+                    style="padding:8px 12px;border-radius:9px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-primary);font-size:13px;outline:none;width:220px;">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn-outline btn-sm" onclick="window.printStaffTable()"><i class="fa-solid fa-print"></i> Print</button>
+                    <button class="btn-outline btn-sm" onclick="window.openBulkAddModal()" style="color:#0ea5e9;border-color:#0ea5e9;"><i class="fa-solid fa-file-csv"></i> Bulk Add</button>
+                    <button class="btn-accent" onclick="openAddStaffModal()"><i class="fa-solid fa-plus"></i> Add Staff</button>
                 </div>
             </div>
-
-            <!-- Table -->
             <div style="overflow-x:auto;">
                 <table class="staff-table">
-                    <thead>
-                        <tr>
-                            <th>Staff Member</th>
-                            <th>Role</th>
-                            <th>Designation</th>
-                            <th>Department</th>
-                            <th>Approved</th>
-                            <th>Last Login</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
+                    <thead><tr>
+                        <th>Staff Member</th><th>Role</th><th>Designation</th>
+                        <th>Department</th><th>Approved</th><th>Last Login</th><th>Actions</th>
+                    </tr></thead>
                     <tbody id="staffTableBody">
                         <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary);">
                             <i class="fa-solid fa-spinner fa-spin"></i> Loading staff...
@@ -165,41 +133,69 @@ function renderAdmin() {
             </div>
         </div>
 
-        <!-- Footer note -->
-        <p style="text-align:center;font-size:11px;color:var(--text-secondary);margin-top:16px;">
-            Staff login at <strong>niltask.vercel.app</strong> using their email and the password you set.
-            They can change their password from Profile Settings.
-        </p>
-        <!-- ── SCORECARD SECTION ──────────────────────────── -->
-        <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;margin-top:24px;">
-            <div style="padding:16px 20px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-                <div>
-                    <h2 style="font-size:15px;font-weight:800;color:var(--text-primary);margin:0 0 2px;">
-                        🏆 Staff Scorecard
-                        <span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 7px;border-radius:10px;margin-left:6px;font-weight:700;vertical-align:middle;">WORLD FIRST</span>
-                    </h2>
-                    <p style="font-size:11px;color:var(--text-secondary);margin:0;">Objective task-based performance scores for transparent promotions &amp; increments</p>
-                </div>
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                    <select id="scMonth" style="padding:7px 10px;border-radius:9px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-primary);font-size:12px;outline:none;">
-                        <option value="this_month">This Month</option>
-                        <option value="last_month">Last Month</option>
-                        <option value="this_quarter">This Quarter</option>
-                        <option value="this_year">This Year</option>
-                    </select>
-                    <button class="btn-accent" onclick="loadScorecard()" style="font-size:12px;padding:8px 14px;">
-                        <i class="fa-solid fa-chart-bar"></i> Generate Scorecard
-                    </button>
-                </div>
+        <!-- Login note -->
+        <div style="margin:14px 0 24px;padding:13px 18px;background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:12px;font-size:13px;">
+            <strong style="color:var(--text-primary);">How Staff Login:</strong>
+            <span style="color:var(--text-secondary);margin-left:6px;">
+                Visit <strong style="color:var(--accent);">niltask.vercel.app</strong> using their
+                <strong style="color:var(--text-primary);">email</strong> and the
+                <strong style="color:var(--text-primary);">password you set</strong>.
+                They can change it from <strong style="color:var(--text-primary);">Profile → Settings</strong>.
+            </span>
+        </div>
+
+        <hr style="border:none;border-top:1px solid var(--border-color);margin:0 0 24px;">
+
+        <!-- ROLES & PERMISSIONS -->
+        <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;margin-bottom:24px;
+             box-shadow:0 5px 0 rgba(0,0,0,.1),0 8px 20px rgba(0,0,0,.07);">
+            ${sectionHead('🛡️ Roles &amp; Permissions','Which role can do what — Download PDF to share with staff')}
+            <div style="padding:12px 20px;border-bottom:1px solid var(--border-color);display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="btn-outline btn-sm" onclick="window.openRolesPermPanel?.()"><i class="fa-solid fa-expand"></i> Full View</button>
+                <button class="btn-outline btn-sm" onclick="window.printRolesPDF()"><i class="fa-solid fa-file-pdf"></i> Download PDF</button>
             </div>
-            <div style="padding:8px 20px;background:var(--bg-body);border-bottom:1px solid var(--border-color);display:flex;gap:14px;flex-wrap:wrap;align-items:center;">
+            <div style="overflow-x:auto;">
+                <table class="staff-table">
+                    <thead><tr>
+                        <th>Permission</th>
+                        <th style="text-align:center;">Principal</th>
+                        <th style="text-align:center;">VP/Admin</th>
+                        <th style="text-align:center;">HOD</th>
+                        <th style="text-align:center;">Exam Ctrl</th>
+                        <th style="text-align:center;">Teacher</th>
+                        <th style="text-align:center;">Support</th>
+                    </tr></thead>
+                    <tbody id="rolesInlineTbody">
+                        <tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text-secondary);">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <hr style="border:none;border-top:1px solid var(--border-color);margin:0 0 24px;">
+
+        <!-- SCORECARD -->
+        <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;
+             box-shadow:0 5px 0 rgba(0,0,0,.1),0 8px 20px rgba(0,0,0,.07);">
+            ${sectionHead('🏆 Staff Scorecard','Objective task-based performance — international standard')}
+            <div style="padding:10px 20px;background:var(--bg-body);border-bottom:1px solid var(--border-color);display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
                 <span style="font-size:11px;font-weight:700;color:var(--text-secondary);">Grade:</span>
-                <span style="font-size:11px;"><span style="background:#dcfce7;color:#16a34a;padding:1px 8px;border-radius:10px;font-weight:700;">A+</span> 90–100%</span>
-                <span style="font-size:11px;"><span style="background:#dbeafe;color:#1d4ed8;padding:1px 8px;border-radius:10px;font-weight:700;">A</span> 80–89%</span>
-                <span style="font-size:11px;"><span style="background:#fef9c3;color:#854d0e;padding:1px 8px;border-radius:10px;font-weight:700;">B</span> 65–79%</span>
-                <span style="font-size:11px;"><span style="background:#ffedd5;color:#c2410c;padding:1px 8px;border-radius:10px;font-weight:700;">C</span> 50–64%</span>
+                <span style="font-size:11px;"><span style="background:#dcfce7;color:#16a34a;padding:1px 8px;border-radius:10px;font-weight:700;">A+</span> ≥90%</span>
+                <span style="font-size:11px;"><span style="background:#dbeafe;color:#1d4ed8;padding:1px 8px;border-radius:10px;font-weight:700;">A</span> ≥80%</span>
+                <span style="font-size:11px;"><span style="background:#fef9c3;color:#854d0e;padding:1px 8px;border-radius:10px;font-weight:700;">B</span> ≥65%</span>
+                <span style="font-size:11px;"><span style="background:#ffedd5;color:#c2410c;padding:1px 8px;border-radius:10px;font-weight:700;">C</span> ≥50%</span>
                 <span style="font-size:11px;"><span style="background:#fee2e2;color:#b91c1c;padding:1px 8px;border-radius:10px;font-weight:700;">D</span> &lt;50%</span>
                 <span style="font-size:10px;color:var(--text-secondary);margin-left:auto;">On-time ×4 + Delayed ×1 ÷ Total ×4 × 100</span>
+            </div>
+            <div style="padding:10px 20px;border-bottom:1px solid var(--border-color);display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                <select id="scMonth" style="padding:7px 10px;border-radius:9px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-primary);font-size:12px;outline:none;">
+                    <option value="this_month">This Month</option>
+                    <option value="last_month">Last Month</option>
+                    <option value="this_quarter">This Quarter</option>
+                    <option value="this_year">This Year</option>
+                </select>
+                <button class="btn-accent" onclick="loadScorecard()" style="font-size:12px;padding:8px 14px;"><i class="fa-solid fa-chart-bar"></i> Generate Scorecard</button>
+                <button class="btn-outline btn-sm" onclick="window.printScorecard()"><i class="fa-solid fa-print"></i> Print</button>
             </div>
             <div style="overflow-x:auto;">
                 <table class="staff-table">
@@ -211,16 +207,17 @@ function renderAdmin() {
                         <th style="text-align:center;color:#ef4444;">Pending</th>
                         <th style="text-align:center;">Score</th>
                         <th style="text-align:center;">Grade</th>
+                        <th style="text-align:center;">Card</th>
                     </tr></thead>
                     <tbody id="scorecardBody">
-                        <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-secondary);">
+                        <tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-secondary);">
                             Select period and click <strong>Generate Scorecard</strong>
                         </td></tr>
                     </tbody>
                 </table>
             </div>
             <div id="scorecardNote" style="padding:12px 20px;font-size:11px;color:var(--text-secondary);border-top:1px solid var(--border-color);display:none;">
-                📊 Scores are calculated automatically from task data — objective, transparent, unchallengeable. Share with staff for fair increment &amp; promotion decisions.
+                📊 Scores calculated automatically from task data — objective, transparent, unchallengeable.
             </div>
         </div>
 
@@ -756,12 +753,335 @@ window.loadScorecard = async function() {
             <td style="text-align:center;">
                 <span style="background:${gc.bg};color:${gc.color};padding:3px 12px;border-radius:20px;font-size:12px;font-weight:800;">${s.grade}</span>
             </td>
+            <td style="text-align:center;">
+                <button class="btn-outline btn-sm" onclick='window.downloadStaffScorecard(${JSON.stringify(s).replace(/'/g,"&#39;")})' style="font-size:11px;padding:4px 8px;" title="Download scorecard">
+                    <i class="fa-solid fa-download"></i>
+                </button>
+            </td>
         </tr>`;
     }).join('');
 
     if (note) note.style.display = 'block';
     showToast('Scorecard generated ✓', '#16a34a');
 };
+
+// ─── INLINE ROLES TABLE ──────────────────────────────────────
+const ROLE_PERMS_MATRIX = [
+    { perm:'Send Messages',       principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:1 },
+    { perm:'Schedule Messages',   principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:0,support_staff:0 },
+    { perm:'Upload Files',        principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:0 },
+    { perm:'Create Tasks',        principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:0,support_staff:0 },
+    { perm:'View Task Hub',       principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:0 },
+    { perm:'Manage Groups',       principal:1,vp_admin:1,hod:1,exam_controller:0,teacher:0,support_staff:0 },
+    { perm:'View Activity Feed',  principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:1 },
+    { perm:'View Dashboard',      principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:0,support_staff:0 },
+    { perm:'Admin Panel Access',  principal:1,vp_admin:1,hod:0,exam_controller:0,teacher:0,support_staff:0 },
+    { perm:'Manage Staff',        principal:1,vp_admin:1,hod:0,exam_controller:0,teacher:0,support_staff:0 },
+    { perm:'Set Reminders',       principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:1 },
+];
+const ROLE_COLS = [
+    {key:'principal',label:'Principal'},{key:'vp_admin',label:'VP/Admin'},
+    {key:'hod',label:'HOD'},{key:'exam_controller',label:'Exam Ctrl'},
+    {key:'teacher',label:'Teacher'},{key:'support_staff',label:'Support'},
+];
+function renderInlineRolesTable() {
+    const tbody = document.getElementById('rolesInlineTbody');
+    if (!tbody) return;
+    tbody.innerHTML = ROLE_PERMS_MATRIX.map((row,i) => `
+        <tr style="${i%2?'':'background:var(--bg-body);'}">
+            <td style="font-size:13px;font-weight:600;">${row.perm}</td>
+            ${ROLE_COLS.map(c=>`<td style="text-align:center;">${row[c.key]
+                ? '<span style="color:#16a34a;font-size:16px;font-weight:900;">✓</span>'
+                : '<span style="color:#d1d5db;font-size:15px;">—</span>'}</td>`).join('')}
+        </tr>`).join('');
+}
+
+// ─── ROLES PDF ───────────────────────────────────────────────
+window.printRolesPDF = function() {
+    const school = window.currentSchoolName || 'School';
+    const rows = ROLE_PERMS_MATRIX.map((r,i) => `
+        <tr style="background:${i%2?'#f9f9f9':'#fff'};">
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;font-size:12px;font-weight:600;">${r.perm}</td>
+            ${ROLE_COLS.map(c=>`<td style="padding:8px;border:1px solid #e5e7eb;text-align:center;font-size:18px;font-weight:900;color:${r[c.key]?'#16a34a':'#d1d5db'};">${r[c.key]?'✓':'—'}</td>`).join('')}
+        </tr>`).join('');
+    const w = window.open('','_blank');
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>${school} — Roles & Permissions</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0;}
+      body{font-family:'Inter',sans-serif;background:#fff;padding:32px;}
+      .hdr{background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;padding:28px 32px;border-radius:16px;margin-bottom:24px;position:relative;overflow:hidden;}
+      .hdr::after{content:'';position:absolute;top:-40px;right:-40px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.08);}
+      h1{font-size:22px;font-weight:900;margin-bottom:4px;position:relative;z-index:1;}
+      .sub{font-size:12px;opacity:.8;position:relative;z-index:1;}
+      .legend{display:flex;gap:20px;margin-bottom:16px;font-size:12px;align-items:center;}
+      table{width:100%;border-collapse:collapse;}
+      th{padding:10px 12px;background:#f8fafc;border:1px solid #e5e7eb;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;text-align:center;}
+      th:first-child{text-align:left;min-width:180px;}
+      .foot{margin-top:24px;font-size:11px;color:#9ca3af;text-align:center;}
+      @media print{.hdr{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+    </style></head><body>
+    <div class="hdr"><h1>🛡️ Roles &amp; Permissions</h1><div class="sub">${school} · Generated ${new Date().toLocaleString('en-IN')}</div></div>
+    <div class="legend">
+      <strong style="color:#16a34a;font-size:18px;">✓</strong> = Granted &nbsp;
+      <strong style="color:#d1d5db;font-size:16px;">—</strong> = Not applicable
+    </div>
+    <table><thead><tr><th style="text-align:left;">Permission</th>${ROLE_COLS.map(c=>`<th>${c.label}</th>`).join('')}</tr></thead>
+    <tbody>${rows}</tbody></table>
+    <div class="foot">MPGS TaskFlow · Role-Based Access Control</div>
+    <script>setTimeout(()=>window.print(),400);<\/script></body></html>`);
+    w.document.close();
+};
+
+// ─── PRINT STAFF TABLE ───────────────────────────────────────
+window.printStaffTable = function() {
+    const school = window.currentSchoolName || 'School';
+    const rows = allStaff.map((s,i) => `<tr style="background:${i%2?'#f9f9f9':'#fff'};">
+        <td>${s.full_name||'—'}</td><td>${s.email||'—'}</td>
+        <td>${(s.role||'').replace('_',' ')}</td><td>${s.designation||'—'}</td>
+        <td>${s.department||'—'}</td>
+        <td>${s.last_login?new Date(s.last_login).toLocaleDateString('en-IN'):'Never'}</td>
+        <td>${s.approved?'Active':'Blocked'}</td>
+    </tr>`).join('');
+    const w = window.open('','_blank');
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${school} Staff</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Inter',sans-serif;padding:24px;font-size:12px;}
+    .hdr{background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;padding:20px 24px;border-radius:12px;margin-bottom:18px;}
+    h1{font-size:18px;font-weight:900;margin-bottom:3px;}.sub{font-size:11px;opacity:.8;}
+    table{width:100%;border-collapse:collapse;}th{padding:8px 10px;background:#f8fafc;border:1px solid #e5e7eb;font-size:10px;font-weight:800;text-transform:uppercase;text-align:left;}
+    td{padding:7px 10px;border:1px solid #e5e7eb;}
+    @media print{.hdr{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body>
+    <div class="hdr"><h1>${school} — Staff Directory</h1><div class="sub">${allStaff.length} members · ${new Date().toLocaleString('en-IN')}</div></div>
+    <table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Designation</th><th>Department</th><th>Last Login</th><th>Status</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <script>setTimeout(()=>window.print(),400);<\/script></body></html>`);
+    w.document.close();
+};
+
+// ─── PRINT SCORECARD ─────────────────────────────────────────
+window.printScorecard = function() {
+    const tbody = document.getElementById('scorecardBody');
+    if (!tbody || tbody.textContent.includes('Generate Scorecard')) { alert('Generate the scorecard first.'); return; }
+    const school = window.currentSchoolName || 'School';
+    const period = document.getElementById('scMonth')?.selectedOptions[0]?.text || '';
+    const rows = Array.from(tbody.querySelectorAll('tr')).map(tr => {
+        const cells = Array.from(tr.querySelectorAll('td'));
+        return `<tr>${cells.slice(0,8).map((td,i)=>`<td style="padding:7px 10px;border:1px solid #e5e7eb;${i>1?'text-align:center;':''}">${td.innerText}</td>`).join('')}</tr>`;
+    }).join('');
+    const w = window.open('','_blank');
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${school} Scorecard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Inter',sans-serif;padding:24px;font-size:12px;}
+    .hdr{background:linear-gradient(135deg,#6366f1,#4338ca);color:#fff;padding:22px 26px;border-radius:14px;margin-bottom:18px;position:relative;overflow:hidden;}
+    .hdr::after{content:'';position:absolute;top:-30px;right:-30px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.08);}
+    h1{font-size:20px;font-weight:900;margin-bottom:3px;position:relative;z-index:1;}.sub{font-size:11px;opacity:.8;position:relative;z-index:1;}
+    .grades{display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;}
+    .grades span{padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;}
+    table{width:100%;border-collapse:collapse;}
+    th{padding:9px 10px;background:#f8fafc;border:1px solid #e5e7eb;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;text-align:center;}
+    th:first-child{text-align:left;}td{padding:7px 10px;border:1px solid #e5e7eb;}
+    .foot{margin-top:18px;font-size:10px;color:#9ca3af;text-align:center;}
+    @media print{.hdr{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body>
+    <div class="hdr"><h1>🏆 Staff Scorecard</h1><div class="sub">${school} · ${period} · ${new Date().toLocaleString('en-IN')}</div></div>
+    <div class="grades">
+      <span style="background:#dcfce7;color:#16a34a;">A+ ≥90%</span>
+      <span style="background:#dbeafe;color:#1d4ed8;">A ≥80%</span>
+      <span style="background:#fef9c3;color:#854d0e;">B ≥65%</span>
+      <span style="background:#ffedd5;color:#c2410c;">C ≥50%</span>
+      <span style="background:#fee2e2;color:#b91c1c;">D &lt;50%</span>
+      <span style="color:#6b7280;font-weight:400;">Formula: (On-time×4 + Delayed×1) ÷ (Total×4) × 100</span>
+    </div>
+    <table><thead><tr>
+      <th style="text-align:left;">Staff Member</th><th>Role</th>
+      <th>Tasks</th><th style="color:#16a34a;">On Time</th>
+      <th style="color:#f59e0b;">Delayed</th><th style="color:#ef4444;">Pending</th>
+      <th>Score</th><th>Grade</th>
+    </tr></thead><tbody>${rows}</tbody></table>
+    <div class="foot">MPGS TaskFlow · Objective & Transparent Performance Scoring</div>
+    <script>setTimeout(()=>window.print(),400);<\/script></body></html>`);
+    w.document.close();
+};
+
+// ─── INDIVIDUAL SCORECARD ─────────────────────────────────────
+window.downloadStaffScorecard = function(s) {
+    const school = window.currentSchoolName || 'School';
+    const period = document.getElementById('scMonth')?.selectedOptions[0]?.text || '';
+    const gColors = {'A+':'#16a34a','A':'#1d4ed8','B':'#854d0e','C':'#c2410c','D':'#b91c1c','N/A':'#64748b'};
+    const gc = gColors[s.grade]||'#64748b';
+    const pct = s.score??0;
+    const barColor = pct>=90?'#16a34a':pct>=65?'#f59e0b':'#ef4444';
+    const w = window.open('','_blank');
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Scorecard — ${s.staff_name}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Inter',sans-serif;background:#f8fafc;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+    .card{width:480px;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.15);}
+    .top{background:linear-gradient(135deg,#6366f1,#4f46e5);padding:30px 28px;color:#fff;position:relative;overflow:hidden;}
+    .top::before{content:'';position:absolute;top:-40px;right:-40px;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,.08);}
+    .top::after{content:'';position:absolute;bottom:-50px;left:-30px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.06);}
+    .school{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;opacity:.75;margin-bottom:5px;position:relative;z-index:1;}
+    .label{font-size:12px;opacity:.7;margin-bottom:18px;position:relative;z-index:1;}
+    .name{font-size:24px;font-weight:900;margin-bottom:3px;position:relative;z-index:1;}
+    .meta{font-size:12px;opacity:.75;position:relative;z-index:1;}
+    .body{padding:26px;}
+    .row1{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;}
+    .circle{width:88px;height:88px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:${gc}15;border:3px solid ${gc}40;}
+    .gl{font-size:34px;font-weight:900;color:${gc};line-height:1;}
+    .glbl{font-size:9px;font-weight:700;color:${gc};letter-spacing:1px;text-transform:uppercase;}
+    .right{text-align:right;}
+    .score{font-size:46px;font-weight:900;color:${barColor};line-height:1;}
+    .slbl{font-size:11px;color:#94a3b8;font-weight:600;margin-top:2px;}
+    .bar{height:7px;background:#f1f5f9;border-radius:7px;overflow:hidden;width:150px;margin:6px 0 0 auto;}
+    .fill{height:100%;width:${Math.min(100,pct)}%;background:${barColor};border-radius:7px;}
+    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:22px;}
+    .stat{background:#f8fafc;border-radius:12px;padding:13px 8px;text-align:center;}
+    .sn{font-size:22px;font-weight:800;}
+    .sl{font-size:9px;color:#94a3b8;font-weight:700;margin-top:2px;text-transform:uppercase;}
+    .period{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:9px 14px;font-size:12px;color:#1d4ed8;font-weight:600;margin-bottom:20px;}
+    .foot{background:#f8fafc;border-top:1px solid #f1f5f9;padding:13px 26px;font-size:10px;color:#94a3b8;text-align:center;}
+    @media print{body{background:#fff;}.card{box-shadow:none;}}
+    </style></head><body>
+    <div class="card">
+      <div class="top">
+        <div class="school">${school}</div>
+        <div class="label">Performance Scorecard</div>
+        <div class="name">${s.staff_name||'—'}</div>
+        <div class="meta">${s.role||''}${s.designation?' · '+s.designation:''}</div>
+      </div>
+      <div class="body">
+        <div class="period">📅 ${period}</div>
+        <div class="row1">
+          <div class="circle"><div class="gl">${s.grade}</div><div class="glbl">Grade</div></div>
+          <div class="right">
+            <div class="score">${s.score!==null?s.score+'%':'—'}</div>
+            <div class="slbl">Performance Score</div>
+            <div class="bar"><div class="fill"></div></div>
+          </div>
+        </div>
+        <div class="stats">
+          <div class="stat"><div class="sn" style="color:#6366f1">${s.tasks_total||0}</div><div class="sl">Total</div></div>
+          <div class="stat"><div class="sn" style="color:#16a34a">${s.tasks_on_time||0}</div><div class="sl">On Time</div></div>
+          <div class="stat"><div class="sn" style="color:#f59e0b">${s.tasks_delayed||0}</div><div class="sl">Delayed</div></div>
+          <div class="stat"><div class="sn" style="color:#ef4444">${s.tasks_pending||0}</div><div class="sl">Pending</div></div>
+        </div>
+        <p style="font-size:11px;color:#94a3b8;text-align:center;">(On-time×4 + Delayed×1) ÷ (Total×4) × 100</p>
+      </div>
+      <div class="foot">Generated by MPGS TaskFlow · ${new Date().toLocaleString('en-IN')} · Objective &amp; Transparent</div>
+    </div>
+    <script>setTimeout(()=>window.print(),400);<\/script>
+    </body></html>`);
+    w.document.close();
+};
+
+// ─── BULK ADD ─────────────────────────────────────────────────
+window.openBulkAddModal = function() {
+    let modal = document.getElementById('bulkAddModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'bulkAddModal';
+        modal.className = 'modal-wrap';
+        modal.innerHTML = `
+        <div class="modal-card" style="max-width:540px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+                <h3 style="font-size:15px;font-weight:800;color:var(--text-primary);margin:0;">
+                    <i class="fa-solid fa-file-csv" style="color:#0ea5e9;margin-right:8px;"></i>Bulk Add Staff
+                </h3>
+                <button onclick="document.getElementById('bulkAddModal').classList.remove('open')"
+                    style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text-secondary);">✕</button>
+            </div>
+            <div style="background:var(--bg-body);border:1px solid var(--border-color);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12px;color:var(--text-secondary);">
+                1. Download sample CSV &nbsp; 2. Fill in details &nbsp; 3. Upload — passwords auto-set to <strong>firstname123</strong>
+            </div>
+            <button class="btn-outline" onclick="window.downloadSampleCSV()" style="width:100%;justify-content:center;margin-bottom:12px;">
+                <i class="fa-solid fa-download"></i> Download Sample CSV
+            </button>
+            <div class="field">
+                <label>Upload Filled CSV</label>
+                <input type="file" id="bulkCSVInput" accept=".csv"
+                    style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:9px;background:var(--bg-body);color:var(--text-primary);font-size:12px;">
+            </div>
+            <div id="bulkPreview" style="display:none;margin-bottom:12px;max-height:180px;overflow-y:auto;background:var(--bg-body);border:1px solid var(--border-color);border-radius:9px;padding:10px;font-size:12px;"></div>
+            <div class="err-msg" id="bulkErr"></div>
+            <div style="display:flex;gap:10px;margin-top:10px;">
+                <button class="btn-outline" style="flex:1;" onclick="document.getElementById('bulkAddModal').classList.remove('open')">Cancel</button>
+                <button class="btn-accent" style="flex:2;" id="bulkAddBtn" onclick="window.doBulkAdd()">
+                    <i class="fa-solid fa-users"></i> Add All Staff
+                </button>
+            </div>
+            <div id="bulkProgress" style="display:none;margin-top:10px;font-size:12px;color:var(--text-secondary);"></div>
+        </div>`;
+        document.body.appendChild(modal);
+        document.getElementById('bulkCSVInput').addEventListener('change', function() {
+            const reader = new FileReader();
+            reader.onload = e => {
+                const lines = e.target.result.split('\n').filter(l=>l.trim());
+                const preview = document.getElementById('bulkPreview');
+                preview.style.display = 'block';
+                preview.innerHTML = `<strong>${lines.length-1} staff detected:</strong><br><br>` +
+                    lines.slice(1,5).map(l => {
+                        const [name,email,role] = l.split(',').map(x=>x.trim());
+                        return `• ${name||'?'} (${email||'?'}) — ${role||'teacher'}`;
+                    }).join('<br>') + (lines.length>5?`<br>...and ${lines.length-5} more`:'');
+            };
+            reader.readAsText(this.files[0]);
+        });
+    }
+    modal.classList.add('open');
+};
+
+window.downloadSampleCSV = function() {
+    const csv = `full_name,email,role,department,designation\nMr. Rajesh Kumar,rajesh@school.com,teacher,Science,Physics Teacher\nMrs. Priya Sharma,priya@school.com,hod,Mathematics,Head of Department`;
+    const a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    a.download = 'staff_bulk_upload_sample.csv';
+    a.click();
+};
+
+window.doBulkAdd = async function() {
+    const fileInput = document.getElementById('bulkCSVInput');
+    const btn = document.getElementById('bulkAddBtn');
+    const errEl = document.getElementById('bulkErr');
+    const progress = document.getElementById('bulkProgress');
+    errEl.style.display = 'none';
+    if (!fileInput.files[0]) { errEl.textContent='Upload a CSV file first.'; errEl.style.display='block'; return; }
+    const lines = (await fileInput.files[0].text()).split('\n').map(l=>l.trim()).filter(l=>l).slice(1);
+    if (!lines.length) { errEl.textContent='No data rows found.'; errEl.style.display='block'; return; }
+    btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Adding...';
+    progress.style.display = 'block';
+    const { data:{session} } = await sb.auth.getSession();
+    let added=0, failed=0, failedNames=[];
+    for (let i=0;i<lines.length;i++) {
+        const [full_name,email,role,department,designation] = lines[i].split(',').map(x=>x?.trim());
+        if (!full_name||!email) { failed++; failedNames.push(`Row ${i+2}: missing name/email`); continue; }
+        const password = full_name.split(' ').pop().toLowerCase().replace(/[^a-z]/g,'')+'123';
+        progress.textContent = `Adding ${i+1}/${lines.length}: ${full_name}...`;
+        try {
+            const res = await fetch(`${SUPABASE_URL}/functions/v1/create-school-user`,{
+                method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
+                body:JSON.stringify({email,password,full_name,role:role||'teacher',designation:designation||'',department:department||''})
+            });
+            const r = await res.json();
+            if (!res.ok||r.error){failed++;failedNames.push(`${full_name}: ${r.error}`);}else added++;
+        } catch(e){failed++;failedNames.push(`${full_name}: ${e.message}`);}
+    }
+    progress.style.display='none';
+    btn.disabled=false; btn.innerHTML='<i class="fa-solid fa-users"></i> Add All Staff';
+    showToast(`✓ Added ${added}${failed?` · ${failed} failed`:''}`, added?'#16a34a':'#dc2626');
+    if (added) { document.getElementById('bulkAddModal').classList.remove('open'); await loadStaff(); }
+};
+
+// ─── THEME TOGGLE ─────────────────────────────────────────────
+window.toggleAdminTheme = function() {
+    const html = document.documentElement;
+    const next = html.getAttribute('data-theme')==='dark' ? 'light' : 'dark';
+    html.setAttribute('data-theme', next);
+    localStorage.setItem('adminTheme', next);
+};
+;(()=>{ const t=localStorage.getItem('adminTheme'); if(t) document.documentElement.setAttribute('data-theme',t); })();
 
 // ─── TOAST ───────────────────────────────────────────────────
 function showToast(msg, color = '#16a34a') {

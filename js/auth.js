@@ -265,18 +265,36 @@ window.renderAuthScreen = function() {
         btn.textContent = 'Checking...';
         msg.textContent = '';
 
-        const { data: profile } = await sb.from('profiles').select('id').eq('email', email).eq('role','principal').maybeSingle();
+        // Step 1: find the profile by email
+        const { data: profile } = await sb.from('profiles')
+            .select('id, role')
+            .eq('email', email)
+            .maybeSingle();
+
         if (!profile) {
-            const { data: ur } = await sb.from('profiles')
-                .select('id, user_roles(roles(name))')
-                .eq('email', email).maybeSingle();
-            const roleName = ur?.user_roles?.[0]?.roles?.name;
-            if (!ur || roleName !== 'principal') {
-                msg.style.color = '#ef4444';
-                msg.textContent = 'No principal account found with that email. Contact developer for help.';
-                btn.disabled = false; btn.textContent = 'Send Reset Link';
-                return;
-            }
+            msg.style.color = '#ef4444';
+            msg.textContent = 'No account found with that email.';
+            btn.disabled = false; btn.textContent = 'Send Reset Link';
+            return;
+        }
+
+        // Step 2: check if this user is a principal via user_roles table
+        // (profiles.role is not reliably set — role authority is user_roles → roles)
+        let isPrincipal = (profile.role || '').toLowerCase() === 'principal';
+
+        if (!isPrincipal) {
+            const { data: ur } = await sb.from('user_roles')
+                .select('role_id, roles(name)')
+                .eq('user_id', profile.id)
+                .maybeSingle();
+            isPrincipal = (ur?.roles?.name || '').toLowerCase() === 'principal';
+        }
+
+        if (!isPrincipal) {
+            msg.style.color = '#ef4444';
+            msg.textContent = 'This option is only for the Principal account. Other staff — contact your Principal to reset your password.';
+            btn.disabled = false; btn.textContent = 'Send Reset Link';
+            return;
         }
 
         btn.textContent = 'Sending...';
@@ -288,7 +306,7 @@ window.renderAuthScreen = function() {
             msg.textContent = error.message;
         } else {
             msg.style.color = '#16a34a';
-            msg.textContent = 'Reset link sent! Check your email.';
+            msg.textContent = 'Reset link sent! Check your email inbox.';
         }
         btn.disabled = false; btn.textContent = 'Send Reset Link';
     };

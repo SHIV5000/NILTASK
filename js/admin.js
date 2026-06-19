@@ -47,21 +47,18 @@ function renderAdmin() {
 
     const btn3d = (label, icon, onclick, color='var(--accent)') =>
         `<button onclick="${onclick}" style="
-            display:inline-flex;align-items:center;gap:7px;padding:9px 18px;
-            border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;color:#fff;
-            background:linear-gradient(180deg,${color} 0%,color-mix(in srgb,${color} 70%,#000) 100%);
-            box-shadow:0 4px 0 color-mix(in srgb,${color} 40%,#000),0 6px 12px rgba(0,0,0,.18);
-            transform:perspective(300px) rotateX(1.5deg);transition:box-shadow .1s,transform .1s;"
-            onmousedown="this.style.transform='perspective(300px) rotateX(1.5deg) translateY(2px)';this.style.boxShadow='0 2px 0 color-mix(in srgb,${color} 40%,#000)';"
-            onmouseup="this.style.transform='perspective(300px) rotateX(1.5deg)';this.style.boxShadow='0 4px 0 color-mix(in srgb,${color} 40%,#000),0 6px 12px rgba(0,0,0,.18)';"
+            display:inline-flex;align-items:center;gap:7px;padding:8px 16px;
+            border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;color:#fff;
+            background:${color};box-shadow:0 2px 6px rgba(0,0,0,.15);
+            transition:opacity .15s,box-shadow .15s;"
+            onmousedown="this.style.opacity='.85';"
+            onmouseup="this.style.opacity='1';"
         ><i class="fa-solid ${icon}"></i>${label}</button>`;
 
     const sectionHead = (title, sub) =>
-        `<div style="background:linear-gradient(135deg,var(--accent) 0%,color-mix(in srgb,var(--accent) 60%,#000) 100%);
-            padding:18px 24px;position:relative;overflow:hidden;">
-            <div style="position:absolute;top:-30px;right:-30px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.07);pointer-events:none;"></div>
-            <h2 style="font-size:16px;font-weight:900;color:#fff;margin:0 0 3px;text-shadow:0 2px 4px rgba(0,0,0,.25);position:relative;z-index:1;">${title}</h2>
-            <p style="font-size:12px;color:rgba(255,255,255,.75);margin:0;position:relative;z-index:1;">${sub}</p>
+        `<div style="background:var(--accent);padding:16px 22px;">
+            <h2 style="font-size:15px;font-weight:700;color:#fff;margin:0 0 2px;">${title}</h2>
+            <p style="font-size:12px;color:rgba(255,255,255,.8);margin:0;">${sub}</p>
         </div>`;
 
     document.getElementById('adminRoot').innerHTML = `
@@ -106,7 +103,7 @@ function renderAdmin() {
 
         <!-- STAFF MANAGEMENT -->
         <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;
-             box-shadow:0 5px 0 rgba(0,0,0,.1),0 8px 20px rgba(0,0,0,.07);">
+             box-shadow:0 1px 4px rgba(0,0,0,.07);">
             ${sectionHead('👥 Staff Management','Add, approve or remove staff members')}
             <div style="padding:14px 20px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
                 <input type="text" id="staffSearch" placeholder="Search name or email..."
@@ -148,7 +145,7 @@ function renderAdmin() {
 
         <!-- ROLES & PERMISSIONS -->
         <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;margin-bottom:24px;
-             box-shadow:0 5px 0 rgba(0,0,0,.1),0 8px 20px rgba(0,0,0,.07);">
+             box-shadow:0 1px 4px rgba(0,0,0,.07);">
             ${sectionHead('🛡️ Roles &amp; Permissions','Which role can do what — Download PDF to share with staff')}
             <div style="padding:12px 20px;border-bottom:1px solid var(--border-color);display:flex;gap:8px;flex-wrap:wrap;">
                 <button class="btn-outline btn-sm" onclick="window.openRolesPermPanel?.()"><i class="fa-solid fa-expand"></i> Full View</button>
@@ -176,7 +173,7 @@ function renderAdmin() {
 
         <!-- SCORECARD -->
         <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;
-             box-shadow:0 5px 0 rgba(0,0,0,.1),0 8px 20px rgba(0,0,0,.07);">
+             box-shadow:0 1px 4px rgba(0,0,0,.07);">
             ${sectionHead('🏆 Staff Scorecard','Objective task-based performance — international standard')}
             <div style="padding:10px 20px;background:var(--bg-body);border-bottom:1px solid var(--border-color);display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
                 <span style="font-size:11px;font-weight:700;color:var(--text-secondary);">Grade:</span>
@@ -200,17 +197,23 @@ function renderAdmin() {
             <div style="overflow-x:auto;">
                 <table class="staff-table">
                     <thead><tr>
-                        <th>Staff Member</th><th>Role</th>
-                        <th style="text-align:center;">Tasks</th>
+                        <th>Staff Member</th>
+                        <th>Role</th>
+                        <th style="text-align:center;border-left:2px solid var(--border-color);">Tasks</th>
                         <th style="text-align:center;color:#16a34a;">On Time</th>
                         <th style="text-align:center;color:#f59e0b;">Delayed</th>
                         <th style="text-align:center;color:#ef4444;">Pending</th>
-                        <th style="text-align:center;">Score</th>
+                        <th style="text-align:center;color:#6366f1;">Transferred</th>
+                        <th style="text-align:center;border-left:2px solid var(--border-color);">Msgs Sent</th>
+                        <th style="text-align:center;">Msgs Rcvd</th>
+                        <th style="text-align:center;">Ack'd</th>
+                        <th style="text-align:center;border-left:2px solid var(--border-color);">Active Days</th>
+                        <th style="text-align:center;border-left:2px solid var(--border-color);">Score</th>
                         <th style="text-align:center;">Grade</th>
                         <th style="text-align:center;">Card</th>
                     </tr></thead>
                     <tbody id="scorecardBody">
-                        <tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-secondary);">
+                        <tr><td colspan="14" style="text-align:center;padding:32px;color:var(--text-secondary);">
                             Select period and click <strong>Generate Scorecard</strong>
                         </td></tr>
                     </tbody>
@@ -732,6 +735,9 @@ window.loadScorecard = async function() {
         const gc  = gradeColors[s.grade] || gradeColors['N/A'];
         const pct = s.score ?? 0;
         const barColor = pct >= 90 ? '#16a34a' : pct >= 65 ? '#f59e0b' : '#ef4444';
+        const ackRate = s.msgs_received > 0
+            ? Math.round(s.acknowledged / s.msgs_received * 100) + '%'
+            : '—';
 
         return `<tr>
             <td>
@@ -740,14 +746,19 @@ window.loadScorecard = async function() {
                 ${s.designation ? `<div style="font-size:10px;color:var(--text-secondary);">${window.escapeHtml(s.designation)}</div>` : ''}
             </td>
             <td><span class="role-pill role-${(s.role||'teacher').toLowerCase().replace(/ /g,'_')}" style="font-size:10px;">${window.escapeHtml(s.role||'')}</span></td>
-            <td style="text-align:center;font-weight:700;">${s.tasks_total || 0}</td>
-            <td style="text-align:center;color:#16a34a;font-weight:700;">${s.tasks_on_time || 0}</td>
-            <td style="text-align:center;color:#f59e0b;font-weight:700;">${s.tasks_delayed || 0}</td>
-            <td style="text-align:center;color:#ef4444;font-weight:700;">${s.tasks_pending || 0}</td>
-            <td style="text-align:center;">
+            <td style="text-align:center;font-weight:700;border-left:2px solid var(--border-color);">${s.tasks_total||0}</td>
+            <td style="text-align:center;color:#16a34a;font-weight:700;">${s.tasks_on_time||0}</td>
+            <td style="text-align:center;color:#f59e0b;font-weight:700;">${s.tasks_delayed||0}</td>
+            <td style="text-align:center;color:#ef4444;font-weight:700;">${s.tasks_pending||0}</td>
+            <td style="text-align:center;color:#6366f1;font-weight:700;">${s.tasks_transferred||0}</td>
+            <td style="text-align:center;border-left:2px solid var(--border-color);">${s.msgs_sent||0}</td>
+            <td style="text-align:center;">${s.msgs_received||0}</td>
+            <td style="text-align:center;" title="Reactions + Replies / Messages Received">${ackRate}</td>
+            <td style="text-align:center;border-left:2px solid var(--border-color);">${s.active_days||0}</td>
+            <td style="text-align:center;border-left:2px solid var(--border-color);">
                 <div style="font-size:15px;font-weight:800;color:${barColor};">${s.score !== null ? s.score + '%' : '—'}</div>
                 ${s.tasks_total > 0 ? `<div style="width:60px;height:4px;background:var(--border-color);border-radius:4px;margin:3px auto 0;overflow:hidden;">
-                    <div style="width:${pct}%;height:100%;background:${barColor};border-radius:4px;transition:width .5s;"></div>
+                    <div style="width:${pct}%;height:100%;background:${barColor};border-radius:4px;"></div>
                 </div>` : ''}
             </td>
             <td style="text-align:center;">
@@ -912,67 +923,120 @@ window.downloadStaffScorecard = function(s) {
     const gc = gColors[s.grade]||'#64748b';
     const pct = s.score??0;
     const barColor = pct>=90?'#16a34a':pct>=65?'#f59e0b':'#ef4444';
+    const ackRate = s.msgs_received>0 ? Math.round(s.acknowledged/s.msgs_received*100)+'%' : '—';
+
+    const dimBar = (label, score, color, weight) => {
+        const v = score??0;
+        return `<div style="margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+                <span style="font-size:12px;font-weight:600;color:#374151;">${label}</span>
+                <span style="font-size:12px;font-weight:700;color:${v>=80?'#16a34a':v>=50?'#f59e0b':'#ef4444'};">${score!==null?v+'%':'N/A'} <span style="font-size:10px;font-weight:400;color:#9ca3af;">×${weight}</span></span>
+            </div>
+            <div style="height:6px;background:#f1f5f9;border-radius:6px;overflow:hidden;">
+                <div style="width:${Math.min(100,v)}%;height:100%;background:${v>=80?'#16a34a':v>=50?'#f59e0b':'#ef4444'};border-radius:6px;"></div>
+            </div>
+        </div>`;
+    };
+
+    const statCell = (label, value, color) =>
+        `<div style="text-align:center;background:#f8fafc;border-radius:10px;padding:12px 8px;">
+            <div style="font-size:20px;font-weight:800;color:${color};">${value}</div>
+            <div style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-top:2px;">${label}</div>
+        </div>`;
+
     const w = window.open('','_blank');
     w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
     <title>Scorecard — ${s.staff_name}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
     *{box-sizing:border-box;margin:0;padding:0;}
-    body{font-family:'Inter',sans-serif;background:#f8fafc;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
-    .card{width:480px;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.15);}
-    .top{background:linear-gradient(135deg,#6366f1,#4f46e5);padding:30px 28px;color:#fff;position:relative;overflow:hidden;}
-    .top::before{content:'';position:absolute;top:-40px;right:-40px;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,.08);}
-    .top::after{content:'';position:absolute;bottom:-50px;left:-30px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.06);}
-    .school{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;opacity:.75;margin-bottom:5px;position:relative;z-index:1;}
-    .label{font-size:12px;opacity:.7;margin-bottom:18px;position:relative;z-index:1;}
-    .name{font-size:24px;font-weight:900;margin-bottom:3px;position:relative;z-index:1;}
+    body{font-family:'Inter',sans-serif;background:#f1f5f9;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+    .card{width:520px;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.12),0 4px 16px rgba(0,0,0,.06);}
+    .top{background:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%);padding:28px 28px 24px;color:#fff;position:relative;overflow:hidden;}
+    .top::before{content:'';position:absolute;top:-40px;right:-40px;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,.07);}
+    .top::after{content:'';position:absolute;bottom:-50px;left:-30px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.05);}
+    .school{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;opacity:.7;margin-bottom:5px;position:relative;z-index:1;}
+    .card-lbl{font-size:11px;opacity:.65;margin-bottom:16px;position:relative;z-index:1;}
+    .name{font-size:22px;font-weight:900;margin-bottom:3px;position:relative;z-index:1;letter-spacing:-.3px;}
     .meta{font-size:12px;opacity:.75;position:relative;z-index:1;}
-    .body{padding:26px;}
-    .row1{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;}
-    .circle{width:88px;height:88px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:${gc}15;border:3px solid ${gc}40;}
-    .gl{font-size:34px;font-weight:900;color:${gc};line-height:1;}
+    .body{padding:24px 28px;}
+    .period{background:#eff6ff;border:1px solid #bfdbfe;border-radius:9px;padding:9px 14px;font-size:12px;color:#1d4ed8;font-weight:600;margin-bottom:20px;display:flex;align-items:center;gap:8px;}
+    .score-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding:16px 20px;background:#f8fafc;border-radius:14px;}
+    .grade-circle{width:72px;height:72px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;border:3px solid ${gc}40;background:${gc}12;}
+    .gl{font-size:28px;font-weight:900;color:${gc};line-height:1;}
     .glbl{font-size:9px;font-weight:700;color:${gc};letter-spacing:1px;text-transform:uppercase;}
-    .right{text-align:right;}
-    .score{font-size:46px;font-weight:900;color:${barColor};line-height:1;}
-    .slbl{font-size:11px;color:#94a3b8;font-weight:600;margin-top:2px;}
-    .bar{height:7px;background:#f1f5f9;border-radius:7px;overflow:hidden;width:150px;margin:6px 0 0 auto;}
-    .fill{height:100%;width:${Math.min(100,pct)}%;background:${barColor};border-radius:7px;}
-    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:22px;}
-    .stat{background:#f8fafc;border-radius:12px;padding:13px 8px;text-align:center;}
-    .sn{font-size:22px;font-weight:800;}
-    .sl{font-size:9px;color:#94a3b8;font-weight:700;margin-top:2px;text-transform:uppercase;}
-    .period{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:9px 14px;font-size:12px;color:#1d4ed8;font-weight:600;margin-bottom:20px;}
-    .foot{background:#f8fafc;border-top:1px solid #f1f5f9;padding:13px 26px;font-size:10px;color:#94a3b8;text-align:center;}
-    @media print{body{background:#fff;}.card{box-shadow:none;}}
+    .score-num{font-size:42px;font-weight:900;color:${barColor};line-height:1;}
+    .score-lbl{font-size:11px;color:#9ca3af;font-weight:600;margin-top:2px;}
+    .bar-track{height:6px;background:#e5e7eb;border-radius:6px;overflow:hidden;width:140px;margin:6px 0 0 auto;}
+    .bar-fill{height:100%;width:${Math.min(100,pct)}%;background:${barColor};border-radius:6px;}
+    .task-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:20px;}
+    .msg-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px;}
+    .section-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;margin-bottom:10px;}
+    .dim-section{margin-bottom:20px;}
+    .formula-note{font-size:10px;color:#9ca3af;text-align:center;padding-top:8px;border-top:1px solid #f1f5f9;line-height:1.6;}
+    .foot{background:#f8fafc;border-top:1px solid #f1f5f9;padding:13px 28px;font-size:10px;color:#9ca3af;text-align:center;}
+    @media print{body{background:#fff;padding:0;}.card{box-shadow:none;border-radius:0;width:100%;}.top{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
     </style></head><body>
     <div class="card">
       <div class="top">
         <div class="school">${school}</div>
-        <div class="label">Performance Scorecard</div>
+        <div class="card-lbl">Staff Performance Scorecard</div>
         <div class="name">${s.staff_name||'—'}</div>
         <div class="meta">${s.role||''}${s.designation?' · '+s.designation:''}</div>
       </div>
       <div class="body">
         <div class="period">📅 ${period}</div>
-        <div class="row1">
-          <div class="circle"><div class="gl">${s.grade}</div><div class="glbl">Grade</div></div>
-          <div class="right">
-            <div class="score">${s.score!==null?s.score+'%':'—'}</div>
-            <div class="slbl">Performance Score</div>
-            <div class="bar"><div class="fill"></div></div>
+
+        <!-- Final score & grade -->
+        <div class="score-row">
+          <div class="grade-circle"><div class="gl">${s.grade}</div><div class="glbl">Grade</div></div>
+          <div style="text-align:right;">
+            <div class="score-num">${s.score!==null?s.score+'%':'—'}</div>
+            <div class="score-lbl">Overall Performance</div>
+            <div class="bar-track"><div class="bar-fill"></div></div>
           </div>
         </div>
-        <div class="stats">
-          <div class="stat"><div class="sn" style="color:#6366f1">${s.tasks_total||0}</div><div class="sl">Total</div></div>
-          <div class="stat"><div class="sn" style="color:#16a34a">${s.tasks_on_time||0}</div><div class="sl">On Time</div></div>
-          <div class="stat"><div class="sn" style="color:#f59e0b">${s.tasks_delayed||0}</div><div class="sl">Delayed</div></div>
-          <div class="stat"><div class="sn" style="color:#ef4444">${s.tasks_pending||0}</div><div class="sl">Pending</div></div>
+
+        <!-- Task stats -->
+        <div class="section-lbl">Task Performance (40%)</div>
+        <div class="task-grid">
+          ${statCell('Total', s.tasks_total||0, '#6366f1')}
+          ${statCell('On Time', s.tasks_on_time||0, '#16a34a')}
+          ${statCell('Delayed', s.tasks_delayed||0, '#f59e0b')}
+          ${statCell('Pending', s.tasks_pending||0, '#ef4444')}
+          ${statCell('Transferred', s.tasks_transferred||0, '#8b5cf6')}
         </div>
-        <p style="font-size:11px;color:#94a3b8;text-align:center;">(On-time×4 + Delayed×1) ÷ (Total×4) × 100</p>
+
+        <!-- Communication stats -->
+        <div class="section-lbl">Communication (25%) · Responsiveness (20%) · Presence (15%)</div>
+        <div class="msg-grid">
+          ${statCell('Msgs Sent', s.msgs_sent||0, '#0ea5e9')}
+          ${statCell('Msgs Rcvd', s.msgs_received||0, '#64748b')}
+          ${statCell('Ack Rate', ackRate, '#10b981')}
+        </div>
+        <div class="msg-grid" style="margin-bottom:20px;">
+          ${statCell('Active Days', s.active_days||0, '#f59e0b')}
+          ${statCell('Reactions+Replies', s.acknowledged||0, '#6366f1')}
+          ${statCell('Day Score', (s.score_presence||0)+'%', '#64748b')}
+        </div>
+
+        <!-- Dimension breakdown -->
+        <div class="dim-section">
+          <div class="section-lbl">Score breakdown</div>
+          ${dimBar('Task Delivery', s.score_task, barColor, '40%')}
+          ${dimBar('Communication', s.score_comm, '#0ea5e9', '25%')}
+          ${dimBar('Responsiveness', s.score_resp, '#10b981', '20%')}
+          ${dimBar('Presence', s.score_presence, '#f59e0b', '15%')}
+        </div>
+
+        <div class="formula-note">
+          Formula: (On-time×4 + Delayed×2 − Pending×1 − Transferred×1) ÷ (Total×4) × 100 for Task Score<br>
+          Final = Task×40% + Communication×25% + Responsiveness×20% + Presence×15%
+        </div>
       </div>
       <div class="foot">Generated by MPGS TaskFlow · ${new Date().toLocaleString('en-IN')} · Objective &amp; Transparent</div>
     </div>
-    <script>setTimeout(()=>window.print(),400);<\/script>
+    <script>setTimeout(()=>window.print(),500);<\/script>
     </body></html>`);
     w.document.close();
 };

@@ -15,7 +15,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./css/theme.css">
   <style>
-    body { font-family:'Inter',sans-serif; background:var(--bg-body); overflow-x:hidden; }
+    body { font-family:'Inter',sans-serif; background:var(--bg-body); overflow-x:hidden; font-size:15px; }
+    :root { --radius-lg: 16px; }
 
     /* ── School badge ── */
     .school-badge {
@@ -245,7 +246,7 @@
       </div>
       <div style="display:flex;gap:10px;">
         <button onclick="window.printRolesTable()" style="padding:8px 16px;border-radius:10px;background:var(--accent);color:#fff;border:none;font-weight:700;font-size:13px;cursor:pointer;">
-          <i class="fa-solid fa-print"></i> Print
+          <i class="fa-solid fa-print"></i> Print / PDF
         </button>
         <button onclick="document.getElementById('rolesPermPanel').style.display='none'"
           style="padding:8px 16px;border-radius:10px;background:transparent;color:var(--text-secondary);border:1px solid var(--border-color);font-weight:700;font-size:13px;cursor:pointer;">

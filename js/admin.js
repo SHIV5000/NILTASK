@@ -35,6 +35,7 @@ function fmtLogin(ts) {
         }
     }
     renderAdmin();
+    renderInlineRolesTable();
     await loadAdminData();
 })();
 
@@ -44,130 +45,94 @@ function renderAdmin() {
     const userName   = window.currentUser?.user_metadata?.full_name
                     || window.currentUser?.email?.split('@')[0] || 'Admin';
 
+    const btn3d = (label, icon, onclick, color='var(--accent)') =>
+        `<button onclick="${onclick}" style="
+            display:inline-flex;align-items:center;gap:7px;
+            padding:9px 18px;border:none;border-radius:10px;
+            background:linear-gradient(180deg,${color} 0%,color-mix(in srgb,${color} 70%,#000) 100%);
+            color:#fff;font-size:13px;font-weight:700;cursor:pointer;
+            box-shadow:0 4px 0 color-mix(in srgb,${color} 40%,#000),0 6px 12px rgba(0,0,0,.18);
+            transform:perspective(300px) rotateX(1.5deg);
+            transition:box-shadow .12s,transform .12s;
+            -webkit-tap-highlight-color:transparent;
+            " onmousedown="this.style.transform='perspective(300px) rotateX(1.5deg) translateY(2px)';this.style.boxShadow='0 2px 0 color-mix(in srgb,${color} 40%,#000),0 3px 6px rgba(0,0,0,.18)';"
+            onmouseup="this.style.transform='perspective(300px) rotateX(1.5deg)';this.style.boxShadow='0 4px 0 color-mix(in srgb,${color} 40%,#000),0 6px 12px rgba(0,0,0,.18)';"
+        ><i class="fa-solid ${icon}"></i>${label}</button>`;
+
+    const sectionHead = (title, sub) =>
+        `<div style="
+            background:linear-gradient(135deg,var(--accent) 0%,color-mix(in srgb,var(--accent) 60%,#000) 100%);
+            padding:18px 24px;position:relative;overflow:hidden;">
+            <div style="position:absolute;top:-30px;right:-30px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.07);pointer-events:none;"></div>
+            <h2 style="font-size:17px;font-weight:900;color:#fff;margin:0 0 3px;text-shadow:0 2px 4px rgba(0,0,0,.25);position:relative;z-index:1;">${title}</h2>
+            <p style="font-size:12px;color:rgba(255,255,255,.75);margin:0;position:relative;z-index:1;">${sub}</p>
+        </div>`;
+
     document.getElementById('adminRoot').innerHTML = `
-    <div style="max-width:100%;margin:0 auto;padding:20px 24px;">
+    <div style="width:100%;padding:20px 28px;font-size:15px;">
 
         <!-- Top bar -->
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
-
-            <!-- School badge -->
-            <div class="school-badge" style="flex:1;min-width:220px;max-width:480px;">
+            <div class="school-badge" style="flex:1;min-width:220px;max-width:520px;">
                 <div class="school-badge-name">${window.escapeHtml(schoolName)}</div>
                 <div class="school-badge-sub">✦ &nbsp; Powered by TaskFlow &nbsp; ✦</div>
             </div>
-
-            <!-- Right actions -->
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                <div style="font-size:13px;font-weight:600;color:var(--text-secondary);">
+                <span style="font-size:13px;font-weight:700;color:var(--text-secondary);">
                     <i class="fa-solid fa-user-shield" style="color:var(--accent);"></i>
                     ${window.escapeHtml(userName)}
-                    <span style="font-size:11px;background:rgba(99,102,241,.1);color:#6366f1;padding:2px 8px;border-radius:20px;margin-left:4px;">${window.currentRoleName || 'Admin'}</span>
-                </div>
-                <button class="btn-outline btn-sm" onclick="window.openRolesPermPanel?.()">
-                    <i class="fa-solid fa-user-shield"></i> Roles &amp; Permissions
-                </button>
-                <button class="btn-outline btn-sm" onclick="window.toggleAdminTheme()">
-                    <i class="fa-solid fa-circle-half-stroke"></i>
-                </button>
-                <button class="btn-outline btn-sm" onclick="window.location.href='/?mode=chat'">
-                    <i class="fa-solid fa-comments"></i> Go to Chat
-                </button>
-                <button class="btn-outline btn-sm" onclick="window.logout?.()">
-                    <i class="fa-solid fa-arrow-right-from-bracket"></i> Logout
-                </button>
+                    <span style="font-size:11px;background:rgba(99,102,241,.12);color:#6366f1;padding:2px 10px;border-radius:20px;margin-left:5px;">${window.currentRoleName || 'Admin'}</span>
+                </span>
+                ${btn3d('Theme','fa-circle-half-stroke','window.toggleAdminTheme()','#6366f1')}
+                ${btn3d('Chat','fa-comments',"window.location.href='/?mode=chat'",'#0ea5e9')}
+                ${btn3d('Logout','fa-arrow-right-from-bracket','window.logout?.()','#ef4444')}
             </div>
         </div>
 
-        <!-- Trial / Subscription banner -->
+        <!-- Trial banner -->
         <div id="trialBanner" class="trial-banner" style="margin-bottom:20px;">
             <div style="width:40px;height:40px;border-radius:12px;background:rgba(99,102,241,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
                 <i class="fa-solid fa-star" style="color:#6366f1;font-size:16px;"></i>
             </div>
             <div style="flex:1;">
-                <div id="planName" style="font-size:13px;font-weight:700;color:var(--text-primary);">Loading plan...</div>
-                <div id="planSub" style="font-size:11px;color:var(--text-secondary);margin-top:2px;"></div>
+                <div id="planName" style="font-size:14px;font-weight:700;color:var(--text-primary);">Loading plan...</div>
+                <div id="planSub" style="font-size:12px;color:var(--text-secondary);margin-top:2px;"></div>
             </div>
         </div>
 
-        <!-- Stats row -->
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px;">
-            <div class="stat-card">
-                <div class="stat-icon" style="background:rgba(99,102,241,.1);">
-                    <i class="fa-solid fa-users" style="color:#6366f1;font-size:18px;"></i>
-                </div>
-                <div>
-                    <div class="stat-val" id="statTotal">—</div>
-                    <div class="stat-lbl">Total Staff</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon" style="background:rgba(22,163,74,.1);">
-                    <i class="fa-solid fa-user-check" style="color:#16a34a;font-size:18px;"></i>
-                </div>
-                <div>
-                    <div class="stat-val" id="statApproved">—</div>
-                    <div class="stat-lbl">Approved</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon" style="background:rgba(245,158,11,.1);">
-                    <i class="fa-solid fa-user-clock" style="color:#f59e0b;font-size:18px;"></i>
-                </div>
-                <div>
-                    <div class="stat-val" id="statPending">—</div>
-                    <div class="stat-lbl">Pending</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon" style="background:rgba(239,68,68,.1);">
-                    <i class="fa-solid fa-calendar-xmark" style="color:#ef4444;font-size:18px;"></i>
-                </div>
-                <div>
-                    <div class="stat-val" id="statDays">—</div>
-                    <div class="stat-lbl">Trial Days Left</div>
-                </div>
-            </div>
+        <!-- Stats -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:28px;">
+            <div class="stat-card"><div class="stat-icon" style="background:rgba(99,102,241,.1);"><i class="fa-solid fa-users" style="color:#6366f1;font-size:20px;"></i></div><div><div class="stat-val" id="statTotal">—</div><div class="stat-lbl">Total Staff</div></div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:rgba(22,163,74,.1);"><i class="fa-solid fa-user-check" style="color:#16a34a;font-size:20px;"></i></div><div><div class="stat-val" id="statApproved">—</div><div class="stat-lbl">Approved</div></div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:rgba(245,158,11,.1);"><i class="fa-solid fa-user-clock" style="color:#f59e0b;font-size:20px;"></i></div><div><div class="stat-val" id="statPending">—</div><div class="stat-lbl">Pending</div></div></div>
+            <div class="stat-card"><div class="stat-icon" style="background:rgba(239,68,68,.1);"><i class="fa-solid fa-calendar-xmark" style="color:#ef4444;font-size:20px;"></i></div><div><div class="stat-val" id="statDays">—</div><div class="stat-lbl">Trial Days Left</div></div></div>
         </div>
 
-        <!-- Staff management card -->
-        <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;">
-
-            <!-- Header row -->
+        <!-- ══ STAFF MANAGEMENT ══ -->
+        <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;margin-bottom:8px;
+             box-shadow:0 6px 0 rgba(0,0,0,.12),0 10px 24px rgba(0,0,0,.08);transform:perspective(800px) rotateX(.5deg);">
+            ${sectionHead('👥 Staff Management','Add, approve or remove staff members')}
             <div style="padding:16px 20px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-                <div>
-                    <h2 style="font-size:15px;font-weight:800;color:var(--text-primary);margin:0 0 2px;">Staff Management</h2>
-                    <p style="font-size:11px;color:var(--text-secondary);margin:0;">Add, approve or remove staff members</p>
-                </div>
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                    <input type="text" id="staffSearch" placeholder="Search name or email..."
-                        oninput="filterStaff(this.value)"
-                        style="padding:8px 12px;border-radius:9px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-primary);font-size:12px;outline:none;width:200px;">
-                    <button class="btn-outline btn-sm" onclick="window.printStaffTable()" title="Print staff list">
-                        <i class="fa-solid fa-print"></i> Print
-                    </button>
-                    <button class="btn-outline btn-sm" onclick="window.openBulkAddModal()" style="color:#0ea5e9;border-color:#0ea5e9;">
-                        <i class="fa-solid fa-file-csv"></i> Bulk Add
-                    </button>
-                    <button class="btn-accent" onclick="openAddStaffModal()">
-                        <i class="fa-solid fa-plus"></i> Add Staff
-                    </button>
+                <input type="text" id="staffSearch" placeholder="Search name or email..."
+                    oninput="filterStaff(this.value)"
+                    style="padding:9px 14px;border-radius:9px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-primary);font-size:14px;outline:none;width:240px;">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn-outline btn-sm" onclick="window.printStaffTable()"><i class="fa-solid fa-print"></i> Print</button>
+                    <button class="btn-outline btn-sm" onclick="window.openBulkAddModal()" style="color:#0ea5e9;border-color:#0ea5e9;"><i class="fa-solid fa-file-csv"></i> Bulk Add</button>
+                    <button class="btn-accent" onclick="openAddStaffModal()"><i class="fa-solid fa-plus"></i> Add Staff</button>
                 </div>
             </div>
-
-            <!-- Table -->
             <div style="overflow-x:auto;">
                 <table class="staff-table">
-                    <thead>
-                        <tr>
-                            <th>Staff Member</th>
-                            <th>Role</th>
-                            <th>Designation</th>
-                            <th>Department</th>
-                            <th>Approved</th>
-                            <th>Last Login</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
+                    <thead><tr>
+                        <th style="font-size:13px;">Staff Member</th>
+                        <th style="font-size:13px;">Role</th>
+                        <th style="font-size:13px;">Designation</th>
+                        <th style="font-size:13px;">Department</th>
+                        <th style="font-size:13px;">Approved</th>
+                        <th style="font-size:13px;">Last Login</th>
+                        <th style="font-size:13px;">Actions</th>
+                    </tr></thead>
                     <tbody id="staffTableBody">
                         <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary);">
                             <i class="fa-solid fa-spinner fa-spin"></i> Loading staff...
@@ -177,86 +142,94 @@ function renderAdmin() {
             </div>
         </div>
 
-        <!-- Login instruction — 3D card -->
-        <div style="margin-top:16px;margin-bottom:8px;
-             background:linear-gradient(135deg,var(--accent) 0%,color-mix(in srgb,var(--accent) 60%,#000) 100%);
-             border-radius:16px;padding:20px 24px;
-             box-shadow:0 6px 0 rgba(0,0,0,.25),0 10px 24px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.18);
-             position:relative;overflow:hidden;transform:perspective(600px) rotateX(1deg);">
-            <div style="position:absolute;top:0;left:0;right:0;height:50%;background:rgba(255,255,255,.07);border-radius:16px 16px 0 0;"></div>
-            <div style="position:relative;z-index:1;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-                <div style="width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.18);
-                     display:flex;align-items:center;justify-content:center;flex-shrink:0;
-                     box-shadow:0 2px 8px rgba(0,0,0,.2);">
-                    <i class="fa-solid fa-mobile-screen" style="color:#fff;font-size:20px;"></i>
-                </div>
-                <div style="flex:1;">
-                    <div style="font-size:14px;font-weight:800;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,.3);margin-bottom:4px;">
-                        How Staff Login
-                    </div>
-                    <div style="font-size:12px;color:rgba(255,255,255,.85);line-height:1.6;">
-                        Visit <strong style="color:#fff;background:rgba(0,0,0,.2);padding:1px 8px;border-radius:6px;font-family:monospace;">niltask.vercel.app</strong>
-                        → use their <strong style="color:#fff;">email</strong> and the <strong style="color:#fff;">password you set</strong>.
-                        They can change their password from <strong style="color:#fff;">Profile → Settings</strong>.
-                    </div>
-                </div>
+        <!-- Login note — plain bold, no 3D -->
+        <div style="margin:14px 0 28px;padding:14px 20px;background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:12px;">
+            <strong style="font-size:14px;color:var(--text-primary);">How Staff Login:</strong>
+            <span style="font-size:14px;color:var(--text-secondary);margin-left:8px;">
+                Visit <strong style="color:var(--accent);">niltask.vercel.app</strong> using their
+                <strong style="color:var(--text-primary);">email</strong> and the
+                <strong style="color:var(--text-primary);">password you set</strong>.
+                They can change it from <strong style="color:var(--text-primary);">Profile → Settings</strong>.
+            </span>
+        </div>
+
+        <!-- Divider -->
+        <div style="height:1px;background:var(--border-color);margin:0 0 28px;"></div>
+
+        <!-- ══ ROLES & PERMISSIONS ══ -->
+        <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;margin-bottom:28px;
+             box-shadow:0 6px 0 rgba(0,0,0,.12),0 10px 24px rgba(0,0,0,.08);transform:perspective(800px) rotateX(.5deg);">
+            ${sectionHead('🛡️ Roles &amp; Permissions','View which role has which access — click Download PDF to share with staff')}
+            <div style="padding:14px 20px;border-bottom:1px solid var(--border-color);display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+                <button class="btn-accent" onclick="window.openRolesPermPanel?.()"><i class="fa-solid fa-table"></i> View Full Table</button>
+                <button class="btn-outline btn-sm" onclick="window.printRolesPDF()"><i class="fa-solid fa-file-pdf"></i> Download PDF</button>
+            </div>
+            <div style="overflow-x:auto;">
+                <table class="staff-table" id="rolesInlineTable">
+                    <thead><tr>
+                        <th style="font-size:13px;">Permission</th>
+                        <th style="text-align:center;font-size:13px;">Principal</th>
+                        <th style="text-align:center;font-size:13px;">VP/Admin</th>
+                        <th style="text-align:center;font-size:13px;">HOD</th>
+                        <th style="text-align:center;font-size:13px;">Exam Ctrl</th>
+                        <th style="text-align:center;font-size:13px;">Teacher</th>
+                        <th style="text-align:center;font-size:13px;">Support</th>
+                    </tr></thead>
+                    <tbody id="rolesInlineTbody">
+                        <tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text-secondary);font-size:13px;">Loading permissions...</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
-        <!-- ── SCORECARD SECTION ──────────────────────────── -->
-        <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;margin-top:24px;">
-            <div style="padding:16px 20px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-                <div>
-                    <h2 style="font-size:15px;font-weight:800;color:var(--text-primary);margin:0 0 2px;">
-                        🏆 Staff Scorecard
-                        <span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 7px;border-radius:10px;margin-left:6px;font-weight:700;vertical-align:middle;">WORLD FIRST</span>
-                    </h2>
-                    <p style="font-size:11px;color:var(--text-secondary);margin:0;">Objective task-based performance scores for transparent promotions &amp; increments</p>
-                </div>
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                    <select id="scMonth" style="padding:7px 10px;border-radius:9px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-primary);font-size:12px;outline:none;">
-                        <option value="this_month">This Month</option>
-                        <option value="last_month">Last Month</option>
-                        <option value="this_quarter">This Quarter</option>
-                        <option value="this_year">This Year</option>
-                    </select>
-                    <button class="btn-accent" onclick="loadScorecard()" style="font-size:12px;padding:8px 14px;">
-                        <i class="fa-solid fa-chart-bar"></i> Generate Scorecard
-                    </button>
-                    <button class="btn-outline btn-sm" onclick="window.printScorecard()" style="font-size:12px;">
-                        <i class="fa-solid fa-print"></i> Print
-                    </button>
-                </div>
+
+        <!-- Divider -->
+        <div style="height:1px;background:var(--border-color);margin:0 0 28px;"></div>
+
+        <!-- ══ SCORECARD ══ -->
+        <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;
+             box-shadow:0 6px 0 rgba(0,0,0,.12),0 10px 24px rgba(0,0,0,.08);transform:perspective(800px) rotateX(.5deg);">
+            ${sectionHead('🏆 Staff Scorecard','Objective task-based performance — international standard')}
+            <div style="padding:12px 20px;background:var(--bg-body);border-bottom:1px solid var(--border-color);display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+                <span style="font-size:13px;font-weight:700;color:var(--text-secondary);">Grade:</span>
+                <span style="font-size:13px;"><span style="background:#dcfce7;color:#16a34a;padding:2px 10px;border-radius:10px;font-weight:700;">A+</span> ≥90%</span>
+                <span style="font-size:13px;"><span style="background:#dbeafe;color:#1d4ed8;padding:2px 10px;border-radius:10px;font-weight:700;">A</span> ≥80%</span>
+                <span style="font-size:13px;"><span style="background:#fef9c3;color:#854d0e;padding:2px 10px;border-radius:10px;font-weight:700;">B</span> ≥65%</span>
+                <span style="font-size:13px;"><span style="background:#ffedd5;color:#c2410c;padding:2px 10px;border-radius:10px;font-weight:700;">C</span> ≥50%</span>
+                <span style="font-size:13px;"><span style="background:#fee2e2;color:#b91c1c;padding:2px 10px;border-radius:10px;font-weight:700;">D</span> &lt;50%</span>
+                <span style="margin-left:auto;font-size:12px;color:var(--text-secondary);">On-time ×4 + Delayed ×1 ÷ Total ×4 × 100</span>
             </div>
-            <div style="padding:8px 20px;background:var(--bg-body);border-bottom:1px solid var(--border-color);display:flex;gap:14px;flex-wrap:wrap;align-items:center;">
-                <span style="font-size:11px;font-weight:700;color:var(--text-secondary);">Grade:</span>
-                <span style="font-size:11px;"><span style="background:#dcfce7;color:#16a34a;padding:1px 8px;border-radius:10px;font-weight:700;">A+</span> 90–100%</span>
-                <span style="font-size:11px;"><span style="background:#dbeafe;color:#1d4ed8;padding:1px 8px;border-radius:10px;font-weight:700;">A</span> 80–89%</span>
-                <span style="font-size:11px;"><span style="background:#fef9c3;color:#854d0e;padding:1px 8px;border-radius:10px;font-weight:700;">B</span> 65–79%</span>
-                <span style="font-size:11px;"><span style="background:#ffedd5;color:#c2410c;padding:1px 8px;border-radius:10px;font-weight:700;">C</span> 50–64%</span>
-                <span style="font-size:11px;"><span style="background:#fee2e2;color:#b91c1c;padding:1px 8px;border-radius:10px;font-weight:700;">D</span> &lt;50%</span>
-                <span style="font-size:10px;color:var(--text-secondary);margin-left:auto;">On-time ×4 + Delayed ×1 ÷ Total ×4 × 100</span>
+            <div style="padding:12px 20px;border-bottom:1px solid var(--border-color);display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                <select id="scMonth" style="padding:8px 12px;border-radius:9px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-primary);font-size:13px;outline:none;">
+                    <option value="this_month">This Month</option>
+                    <option value="last_month">Last Month</option>
+                    <option value="this_quarter">This Quarter</option>
+                    <option value="this_year">This Year</option>
+                </select>
+                <button class="btn-accent" onclick="loadScorecard()"><i class="fa-solid fa-chart-bar"></i> Generate</button>
+                <button class="btn-outline btn-sm" onclick="window.printScorecard()"><i class="fa-solid fa-print"></i> Print</button>
             </div>
             <div style="overflow-x:auto;">
                 <table class="staff-table">
                     <thead><tr>
-                        <th>Staff Member</th><th>Role</th>
-                        <th style="text-align:center;">Tasks</th>
-                        <th style="text-align:center;color:#16a34a;">On Time</th>
-                        <th style="text-align:center;color:#f59e0b;">Delayed</th>
-                        <th style="text-align:center;color:#ef4444;">Pending</th>
-                        <th style="text-align:center;">Score</th>
-                        <th style="text-align:center;">Grade</th>
-                        <th style="text-align:center;">Card</th>
+                        <th style="font-size:13px;">Staff Member</th>
+                        <th style="font-size:13px;">Role</th>
+                        <th style="text-align:center;font-size:13px;">Tasks</th>
+                        <th style="text-align:center;font-size:13px;color:#16a34a;">On Time</th>
+                        <th style="text-align:center;font-size:13px;color:#f59e0b;">Delayed</th>
+                        <th style="text-align:center;font-size:13px;color:#ef4444;">Pending</th>
+                        <th style="text-align:center;font-size:13px;">Score</th>
+                        <th style="text-align:center;font-size:13px;">Grade</th>
+                        <th style="text-align:center;font-size:13px;">Card</th>
                     </tr></thead>
                     <tbody id="scorecardBody">
-                        <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-secondary);">
-                            Select period and click <strong>Generate Scorecard</strong>
+                        <tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-secondary);font-size:13px;">
+                            Select period and click <strong>Generate</strong>
                         </td></tr>
                     </tbody>
                 </table>
             </div>
-            <div id="scorecardNote" style="padding:12px 20px;font-size:11px;color:var(--text-secondary);border-top:1px solid var(--border-color);display:none;">
-                📊 Scores are calculated automatically from task data — objective, transparent, unchallengeable. Share with staff for fair increment &amp; promotion decisions.
+            <div id="scorecardNote" style="padding:12px 20px;font-size:12px;color:var(--text-secondary);border-top:1px solid var(--border-color);display:none;">
+                📊 Scores calculated automatically from task data — objective, transparent, unchallengeable.
             </div>
         </div>
 
@@ -804,6 +777,96 @@ window.loadScorecard = async function() {
     showToast('Scorecard generated ✓', '#16a34a');
 };
 
+// ─── INLINE ROLES TABLE (loads automatically after renderAdmin) ─
+const ROLE_PERMS_MATRIX = [
+    { perm:'Send Messages',       principal:1,vp_admin:1,hod:1,exam_controller:1,coordinator:1,teacher:1,admin_staff:1,support_staff:1,management:1 },
+    { perm:'Schedule Messages',   principal:1,vp_admin:1,hod:1,exam_controller:1,coordinator:1,teacher:0,admin_staff:0,support_staff:0,management:1 },
+    { perm:'Upload Files',        principal:1,vp_admin:1,hod:1,exam_controller:1,coordinator:1,teacher:1,admin_staff:1,support_staff:0,management:1 },
+    { perm:'Create Tasks',        principal:1,vp_admin:1,hod:1,exam_controller:1,coordinator:1,teacher:0,admin_staff:0,support_staff:0,management:1 },
+    { perm:'View Task Hub',       principal:1,vp_admin:1,hod:1,exam_controller:1,coordinator:1,teacher:1,admin_staff:1,support_staff:0,management:1 },
+    { perm:'Manage Groups',       principal:1,vp_admin:1,hod:1,exam_controller:0,coordinator:0,teacher:0,admin_staff:0,support_staff:0,management:1 },
+    { perm:'View Activity Feed',  principal:1,vp_admin:1,hod:1,exam_controller:1,coordinator:1,teacher:1,admin_staff:1,support_staff:1,management:1 },
+    { perm:'View Dashboard',      principal:1,vp_admin:1,hod:1,exam_controller:1,coordinator:1,teacher:0,admin_staff:0,support_staff:0,management:1 },
+    { perm:'Admin Panel Access',  principal:1,vp_admin:1,hod:0,exam_controller:0,coordinator:0,teacher:0,admin_staff:0,support_staff:0,management:1 },
+    { perm:'Manage Staff',        principal:1,vp_admin:1,hod:0,exam_controller:0,coordinator:0,teacher:0,admin_staff:0,support_staff:0,management:0 },
+    { perm:'Set Reminders',       principal:1,vp_admin:1,hod:1,exam_controller:1,coordinator:1,teacher:1,admin_staff:1,support_staff:1,management:1 },
+];
+const ROLE_COLS = [
+    {key:'principal',label:'Principal'},
+    {key:'vp_admin',label:'VP/Admin'},
+    {key:'hod',label:'HOD'},
+    {key:'exam_controller',label:'Exam Ctrl'},
+    {key:'teacher',label:'Teacher'},
+    {key:'support_staff',label:'Support'},
+];
+const tick$ = v => v
+    ? '<span style="color:#16a34a;font-size:16px;font-weight:900;">✓</span>'
+    : '<span style="color:#d1d5db;font-size:16px;">—</span>';
+
+function renderInlineRolesTable() {
+    const tbody = document.getElementById('rolesInlineTbody');
+    if (!tbody) return;
+    tbody.innerHTML = ROLE_PERMS_MATRIX.map((row,i) => `
+        <tr style="${i%2?'':'background:var(--bg-body);'}">
+            <td style="font-size:14px;font-weight:600;">${row.perm}</td>
+            ${ROLE_COLS.map(c=>`<td style="text-align:center;">${tick$(row[c.key])}</td>`).join('')}
+        </tr>`).join('');
+}
+
+// ─── ROLES PDF ───────────────────────────────────────────────
+window.printRolesPDF = function() {
+    const school = window.currentSchoolName || 'School';
+    const cols = ROLE_COLS;
+    const rows = ROLE_PERMS_MATRIX.map((r,i) => `
+        <tr style="background:${i%2?'#f9f9f9':'#fff'};">
+            <td style="padding:8px 12px;border:1px solid #e5e7eb;font-size:12px;font-weight:600;">${r.perm}</td>
+            ${cols.map(c=>`<td style="padding:8px;border:1px solid #e5e7eb;text-align:center;font-size:16px;font-weight:900;color:${r[c.key]?'#16a34a':'#d1d5db'};">${r[c.key]?'✓':'—'}</td>`).join('')}
+        </tr>`).join('');
+    const w = window.open('','_blank');
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>${school} — Roles & Permissions</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0;}
+      body{font-family:'Inter',sans-serif;background:#fff;padding:32px;}
+      .header{background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;padding:28px 32px;border-radius:16px;margin-bottom:28px;position:relative;overflow:hidden;}
+      .header::after{content:'';position:absolute;top:-40px;right:-40px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.08);}
+      h1{font-size:22px;font-weight:900;margin-bottom:4px;}
+      .sub{font-size:13px;opacity:.8;}
+      table{width:100%;border-collapse:collapse;margin-top:8px;}
+      th{padding:10px 12px;background:#f8fafc;border:1px solid #e5e7eb;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;text-align:center;}
+      th:first-child{text-align:left;min-width:180px;}
+      .legend{display:flex;gap:24px;margin:20px 0 8px;font-size:12px;}
+      .legend span{display:flex;align-items:center;gap:6px;}
+      .footer{margin-top:24px;font-size:11px;color:#9ca3af;text-align:center;}
+      @media print{
+        body{padding:16px;}
+        .header{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+      }
+    </style></head><body>
+    <div class="header">
+      <div style="position:relative;z-index:1;">
+        <h1>🛡️ Roles &amp; Permissions</h1>
+        <div class="sub">${school} · Generated ${new Date().toLocaleString('en-IN')}</div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><strong style="color:#16a34a;font-size:16px;">✓</strong> = Permission Granted</span>
+      <span><strong style="color:#d1d5db;">—</strong> = Not Applicable</span>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="text-align:left;">Permission</th>
+        ${cols.map(c=>`<th>${c.label}</th>`).join('')}
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="footer">MPGS TaskFlow · Objective Role-Based Access Control · Powered by TaskFlow</div>
+    <script>setTimeout(()=>window.print(),400);<\/script>
+    </body></html>`);
+    w.document.close();
+};
+
 // ─── PRINT STAFF TABLE ───────────────────────────────────────
 window.printStaffTable = function() {
     const school = window.currentSchoolName || 'School';
@@ -830,24 +893,60 @@ window.printStaffTable = function() {
 // ─── PRINT SCORECARD TABLE ───────────────────────────────────
 window.printScorecard = function() {
     const tbody = document.getElementById('scorecardBody');
-    if (!tbody || tbody.innerHTML.includes('Generate Scorecard')) {
-        alert('Generate the scorecard first.'); return;
-    }
+    if (!tbody || tbody.textContent.includes('Generate')) { alert('Generate the scorecard first.'); return; }
     const school = window.currentSchoolName || 'School';
     const period = document.getElementById('scMonth')?.selectedOptions[0]?.text || '';
+    const rows = Array.from(tbody.querySelectorAll('tr')).map(tr => {
+        const cells = Array.from(tr.querySelectorAll('td'));
+        return `<tr>${cells.map((td,i)=>`<td style="padding:7px 10px;border:1px solid #e5e7eb;${i>1?'text-align:center;':''}">${td.innerText}</td>`).join('')}</tr>`;
+    }).join('');
     const w = window.open('','_blank');
-    w.document.write(`<html><head><title>${school} Scorecard</title>
-    <style>body{font-family:Arial,sans-serif;padding:20px;font-size:12px;}
-    h1{font-size:16px;}table{width:100%;border-collapse:collapse;}
-    th{padding:7px 8px;border:1px solid #ccc;background:#f0f2f5;text-align:center;font-size:11px;text-transform:uppercase;}
-    th:first-child{text-align:left;}td{padding:6px 8px;border:1px solid #ddd;text-align:center;}
-    td:first-child{text-align:left;}</style></head><body>
-    <h1>🏆 ${school} — Staff Scorecard</h1>
-    <p style="color:#666;font-size:11px;">Period: ${period} · Printed ${new Date().toLocaleString('en-IN')}</p>
-    <p style="font-size:11px;color:#666;">Grading: A+ ≥90% · A ≥80% · B ≥65% · C ≥50% · D &lt;50%</p>
-    <table><thead><tr><th>Staff Member</th><th>Role</th><th>Tasks</th><th>On Time</th><th>Delayed</th><th>Pending</th><th>Score</th><th>Grade</th></tr></thead>
-    <tbody>${tbody.innerHTML}</tbody></table></body></html>`);
-    w.document.close(); w.print();
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>${school} — Scorecard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0;}
+      body{font-family:'Inter',sans-serif;background:#fff;padding:28px;}
+      .header{background:linear-gradient(135deg,#6366f1,#4338ca);color:#fff;padding:24px 28px;border-radius:14px;margin-bottom:20px;position:relative;overflow:hidden;}
+      .header::after{content:'';position:absolute;top:-30px;right:-30px;width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.08);}
+      h1{font-size:20px;font-weight:900;margin-bottom:3px;position:relative;z-index:1;}
+      .sub{font-size:12px;opacity:.8;position:relative;z-index:1;}
+      .grade-row{display:flex;gap:16px;margin:0 0 14px;flex-wrap:wrap;font-size:12px;}
+      .grade-row span{padding:3px 12px;border-radius:20px;font-weight:700;}
+      table{width:100%;border-collapse:collapse;}
+      th{padding:9px 10px;background:#f8fafc;border:1px solid #e5e7eb;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;text-align:center;}
+      th:first-child{text-align:left;}
+      .footer{margin-top:20px;font-size:11px;color:#9ca3af;text-align:center;}
+      @media print{
+        body{padding:14px;}
+        .header{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+      }
+    </style></head><body>
+    <div class="header">
+      <h1>🏆 Staff Scorecard</h1>
+      <div class="sub">${school} · ${period} · Generated ${new Date().toLocaleString('en-IN')}</div>
+    </div>
+    <div class="grade-row">
+      <span style="background:#dcfce7;color:#16a34a;">A+ ≥90%</span>
+      <span style="background:#dbeafe;color:#1d4ed8;">A ≥80%</span>
+      <span style="background:#fef9c3;color:#854d0e;">B ≥65%</span>
+      <span style="background:#ffedd5;color:#c2410c;">C ≥50%</span>
+      <span style="background:#fee2e2;color:#b91c1c;">D &lt;50%</span>
+      <span style="color:#6b7280;font-weight:400;">Formula: (On-time×4 + Delayed×1) ÷ (Total×4) × 100</span>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="text-align:left;">Staff Member</th><th>Role</th>
+        <th>Tasks</th><th style="color:#16a34a;">On Time</th>
+        <th style="color:#f59e0b;">Delayed</th><th style="color:#ef4444;">Pending</th>
+        <th>Score</th><th>Grade</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="footer">MPGS TaskFlow · Objective &amp; Transparent Performance Scoring</div>
+    <script>setTimeout(()=>window.print(),400);<\/script>
+    </body></html>`);
+    w.document.close();
 };
 
 // ─── INDIVIDUAL SCORECARD DOWNLOAD ───────────────────────────

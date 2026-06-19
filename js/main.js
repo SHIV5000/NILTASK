@@ -144,7 +144,7 @@ window.saveNewGroup = async function() {
         text:`<p>📢 <strong>${window.escapeHtml(name)}</strong> group created.</p>`,
         created_at:new Date().toISOString()
     });
-    btn.disabled=false; btn.innerHTML='<i class="fa-solid fa-plus"></i> Create Group';
+    btn.disabled=false; btn.innerHTML='<i class="fa-solid fa-plus"></i> Create Department';
     if (error) { err.textContent='Could not create: '+error.message; err.style.display='block'; return; }
     window.closeNewGroupModal();
     window.showCenterToast(`"${name}" created ✓`,'fa-solid fa-users');
@@ -179,11 +179,11 @@ window.renderMainApp = function() {
                 </div>
                 <div class="p-4 flex justify-between items-center border-b" style="border-color:var(--border-color);">
                     <h2 class="text-xl font-bold tracking-tight flex items-center gap-2" style="color:var(--text-primary);">
-                        <i class="fa-solid fa-comments" style="color:var(--accent);"></i> Conversation
+                        <i class="fa-solid fa-comments" style="color:var(--accent);"></i> Departments &amp; Staff
                     </h2>
                     <div class="flex gap-2" style="position:relative;">
                         ${window.canCreateGroup?.() !== false ? `
-                        <button onclick="window.openNewGroupModal()" class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors" title="Create New Group" style="color:var(--text-secondary);">
+                        <button onclick="window.openNewGroupModal()" class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors" title="Create New Department" style="color:var(--text-secondary);">
                             <i class="fa-solid fa-plus text-sm"></i>
                         </button>` : ''}
                         <div class="menu-wrap">
@@ -247,7 +247,7 @@ window.renderMainApp = function() {
                         </button>
                         <i class="ti ti-layout-sidebar-left cursor-pointer pr-3 border-r" onclick="window.toggleLeftSidebar()" title="Toggle Sidebar" style="color:var(--text-secondary);border-color:var(--border-color);"></i>
                         <span id="roomTitleDisplay" class="text-lg font-bold tracking-tight" style="color:var(--text-primary);">Loading...</span>
-                        <button id="groupSettingsBtn" onclick="window.openGroupSettings()" title="Group Settings"
+                        <button id="groupSettingsBtn" onclick="window.openGroupSettings()" title="Department Settings"
                             class="ml-1 w-6 h-6 rounded flex items-center justify-center hover:bg-gray-100 transition-colors hidden"
                             style="color:var(--text-secondary);">
                             <i class="fa-solid fa-sliders text-xs"></i>
@@ -468,7 +468,7 @@ window.renderMainApp = function() {
         <div id="newGroupModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
             <div class="rounded-2xl w-full max-w-md mx-4 shadow-2xl border flex flex-col max-h-[90vh]" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
                 <div class="flex items-center justify-between p-5 border-b" style="border-color:var(--border-color);">
-                    <h3 class="font-bold text-base" style="color:var(--text-primary);">Create New Group</h3>
+                    <h3 class="font-bold text-base" style="color:var(--text-primary);">Create New Department</h3>
                     <button onclick="window.closeNewGroupModal()" style="color:var(--text-secondary);background:none;border:none;cursor:pointer;font-size:18px;">✕</button>
                 </div>
                 <div class="overflow-y-auto p-5 flex flex-col gap-4">
@@ -507,57 +507,55 @@ window.renderMainApp = function() {
                 <div class="p-4 border-t flex gap-3" style="border-color:var(--border-color);">
                     <button onclick="window.closeNewGroupModal()" class="flex-1 py-2 rounded-xl border text-sm font-bold" style="background:transparent;border-color:var(--border-color);color:var(--text-secondary);">Cancel</button>
                     <button onclick="window.saveNewGroup()" id="ngSaveBtn" style="flex:2;padding:9px;border-radius:11px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-size:13px;font-weight:700;">
-                        <i class="fa-solid fa-plus"></i> Create Group
+                        <i class="fa-solid fa-plus"></i> Create Department
                     </button>
                 </div>
             </div>
         </div>
 
-        <!-- Group Settings Modal — Name, Colour, Members, Admins -->
+        <!-- Department Settings Modal -->
         <div id="groupSettingsModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
             <div class="rounded-2xl w-full max-w-sm mx-4 shadow-2xl border flex flex-col max-h-[90vh]" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
-                <!-- Header -->
                 <div class="p-5 border-b flex items-center justify-between flex-shrink-0" style="border-color:var(--border-color);">
                     <h3 class="text-base font-bold flex items-center gap-2" style="color:var(--text-primary);">
-                        <i class="fa-solid fa-users-gear" style="color:var(--accent);"></i> Group Settings
+                        <i class="fa-solid fa-users-gear" style="color:var(--accent);"></i> Department Settings
                     </h3>
                     <button onclick="window.closeGroupSettings()" class="w-7 h-7 rounded-full flex items-center justify-center hover:bg-gray-100" style="color:var(--text-secondary);">
                         <i class="fa-solid fa-times text-sm"></i>
                     </button>
                 </div>
-                <!-- Scrollable body -->
-                <div class="flex-1 overflow-y-auto p-5">
+                <div class="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
                     <input type="hidden" id="groupSettingsId">
-                    <!-- Display Name -->
-                    <div class="mb-4">
-                        <label class="text-[10px] font-black tracking-wider uppercase mb-1.5 block" style="color:var(--text-secondary);">Display Name</label>
-                        <input type="text" id="groupSettingsName" class="w-full p-2.5 rounded-xl border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
-                    </div>
-                    <!-- Avatar Colour -->
-                    <div class="mb-4">
-                        <label class="text-[10px] font-black tracking-wider uppercase mb-1.5 block" style="color:var(--text-secondary);">Avatar Colour</label>
-                        <div class="flex gap-2 flex-wrap" id="groupColorPicker">
-                            ${['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6'].map(c =>
-                                `<button type="button" onclick="window.selectGroupColor('${c}')" data-color="${c}"
-                                    class="w-9 h-9 rounded-lg border-2 border-transparent hover:scale-110 transition-transform shadow-sm"
-                                    style="background:${c};" title="${c}"></button>`
-                            ).join('')}
+
+                    <!-- Department photo -->
+                    <div style="display:flex;align-items:center;gap:14px;">
+                        <div id="gsPhotoWrap" onclick="document.getElementById('gsPhotoInput').click()"
+                            style="width:64px;height:64px;border-radius:16px;background:var(--accent);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;overflow:hidden;position:relative;">
+                            <i class="fa-solid fa-users" style="color:#fff;font-size:22px;" id="gsPhotoIcon"></i>
+                            <span style="position:absolute;bottom:2px;right:2px;width:18px;height:18px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;">
+                                <i class="fa-solid fa-camera" style="font-size:9px;color:var(--accent);"></i>
+                            </span>
+                        </div>
+                        <input type="file" id="gsPhotoInput" accept="image/*" style="display:none;" onchange="window._gsPhotoSelected(this)">
+                        <div style="flex:1;">
+                            <label style="display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);margin-bottom:5px;">Department Name</label>
+                            <input type="text" id="groupSettingsName" class="w-full p-2.5 rounded-xl border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
                         </div>
                     </div>
-                    <!-- Members & Admins -->
+
+                    <!-- Members -->
                     <div>
-                        <div class="text-[10px] font-black tracking-wider uppercase mb-1.5 flex items-center justify-between" style="color:var(--text-secondary);">
-                            <span>Members & Admins</span>
-                            <span class="text-[9px] normal-case font-normal" style="color:var(--text-secondary);">☑ = Member &nbsp;★ = Admin</span>
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                            <label style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);">Members &amp; Admins</label>
+                            <span style="font-size:9px;color:var(--text-secondary);">☑ Member &nbsp;★ Admin</span>
                         </div>
                         <div id="groupMembersList" class="border rounded-xl overflow-hidden" style="border-color:var(--border-color);background-color:var(--bg-body);">
                             <p class="text-xs italic p-3" style="color:var(--text-secondary);">Loading members...</p>
                         </div>
                     </div>
                 </div>
-                <!-- Footer -->
                 <div class="p-4 border-t flex gap-3 flex-shrink-0" style="border-color:var(--border-color);">
-                    <button onclick="window.closeGroupSettings()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
+                    <button onclick="window.closeGroupSettings()" class="flex-1 py-2.5 rounded-xl font-bold border" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
                     <button onclick="window.saveGroupSettings()" class="flex-1 py-2.5 rounded-xl font-bold text-white" style="background-color:var(--accent);">Save</button>
                 </div>
             </div>
@@ -838,7 +836,7 @@ window.loadChatsList = async function() {
             <span class="flex-1 truncate tracking-wide text-sm" style="color:var(--text-primary);">${storedName}</span>
             <button onclick="event.stopPropagation();window.openGroupSettings('${g}')"
                 class="opacity-0 group-hover/dept:opacity-100 transition-opacity p-1 rounded hover:bg-gray-100 flex-shrink-0"
-                style="color:var(--text-secondary);" title="Group Settings">
+                style="color:var(--text-secondary);" title="Department Settings">
                 <i class="fa-solid fa-gear text-[10px]"></i>
             </button>
         </div>`;

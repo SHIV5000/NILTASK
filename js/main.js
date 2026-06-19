@@ -479,8 +479,13 @@ window.renderMainApp = function() {
                     </div>
                 </div>
                 <!-- Period tabs -->
-                <div class="flex gap-1 p-4 pb-0 flex-shrink-0">
-                    ${['today','week','month','all'].map(p => `<button class="dash-tab px-3 py-1.5 rounded-lg text-xs font-bold border transition-all" data-period="${p}" onclick="window.loadDashboard('${p}')" style="border-color:var(--border-color);color:var(--text-secondary);background:var(--bg-body);">${p==='all'?'All Time':p.charAt(0).toUpperCase()+p.slice(1)}</button>`).join('')}
+                <div class="flex gap-1 p-4 pb-0 flex-shrink-0 flex-wrap">
+                    ${[
+                        {id:'this_month',label:'This Month'},
+                        {id:'last_month',label:'Last Month'},
+                        {id:'this_quarter',label:'Quarter'},
+                        {id:'this_year',label:'This Year'}
+                    ].map(p => `<button class="dash-tab px-3 py-1.5 rounded-lg text-xs font-bold border transition-all" data-period="${p.id}" onclick="window.loadDashboard('${p.id}')" style="border-color:var(--border-color);color:var(--text-secondary);background:var(--bg-body);">${p.label}</button>`).join('')}
                 </div>
                 <div id="dashboardContent" class="flex-1 overflow-y-auto p-4"></div>
             </div>

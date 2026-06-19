@@ -233,11 +233,41 @@ window.setTheme = function(themeId) {
 };
 
 window.toggleThemePanel = function() {
-    const panel = document.getElementById('themePanel');
-    if (!panel) return;
-    const willOpen = panel.style.display === 'none' || !panel.style.display;
-    panel.style.display = willOpen ? 'block' : 'none';
-    if (willOpen) window.applyTheme(); // refresh active-state highlighting
+    let panel = document.getElementById('themePanel');
+    if (panel) {
+        // already open — close it
+        panel.remove();
+        return;
+    }
+    // Create it on body so it can't be clipped by overflow:hidden on the sidebar
+    panel = document.createElement('div');
+    panel.id = 'themePanel';
+    panel.className = 'top-panel-dropdown';
+    panel.style.cssText = 'position:fixed;padding:10px;min-width:240px;z-index:99999;';
+    panel.innerHTML = `<div class="theme-panel-title">Choose Theme</div>
+        <div class="theme-toggle-wrap" id="themeToggleWrap"></div>`;
+    document.body.appendChild(panel);
+
+    // Position below the palette button
+    const btn = document.getElementById('themePaletteBtn');
+    if (btn) {
+        const r = btn.getBoundingClientRect();
+        panel.style.top  = (r.bottom + 6) + 'px';
+        panel.style.left = Math.max(4, r.right - 240) + 'px';
+    }
+
+    window.applyTheme();
+
+    // Close on outside click
+    setTimeout(() => {
+        document.addEventListener('click', function _close(e) {
+            if (!e.target.closest('#themePanel') && !e.target.closest('#themePaletteBtn')) {
+                const p = document.getElementById('themePanel');
+                if (p) p.remove();
+                document.removeEventListener('click', _close);
+            }
+        });
+    }, 0);
 };
 
 // ─── TOAST: Show a temporary centred notification toast ───────────────────────
@@ -310,4 +340,4 @@ window.toggleDateFilter = function() {
     if(typeof window.loadTasksForPanel==='function') window.loadTasksForPanel();
 };
 
-// ─── LINK PILL MODAL ───────────────────────────────────────────────────────S
+// ─── LINK PILL MODAL ───────────────────────────────────────────────────────

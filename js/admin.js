@@ -55,11 +55,18 @@ function renderAdmin() {
             onmouseup="this.style.opacity='1';"
         ><i class="fa-solid ${icon}"></i>${label}</button>`;
 
-    const sectionHead = (title, sub) =>
-        `<div style="background:var(--accent);padding:16px 22px;">
-            <h2 style="font-size:15px;font-weight:700;color:#fff;margin:0 0 2px;">${title}</h2>
-            <p style="font-size:12px;color:rgba(255,255,255,.8);margin:0;">${sub}</p>
-        </div>`;
+    const sectionHead = (title, sub, id) =>
+        `<div class="section-hdr" onclick="window._toggleSection('${id}')"
+            style="background:var(--accent);padding:14px 22px;cursor:pointer;user-select:none;
+            display:flex;align-items:center;justify-content:space-between;">
+            <div>
+                <h2 style="font-size:15px;font-weight:700;color:#fff;margin:0 0 2px;">${title}</h2>
+                <p style="font-size:12px;color:rgba(255,255,255,.8);margin:0;">${sub}</p>
+            </div>
+            <i id="chevron-${id}" class="fa-solid fa-chevron-up"
+               style="color:rgba(255,255,255,.8);font-size:13px;transition:transform .22s;"></i>
+        </div>
+        <div id="section-${id}">`;
 
     document.getElementById('adminRoot').innerHTML = `
     <div style="max-width:1100px;margin:0 auto;padding:20px 16px;font-size:14px;">
@@ -104,7 +111,7 @@ function renderAdmin() {
         <!-- STAFF MANAGEMENT -->
         <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;
              box-shadow:0 1px 4px rgba(0,0,0,.07);">
-            ${sectionHead('👥 Staff Management','Add, approve or remove staff members')}
+            ${sectionHead('👥 Staff Management','Add, approve or remove staff members','staff')}
             <div style="padding:14px 20px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
                 <input type="text" id="staffSearch" placeholder="Search name or email..."
                     oninput="filterStaff(this.value)"
@@ -128,7 +135,7 @@ function renderAdmin() {
                     </tbody>
                 </table>
             </div>
-        </div>
+        </div></div>
 
         <!-- Login note -->
         <div style="margin:14px 0 24px;padding:13px 18px;background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:12px;font-size:13px;">
@@ -146,7 +153,7 @@ function renderAdmin() {
         <!-- ROLES & PERMISSIONS -->
         <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;margin-bottom:24px;
              box-shadow:0 1px 4px rgba(0,0,0,.07);">
-            ${sectionHead('🛡️ Roles &amp; Permissions','Which role can do what — Download PDF to share with staff')}
+            ${sectionHead('🛡️ Roles &amp; Permissions','Which role can do what — Download PDF to share with staff','roles')}
             <div style="padding:12px 20px;border-bottom:1px solid var(--border-color);display:flex;gap:8px;flex-wrap:wrap;">
                 <button class="btn-outline btn-sm" onclick="window.openRolesPermPanel?.()"><i class="fa-solid fa-expand"></i> Full View</button>
                 <button class="btn-outline btn-sm" onclick="window.printRolesPDF()"><i class="fa-solid fa-file-pdf"></i> Download PDF</button>
@@ -171,14 +178,14 @@ function renderAdmin() {
                     </tbody>
                 </table>
             </div>
-        </div>
+        </div></div>
 
         <hr style="border:none;border-top:1px solid var(--border-color);margin:0 0 24px;">
 
         <!-- SCORECARD -->
         <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;
              box-shadow:0 1px 4px rgba(0,0,0,.07);">
-            ${sectionHead('🏆 Staff Scorecard','Objective task-based performance — international standard')}
+            ${sectionHead('🏆 Staff Scorecard','Objective task-based performance — international standard','scorecard')}
             <div style="padding:10px 20px;background:var(--bg-body);border-bottom:1px solid var(--border-color);display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
                 <span style="font-size:11px;font-weight:700;color:var(--text-secondary);">Grade:</span>
                 <span style="font-size:11px;"><span style="background:#dcfce7;color:#16a34a;padding:1px 8px;border-radius:10px;font-weight:700;">A+</span> ≥90%</span>
@@ -226,7 +233,7 @@ function renderAdmin() {
             <div id="scorecardNote" style="padding:12px 20px;font-size:11px;color:var(--text-secondary);border-top:1px solid var(--border-color);display:none;">
                 📊 Scores calculated automatically from task data — objective, transparent, unchallengeable.
             </div>
-        </div>
+        </div></div>
 
     </div>`;
 
@@ -1214,35 +1221,96 @@ window.downloadSampleCSV = function() {
 
 window.doBulkAdd = async function() {
     const fileInput = document.getElementById('bulkCSVInput');
-    const btn = document.getElementById('bulkAddBtn');
-    const errEl = document.getElementById('bulkErr');
-    const progress = document.getElementById('bulkProgress');
+    const btn       = document.getElementById('bulkAddBtn');
+    const errEl     = document.getElementById('bulkErr');
+    const progress  = document.getElementById('bulkProgress');
     errEl.style.display = 'none';
-    if (!fileInput.files[0]) { errEl.textContent='Upload a CSV file first.'; errEl.style.display='block'; return; }
-    const lines = (await fileInput.files[0].text()).split('\n').map(l=>l.trim()).filter(l=>l).slice(1);
-    if (!lines.length) { errEl.textContent='No data rows found.'; errEl.style.display='block'; return; }
-    btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Adding...';
+
+    if (!fileInput.files[0]) {
+        errEl.textContent = 'Upload a CSV file first.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    const lines = (await fileInput.files[0].text())
+        .split('\n').map(l => l.trim()).filter(l => l).slice(1);
+    if (!lines.length) {
+        errEl.textContent = 'No data rows found.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    // ── Duplicate check against existing staff ──────────────
+    const existingEmails = new Set((allStaff || []).map(s => (s.email||'').toLowerCase()));
+    const duplicates = [];
+    const uniqueLines = lines.filter(l => {
+        const email = (l.split(',')[1] || '').trim().toLowerCase();
+        if (!email) return true;
+        if (existingEmails.has(email)) { duplicates.push(email); return false; }
+        return true;
+    });
+
+    if (duplicates.length) {
+        const dupList = duplicates.slice(0, 5).join(', ') + (duplicates.length > 5 ? ` ...and ${duplicates.length - 5} more` : '');
+        const proceed = confirm(
+            `⚠️ ${duplicates.length} duplicate email(s) already exist in the system and will be skipped:\n\n${dupList}\n\nProceed with the ${uniqueLines.length} unique staff member(s)?`
+        );
+        if (!proceed) return;
+    }
+
+    if (!uniqueLines.length) {
+        errEl.textContent = 'All emails already exist — nothing to add.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Adding...';
     progress.style.display = 'block';
-    const { data:{session} } = await sb.auth.getSession();
-    let added=0, failed=0, failedNames=[];
-    for (let i=0;i<lines.length;i++) {
-        const [full_name,email,role,department,designation] = lines[i].split(',').map(x=>x?.trim());
-        if (!full_name||!email) { failed++; failedNames.push(`Row ${i+2}: missing name/email`); continue; }
-        const password = full_name.split(' ').pop().toLowerCase().replace(/[^a-z]/g,'')+'123';
-        progress.textContent = `Adding ${i+1}/${lines.length}: ${full_name}...`;
+
+    const { data: { session } } = await sb.auth.getSession();
+    let added = 0, failed = 0, failedNames = [];
+
+    for (let i = 0; i < uniqueLines.length; i++) {
+        const [full_name, email, role, department, designation] = uniqueLines[i].split(',').map(x => x?.trim());
+        if (!full_name || !email) { failed++; failedNames.push(`Row: missing name/email`); continue; }
+        const password = full_name.split(' ').pop().toLowerCase().replace(/[^a-z]/g, '') + '123';
+        progress.textContent = `Adding ${i + 1}/${uniqueLines.length}: ${full_name}...`;
         try {
-            const res = await fetch(`${SUPABASE_URL}/functions/v1/create-school-user`,{
-                method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
-                body:JSON.stringify({email,password,full_name,role:role||'teacher',designation:designation||'',department:department||''})
+            const res = await fetch(`${SUPABASE_URL}/functions/v1/create-school-user`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+                body: JSON.stringify({ email, password, full_name, role: role||'teacher', designation: designation||'', department: department||'' })
             });
             const r = await res.json();
-            if (!res.ok||r.error){failed++;failedNames.push(`${full_name}: ${r.error}`);}else added++;
-        } catch(e){failed++;failedNames.push(`${full_name}: ${e.message}`);}
+            if (!res.ok || r.error) { failed++; failedNames.push(`${full_name}: ${r.error}`); }
+            else added++;
+        } catch(e) { failed++; failedNames.push(`${full_name}: ${e.message}`); }
     }
-    progress.style.display='none';
-    btn.disabled=false; btn.innerHTML='<i class="fa-solid fa-users"></i> Add All Staff';
-    showToast(`✓ Added ${added}${failed?` · ${failed} failed`:''}`, added?'#16a34a':'#dc2626');
-    if (added) { document.getElementById('bulkAddModal').classList.remove('open'); await loadStaff(); }
+
+    progress.style.display = 'none';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-users"></i> Add All Staff';
+
+    let msg = `✓ Added ${added}`;
+    if (duplicates.length) msg += ` · ${duplicates.length} duplicate(s) skipped`;
+    if (failed) msg += ` · ${failed} failed`;
+    showToast(msg, added ? '#16a34a' : '#dc2626');
+
+    if (added) {
+        document.getElementById('bulkAddModal').classList.remove('open');
+        await loadStaff();
+    }
+};
+
+// ─── COLLAPSIBLE SECTIONS ─────────────────────────────────────
+window._toggleSection = function(id) {
+    const body = document.getElementById('section-' + id);
+    const chev = document.getElementById('chevron-' + id);
+    if (!body) return;
+    const collapsed = body.style.display === 'none';
+    body.style.display = collapsed ? '' : 'none';
+    if (chev) chev.style.transform = collapsed ? '' : 'rotate(180deg)';
 };
 
 // ─── THEME TOGGLE ─────────────────────────────────────────────

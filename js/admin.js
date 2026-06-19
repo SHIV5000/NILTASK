@@ -154,16 +154,20 @@ function renderAdmin() {
             <div style="overflow-x:auto;">
                 <table class="staff-table">
                     <thead><tr>
-                        <th>Permission</th>
-                        <th style="text-align:center;">Principal</th>
-                        <th style="text-align:center;">VP/Admin</th>
-                        <th style="text-align:center;">HOD</th>
-                        <th style="text-align:center;">Exam Ctrl</th>
-                        <th style="text-align:center;">Teacher</th>
-                        <th style="text-align:center;">Support</th>
+                        <th>Staff Member</th>
+                        <th>Role</th>
+                        <th style="text-align:center;">Schedule</th>
+                        <th style="text-align:center;">Upload</th>
+                        <th style="text-align:center;">Create Task</th>
+                        <th style="text-align:center;">Task Hub</th>
+                        <th style="text-align:center;">Manage Groups</th>
+                        <th style="text-align:center;">Activity Feed</th>
+                        <th style="text-align:center;">Dashboard</th>
+                        <th style="text-align:center;">Admin Panel</th>
+                        <th style="text-align:center;">Reminders</th>
                     </tr></thead>
                     <tbody id="rolesInlineTbody">
-                        <tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text-secondary);">Loading...</td></tr>
+                        <tr><td colspan="11" style="padding:20px;text-align:center;color:var(--text-secondary);">Loading...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -777,34 +781,87 @@ window.loadScorecard = async function() {
 };
 
 // ─── INLINE ROLES TABLE ──────────────────────────────────────
+const ROLE_PERMS_MAP = {
+    principal:       { schedule:1,upload:1,createTask:1,taskHub:1,groups:1,activity:1,dashboard:1,admin:1,manageStaff:1,reminders:1 },
+    vp_admin:        { schedule:1,upload:1,createTask:1,taskHub:1,groups:1,activity:1,dashboard:1,admin:1,manageStaff:1,reminders:1 },
+    hod:             { schedule:1,upload:1,createTask:1,taskHub:1,groups:1,activity:1,dashboard:1,admin:0,manageStaff:0,reminders:1 },
+    exam_controller: { schedule:1,upload:1,createTask:1,taskHub:1,groups:0,activity:1,dashboard:1,admin:0,manageStaff:0,reminders:1 },
+    coordinator:     { schedule:1,upload:1,createTask:1,taskHub:1,groups:0,activity:1,dashboard:0,admin:0,manageStaff:0,reminders:1 },
+    teacher:         { schedule:0,upload:1,createTask:0,taskHub:1,groups:0,activity:1,dashboard:0,admin:0,manageStaff:0,reminders:1 },
+    admin_staff:     { schedule:0,upload:1,createTask:0,taskHub:1,groups:0,activity:1,dashboard:0,admin:0,manageStaff:0,reminders:1 },
+    support_staff:   { schedule:0,upload:0,createTask:0,taskHub:0,groups:0,activity:1,dashboard:0,admin:0,manageStaff:0,reminders:1 },
+    management:      { schedule:1,upload:1,createTask:1,taskHub:1,groups:1,activity:1,dashboard:1,admin:1,manageStaff:0,reminders:1 },
+};
+const PERM_LABELS = [
+    {key:'schedule',   label:'Schedule'},
+    {key:'upload',     label:'Upload'},
+    {key:'createTask', label:'Create Task'},
+    {key:'taskHub',    label:'Task Hub'},
+    {key:'groups',     label:'Manage Groups'},
+    {key:'activity',   label:'Activity Feed'},
+    {key:'dashboard',  label:'Dashboard'},
+    {key:'admin',      label:'Admin Panel'},
+    {key:'reminders',  label:'Reminders'},
+];
 const ROLE_PERMS_MATRIX = [
-    { perm:'Send Messages',       principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:1 },
-    { perm:'Schedule Messages',   principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:0,support_staff:0 },
-    { perm:'Upload Files',        principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:0 },
-    { perm:'Create Tasks',        principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:0,support_staff:0 },
-    { perm:'View Task Hub',       principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:0 },
-    { perm:'Manage Groups',       principal:1,vp_admin:1,hod:1,exam_controller:0,teacher:0,support_staff:0 },
-    { perm:'View Activity Feed',  principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:1 },
-    { perm:'View Dashboard',      principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:0,support_staff:0 },
-    { perm:'Admin Panel Access',  principal:1,vp_admin:1,hod:0,exam_controller:0,teacher:0,support_staff:0 },
-    { perm:'Manage Staff',        principal:1,vp_admin:1,hod:0,exam_controller:0,teacher:0,support_staff:0 },
-    { perm:'Set Reminders',       principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:1 },
+    { perm:'Send Messages',      principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:1 },
+    { perm:'Schedule Messages',  principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:0,support_staff:0 },
+    { perm:'Upload Files',       principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:0 },
+    { perm:'Create Tasks',       principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:0,support_staff:0 },
+    { perm:'View Task Hub',      principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:0 },
+    { perm:'Manage Groups',      principal:1,vp_admin:1,hod:1,exam_controller:0,teacher:0,support_staff:0 },
+    { perm:'View Activity Feed', principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:1 },
+    { perm:'View Dashboard',     principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:0,support_staff:0 },
+    { perm:'Admin Panel Access', principal:1,vp_admin:1,hod:0,exam_controller:0,teacher:0,support_staff:0 },
+    { perm:'Manage Staff',       principal:1,vp_admin:1,hod:0,exam_controller:0,teacher:0,support_staff:0 },
+    { perm:'Set Reminders',      principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:1 },
 ];
 const ROLE_COLS = [
     {key:'principal',label:'Principal'},{key:'vp_admin',label:'VP/Admin'},
     {key:'hod',label:'HOD'},{key:'exam_controller',label:'Exam Ctrl'},
     {key:'teacher',label:'Teacher'},{key:'support_staff',label:'Support'},
 ];
-function renderInlineRolesTable() {
+
+async function renderInlineRolesTable() {
     const tbody = document.getElementById('rolesInlineTbody');
     if (!tbody) return;
-    tbody.innerHTML = ROLE_PERMS_MATRIX.map((row,i) => `
-        <tr style="${i%2?'':'background:var(--bg-body);'}">
-            <td style="font-size:13px;font-weight:600;">${row.perm}</td>
-            ${ROLE_COLS.map(c=>`<td style="text-align:center;">${row[c.key]
-                ? '<span style="color:#16a34a;font-size:16px;font-weight:900;">✓</span>'
-                : '<span style="color:#d1d5db;font-size:15px;">—</span>'}</td>`).join('')}
-        </tr>`).join('');
+    tbody.innerHTML = `<tr><td colspan="12" style="padding:20px;text-align:center;color:var(--text-secondary);"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</td></tr>`;
+
+    const { data: profiles } = await sb.from('profiles')
+        .select('id,full_name,email,role,designation,department')
+        .eq('tenant_id', window.currentTenantId)
+        .is('deleted_at', null)
+        .order('full_name');
+
+    const { data: userRoles } = await sb.from('user_roles')
+        .select('user_id, roles(name)')
+        .eq('tenant_id', window.currentTenantId);
+
+    const roleMap = {};
+    (userRoles||[]).forEach(ur => { roleMap[ur.user_id] = ur.roles?.name; });
+
+    if (!profiles?.length) {
+        tbody.innerHTML = `<tr><td colspan="12" style="padding:20px;text-align:center;color:var(--text-secondary);">No staff found.</td></tr>`;
+        return;
+    }
+
+    const tick = v => v
+        ? '<span style="color:#16a34a;font-size:15px;font-weight:900;">✓</span>'
+        : '<span style="color:#e5e7eb;font-size:14px;">—</span>';
+
+    tbody.innerHTML = profiles.map((p, i) => {
+        const role = roleMap[p.id] || p.role || 'teacher';
+        const perms = ROLE_PERMS_MAP[role] || ROLE_PERMS_MAP.teacher;
+        const roleLabel = role.replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase());
+        return `<tr style="${i%2?'':'background:var(--bg-body);'}">
+            <td style="font-size:13px;">
+                <div style="font-weight:700;">${window.escapeHtml(p.full_name||'—')}</div>
+                <div style="font-size:11px;color:var(--text-secondary);">${window.escapeHtml(p.email||'')}</div>
+            </td>
+            <td><span class="role-pill role-${role}" style="font-size:11px;">${roleLabel}</span></td>
+            ${PERM_LABELS.map(pl=>`<td style="text-align:center;">${tick(perms[pl.key])}</td>`).join('')}
+        </tr>`;
+    }).join('');
 }
 
 // ─── ROLES PDF ───────────────────────────────────────────────
@@ -879,7 +936,17 @@ window.printScorecard = function() {
     const period = document.getElementById('scMonth')?.selectedOptions[0]?.text || '';
     const rows = Array.from(tbody.querySelectorAll('tr')).map(tr => {
         const cells = Array.from(tr.querySelectorAll('td'));
-        return `<tr>${cells.slice(0,8).map((td,i)=>`<td style="padding:7px 10px;border:1px solid #e5e7eb;${i>1?'text-align:center;':''}">${td.innerText}</td>`).join('')}</tr>`;
+        if (!cells.length) return '';
+        const nameDiv  = cells[0]?.querySelector('div:first-child')?.innerText || '';
+        const emailDiv = cells[0]?.querySelector('div:nth-child(2)')?.innerText || '';
+        const rest = cells.slice(1, 13).map((td, i) =>
+            `<td style="padding:7px 10px;border:1px solid #e5e7eb;text-align:center;">${td.innerText.trim()}</td>`
+        ).join('');
+        return `<tr>
+            <td style="padding:7px 10px;border:1px solid #e5e7eb;">
+                <div style="font-weight:700;">${nameDiv}</div>
+                <div style="font-size:10px;color:#6b7280;">${emailDiv}</div>
+            </td>${rest}</tr>`;
     }).join('');
     const w = window.open('','_blank');
     w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${school} Scorecard</title>
@@ -892,7 +959,7 @@ window.printScorecard = function() {
     .grades span{padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;}
     table{width:100%;border-collapse:collapse;}
     th{padding:9px 10px;background:#f8fafc;border:1px solid #e5e7eb;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;text-align:center;}
-    th:first-child{text-align:left;}td{padding:7px 10px;border:1px solid #e5e7eb;}
+    th:first-child{text-align:left;}td{padding:7px 10px;border:1px solid #e5e7eb;vertical-align:top;}
     .foot{margin-top:18px;font-size:10px;color:#9ca3af;text-align:center;}
     @media print{.hdr{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body>
     <div class="hdr"><h1>🏆 Staff Scorecard</h1><div class="sub">${school} · ${period} · ${new Date().toLocaleString('en-IN')}</div></div>
@@ -902,13 +969,15 @@ window.printScorecard = function() {
       <span style="background:#fef9c3;color:#854d0e;">B ≥65%</span>
       <span style="background:#ffedd5;color:#c2410c;">C ≥50%</span>
       <span style="background:#fee2e2;color:#b91c1c;">D &lt;50%</span>
-      <span style="color:#6b7280;font-weight:400;">Formula: (On-time×4 + Delayed×1) ÷ (Total×4) × 100</span>
+      <span style="color:#6b7280;font-weight:400;">Task×40% + Comm×25% + Resp×20% + Presence×15%</span>
     </div>
     <table><thead><tr>
       <th style="text-align:left;">Staff Member</th><th>Role</th>
       <th>Tasks</th><th style="color:#16a34a;">On Time</th>
       <th style="color:#f59e0b;">Delayed</th><th style="color:#ef4444;">Pending</th>
-      <th>Score</th><th>Grade</th>
+      <th style="color:#8b5cf6;">Transferred</th>
+      <th>Sent</th><th>Rcvd</th><th>Ack%</th>
+      <th>Active Days</th><th>Score</th><th>Grade</th>
     </tr></thead><tbody>${rows}</tbody></table>
     <div class="foot">MPGS TaskFlow · Objective & Transparent Performance Scoring</div>
     <script>setTimeout(()=>window.print(),400);<\/script></body></html>`);
@@ -1083,13 +1152,51 @@ window.openBulkAddModal = function() {
             const reader = new FileReader();
             reader.onload = e => {
                 const lines = e.target.result.split('\n').filter(l=>l.trim());
+                const dataLines = lines.slice(1);
                 const preview = document.getElementById('bulkPreview');
+                if (!dataLines.length) { preview.style.display='none'; return; }
                 preview.style.display = 'block';
-                preview.innerHTML = `<strong>${lines.length-1} staff detected:</strong><br><br>` +
-                    lines.slice(1,5).map(l => {
-                        const [name,email,role] = l.split(',').map(x=>x.trim());
-                        return `• ${name||'?'} (${email||'?'}) — ${role||'teacher'}`;
-                    }).join('<br>') + (lines.length>5?`<br>...and ${lines.length-5} more`:'');
+                let pwdVisible = false;
+                const makeTable = (show) => `
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                        <strong style="font-size:12px;">${dataLines.length} staff detected</strong>
+                        <button id="pwdToggleBtn" onclick="(function(){
+                            var btn=document.getElementById('pwdToggleBtn');
+                            var cells=document.querySelectorAll('.pwd-cell');
+                            var hidden=cells[0]?.dataset.hidden==='1';
+                            cells.forEach(c=>{c.textContent=hidden?c.dataset.pwd:'••••••••';c.dataset.hidden=hidden?'0':'1';});
+                            btn.innerHTML=hidden?'<i class=\\'fa-solid fa-eye-slash\\'></i> Hide':'<i class=\\'fa-solid fa-eye\\'></i> Show passwords';
+                        })()" style="font-size:11px;padding:3px 10px;border-radius:7px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-secondary);cursor:pointer;">
+                            <i class="fa-solid fa-eye"></i> Show passwords
+                        </button>
+                    </div>
+                    <div style="overflow-x:auto;max-height:160px;overflow-y:auto;">
+                    <table style="width:100%;border-collapse:collapse;font-size:11px;">
+                        <thead><tr style="background:var(--bg-body);">
+                            <th style="padding:5px 8px;border-bottom:1px solid var(--border-color);text-align:left;font-weight:700;">Name</th>
+                            <th style="padding:5px 8px;border-bottom:1px solid var(--border-color);text-align:left;font-weight:700;">Email</th>
+                            <th style="padding:5px 8px;border-bottom:1px solid var(--border-color);text-align:left;font-weight:700;">Role</th>
+                            <th style="padding:5px 8px;border-bottom:1px solid var(--border-color);text-align:left;font-weight:700;">Dept</th>
+                            <th style="padding:5px 8px;border-bottom:1px solid var(--border-color);text-align:left;font-weight:700;">Default Password</th>
+                        </tr></thead>
+                        <tbody>
+                        ${dataLines.map((l,i) => {
+                            const [name,email,role,dept] = l.split(',').map(x=>x?.trim());
+                            const pwd = (name||'').split(' ').pop().toLowerCase().replace(/[^a-z]/g,'')+'123';
+                            return `<tr style="${i%2?'':'background:var(--bg-body);opacity:.7;'}">
+                                <td style="padding:5px 8px;border-bottom:1px solid var(--border-color);">${name||'—'}</td>
+                                <td style="padding:5px 8px;border-bottom:1px solid var(--border-color);color:var(--text-secondary);">${email||'—'}</td>
+                                <td style="padding:5px 8px;border-bottom:1px solid var(--border-color);">${(role||'teacher').replace(/_/g,' ')}</td>
+                                <td style="padding:5px 8px;border-bottom:1px solid var(--border-color);">${dept||'—'}</td>
+                                <td style="padding:5px 8px;border-bottom:1px solid var(--border-color);">
+                                    <span class="pwd-cell" data-pwd="${pwd}" data-hidden="1" style="font-family:monospace;letter-spacing:1px;">••••••••</span>
+                                </td>
+                            </tr>`;
+                        }).join('')}
+                        </tbody>
+                    </table>
+                    </div>`;
+                preview.innerHTML = makeTable(false);
             };
             reader.readAsText(this.files[0]);
         });

@@ -202,6 +202,172 @@ window.saveGroupSettings = function() {
 // ─── SCHEDULE MODAL ────────────────────────────────────────────────────────────
 // Shows the schedule modal after validating the message editor has content
 
+// ─── NEW GROUP MODAL ─────────────────────────────────────────────────────────
+let _ngColor = '#6366f1';
+let _ngPhotoDataUrl = null;
+let _ngSelectedMembers = new Set();
+
+window.openNewGroupModal = async function() {
+    if (window.canCreateGroup?.() === false) return;
+    _ngColor = '#6366f1';
+    _ngPhotoDataUrl = null;
+    _ngSelectedMembers = new Set();
+
+    const modal = document.getElementById('newGroupModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+
+    // Reset fields
+    document.getElementById('ngName').value = '';
+    document.getElementById('ngErr').style.display = 'none';
+    const wrap = document.getElementById('ngPhotoWrap');
+    wrap.style.background = _ngColor;
+    wrap.style.backgroundImage = '';
+    const icon = document.getElementById('ngPhotoIcon');
+    if (icon) icon.style.display = '';
+
+    // Highlight default colour
+    window._ngPickColor(_ngColor);
+
+    // Load members list
+    const users = window.globalUsersCache || [];
+    window._ngFilterMembers('');
+    window._ngRenderBadges();
+};
+
+window.closeNewGroupModal = function() {
+    const modal = document.getElementById('newGroupModal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+};
+
+window._ngPickColor = function(color) {
+    _ngColor = color;
+    const wrap = document.getElementById('ngPhotoWrap');
+    if (wrap && !_ngPhotoDataUrl) wrap.style.background = color;
+    document.querySelectorAll('.ng-color-dot').forEach(d => {
+        d.style.border = d.dataset.color === color ? '3px solid var(--text-primary)' : '3px solid transparent';
+        d.style.transform = d.dataset.color === color ? 'scale(1.2)' : '';
+    });
+};
+
+window._ngPhotoSelected = async function(input) {
+    const file = input.files[0]; input.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const size = Math.min(img.width, img.height, 240);
+            canvas.width = size; canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, size, size);
+            _ngPhotoDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            const wrap = document.getElementById('ngPhotoWrap');
+            wrap.style.backgroundImage = `url(${_ngPhotoDataUrl})`;
+            wrap.style.backgroundSize = 'cover';
+            wrap.style.backgroundPosition = 'center';
+            wrap.style.background = `url(${_ngPhotoDataUrl}) center/cover`;
+            const icon = document.getElementById('ngPhotoIcon');
+            if (icon) icon.style.display = 'none';
+        };
+        img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+};
+
+window._ngFilterMembers = function(q) {
+    const users = (window.globalUsersCache || []).filter(u => u.id !== window.currentUser?.id);
+    const filtered = !q ? users : users.filter(u =>
+        (u.full_name||'').toLowerCase().includes(q.toLowerCase()) ||
+        (u.email||'').toLowerCase().includes(q.toLowerCase())
+    );
+    const list = document.getElementById('ngMemberList');
+    if (!list) return;
+    list.innerHTML = filtered.length ? filtered.map(u => {
+        const sel = _ngSelectedMembers.has(u.id);
+        const init = (u.full_name||u.email||'?').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+        return `<div onclick="window._ngToggleMember('${u.id}','${window.escapeHtml(u.full_name||u.email)}')"
+            style="display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;
+                   background:${sel?'rgba(99,102,241,.08)':'transparent'};
+                   border-bottom:1px solid var(--border-color);">
+            <div style="width:32px;height:32px;border-radius:50%;background:${sel?'var(--accent)':'var(--border-color)'};
+                 display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;
+                 color:${sel?'#fff':'var(--text-secondary)'};flex-shrink:0;">${init}</div>
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:600;color:var(--text-primary);">${window.escapeHtml(u.full_name||'—')}</div>
+                <div style="font-size:11px;color:var(--text-secondary);">${window.escapeHtml(u.designation||u.email||'')}</div>
+            </div>
+            ${sel ? '<i class="fa-solid fa-check" style="color:var(--accent);font-size:13px;"></i>' : ''}
+        </div>`;
+    }).join('') : `<div style="padding:14px;text-align:center;font-size:12px;color:var(--text-secondary);">No staff found</div>`;
+};
+
+window._ngToggleMember = function(id, name) {
+    if (_ngSelectedMembers.has(id)) _ngSelectedMembers.delete(id);
+    else _ngSelectedMembers.add(id);
+    window._ngFilterMembers(document.getElementById('ngMemberSearch')?.value || '');
+    window._ngRenderBadges();
+};
+
+window._ngRenderBadges = function() {
+    const container = document.getElementById('ngSelectedBadges');
+    if (!container) return;
+    const users = window.globalUsersCache || [];
+    container.innerHTML = [..._ngSelectedMembers].map(id => {
+        const u = users.find(x=>x.id===id);
+        const name = u ? (u.full_name||u.email) : id;
+        return `<span style="display:inline-flex;align-items:center;gap:5px;background:rgba(99,102,241,.12);
+            color:var(--accent);padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;">
+            ${window.escapeHtml(name)}
+            <span onclick="window._ngToggleMember('${id}','')" style="cursor:pointer;opacity:.7;font-size:14px;">&times;</span>
+        </span>`;
+    }).join('');
+};
+
+window.saveNewGroup = async function() {
+    const btn = document.getElementById('ngSaveBtn');
+    const err = document.getElementById('ngErr');
+    const name = document.getElementById('ngName').value.trim();
+    err.style.display = 'none';
+
+    if (!name) { err.textContent = 'Group name is required.'; err.style.display = 'block'; return; }
+    if (_ngSelectedMembers.size === 0) { err.textContent = 'Add at least one member.'; err.style.display = 'block'; return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating...';
+
+    // Generate a unique room id from the name (slug)
+    const roomId = 'grp_' + name.toLowerCase().replace(/[^a-z0-9]/g,'_').replace(/_+/g,'_').substring(0,30) + '_' + Date.now().toString(36);
+
+    // Persist group metadata in localStorage (matches the DEPTS convention)
+    localStorage.setItem('dept_name_' + roomId, name);
+    localStorage.setItem('dept_color_' + roomId, _ngColor);
+    if (_ngPhotoDataUrl) localStorage.setItem('dept_photo_' + roomId, _ngPhotoDataUrl);
+
+    // Store members list
+    localStorage.setItem('dept_members_' + roomId, JSON.stringify([window.currentUser.id, ..._ngSelectedMembers]));
+
+    // Send a system message to create the room in the messages table
+    const { error } = await sb.from('messages').insert({
+        room_id: roomId,
+        sender_id: window.currentUser.id,
+        tenant_id: window.currentTenantId,
+        text: `<p>📢 <strong>${window.escapeHtml(name)}</strong> group created.</p>`,
+        created_at: new Date().toISOString()
+    });
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-plus"></i> Create Group';
+
+    if (error) { err.textContent = 'Could not create group: ' + error.message; err.style.display = 'block'; return; }
+
+    window.closeNewGroupModal();
+    window.showCenterToast(`"${name}" created ✓`, 'fa-solid fa-users');
+    if (typeof window.loadChatsList === 'function') window.loadChatsList();
+};
+
 window.openGroupSettings = async function(groupId) {
     const gid = groupId || window.currentRoom;
     if (!gid || gid.startsWith('dm_')) return;

@@ -221,10 +221,77 @@ window.renderAuthScreen = function() {
                             Register here →
                         </a>
                     </p>
+                    <p class="text-sm mt-2" style="color:var(--text-secondary);">
+                        Principal forgot password?
+                        <a href="#" id="forgotLink" class="font-bold" style="color:var(--accent);">
+                            Reset via email →
+                        </a>
+                    </p>
+                </div>
+
+                <div id="resetBox" style="display:none;padding:14px;background:var(--bg-body);border-radius:12px;border:1px solid var(--border-color);margin-top:8px;">
+                    <p style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">Enter your email. Reset link is only sent to Principal accounts.</p>
+                    <input id="resetEmail" type="email" placeholder="Principal email address"
+                        class="ui-input w-full px-4 py-3 rounded-xl border"
+                        style="border-color:var(--border-color);margin-bottom:10px;">
+                    <button id="resetBtn"
+                        class="w-full py-2 rounded-xl text-white font-bold"
+                        style="background:var(--accent);font-size:13px;">
+                        Send Reset Link
+                    </button>
+                    <div id="resetMsg" style="font-size:12px;text-align:center;margin-top:8px;min-height:16px;"></div>
                 </div>
             </div>
         </div>
     </div>`;
+
+    document.getElementById('forgotLink').onclick = (e) => {
+        e.preventDefault();
+        const box = document.getElementById('resetBox');
+        box.style.display = box.style.display === 'none' ? 'block' : 'none';
+        if (box.style.display === 'block') {
+            const em = document.getElementById('email').value.trim();
+            if (em) document.getElementById('resetEmail').value = em;
+        }
+    };
+
+    document.getElementById('resetBtn').onclick = async () => {
+        const btn = document.getElementById('resetBtn');
+        const msg = document.getElementById('resetMsg');
+        const email = document.getElementById('resetEmail').value.trim();
+        if (!email) { msg.style.color='var(--accent)'; msg.textContent='Enter your email first.'; return; }
+
+        btn.disabled = true;
+        btn.textContent = 'Checking...';
+        msg.textContent = '';
+
+        const { data: profile } = await sb.from('profiles').select('id').eq('email', email).eq('role','principal').maybeSingle();
+        if (!profile) {
+            const { data: ur } = await sb.from('profiles')
+                .select('id, user_roles(roles(name))')
+                .eq('email', email).maybeSingle();
+            const roleName = ur?.user_roles?.[0]?.roles?.name;
+            if (!ur || roleName !== 'principal') {
+                msg.style.color = '#ef4444';
+                msg.textContent = 'No principal account found with that email. Contact developer for help.';
+                btn.disabled = false; btn.textContent = 'Send Reset Link';
+                return;
+            }
+        }
+
+        btn.textContent = 'Sending...';
+        const { error } = await sb.auth.resetPasswordForEmail(email, {
+            redirectTo: window.location.origin + '/index.html'
+        });
+        if (error) {
+            msg.style.color = '#ef4444';
+            msg.textContent = error.message;
+        } else {
+            msg.style.color = '#16a34a';
+            msg.textContent = 'Reset link sent! Check your email.';
+        }
+        btn.disabled = false; btn.textContent = 'Send Reset Link';
+    };
 
     // Eye toggle
     document.getElementById('togglePassword').onclick = () => {

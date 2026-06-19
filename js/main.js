@@ -58,14 +58,14 @@ window.renderMainApp = function() {
                         <i class="fa-solid fa-comments" style="color:var(--accent);"></i> Conversation
                     </h2>
                     <div class="flex gap-2" style="position:relative;">
+                        ${window.canCreateGroup?.() !== false ? `
+                        <button onclick="window.openNewGroupModal()" class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors" title="Create New Group" style="color:var(--text-secondary);">
+                            <i class="fa-solid fa-plus text-sm"></i>
+                        </button>` : ''}
                         <div class="menu-wrap">
-                            <button onclick="window.toggleThemePanel()" class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors" title="Choose Theme" style="color:var(--text-secondary);">
+                            <button id="themePaletteBtn" onclick="window.toggleThemePanel()" class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors" title="Choose Theme" style="color:var(--text-secondary);">
                                 <i id="themeToggleIcon" class="fa-solid fa-palette text-sm"></i>
                             </button>
-                            <div id="themePanel" class="top-panel-dropdown" style="display:none; right:0; top:38px; padding:10px; min-width:240px;">
-                                <div class="theme-panel-title">Choose Theme</div>
-                                <div class="theme-toggle-wrap" id="themeToggleWrap"></div>
-                            </div>
                         </div>
                         <button onclick="window.logout()" class="w-8 h-8 rounded-full hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-colors" style="color:var(--text-secondary);">
                             <i class="fa-solid fa-arrow-right-from-bracket text-sm"></i>
@@ -340,6 +340,55 @@ window.renderMainApp = function() {
             </div>
         </div>
 
+        <!-- New Group Modal -->
+        <div id="newGroupModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+            <div class="rounded-2xl w-full max-w-md mx-4 shadow-2xl border flex flex-col max-h-[90vh]" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+                <div class="flex items-center justify-between p-5 border-b" style="border-color:var(--border-color);">
+                    <h3 class="font-bold text-base" style="color:var(--text-primary);">Create New Group</h3>
+                    <button onclick="window.closeNewGroupModal()" style="color:var(--text-secondary);background:none;border:none;cursor:pointer;font-size:18px;">✕</button>
+                </div>
+                <div class="overflow-y-auto p-5 flex flex-col gap-4">
+                    <div style="display:flex;align-items:center;gap:14px;">
+                        <div id="ngPhotoWrap" onclick="document.getElementById('ngPhotoInput').click()" style="width:64px;height:64px;border-radius:16px;background:var(--accent);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;overflow:hidden;position:relative;">
+                            <i class="fa-solid fa-users" style="color:#fff;font-size:22px;" id="ngPhotoIcon"></i>
+                            <span style="position:absolute;bottom:2px;right:2px;width:18px;height:18px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;">
+                                <i class="fa-solid fa-camera" style="font-size:9px;color:var(--accent);"></i>
+                            </span>
+                        </div>
+                        <input type="file" id="ngPhotoInput" accept="image/*" style="display:none;" onchange="window._ngPhotoSelected(this)">
+                        <div style="flex:1;">
+                            <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-secondary);margin-bottom:5px;">Group Name</label>
+                            <input type="text" id="ngName" placeholder="e.g. Science HOD Team" maxlength="60"
+                                style="width:100%;padding:9px 12px;border-radius:10px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-primary);font-size:13px;outline:none;box-sizing:border-box;">
+                        </div>
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-secondary);margin-bottom:8px;">Group Colour</label>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;" id="ngColorRow">
+                            ${['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6'].map(c=>
+                                `<div class="ng-color-dot" data-color="${c}" onclick="window._ngPickColor('${c}')"
+                                    style="width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:3px solid transparent;transition:transform .15s;"></div>`
+                            ).join('')}
+                        </div>
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-secondary);margin-bottom:8px;">Add Members</label>
+                        <input type="text" id="ngMemberSearch" placeholder="Search staff..." oninput="window._ngFilterMembers(this.value)"
+                            style="width:100%;padding:8px 12px;border-radius:9px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-primary);font-size:13px;outline:none;margin-bottom:8px;box-sizing:border-box;">
+                        <div id="ngMemberList" style="max-height:160px;overflow-y:auto;border:1px solid var(--border-color);border-radius:10px;"></div>
+                        <div id="ngSelectedBadges" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;min-height:0;"></div>
+                    </div>
+                    <div id="ngErr" style="font-size:12px;color:#ef4444;display:none;"></div>
+                </div>
+                <div class="p-4 border-t flex gap-3" style="border-color:var(--border-color);">
+                    <button onclick="window.closeNewGroupModal()" class="flex-1 py-2 rounded-xl border text-sm font-bold" style="background:transparent;border-color:var(--border-color);color:var(--text-secondary);">Cancel</button>
+                    <button onclick="window.saveNewGroup()" id="ngSaveBtn" style="flex:2;padding:9px;border-radius:11px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-size:13px;font-weight:700;">
+                        <i class="fa-solid fa-plus"></i> Create Group
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Group Settings Modal — Name, Colour, Members, Admins -->
         <div id="groupSettingsModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
             <div class="rounded-2xl w-full max-w-sm mx-4 shadow-2xl border flex flex-col max-h-[90vh]" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
@@ -512,11 +561,6 @@ window.renderMainApp = function() {
         if (!e.target.closest('.menu-wrap')) { if (typeof window.closeDropdowns === 'function') window.closeDropdowns(); }
         const ep = document.getElementById('inputEmojiPicker');
         if (ep && !e.target.closest('#inputEmojiPicker') && !e.target.closest('[onclick="window.toggleInputEmojiPicker()"]')) ep.classList.add('hidden');
-        const themePanel = document.getElementById('themePanel');
-        if (themePanel && themePanel.style.display !== 'none' &&
-            !e.target.closest('#themePanel') && !e.target.closest('[onclick="window.toggleThemePanel()"]')) {
-            themePanel.style.display = 'none';
-        }
         const panel = document.querySelector('.top-panel-dropdown:not(#themePanel)');
         if (!panel) return;
         if (!panel.contains(e.target) && !e.target.closest('.top-bar-icon')) panel.remove();
@@ -638,7 +682,7 @@ window.filterSidebar = function(term) {
 // ─── LOAD CHATS LIST (Departments + Staff Members) ─────────────────────────
 window.loadChatsList = async function() {
     const departments = ['general', 'math', 'science', 'leadership'];
-    const {data: users} = await sb.from('profiles').select('id, email, full_name');
+    const {data: users} = await sb.from('profiles').select('id, email, full_name, designation, avatar_url');
     window.globalUsersCache = users || [];
 
     // Department label colours for avatars
@@ -657,12 +701,13 @@ window.loadChatsList = async function() {
         // Check for stored group display name
         const storedName = localStorage.getItem('dept_name_' + g) || displayName;
         const storedColor = localStorage.getItem('dept_color_' + g) || bgColor;
+        const storedPhoto = localStorage.getItem('dept_photo_' + g) || '';
         html += `<div class="channel-item group/dept p-2.5 mx-2 mb-1 rounded-xl cursor-pointer flex items-center gap-3 transition-colors border"
             style="background-color:${isCurrent ? 'var(--bg-body)' : 'transparent'};border-color:${isCurrent ? 'var(--border-color)' : 'transparent'};font-weight:${isCurrent ? 'bold' : 'normal'};"
             data-room="${g}" data-name="${storedName}">
             <div class="relative flex-shrink-0">
                 <div class="w-9 h-9 rounded-lg flex items-center justify-center text-white text-[11px] font-bold shadow-sm"
-                    style="background:${storedColor};">${initials}</div>
+                    style="${storedPhoto ? `background:url('${storedPhoto}') center/cover;color:transparent;` : `background:${storedColor};`}">${storedPhoto ? '' : initials}</div>
                 ${unread > 0 ? `<span class="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full" style="background:#22c55e;"></span>
                     <span class="absolute -top-1 -right-1 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center" style="background:#22c55e;">${unread > 9 ? '9+' : unread}</span>` : ''}
             </div>
@@ -688,7 +733,8 @@ window.loadChatsList = async function() {
             style="background-color:${isCurrent ? 'var(--bg-body)' : 'transparent'};border-color:${isCurrent ? 'var(--border-color)' : 'transparent'};font-weight:${isCurrent ? 'bold' : 'normal'};"
             data-room="${dmRoomId}" data-name="${name}">
             <div class="relative flex-shrink-0">
-                <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm" style="background:var(--accent);">${name.charAt(0).toUpperCase()}</div>
+                <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm"
+                    style="${u.avatar_url ? `background:url('${u.avatar_url}') center/cover;color:transparent;` : 'background:var(--accent);'}">${u.avatar_url ? '' : name.charAt(0).toUpperCase()}</div>
                 ${unread > 0 ? `<span class="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full" style="background:#22c55e;"></span>
                     <span class="absolute -top-1 -right-1 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center" style="background:#22c55e;">${unread > 9 ? '9+' : unread}</span>` : ''}
             </div>

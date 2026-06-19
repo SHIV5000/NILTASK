@@ -171,99 +171,121 @@ window.saveSettings = async function() {
 }
 
 window.saveGroupSettings = function() {
-    // Read from correct element IDs that match the modal HTML
     const gid  = document.getElementById('groupSettingsId')?.value;
     const name = document.getElementById('groupSettingsName')?.value.trim();
     if (!gid || !name) { window.showCenterToast('Name cannot be empty','fa-solid fa-times','text-red-500'); return; }
 
-    // Save name + colour — USE SAME KEY PREFIX as openGroupSettings: dept_name_, dept_color_
-    localStorage.setItem('dept_name_'  + gid, name);
-    if (window._selectedGroupColor) localStorage.setItem('dept_color_' + gid, window._selectedGroupColor);
+    localStorage.setItem('dept_name_' + gid, name);
 
-    // Save member + admin selections from checkboxes
+    // Save photo if one was selected
+    if (window._gsPendingPhoto) {
+        localStorage.setItem('dept_photo_' + gid, window._gsPendingPhoto);
+        window._gsPendingPhoto = null;
+    }
+
+    // Save member + admin selections
     const memberIds = Array.from(document.querySelectorAll('.group-member-cb:checked')).map(cb => cb.dataset.uid);
     const adminIds  = Array.from(document.querySelectorAll('.group-admin-cb:checked')).map(cb => cb.dataset.uid);
     localStorage.setItem('dept_members_' + gid, JSON.stringify(memberIds));
     localStorage.setItem('dept_admins_'  + gid, JSON.stringify(adminIds));
 
-    // Update room title if currently in this group
     if (window.currentRoom === gid) {
         const t = document.getElementById('roomTitleDisplay');
         if (t) t.innerText = name;
     }
     window.closeGroupSettings();
-    window.showCenterToast('Group settings saved ✓','fa-solid fa-check-circle','text-green-400');
+    window.showCenterToast('Department settings saved ✓','fa-solid fa-check-circle','text-green-400');
     if (typeof window.loadChatsList === 'function') window.loadChatsList();
-}
+};
 
-
-
-
-// ─── SCHEDULE MODAL ────────────────────────────────────────────────────────────
-// Shows the schedule modal after validating the message editor has content
+window._gsPhotoSelected = function(input) {
+    const file = input.files[0]; input.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const size = Math.min(img.width, img.height, 240);
+            canvas.width = size; canvas.height = size;
+            canvas.getContext('2d').drawImage(img, 0, 0, size, size);
+            window._gsPendingPhoto = canvas.toDataURL('image/jpeg', 0.8);
+            const wrap = document.getElementById('gsPhotoWrap');
+            if (wrap) wrap.style.background = `url(${window._gsPendingPhoto}) center/cover`;
+            const icon = document.getElementById('gsPhotoIcon');
+            if (icon) icon.style.display = 'none';
+        };
+        img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+};
 
 window.openGroupSettings = async function(groupId) {
     const gid = groupId || window.currentRoom;
     if (!gid || gid.startsWith('dm_')) return;
 
     const modal = document.getElementById('groupSettingsModal');
-    if (!modal) { window.showCenterToast('Group Settings modal not found','fa-solid fa-info-circle','text-yellow-400'); return; }
+    if (!modal) return;
 
-    // Defaults per department
-    const deptDefaults = { general:'General', math:'Math', science:'Science', leadership:'Leadership' };
-    const deptColors   = { general:'#6366f1', math:'#0ea5e9', science:'#10b981', leadership:'#f59e0b' };
-    const currentName  = localStorage.getItem('dept_name_'  + gid) || deptDefaults[gid] || gid.charAt(0).toUpperCase() + gid.slice(1);
-    const currentColor = localStorage.getItem('dept_color_' + gid) || deptColors[gid] || '#6366f1';
+    const deptDefaults = { general:'General', math:'Mathematics', science:'Science', leadership:'Leadership' };
+    const currentName  = localStorage.getItem('dept_name_' + gid) || deptDefaults[gid] || (gid.charAt(0).toUpperCase() + gid.slice(1));
+    const currentPhoto = localStorage.getItem('dept_photo_' + gid) || '';
 
-    // Pre-fill form fields
-    const idEl   = document.getElementById('groupSettingsId');
-    const nameEl = document.getElementById('groupSettingsName');
-    if (idEl)   idEl.value   = gid;
-    if (nameEl) nameEl.value = currentName;
+    document.getElementById('groupSettingsId').value = gid;
+    document.getElementById('groupSettingsName').value = currentName;
+    window._gsPendingPhoto = null;
 
-    window._selectedGroupColor = currentColor;
-    document.querySelectorAll('#groupColorPicker button').forEach(b => {
-        const active = b.dataset.color === currentColor;
-        b.style.borderColor = active ? '#fff' : 'transparent';
-        b.style.boxShadow   = active ? '0 0 0 2px ' + currentColor : 'none';
-        b.style.transform   = active ? 'scale(1.2)' : 'scale(1)';
-    });
+    // Restore photo or icon in the thumbnail
+    const wrap = document.getElementById('gsPhotoWrap');
+    const icon = document.getElementById('gsPhotoIcon');
+    if (currentPhoto) {
+        if (wrap) wrap.style.background = `url(${currentPhoto}) center/cover`;
+        if (icon) icon.style.display = 'none';
+    } else {
+        const col = localStorage.getItem('dept_color_' + gid) || '#6366f1';
+        if (wrap) wrap.style.background = col;
+        if (icon) icon.style.display = '';
+    }
 
-    // Populate members list — fetch from Supabase if cache empty
+    // Members list
     const memberList = document.getElementById('groupMembersList');
     if (memberList) {
         let users = window.globalUsersCache || [];
         if (!users.length) {
             try {
-                const { data } = await sb.from('profiles').select('id, full_name, email');
+                const { data } = await sb.from('profiles').select('id, full_name, email, designation, avatar_url').eq('tenant_id', window.currentTenantId);
                 users = data || [];
                 if (users.length) window.globalUsersCache = users;
             } catch(e) {}
         }
         const savedMembers = JSON.parse(localStorage.getItem('dept_members_' + gid) || '[]');
         const savedAdmins  = JSON.parse(localStorage.getItem('dept_admins_'  + gid) || '[]');
-        if (users.length) {
-            memberList.innerHTML = users.map(u => {
-                const uname    = window.toSentenceCase?.(u.full_name || u.email?.split('@')[0]) || (u.email || '?');
-                const isMember = savedMembers.length === 0 || savedMembers.includes(u.id);
-                const isAdmin  = savedAdmins.includes(u.id);
-                const isMe     = u.id === window.currentUser?.id;
-                return `<div class="flex items-center gap-2 p-2 text-xs border-b last:border-b-0" style="border-color:var(--border-color);">
-                    <div class="w-6 h-6 rounded-full flex items-center justify-center text-white font-bold text-[9px] flex-shrink-0" style="background:var(--accent);">${uname.charAt(0).toUpperCase()}</div>
-                    <span class="font-semibold flex-1 truncate" style="color:var(--text-primary);">${window.escapeHtml(uname)}${isMe ? ' <span style="color:#6366f1;font-size:9px;">(You)</span>' : ''}</span>
-                    <label class="flex items-center gap-1 cursor-pointer" style="color:var(--text-secondary);">
-                        <input type="checkbox" class="group-member-cb" data-uid="${u.id}" ${isMember ? 'checked' : ''}>
-                        <span class="text-[9px] font-bold">Member</span>
-                    </label>
-                    <label class="flex items-center gap-1 cursor-pointer" style="color:#f59e0b;">
-                        <input type="checkbox" class="group-admin-cb" data-uid="${u.id}" ${isAdmin ? 'checked' : ''}>
-                        <span class="text-[9px] font-bold">Admin</span>
-                    </label>
-                </div>`;
-            }).join('');
-        } else {
-            memberList.innerHTML = '<p class="text-xs p-3 italic" style="color:var(--text-secondary);">No members found.</p>';
-        }
+
+        memberList.innerHTML = users.length ? users.map(u => {
+            const uname    = window.toSentenceCase?.(u.full_name || u.email?.split('@')[0]) || u.email || '?';
+            const isMember = savedMembers.length === 0 || savedMembers.includes(u.id);
+            const isAdmin  = savedAdmins.includes(u.id);
+            const isMe     = u.id === window.currentUser?.id;
+            const init     = uname.charAt(0).toUpperCase();
+            const photoStyle = u.avatar_url
+                ? `background:url('${u.avatar_url}') center/cover;color:transparent;`
+                : 'background:var(--accent);';
+            return `<div class="flex items-center gap-2 p-2 border-b last:border-b-0" style="border-color:var(--border-color);">
+                <div class="w-7 h-7 rounded-full flex items-center justify-center text-white font-bold text-[10px] flex-shrink-0" style="${photoStyle}">${u.avatar_url?'':init}</div>
+                <div class="flex-1 min-w-0">
+                    <div class="text-xs font-semibold truncate" style="color:var(--text-primary);">${window.escapeHtml(uname)}${isMe?' <span style="color:#6366f1;font-size:9px;">(You)</span>':''}</div>
+                    ${u.designation?`<div class="text-[10px] truncate" style="color:var(--text-secondary);">${window.escapeHtml(u.designation)}</div>`:''}
+                </div>
+                <label class="flex items-center gap-1 cursor-pointer" style="color:var(--text-secondary);">
+                    <input type="checkbox" class="group-member-cb" data-uid="${u.id}" ${isMember?'checked':''}>
+                    <span class="text-[9px] font-bold">Member</span>
+                </label>
+                <label class="flex items-center gap-1 cursor-pointer" style="color:#f59e0b;">
+                    <input type="checkbox" class="group-admin-cb" data-uid="${u.id}" ${isAdmin?'checked':''}>
+                    <span class="text-[9px] font-bold">Admin</span>
+                </label>
+            </div>`;
+        }).join('') : '<p class="text-xs italic p-3" style="color:var(--text-secondary);">No members found.</p>';
     }
 
     modal.classList.remove('hidden');
@@ -273,18 +295,6 @@ window.openGroupSettings = async function(groupId) {
 window.closeGroupSettings = function() {
     const modal = document.getElementById('groupSettingsModal');
     if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
-};
-
-// Highlight selected colour swatch
-
-window.selectGroupColor = function(color) {
-    window._selectedGroupColor = color;
-    document.querySelectorAll('#groupColorPicker button').forEach(b => {
-        const active = b.dataset.color === color;
-        b.style.borderColor = active ? '#fff' : 'transparent';
-        b.style.boxShadow   = active ? '0 0 0 2px ' + color : 'none';
-        b.style.transform   = active ? 'scale(1.2)' : 'scale(1)';
-    });
 };
 
 

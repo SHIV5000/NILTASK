@@ -149,7 +149,7 @@
 
     @media print {
       .topbar-right, .action-row, .btn-sm, .btn-save, .btn-suspend, .btn-restore,
-      .tabs, #resetPrincipalSection { display:none!important; }
+      .tabs, [id^="resetPrincipalSection-"] { display:none!important; }
       .school-body { display:block!important; }
       body { background:#fff; color:#000; font-size:12px; }
       .stat { border:1px solid #ccc; }
@@ -610,13 +610,13 @@ function renderSchools(schools) {
                     <button class="btn-sm" style="color:var(--blue);border-color:var(--blue);" onclick="printSchoolUsers('${s.id}','${esc(s.school_name)}')">
                         <i class="fa-solid fa-file-export"></i> Print Users
                     </button>
+                    <button class="btn-sm" style="color:var(--orange);border-color:var(--orange);" onclick="toggleResetSection('${s.id}')">
+                        <i class="fa-solid fa-key"></i> Reset Principal Password
+                    </button>
                     <span class="save-note" id="note-${s.id}"></span>
                 </div>
-                <!-- Principal Password Reset -->
-                <div id="resetPrincipalSection" style="margin-top:14px;padding:14px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border);">
-                    <h3 style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);margin-bottom:10px;">
-                        <i class="fa-solid fa-key" style="color:var(--orange);margin-right:6px;"></i>Principal Password Reset
-                    </h3>
+                <!-- Principal Password Reset — hidden until button clicked -->
+                <div id="resetPrincipalSection-${s.id}" style="display:none;margin-top:14px;padding:14px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border);">
                     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
                         <div style="flex:1;min-width:200px;">
                             <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">New Password (min 8 chars)</label>
@@ -625,8 +625,9 @@ function renderSchools(schools) {
                         </div>
                         <button class="btn-sm" onclick="resetPrincipalPassword('${s.id}')"
                             style="background:rgba(227,179,65,.15);color:var(--orange);border-color:var(--orange);">
-                            <i class="fa-solid fa-lock-open"></i> Reset Password
+                            <i class="fa-solid fa-lock-open"></i> Reset
                         </button>
+                        <button class="btn-sm" onclick="toggleResetSection('${s.id}')">Cancel</button>
                     </div>
                     <div id="pwdreset-note-${s.id}" style="font-size:12px;margin-top:8px;min-height:14px;"></div>
                 </div>
@@ -907,6 +908,16 @@ window.toggleDevTheme = function() {
 })();
 
 // ── RESET PRINCIPAL PASSWORD ──────────────────────────────────
+window.toggleResetSection = function(id) {
+    const sec = document.getElementById(`resetPrincipalSection-${id}`);
+    if (!sec) return;
+    sec.style.display = sec.style.display === 'none' ? 'block' : 'none';
+    const inp = document.getElementById(`newpwd-${id}`);
+    const note = document.getElementById(`pwdreset-note-${id}`);
+    if (sec.style.display === 'block') { inp?.focus(); }
+    else { if (inp) inp.value = ''; if (note) note.textContent = ''; }
+};
+
 window.resetPrincipalPassword = async function(tenantId) {
     const input = document.getElementById(`newpwd-${tenantId}`);
     const note  = document.getElementById(`pwdreset-note-${tenantId}`);

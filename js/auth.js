@@ -8,6 +8,113 @@
  */
 import { sb } from './shared.js';
 
+// ─── PASSWORD RECOVERY HANDLER ────────────────────────────────
+// When the user clicks the reset link in their email, Supabase
+// redirects them to index.html#access_token=...&type=recovery
+// We intercept this hash before anything else runs.
+;(async () => {
+    const hash = Object.fromEntries(
+        new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    );
+    if (hash.type !== 'recovery' || !hash.access_token) return;
+
+    // Supabase has already set the session from the URL hash internally.
+    // We just need to show the "Set New Password" form.
+    const root = document.getElementById('root');
+    if (!root) return;
+
+    // Clear the hash so it isn't visible or re-processed on reload
+    history.replaceState(null, '', window.location.pathname);
+
+    root.innerHTML = `
+    <div class="min-h-screen flex items-center justify-center w-full"
+         style="background:var(--bg-body);">
+      <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);
+           border-radius:20px;padding:32px;width:100%;max-width:360px;
+           box-shadow:0 8px 32px rgba(0,0,0,.08);">
+        <div style="text-align:center;margin-bottom:24px;">
+          <div style="width:52px;height:52px;border-radius:14px;
+               background:var(--accent);display:flex;align-items:center;
+               justify-content:center;margin:0 auto 12px;">
+            <i class="fa-solid fa-lock-open" style="color:#fff;font-size:22px;"></i>
+          </div>
+          <h1 style="font-size:18px;font-weight:800;color:var(--text-primary);margin:0 0 4px;">
+            Set New Password
+          </h1>
+          <p style="font-size:13px;color:var(--text-secondary);margin:0;">
+            Choose a strong password for your account.
+          </p>
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="display:block;font-size:11px;font-weight:700;
+                 text-transform:uppercase;letter-spacing:.05em;
+                 color:var(--text-secondary);margin-bottom:5px;">New Password</label>
+          <div style="position:relative;">
+            <input type="password" id="newPwd1" placeholder="Min 8 characters"
+              style="width:100%;padding:10px 40px 10px 13px;border-radius:10px;
+                     border:1px solid var(--border-color);background:var(--bg-body);
+                     color:var(--text-primary);font-size:13px;outline:none;box-sizing:border-box;">
+            <i class="fa-solid fa-eye" id="eye1"
+               onclick="(function(){var i=document.getElementById('newPwd1');var e=document.getElementById('eye1');i.type=i.type==='password'?'text':'password';e.className=i.type==='password'?'fa-solid fa-eye':'fa-solid fa-eye-slash';})()"
+               style="position:absolute;right:12px;top:50%;transform:translateY(-50%);
+                      color:var(--text-secondary);cursor:pointer;font-size:14px;"></i>
+          </div>
+        </div>
+        <div style="margin-bottom:20px;">
+          <label style="display:block;font-size:11px;font-weight:700;
+                 text-transform:uppercase;letter-spacing:.05em;
+                 color:var(--text-secondary);margin-bottom:5px;">Confirm Password</label>
+          <input type="password" id="newPwd2" placeholder="Re-enter password"
+            style="width:100%;padding:10px 13px;border-radius:10px;
+                   border:1px solid var(--border-color);background:var(--bg-body);
+                   color:var(--text-primary);font-size:13px;outline:none;box-sizing:border-box;">
+        </div>
+        <div id="pwdMsg" style="font-size:12px;text-align:center;min-height:18px;margin-bottom:12px;"></div>
+        <button id="setPwdBtn" onclick="window._doSetPassword()"
+          style="width:100%;padding:11px;border-radius:10px;border:none;
+                 background:var(--accent);color:#fff;font-size:14px;
+                 font-weight:700;cursor:pointer;">
+          <i class="fa-solid fa-check"></i> Set Password
+        </button>
+      </div>
+    </div>`;
+
+    window._doSetPassword = async function() {
+        const btn = document.getElementById('setPwdBtn');
+        const msg = document.getElementById('pwdMsg');
+        const p1  = document.getElementById('newPwd1').value;
+        const p2  = document.getElementById('newPwd2').value;
+
+        if (p1.length < 8) {
+            msg.style.color = '#ef4444';
+            msg.textContent = 'Password must be at least 8 characters.';
+            return;
+        }
+        if (p1 !== p2) {
+            msg.style.color = '#ef4444';
+            msg.textContent = 'Passwords do not match.';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+        msg.textContent = '';
+
+        const { error } = await sb.auth.updateUser({ password: p1 });
+        if (error) {
+            msg.style.color = '#ef4444';
+            msg.textContent = error.message;
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> Set Password';
+        } else {
+            msg.style.color = '#16a34a';
+            msg.textContent = 'Password updated ✓ Redirecting to login...';
+            await sb.auth.signOut();
+            setTimeout(() => window.location.reload(), 1800);
+        }
+    };
+})();
+
 // ─── LOGIN ──────────────────────────────────────────────────────
 window.signIn = async function(email, pwd) {
     const { data, error } = await sb.auth.signInWithPassword({ email, password: pwd });

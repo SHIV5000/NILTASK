@@ -262,42 +262,9 @@ window.renderAuthScreen = function() {
         if (!email) { msg.style.color='var(--accent)'; msg.textContent='Enter your email first.'; return; }
 
         btn.disabled = true;
-        btn.textContent = 'Checking...';
+        btn.textContent = 'Sending...';
         msg.textContent = '';
 
-        // Step 1: find the profile by email
-        const { data: profile } = await sb.from('profiles')
-            .select('id, role')
-            .eq('email', email)
-            .maybeSingle();
-
-        if (!profile) {
-            msg.style.color = '#ef4444';
-            msg.textContent = 'No account found with that email.';
-            btn.disabled = false; btn.textContent = 'Send Reset Link';
-            return;
-        }
-
-        // Step 2: check if this user is a principal via user_roles table
-        // (profiles.role is not reliably set — role authority is user_roles → roles)
-        let isPrincipal = (profile.role || '').toLowerCase() === 'principal';
-
-        if (!isPrincipal) {
-            const { data: ur } = await sb.from('user_roles')
-                .select('role_id, roles(name)')
-                .eq('user_id', profile.id)
-                .maybeSingle();
-            isPrincipal = (ur?.roles?.name || '').toLowerCase() === 'principal';
-        }
-
-        if (!isPrincipal) {
-            msg.style.color = '#ef4444';
-            msg.textContent = 'This option is only for the Principal account. Other staff — contact your Principal to reset your password.';
-            btn.disabled = false; btn.textContent = 'Send Reset Link';
-            return;
-        }
-
-        btn.textContent = 'Sending...';
         const { error } = await sb.auth.resetPasswordForEmail(email, {
             redirectTo: window.location.origin + '/index.html'
         });
@@ -306,7 +273,7 @@ window.renderAuthScreen = function() {
             msg.textContent = error.message;
         } else {
             msg.style.color = '#16a34a';
-            msg.textContent = 'Reset link sent! Check your email inbox.';
+            msg.textContent = 'If this email belongs to a principal account, a reset link has been sent. Check your inbox.';
         }
         btn.disabled = false; btn.textContent = 'Send Reset Link';
     };

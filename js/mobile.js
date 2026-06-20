@@ -1,55 +1,3 @@
-/**
- * mobile.js — TaskFlow Native Mobile App  VER 6.0
- * CHANGE LOG v5 → v6 (every item below was verified against real schema /
- * desktop code before being called "fixed" — not guessed):
- *  1. FOUC fix lives in css/mobile-app.css (pure CSS media query, loads
- *     before any JS, so there's no flash regardless of script timing)
- *  2. All message inserts now set created_at explicitly, matching desktop
- *  3/5. Top bar rebuilt: shows your name + school name (universal, every
- *     screen). Lens icon toggles an inline search field in place — no
- *     more big search pill eating the bar
- *  4/10. Theme button was a fake binary dark/light toggle bolted onto an
- *     8-theme system — replaced with the real picker (window.THEME_LIST),
- *     same one Settings now also exposes
- *  6. CONFIRMED ROOT CAUSE of "group send not working": every thread query
- *     filtered on `parent_id`, a column that doesn't exist on `messages` —
- *     the real column (confirmed in messages.js) is `parent_message_id`.
- *     That bad filter was throwing on every chat-screen reload, including
- *     right after sending, which is why sends looked broken
- *  7. Dropped Quill (wrong UX for this ask) for a WhatsApp-style
- *     contenteditable composer: clip / link / emoji / tag icons, with a
- *     floating Bold/Italic/Underline popup that appears on text selection
- *     instead of a permanent toolbar
- *  8/13. CONFIRMED ROOT CAUSE of "no highlight on scroll": glow classes
- *     were applied to the bubble ROW (full-width flex container) instead
- *     of the bubble CARD, so the glow bar rendered off to the side of sent
- *     messages instead of on them. Now applied to the actual card.
- *     Activity's rows also had a data-scroll attribute the dispatcher
- *     never read — wired through now.
- *  9. CONFIRMED ROOT CAUSE of "forward sends many times": _attachSheetActions
- *     was being called fresh every time a sheet opened, but it attaches to
- *     the persistent #mSheetInner node — each call stacked one more
- *     listener, so by your Nth sheet open, one tap fired N times. Now bound
- *     exactly once in _buildShell().
- *  12. Sign-out icon added to the top bar, universal, top right
- *  14. Thread immersive mode (hide top+bottom bar) kept, plus fixed a
- *     related inconsistency: DM bubbles were hijacking normal taps into
- *     opening the actions sheet (blocking text selection); now only
- *     long-press opens it, matching group chat
- *  15. Back button restyled as a visible chip, not a bare icon
- *  16. Floating scroll-to-bottom arrow appears when you've scrolled up,
- *     same as WhatsApp
- *  17. Bottom nav now has labels under each icon
- *  18. Added a single realtime subscription (messages/reactions/
- *     task_assignees) that patches the live DOM in place — appends new
- *     bubbles, updates chips, updates task badges — without ever tearing
- *     down and rebuilding the screen, so there's no flicker
- *  19. Also fixed while auditing: duplicate-listener pattern (same root
- *     cause as #9) was not present anywhere else; checked every other
- *     repeatedly-called show-function for the same mistake
- * ★ STABLE RESTORE POINT — v5.0 preserved in git history.
- *   `git checkout HEAD~1 -- js/mobile.js` reverts this file alone.
- */
 import { sb } from './shared.js';
 
 const MOB = 768;
@@ -69,19 +17,8 @@ const DEPTS = [
     {id:'leadership',name:localStorage.getItem('dept_name_leadership')||'Leadership',col:localStorage.getItem('dept_color_leadership')||'#f59e0b', photo:localStorage.getItem('dept_photo_leadership')||''},
 ];
 
-// ══════════════════════════════════════════════════════════════
-// ENTRY POINT
-// ══════════════════════════════════════════════════════════════
 window.initMobileApp = async function() {
     if (window.innerWidth > MOB) return;
-    // Hide the desktop UI the instant we know mobile.js is taking over —
-    // synchronous, before any await, so there's no flash. This must NOT be
-    // done unconditionally via CSS/inline-script on every mobile pageview:
-    // the login form also renders into #root, and a blanket "#root{display:
-    // none}" on any mobile width hides the login screen itself, before the
-    // user has even logged in. initMobileApp() only ever runs after a
-    // successful login (called from renderMainApp), so hiding #root here
-    // is correctly scoped and can't block login.
     _el('root')?.style.setProperty('display', 'none', 'important');
     await _ctx();
     _injectCSS();
@@ -118,10 +55,6 @@ async function _ctx() {
     if (_users.length) _usersLoaded = true;
 }
 
-// ══════════════════════════════════════════════════════════════
-// SHELL — universal top bar (name + school, lens, theme, sign-out)
-// 8-tab bottom nav WITH labels
-// ══════════════════════════════════════════════════════════════
 function _buildShell() {
     if (_el('mobileApp')) return;
     const tabs = [
@@ -175,9 +108,6 @@ function _buildShell() {
         document.execCommand(btn.dataset.fmt, false, null);
     });
 
-    // ── ONE-TIME delegated handlers — fixes the duplicate-forward bug,
-    // where re-binding on every sheet open stacked listeners on this
-    // persistent node and made every tap fire once per stack ──────────
     _el('mSheet').addEventListener('click', e => {
         if (e.target.id === 'mSheet') window._closeSheet();
     });
@@ -216,9 +146,6 @@ window._confirmLogout = async function() {
     window.location.href = '/';
 };
 
-// ══════════════════════════════════════════════════════════════
-// NAVIGATION
-// ══════════════════════════════════════════════════════════════
 window._navTo = async function(screen, params, replace = false) {
     if (_searchMode) window._toggleInlineSearch();
     if (replace) _stack.pop();
@@ -228,11 +155,6 @@ window._navTo = async function(screen, params, replace = false) {
     await _render(screen, params, 'forward');
     _setTab(screen);
 };
-// The on-screen back button and the phone's hardware back button now share
-// this exact same path — both just ask the browser to go back one virtual
-// state, and the actual stack-pop + re-render happens once, in 'popstate'.
-// Popping the stack directly from two places was what risked the in-app
-// stack and the browser's real history drifting out of sync.
 window._back = function() {
     if (_stack.length < 2) return;
     history.back();
@@ -244,8 +166,6 @@ window.addEventListener('popstate', () => {
         _render(prev.screen, prev.params, 'back');
         _setTab(prev.screen);
     }
-    // At the root screen there's nothing left to pop — default behaviour
-    // (exiting the app / leaving the page) is correct there.
 });
 async function _render(screen, params, dir='forward') {
     const stage = _el('mStage');
@@ -268,7 +188,6 @@ async function _render(screen, params, dir='forward') {
     stage.innerHTML = '';
     stage.appendChild(scr);
 
-    // Thread is a true full-screen reply view — hide chrome, restore on any other screen
     const immersive = screen === 'thread' || screen === 'groupChat' || screen === 'dm';
     _el('mSB')?.style.setProperty('display', immersive ? 'none' : 'flex', 'important');
     _el('mNav')?.style.setProperty('display', immersive ? 'none' : 'flex', 'important');
@@ -308,9 +227,6 @@ window._openMoreSheet = function() {
     _openSheet();
 };
 
-// ══════════════════════════════════════════════════════════════
-// HOME — Departments + Staff
-// ══════════════════════════════════════════════════════════════
 async function _home() {
     await _ctx();
     const { data: lastMsgs } = await sb.from('messages')
@@ -358,11 +274,6 @@ async function _home() {
     </div>`;
 }
 
-// ══════════════════════════════════════════════════════════════
-// ACTIVITY — most important tab. Tap any item → jump straight to it,
-// highlighted, inside its real conversation. The "data-scroll" attribute
-// is read by the shared click dispatcher and passed through as scrollTo.
-// ══════════════════════════════════════════════════════════════
 async function _activity() {
     const { data: msgs } = await sb.from('messages')
         .select('id,room_id,text,created_at,sender_id')
@@ -402,9 +313,6 @@ async function _activity() {
     </div>`;
 }
 
-// ══════════════════════════════════════════════════════════════
-// INLINE SEARCH — lives in the top bar's #mSBResults dropdown
-// ══════════════════════════════════════════════════════════════
 async function _runInlineSearch(q) {
     const box = _el('mSBResults');
     if (!box) return;
@@ -440,9 +348,6 @@ async function _runInlineSearch(q) {
     box.innerHTML = rows.length ? rows.join('') : '<div class="m-empty">No results found</div>';
 }
 
-// ══════════════════════════════════════════════════════════════
-// REACTIONS — shared "reactions" table, same as desktop (messages.js)
-// ══════════════════════════════════════════════════════════════
 async function _fetchReactions(msgIds) {
     if (!msgIds.length) return {};
     const { data } = await sb.from('reactions').select('*').in('message_id', msgIds);
@@ -491,10 +396,6 @@ async function _refreshChips(msgId) {
     else if (html) row.querySelector('.m-bubble')?.insertAdjacentHTML('beforeend', html);
 }
 
-// ══════════════════════════════════════════════════════════════
-// SHARED BUBBLE TEMPLATE — used by initial render AND realtime append,
-// so the two never drift apart
-// ══════════════════════════════════════════════════════════════
 function _bubbleHTML(m, reactionsMap, maxLen=150) {
     const me = m.sender_id === _uid;
     const nm = me ? 'You' : _uname(m.sender_id);
@@ -510,13 +411,6 @@ function _bubbleHTML(m, reactionsMap, maxLen=150) {
         </div>
       </div>`;
 }
-// Matches the web version's link-pill convention exactly (see ui-settings.js
-// insertLinkPill / messages.js renderMessages): the composer encodes links as
-// <a href="https://link-pill.local/NAME|||URL-encoded">NAME</a>, and this
-// decodes that into the same styled gradient pill button web shows, instead
-// of an exposed raw link. Message text itself is trusted HTML from our own
-// contenteditable composer (same trust level the web version already
-// applies), with a minimal strip of <script> as a defensive backstop.
 function _renderLinkPills(html) {
     let safe = (html || '').replace(/<script[\s\S]*?<\/script>/gi, '');
     return safe.replace(
@@ -542,13 +436,8 @@ function _renderLinkPills(html) {
     );
 }
 
-// ══════════════════════════════════════════════════════════════
-// COMPOSER — WhatsApp-style: clip / link / [text] / emoji / tag / send.
-// Rich formatting (bold/italic/underline) appears as a floating popup
-// when text is selected, instead of a permanent toolbar.
-// ══════════════════════════════════════════════════════════════
 function _composerHTML(ceId, placeholder, sendAction, sendData) {
-    const showSchedule = window.canSchedule?.() ?? true;
+    const showSchedule = window.canSchedule?.() ?? false;
     const showUpload = window.canUpload?.() ?? true;
     const expired = !!window._trialExpired;
     return `
@@ -570,10 +459,6 @@ function _ceHTML(id) {
     return (html==='' || html==='<br>') ? '' : html;
 }
 function _ceClear(id) { const el = _el(id); if (el) el.innerHTML=''; }
-// Reliable emoji/tag insertion — appends a text node at the end of the
-// composer and moves the cursor there. Doesn't depend on execCommand or any
-// prior selection existing, which is what made insertion silently fail on
-// some mobile browsers when the picker sheet had just taken focus away.
 function _ceInsertText(targetId, value) {
     const el = _el(targetId);
     if (!el) return;
@@ -587,9 +472,6 @@ function _ceInsertText(targetId, value) {
     sel.addRange(range);
 }
 
-// ══════════════════════════════════════════════════════════════
-// GROUP CHAT (Department)
-// ══════════════════════════════════════════════════════════════
 async function _groupChat(p) {
     const { data: msgs } = await sb.from('messages')
         .select('id,text,sender_id,created_at,parent_message_id')
@@ -613,9 +495,6 @@ async function _groupChat(p) {
     </div>`;
 }
 
-// ══════════════════════════════════════════════════════════════
-// THREAD — full-screen (top bar + bottom nav hidden by _render)
-// ══════════════════════════════════════════════════════════════
 async function _thread(p) {
     const { data: replies } = await sb.from('messages')
         .select('id,text,sender_id,created_at')
@@ -643,9 +522,6 @@ async function _thread(p) {
     </div>`;
 }
 
-// ══════════════════════════════════════════════════════════════
-// DM
-// ══════════════════════════════════════════════════════════════
 async function _dm(p) {
     const { data: msgs } = await sb.from('messages')
         .select('id,text,sender_id,created_at')
@@ -668,9 +544,6 @@ async function _dm(p) {
     </div>`;
 }
 
-// ══════════════════════════════════════════════════════════════
-// TASKS — reads task_assignees (real per-user status), matches desktop
-// ══════════════════════════════════════════════════════════════
 async function _tasks() {
     const { data } = await sb.from('task_assignees')
         .select('status, tasks!inner(id,title,priority,deadline,created_at,require_proof,assigned_by)')
@@ -777,9 +650,6 @@ async function _taskDetail(p) {
     </div>`;
 }
 
-// ══════════════════════════════════════════════════════════════
-// REMINDERS
-// ══════════════════════════════════════════════════════════════
 async function _reminders() {
     const { data } = await sb.from('reminders')
         .select('id,reminder_time,message_id,messages(text,room_id)')
@@ -830,15 +700,11 @@ async function _remindEdit(p) {
     </div>`;
 }
 
-// ══════════════════════════════════════════════════════════════
-// BOOKMARKS — tap to scroll to + highlight the saved message
-// ══════════════════════════════════════════════════════════════
 async function _notifications() {
     const { data } = await sb.from('notifications').select('*').eq('user_id',_uid).order('created_at',{ascending:false}).limit(30);
     const iconMap = {reminder:'fa-stopwatch',task:'fa-clipboard-check',message:'fa-comment',general:'fa-bell'};
     const colorMap = {reminder:'#a855f7',task:'#3b82f6',message:'#22c55e',general:'#f59e0b'};
 
-    // Mark all as read once the list is opened (matches desktop behaviour)
     const unreadIds = (data||[]).filter(d=>!d.is_read).map(d=>d.id);
     if (unreadIds.length) {
         sb.from('notifications').update({is_read:true}).in('id',unreadIds).then(()=>_refreshNotifBadge());
@@ -882,9 +748,6 @@ async function _bookmarks() {
     </div>`;
 }
 
-// ══════════════════════════════════════════════════════════════
-// SCHEDULED
-// ══════════════════════════════════════════════════════════════
 async function _scheduled() {
     const { data } = await sb.from('scheduled_messages')
         .select('id,message_text,room_id,scheduled_time').eq('tenant_id',_tid).eq('sender_id',_uid)
@@ -933,9 +796,6 @@ async function _scheduledEdit(p) {
     </div>`;
 }
 
-// ══════════════════════════════════════════════════════════════
-// SETTINGS / PROFILE
-// ══════════════════════════════════════════════════════════════
 async function _settings() {
     const { data: p } = await sb.from('profiles').select('*').eq('id',_uid).single();
     const permState = ('Notification' in window) ? Notification.permission : 'unsupported';
@@ -992,9 +852,6 @@ async function _settings() {
     </div>`;
 }
 
-// ══════════════════════════════════════════════════════════════
-// DASHBOARD
-// ══════════════════════════════════════════════════════════════
 async function _dashboard() {
     const [{ count: msgCount }, { count: taskCount },
            { count: doneCount }, { data: recent }] = await Promise.all([
@@ -1027,9 +884,6 @@ async function _dashboard() {
     </div>`;
 }
 
-// ══════════════════════════════════════════════════════════════
-// BOTTOM SHEETS
-// ══════════════════════════════════════════════════════════════
 function _openSheet()  { _el('mSheet')?.classList.add('open'); }
 window._closeSheet = () => _el('mSheet')?.classList.remove('open');
 
@@ -1053,7 +907,7 @@ window._showMsgActions = function(params) {
           data-rname="${x(params.rname||'')}" data-rcol="${params.rcol||''}">
           <i class="fa-solid fa-reply" style="color:#6366f1;"></i> Reply in Thread
         </div>
-        ${(window.canCreateTask?.() ?? true) ? `
+        ${(window.canCreateTask?.() ?? false) ? `
         <div class="m-sheet-row" data-action="convertTask" data-id="${params.id}" data-text="${x(params.text)}">
           <i class="fa-solid fa-list-check" style="color:#16a34a;"></i> Convert to Task
         </div>` : ''}
@@ -1264,11 +1118,6 @@ async function _saveConvertedTask(msgId) {
     _toast('✅ Task created!');
 }
 
-// ══════════════════════════════════════════════════════════════
-// SHELL CLICK DISPATCHER — bound ONCE in _buildShell(). Handles every
-// data-action in #mStage plus the WhatsApp-style composer icons
-// (data-caction). Single binding = no duplicate-listener risk anywhere.
-// ══════════════════════════════════════════════════════════════
 async function _onShellClick(e) {
     const ca = e.target.closest('[data-caction]');
     if (ca) { await _handleComposerIcon(ca.dataset.caction, ca.dataset.target); return; }
@@ -1335,10 +1184,6 @@ async function _handleComposerIcon(caction, targetId) {
             const url = prompt('Paste a link:'); if (!url) return;
             const name = prompt('Link text (optional):', url) || url;
             ceEl?.focus();
-            // Match the web version's convention exactly: encode as a fake
-            // link-pill.local URL carrying "name|||url", which renderMessages
-            // (and our own _renderLinkPills below) detect and transform into
-            // a styled pill button — instead of an exposed raw <a href>.
             const encoded = encodeURIComponent(name + '|||' + url);
             document.execCommand('insertHTML', false, `<a href="https://link-pill.local/${encoded}">${x(name)}</a>&nbsp;`);
             break;
@@ -1364,11 +1209,6 @@ async function _handleComposerIcon(caction, targetId) {
     }
 }
 
-// ══════════════════════════════════════════════════════════════
-// SHEET CLICK DISPATCHER — bound ONCE in _buildShell() on the persistent
-// #mSheetInner node. THIS is the fix for the duplicate-forward bug:
-// previously every show-function re-attached its own listener here.
-// ══════════════════════════════════════════════════════════════
 async function _onSheetClick(e) {
     const el = e.target.closest('[data-action]');
     if (!el) return;
@@ -1419,17 +1259,8 @@ async function _onSheetClick(e) {
     }
 }
 
-// ══════════════════════════════════════════════════════════════
-// LONG-PRESS — opens message actions. Tapping (not holding) a bubble
-// does nothing special, so normal text selection/copy works, matching
-// WhatsApp and fixing the old DM-bubble tap-hijack inconsistency.
-// ══════════════════════════════════════════════════════════════
 let _pressTimer = null, _pressRow = null, _pressX = 0, _pressY = 0;
 function _onPressStart(e) {
-    // Only the visible card counts — .m-bubble-row spans the full message
-    // width as a flex wrapper, so a tap on the blank space beside a bubble
-    // was also matching and opening the menu for messages the user never
-    // actually touched.
     const card = e.target.closest('.m-bubble');
     if (!card) return;
     const row = card.closest('.m-bubble-row');
@@ -1448,9 +1279,6 @@ function _onPressStart(e) {
         navigator.vibrate?.(35);
     }, 550);
 }
-// Cancel the long-press the moment the finger actually moves — this is what was
-// opening the menu mid-scroll: a scroll gesture that starts on a bubble was
-// treated as a press because nothing checked for movement before the timer fired.
 function _onPressMove(e) {
     if (!_pressTimer) return;
     if (Math.abs(e.clientX-_pressX) > 6 || Math.abs(e.clientY-_pressY) > 6) {
@@ -1459,11 +1287,6 @@ function _onPressMove(e) {
 }
 function _onPressEnd() { clearTimeout(_pressTimer); _pressTimer = null; _pressRow = null; }
 
-// ══════════════════════════════════════════════════════════════
-// FLOATING FORMAT POPUP — appears only when text is selected inside a
-// composer, mimicking the native copy/paste menu instead of a permanent
-// toolbar (per request #7)
-// ══════════════════════════════════════════════════════════════
 function _onSelectionChange() {
     const popup = _el('mFmtPopup');
     if (!popup) return;
@@ -1480,11 +1303,6 @@ function _onSelectionChange() {
     popup.style.left = Math.min(Math.max(8, rect.left), window.innerWidth-150) + 'px';
 }
 
-// ══════════════════════════════════════════════════════════════
-// REALTIME — single shared channel, patches the live DOM in place so the
-// screen never tears down and rebuilds (no flicker), instead of polling
-// or full re-rendering on every change
-// ══════════════════════════════════════════════════════════════
 function _initRealtime() {
     if (_rtChannel || !_tid) return;
     _rtChannel = sb.channel('mobile-rt-'+_tid)
@@ -1502,9 +1320,6 @@ async function _refreshNotifBadge() {
     if (count && count > 0) { badge.textContent = count > 9 ? '9+' : String(count); badge.style.display = 'flex'; }
     else badge.style.display = 'none';
 }
-// Resolves a room from a message id (if needed) and navigates to it,
-// scrolling to and highlighting the specific message — reuses the same
-// scrollTo/_scrollAndGlow mechanism already built for search result taps.
 async function _goToMessage(messageId, roomIdHint) {
     if (!messageId) { _toast('No message linked to this notification','err'); return; }
     let room = roomIdHint;
@@ -1537,10 +1352,6 @@ async function _onNewMessage(m) {
     const inDM     = top.screen==='dm'        && m.room_id===top.params?.room;
     const inThread = top.screen==='thread'    && m.parent_message_id===top.params?.id;
     if (!inGroup && !inDM && !inThread) {
-        // Not the conversation currently open — chime/vibrate already fire via
-        // the shared notifications.js mechanism, but that intentionally
-        // suppresses the OS-level banner while the app is visible, leaving
-        // no visual cue at all. Show an in-app toast to fill that gap.
         if (!m.parent_message_id) {
             const sender = _users.find(u=>u.id===m.sender_id);
             const name = sender ? (sender.full_name||sender.email?.split('@')[0]) : 'Someone';
@@ -1572,11 +1383,6 @@ async function _onTaskAssigneeUpdate(row) {
     }
 }
 
-// ══════════════════════════════════════════════════════════════
-// PER-SCREEN WIRING — scroll-to-bottom default, scroll-FAB visibility,
-// file input. Most click handling now lives in the one-time delegated
-// dispatchers above; this only does things that are genuinely per-screen.
-// ══════════════════════════════════════════════════════════════
 function _wireScreen(screen, params, container) {
     const areaId = screen==='groupChat'?'mMsgArea':screen==='dm'?'mDMArea':screen==='thread'?'mThreadArea':null;
     if (areaId) {
@@ -1619,11 +1425,6 @@ function _wireScreen(screen, params, container) {
         catch(e) { _toast('Could not read that image','err'); return; }
         const { error: dbErr } = await sb.from('profiles').update({ avatar_url: dataUrl }).eq('id',_uid);
         if (dbErr) { _toast('Could not save photo: '+dbErr.message,'err'); return; }
-        // Update the cached user list in place — without this, the new photo
-        // only showed in Settings (which re-fetches fresh each time) while
-        // every other view kept reading the stale cached entry until a full
-        // reload. Also updates the shared global cache so desktop doesn't
-        // have the same staleness if it's open in another tab.
         const cached = _users.find(u=>u.id===_uid);
         if (cached) cached.avatar_url = dataUrl;
         if (window.globalUsersCache) {
@@ -1653,10 +1454,6 @@ function _wireScreen(screen, params, container) {
         await _navTo('home',null,true);
     };
 }
-// Resizes/compresses an uploaded image client-side and returns it as a small
-// base64 JPEG data URL — stored directly in the DB/localStorage. Avoids
-// needing any Supabase Storage bucket at all, which was the actual cause of
-// the "bucket not found" error (no 'avatars' bucket had been created).
 function _compressImageToDataURL(file, maxSize=240, quality=0.72) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -1679,10 +1476,6 @@ function _compressImageToDataURL(file, maxSize=240, quality=0.72) {
     });
 }
 
-// ══════════════════════════════════════════════════════════════
-// SEND ACTIONS — explicit created_at (matches desktop), correct
-// parent_message_id column (was the root cause of "group send broken")
-// ══════════════════════════════════════════════════════════════
 async function _doSendGroup(a) {
     if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }
     const val = _ceHTML(a.target); if (!val) return;
@@ -1716,9 +1509,6 @@ async function _doSendDM(a) {
     window.playSound?.('message');
     _appendOwnMessage('mDMArea', m);
 }
-// Appends the just-sent message to the currently-open screen without
-// re-rendering it — re-rendering was what caused the whole screen to replay
-// its slide-in animation on every single send.
 function _appendOwnMessage(areaId, m, maxLen=150) {
     const area = _el(areaId);
     if (!area) return;
@@ -1733,9 +1523,6 @@ async function _doForward(room, text) {
     _toast(error ? 'Forward failed' : 'Message forwarded ✓', error?'err':'ok');
 }
 
-// ══════════════════════════════════════════════════════════════
-// TASK ACTIONS — mirrors window.taskAction() in tasks.js
-// ══════════════════════════════════════════════════════════════
 async function _mobTaskAction(taskId, action) {
     const { data: taskData } = await sb.from('tasks').select('*').eq('id',taskId).single();
     if (!taskData) { _toast('Task not found','err'); return; }
@@ -1774,9 +1561,6 @@ async function _mobTaskAction(taskId, action) {
     await _navTo('taskDetail',{id:taskId,title:taskData.title},true);
 }
 
-// ══════════════════════════════════════════════════════════════
-// REMINDER / BOOKMARK / SCHEDULED / PROFILE ACTIONS
-// ══════════════════════════════════════════════════════════════
 async function _deleteReminder(id) {
     await sb.from('reminders').delete().eq('id',id).eq('user_id',_uid);
     _toast('Reminder deleted'); await _navTo('remind',null,true);
@@ -1828,9 +1612,6 @@ async function _changePassword() {
     _toast(error ? 'Failed: '+error.message : 'Password changed ✓', error?'err':'ok');
 }
 
-// ══════════════════════════════════════════════════════════════
-// HELPERS
-// ══════════════════════════════════════════════════════════════
 function _el(id) { return document.getElementById(id); }
 function x(s)    { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function _init(n){ return (n||'?').split(' ').map(w=>w[0]).join('').toUpperCase().substring(0,2)||'?'; }
@@ -1839,15 +1620,8 @@ function _avatarHTML(photoUrl, name, bg, cls='m-av') {
     return `<div class="${cls}" style="background:${bg||'var(--accent)'};">${_init(name)}</div>`;
 }
 function _sentenceCase(s){ s=(s||'').trim(); return s ? s[0].toUpperCase()+s.slice(1).toLowerCase() : s; }
-// Always formats in true IST (Asia/Kolkata), regardless of the device's own
-// timezone setting — locale ('en-IN') only controls display convention
-// (DD/MM order etc), not which timezone the clock is read in.
 function _fmtIST(ts, withTime=true) {
     if (!ts) return '';
-    // Prefer the app's own established IST formatter (shared.js) so mobile
-    // matches desktop exactly rather than running a separate parallel
-    // implementation that could drift from whatever convention the rest of
-    // the app actually relies on.
     if (typeof window.getISTDate === 'function') {
         const datePart = window.getISTDate(ts);
         if (!withTime) return datePart;
@@ -1886,9 +1660,6 @@ function _toast(msg, type='ok'){
     t._timer = setTimeout(()=>t.className='', 2500);
 }
 
-// ══════════════════════════════════════════════════════════════
-// CSS
-// ══════════════════════════════════════════════════════════════
 function _injectCSS(){
     if(_el('mCSS')) return;
     const s=document.createElement('style'); s.id='mCSS';
@@ -1898,7 +1669,6 @@ function _injectCSS(){
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   z-index:9999;overflow:hidden;}
 
-/* ── Top bar — universal: name + school, lens, theme, sign-out ─────── */
 #mSB{display:flex;align-items:center;gap:6px;
   padding:10px 12px;flex-shrink:0;position:relative;
   background:var(--bg-sidebar,#f6f8fa);border-bottom:1px solid var(--border-color,#e5e7eb);}
@@ -1944,7 +1714,6 @@ function _injectCSS(){
 @keyframes sfwd{from{transform:translateX(100%)}to{transform:translateX(0)}}
 @keyframes sback{from{transform:translateX(-30%)}to{transform:translateX(0)}}
 
-/* ── Bottom nav — 5 tabs WITH labels, bigger now that there's room ─── */
 #mNav{display:flex;background:var(--bg-sidebar,#f6f8fa);
   border-top:1.5px solid var(--border-color,#e5e7eb);
   padding-bottom:env(safe-area-inset-bottom,0);flex-shrink:0;}
@@ -1959,7 +1728,6 @@ function _injectCSS(){
 .mn-btn:active{opacity:.6;}
 .mn-btn i{transition:transform .2s;}
 
-/* ── Header & prominent back button ─────────────────────────────────── */
 .m-hdr{display:flex;align-items:center;gap:10px;padding:11px 16px;flex-shrink:0;
   background:var(--bg-sidebar,#f6f8fa);border-bottom:1px solid var(--border-color,#e5e7eb);}
 .m-hdr-plain{padding:14px 16px;}
@@ -1970,7 +1738,6 @@ function _injectCSS(){
 .m-back:active{background:var(--bg-sidebar,#f6f8fa);}
 .m-htitle{font-size:18px;font-weight:700;flex:1;color:var(--text-primary,#111);}
 
-/* ── List rows ───────────────────────────────────────────────────────── */
 .m-sl{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
   color:var(--text-secondary,#6b7280);padding:14px 16px 7px;}
 .m-row{display:flex;align-items:center;gap:13px;padding:13px 16px;
@@ -1996,7 +1763,6 @@ function _injectCSS(){
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .m-chv{color:var(--text-secondary,#9ca3af);font-size:13px;}
 
-/* ── Chat messages ───────────────────────────────────────────────────── */
 .m-msgs{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 0;position:relative;}
 .m-bubble-row{display:flex;margin:8px 12px;gap:6px;align-items:flex-end;}
 .m-av-tiny{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
@@ -2021,7 +1787,6 @@ function _injectCSS(){
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
 .m-divider{text-align:center;font-size:11px;color:var(--text-secondary);padding:8px 0;}
 
-/* ── Scroll-to-bottom arrow (WhatsApp-style) ────────────────────────── */
 .m-scrollfab{position:absolute;right:14px;bottom:78px;width:38px;height:38px;border-radius:50%;
   background:var(--bg-body,#fff);border:1px solid var(--border-color,#e5e7eb);
   box-shadow:0 3px 10px rgba(0,0,0,.18);color:var(--accent,#6366f1);font-size:15px;
@@ -2029,7 +1794,6 @@ function _injectCSS(){
   -webkit-tap-highlight-color:transparent;}
 .m-scrollfab:active{opacity:.8;}
 
-/* ── Reaction chips ──────────────────────────────────────────────────── */
 .m-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
 .m-chip{font-size:13px;font-weight:600;background:var(--bg-sidebar,#f6f8fa);
   border:1px solid var(--border-color,#e5e7eb);border-radius:14px;padding:3px 9px;
@@ -2042,7 +1806,6 @@ function _injectCSS(){
 .m-tag-btn{font-size:13px;font-weight:700;background:none;border:1.5px solid;padding:8px 14px;
   border-radius:20px;cursor:pointer;}
 
-/* ── WhatsApp-style composer ─────────────────────────────────────────── */
 .m-composer{display:flex;align-items:center;gap:8px;padding:8px 10px;
   background:var(--bg-sidebar,#f6f8fa);border-top:1px solid var(--border-color,#e5e7eb);flex-shrink:0;}
 .m-ce-wrap{flex:1;background:var(--bg-body,#fff);border:1.5px solid var(--border-color,#e5e7eb);
@@ -2060,7 +1823,6 @@ function _injectCSS(){
   display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
 .m-sendbtn:active{opacity:.8;}
 
-/* ── Floating format popup — appears only on text selection ─────────── */
 .m-fmt-popup{position:fixed;display:none;gap:2px;background:#1f2937;border-radius:10px;
   padding:4px;box-shadow:0 4px 14px rgba(0,0,0,.3);z-index:10500;}
 .m-fmt-popup button{background:none;border:none;color:#fff;font-size:15px;width:34px;height:34px;
@@ -2072,7 +1834,6 @@ function _injectCSS(){
   color:var(--text-primary,#111);outline:none;min-height:46px;width:100%;box-sizing:border-box;}
 .m-inp:focus{border-color:var(--accent,#6366f1);}
 
-/* ── Task cards — same theme-matched card language as bubbles ───────── */
 .m-taskcard{margin:10px 14px;padding:16px;border-radius:14px;cursor:pointer;
   background:var(--card-bg,#fff);box-shadow:var(--card-shadow,0 2px 8px rgba(0,0,0,.07));
   border-left:4px solid var(--accent,#6366f1);border-top:1px solid var(--border-color,#e5e7eb);
@@ -2090,7 +1851,6 @@ function _injectCSS(){
 .m-tc-people{margin-top:8px;padding-top:8px;border-top:1px solid var(--border-color,#e5e7eb);
   display:flex;flex-direction:column;gap:3px;font-size:12.5px;color:var(--text-secondary,#6b7280);}
 
-/* ── Theme picker grid (Settings + sheet) ────────────────────────────── */
 .m-theme-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 .m-theme-pill{display:flex;align-items:center;gap:8px;padding:11px 12px;border-radius:12px;
   border:1.5px solid var(--border-color,#e5e7eb);background:var(--bg-body,#fff);
@@ -2099,7 +1859,6 @@ function _injectCSS(){
 .m-theme-pill.active{border-color:var(--accent,#6366f1);background:color-mix(in srgb, var(--accent) 8%, var(--bg-body));}
 .m-theme-dot{width:16px;height:16px;border-radius:50%;flex-shrink:0;}
 
-/* ── Detail screens ───────────────────────────────────────────────────── */
 .m-detail-row{display:flex;align-items:center;justify-content:space-between;
   padding:12px 0;border-bottom:1px solid var(--border-color,#e5e7eb);}
 .m-detail-lbl{font-size:13.5px;font-weight:600;color:var(--text-secondary,#6b7280);}
@@ -2118,12 +1877,10 @@ function _injectCSS(){
   padding:8px;color:var(--text-secondary,#6b7280);-webkit-tap-highlight-color:transparent;
   min-width:40px;min-height:40px;}
 
-/* ── Dashboard ───────────────────────────────────────────────────────── */
 .m-stat-card{border-radius:14px;padding:18px;text-align:center;}
 .m-stat-num{font-size:28px;font-weight:800;line-height:1;}
 .m-stat-lbl{font-size:12.5px;font-weight:600;color:var(--text-secondary,#6b7280);margin-top:4px;}
 
-/* ── Bottom sheet ────────────────────────────────────────────────────── */
 #mSheet{position:fixed;inset:0;background:rgba(0,0,0,0);z-index:10000;
   pointer-events:none;transition:background .25s;display:flex;align-items:flex-end;}
 #mSheet.open{background:rgba(0,0,0,.45);pointer-events:all;}
@@ -2142,7 +1899,6 @@ function _injectCSS(){
 .m-sheet-row:active{background:var(--bg-sidebar,#f6f8fa);}
 .m-sheet-row i{width:24px;text-align:center;font-size:18px;}
 
-/* ── Toast ───────────────────────────────────────────────────────────── */
 #mToast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
   padding:10px 20px;border-radius:24px;font-size:13.5px;font-weight:600;
   color:#fff;z-index:11000;opacity:0;transition:opacity .2s;pointer-events:none;

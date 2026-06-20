@@ -929,18 +929,22 @@ window.resetPrincipalPassword = async function(tenantId) {
         return;
     }
     note.style.color = 'var(--text2)';
-    note.textContent = 'Resetting...';
+    note.textContent = 'Resetting... (tenant: ' + tenantId.substring(0,8) + ')';
 
     const { data: { session } } = await sb.auth.getSession();
+    const payload = { mode: 'reset_password', tenant_id: tenantId, password: pwd };
+    console.log('[resetPrincipal] sending:', JSON.stringify(payload));
+
     const resp = await fetch(SUPABASE_URL + '/functions/v1/create-school-user', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer ' + session.access_token
         },
-        body: JSON.stringify({ mode: 'reset_password', tenant_id: tenantId, password: pwd })
+        body: JSON.stringify(payload)
     });
     const result = await resp.json();
+    console.log('[resetPrincipal] response:', resp.status, result);
 
     if (!resp.ok || result.error) {
         note.style.color = 'var(--red)';

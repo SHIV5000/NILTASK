@@ -364,51 +364,99 @@ window.loadDashboard = async function(filter) {
         dimBar('Responsiveness', s.score_resp,     '20%') +
         dimBar('Presence',       s.score_presence, '15%') +
 
-        '<div style="font-size:11px;color:var(--text-secondary);text-align:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border-color);">' +
-        'Formula: (On-time&times;4 + Delayed&times;2 &minus; Pending&times;1 &minus; Transferred&times;1) &divide; (Total&times;4) &times; 100' +
-        '</div></div>';
+                '</div>';
 };
 
 // Download dashboard as a PDF progress card using html2pdf.js
 
 window.downloadDashboardPDF = function() {
-    if (typeof html2pdf === 'undefined') {
-        window.showCenterToast('html2pdf not loaded on this page — add it to index.html','fa-solid fa-exclamation-triangle','text-yellow-500');
-        return;
+    const s = window._dashStats;
+    if (!s) { window.showCenterToast('Generate scorecard first','fa-solid fa-info-circle','text-blue-400'); return; }
+    const name   = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
+    const school = window.currentSchoolName || 'School';
+    const period = s.periodLabel || '';
+    const gColors = {'A+':'#16a34a','A':'#1d4ed8','B':'#854d0e','C':'#c2410c','D':'#b91c1c','N/A':'#64748b'};
+    const gc   = gColors[s.grade] || '#64748b';
+    const pct  = s.score != null ? s.score : 0;
+    const barC = pct>=90?'#16a34a':pct>=65?'#f59e0b':'#ef4444';
+    const ackR = s.msgs_received > 0 ? Math.round(s.acknowledged/s.msgs_received*100)+'%' : '0%';
+
+    function bar(label, score, weight) {
+        var v = score != null ? score : 0;
+        var c = v>=80?'#16a34a':v>=50?'#f59e0b':'#ef4444';
+        return '<div style="margin-bottom:10px;">' +
+            '<div style="display:flex;justify-content:space-between;margin-bottom:3px;">' +
+            '<span style="font-size:11px;font-weight:600;color:#374151;">' + label + '</span>' +
+            '<span style="font-size:11px;font-weight:700;color:' + c + ';">' + (score!=null?v+'%':'N/A') + ' <span style="color:#9ca3af;font-weight:400;">x'+weight+'</span></span>' +
+            '</div>' +
+            '<div style="height:6px;background:#f1f5f9;border-radius:6px;overflow:hidden;">' +
+            '<div style="width:' + Math.min(100,v) + '%;height:100%;background:' + c + ';border-radius:6px;"></div>' +
+            '</div></div>';
     }
-    const el = document.getElementById('dashboardReport');
-    if (!el) { window.showCenterToast('Open dashboard first','fa-solid fa-info-circle','text-blue-400'); return; }
-    const d    = window._dashStats || {};
-    const name = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'padding:24px;font-family:Inter,sans-serif;background:#fff;color:#111;max-width:700px;';
-    wrap.innerHTML = `
-        <div style="text-align:center;border-bottom:3px solid #6366f1;padding-bottom:14px;margin-bottom:20px;">
-            <h2 style="color:#6366f1;margin:0 0 4px;font-size:22px;font-weight:900;">MPGS TaskFlow — Progress Card</h2>
-            <p style="color:#6b7280;margin:0;font-size:12px;">${name} &nbsp;·&nbsp; ${new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})} IST</p>
-        </div>
-        <div style="text-align:center;background:linear-gradient(135deg,#6366f118,#6366f105);border:1px solid #6366f130;border-radius:16px;padding:20px;margin-bottom:20px;">
-            <div style="font-size:52px;font-weight:900;color:#6366f1;">${d.score||0}</div>
-            <div style="font-size:13px;font-weight:700;color:#6366f1;margin-top:4px;">Overall Performance Score</div>
-        </div>
-        <table style="width:100%;border-collapse:collapse;font-size:12px;">
-            <tr style="background:#f8f9fa;">
-                <th style="padding:10px;border:1px solid #e5e7eb;text-align:left;">Metric</th>
-                <th style="padding:10px;border:1px solid #e5e7eb;text-align:right;width:80px;">Count</th>
-            </tr>
-            ${[['Messages Sent',d.msgSent],['Messages Received',d.msgRcvd],
-               ['Tasks Created',d.tasksCreated],['Tasks Assigned to Me',d.tasksAssigned],
-               ['Tasks Completed',d.tasksCompleted],['Tasks Pending',d.tasksPending],
-               ['Reactions Given',d.reactions],['Replies Sent',d.replies]]
-              .map(([k,v]) => `<tr><td style="padding:8px 10px;border:1px solid #e5e7eb;">${k}</td>
-                  <td style="padding:8px 10px;border:1px solid #e5e7eb;text-align:right;font-weight:700;">${v||0}</td></tr>`).join('')}
-        </table>`;
-    html2pdf().from(wrap).set({
-        margin:10,
-        filename:`MPGS_Progress_${name.replace(/\s+/g,'_')}.pdf`,
-        html2canvas:{scale:2, useCORS:true},
-        jsPDF:{unit:'mm', format:'a4', orientation:'portrait'}
-    }).save().then(() => window.showCenterToast('Progress Card Downloaded!','fa-solid fa-file-pdf','text-green-500'));
+
+    function sbox(label, val, color) {
+        return '<div style="text-align:center;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:10px 6px;">' +
+            '<div style="font-size:18px;font-weight:800;color:' + color + ';">' + val + '</div>' +
+            '<div style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">' + label + '</div>' +
+            '</div>';
+    }
+
+    var w = window.open('','_blank');
+    w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8">' +
+        '<title>Staff Scorecard - ' + name + '</title>' +
+        '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">' +
+        '<style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:Inter,sans-serif;background:#fff;padding:28px;}' +
+        '.hdr{background:linear-gradient(135deg,#6366f1,#4338ca);color:#fff;padding:24px 28px;border-radius:14px;margin-bottom:20px;position:relative;overflow:hidden;}' +
+        '.hdr::after{content:"";position:absolute;top:-30px;right:-30px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.08);}' +
+        'h1{font-size:18px;font-weight:900;margin-bottom:2px;position:relative;z-index:1;}' +
+        '.hdr-sub{font-size:12px;opacity:.8;position:relative;z-index:1;}' +
+        '.score-row{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;margin-bottom:16px;}' +
+        '.grade-circ{width:64px;height:64px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;}' +
+        '.grid5{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px;}' +
+        '.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;}' +
+        '.sec-lbl{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;margin-bottom:8px;}' +
+        '.foot{margin-top:18px;font-size:10px;color:#9ca3af;text-align:center;}' +
+        '@media print{.hdr{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}' +
+        '</style></head><body>' +
+        '<div class="hdr">' +
+        '<h1>Staff Performance Scorecard</h1>' +
+        '<div class="hdr-sub">' + school + ' &nbsp;&bull;&nbsp; ' + name + ' &nbsp;&bull;&nbsp; ' + period + '</div>' +
+        '</div>' +
+        '<div class="score-row">' +
+        '<div class="grade-circ" style="background:' + gc + '15;border:3px solid ' + gc + '40;">' +
+        '<div style="font-size:26px;font-weight:900;color:' + gc + ';line-height:1;">' + s.grade + '</div>' +
+        '<div style="font-size:8px;font-weight:700;color:' + gc + ';letter-spacing:1px;text-transform:uppercase;">Grade</div>' +
+        '</div>' +
+        '<div style="text-align:right;">' +
+        '<div style="font-size:38px;font-weight:900;color:' + barC + ';line-height:1;">' + (s.score!=null?s.score+'%':'N/A') + '</div>' +
+        '<div style="font-size:10px;color:#9ca3af;margin-top:2px;">Overall Performance Score</div>' +
+        '<div style="height:5px;background:#e5e7eb;border-radius:5px;overflow:hidden;width:130px;margin:5px 0 0 auto;">' +
+        '<div style="width:' + Math.min(100,pct) + '%;height:100%;background:' + barC + ';border-radius:5px;"></div>' +
+        '</div></div></div>' +
+        '<div class="sec-lbl">Task Performance (40%)</div>' +
+        '<div class="grid5">' +
+        sbox('Total',        s.tasks_total||0,       '#6366f1') +
+        sbox('On Time',      s.tasks_on_time||0,     '#16a34a') +
+        sbox('Delayed',      s.tasks_delayed||0,     '#f59e0b') +
+        sbox('Pending',      s.tasks_pending||0,     '#ef4444') +
+        sbox('Transferred',  s.tasks_transferred||0, '#8b5cf6') +
+        '</div>' +
+        '<div class="sec-lbl">Communication (25%) &bull; Responsiveness (20%) &bull; Presence (15%)</div>' +
+        '<div class="grid4">' +
+        sbox('Msgs Sent',    s.msgs_sent||0,     '#0ea5e9') +
+        sbox('Msgs Rcvd',    s.msgs_received||0, '#64748b') +
+        sbox('Ack Rate',     ackR,               '#10b981') +
+        sbox('Active Days',  s.active_days||0,   '#f59e0b') +
+        '</div>' +
+        '<div class="sec-lbl">Score Breakdown</div>' +
+        bar('Task Delivery',  s.score_task,     '40%') +
+        bar('Communication',  s.score_comm,     '25%') +
+        bar('Responsiveness', s.score_resp,     '20%') +
+        bar('Presence',       s.score_presence, '15%') +
+        '<div class="foot">Generated by Noted For Action &bull; ' + new Date().toLocaleString('en-IN') + ' &bull; Objective &amp; Transparent</div>' +
+        '<script>setTimeout(function(){window.print();},400);<\/script>' +
+        '</body></html>');
+    w.document.close();
 };
 
 

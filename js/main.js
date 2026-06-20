@@ -192,7 +192,7 @@ window.renderMainApp = function() {
     const leftDisplay = localStorage.getItem('mpgs_left_sidebar_state') || 'flex';
     const rightDisplay = localStorage.getItem('mpgs_right_sidebar_state') || 'flex';
 
-    const wt = window.escapeHtml(userNameDisplay.toUpperCase());
+    const wt = window.escapeHtml(window.toSentenceCase?.(userNameDisplay) || userNameDisplay);
     const svgL = encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="150"><text x="50%" y="50%" transform="rotate(-30 100 75)" fill="rgba(0,0,0,0.03)" font-size="14" font-family="sans-serif" font-weight="800" text-anchor="middle" dominant-baseline="middle">${wt}</text></svg>`);
     const svgD = encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="150"><text x="50%" y="50%" transform="rotate(-30 100 75)" fill="rgba(255,255,255,0.02)" font-size="14" font-family="sans-serif" font-weight="800" text-anchor="middle" dominant-baseline="middle">${wt}</text></svg>`);
     document.documentElement.style.setProperty('--wm-light', `url('data:image/svg+xml;utf8,${svgL}')`);
@@ -254,7 +254,7 @@ window.renderMainApp = function() {
                             ${(window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + (window.currentUser?.id||''))) ? '<img src="' + (window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + (window.currentUser?.id||''))) + '" style="width:100%;height:100%;object-fit:cover;">' : userNameDisplay.charAt(0).toUpperCase()}
                         </div>
                         <div style="flex:1;min-width:0;">
-                            <div id="sidebarNameDisplay" style="font-size:12px;font-weight:700;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${window.escapeHtml(userNameDisplay)}</div>
+                            <div id="sidebarNameDisplay" style="font-size:12px;font-weight:700;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${window.escapeHtml(window.toSentenceCase?.(userNameDisplay) || userNameDisplay)}</div>
                             <div style="font-size:9px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.06em;">${window.currentDesignation || window.currentRoleName || ''}</div>
                         </div>
                         <button onclick="window.openSettings()" title="Profile Settings"

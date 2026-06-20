@@ -1,30 +1,80 @@
 /**
- * rbac.js — MPGS TaskFlow Phase 3
- * ─────────────────────────────────────────────────────────────
+ * rbac.js — MPGS TaskFlow v1.62
  * Role-Based Access Control + Feature Flag enforcement.
- * Called after renderMainApp() to apply visibility rules.
+ * Called by main.js after renderMainApp() and after loadChatsList().
  *
- * Roles:  principal, vp_admin, hod, exam_controller, teacher
- * Features: tasks_enabled, uploads_enabled, scheduling_enabled,
- *           reports_enabled
- * ─────────────────────────────────────────────────────────────
+ * ROLES (low → high privilege)
+ *   support_staff | teacher | admin_staff | coordinator | exam_controller | hod | vp_admin | management | principal
+ *
+ * CAPABILITY MAP (confirmed)
+ *   Group create/manage : management, principal, vp_admin, exam_controller, coordinator, hod
+ *   Task create         : management, principal, vp_admin, hod, coordinator, exam_controller
+ *   Task hub visible    : ALL roles
+ *   Task update/submit  : assignee, irrespective of role
+ *   Task assign-to      : NOT principal, NOT management
+ *   Schedule message    : management, principal, vp_admin, hod, coordinator, exam_controller
+ *   File upload         : ALL roles (feature-flagged)
+ *   Send messages       : ALL roles
+ *   Edit/delete own msg : ALL roles (within 30 min)
+ *   Delete any msg      : principal, vp_admin, management only
+ *   Admin panel         : principal, vp_admin, management
  */
 
-// ── Role helpers ──────────────────────────────────────────────
-window.isTeacher      = () => !window.currentRole || window.currentRole === 'teacher';
-window.isHOD          = () => ['hod','exam_controller'].includes(window.currentRole);
-window.isAdmin        = () => ['principal','vp_admin'].includes(window.currentRole);
+// ─────────────────────────────────────────────────────────────
+// ROLE SETS — single source of truth; update here to affect all
+// ─────────────────────────────────────────────────────────────
+const R = window._ROLES = {
+    GROUP_MANAGERS : ['management','principal','vp_admin','exam_controller','coordinator','hod'],
+    TASK_CREATORS  : ['management','principal','vp_admin','hod','coordinator','exam_controller'],
+    SCHEDULERS     : ['management','principal','vp_admin','hod','coordinator','exam_controller'],
+    TASK_FORBIDDEN : ['principal','management'],   // cannot be assigned a task
+    ADMIN_PANEL    : ['principal','vp_admin','management'],
+    MSG_MODERATORS : ['principal','vp_admin','management'],
+};
 
-// ── Capability checks (use these everywhere in app) ──────────
-window.canSchedule    = () => !window.isTeacher() && window.hasFeature('scheduling_enabled');
-window.canUpload      = () => window.hasFeature('uploads_enabled');
-window.canSeeTaskHub  = () => window.hasFeature('tasks_enabled');
-window.canCreateTask  = () => window.hasFeature('tasks_enabled') && !window.isTeacher();
-window.canCreateGroup = () => !window.isTeacher();
-window.canSeeGroupGear= () => !window.isTeacher(); // HOD sees own dept; principal sees all
+// ─────────────────────────────────────────────────────────────
+// ROLE HELPERS
+// ─────────────────────────────────────────────────────────────
+window.isTeacher       = () => !window.currentRole ||
+    ['teacher','support_staff','admin_staff'].includes(window.currentRole);
 
-// ── Main RBAC enforcement ────────────────────────────────────
-// Called by main.js after renderMainApp() and after loadChatsList()
+window.isAdmin         = () => R.ADMIN_PANEL.includes(window.currentRole);
+window.isHOD           = () => ['hod','exam_controller','coordinator'].includes(window.currentRole);
+window.isSeniorStaff   = () => R.GROUP_MANAGERS.includes(window.currentRole);
+
+// ─────────────────────────────────────────────────────────────
+// CAPABILITY CHECKS  — use these everywhere in the app
+// ─────────────────────────────────────────────────────────────
+
+// Group / Department
+window.canCreateGroup  = () => R.GROUP_MANAGERS.includes(window.currentRole);
+window.canSeeGroupGear = () => R.GROUP_MANAGERS.includes(window.currentRole);
+
+// Tasks
+window.canCreateTask   = () => window.hasFeature('tasks_enabled') &&
+    R.TASK_CREATORS.includes(window.currentRole);
+window.canSeeTaskHub   = () => window.hasFeature('tasks_enabled'); // ALL roles
+window.canBeAssigned   = () => !R.TASK_FORBIDDEN.includes(window.currentRole);
+
+// Scheduled messages
+window.canSchedule     = () => window.hasFeature('scheduling_enabled') &&
+    R.SCHEDULERS.includes(window.currentRole);
+
+// File upload — all roles, feature-flagged
+window.canUpload       = () => window.hasFeature('uploads_enabled');
+
+// Messages
+window.canEditMessage  = (senderId) => senderId === window.currentUser?.id;
+window.canDeleteMessage= (senderId) =>
+    senderId === window.currentUser?.id || R.MSG_MODERATORS.includes(window.currentRole);
+window.canForward      = () => true;
+
+// Admin panel access
+window.canAccessAdmin  = () => R.ADMIN_PANEL.includes(window.currentRole);
+
+// ─────────────────────────────────────────────────────────────
+// MAIN RBAC ENFORCEMENT
+// ─────────────────────────────────────────────────────────────
 window.applyRBAC = function() {
     _applyTopBar();
     _applyInputArea();
@@ -33,34 +83,25 @@ window.applyRBAC = function() {
 };
 
 function _applyTopBar() {
-    // ── Schedule button (top bar) ─────────────────────────────
-    // Teacher: ALWAYS hidden
-    // HOD/Principal: hidden if !scheduling_enabled
     if (!window.canSchedule()) {
         document.querySelectorAll(
             '.topbar-icon-btn[onclick*="openTopPanel(\'scheduled\'"],' +
             '.topbar-icon-btn[onclick*="showScheduleModal"]'
         ).forEach(el => el.style.display = 'none');
-
-        // Also hide the clock-shaped Schedule top bar icon
         document.querySelectorAll('.top-bar-icon').forEach(btn => {
-            if (btn.textContent?.trim().toLowerCase() === 'schedule') {
+            if (btn.textContent?.trim().toLowerCase() === 'schedule')
                 btn.style.display = 'none';
-            }
         });
     }
 }
 
 function _applyInputArea() {
-    // ── File attachment ───────────────────────────────────────
     if (!window.canUpload()) {
         const fileBtn = document.querySelector('[onclick*="fileAttachment"]');
         if (fileBtn) fileBtn.style.display = 'none';
         const fileInput = document.getElementById('fileAttachment');
         if (fileInput) fileInput.disabled = true;
     }
-
-    // ── Schedule button in editor toolbar ────────────────────
     if (!window.canSchedule()) {
         document.querySelectorAll('button[onclick*="showScheduleModal"]')
             .forEach(el => el.style.display = 'none');
@@ -68,36 +109,31 @@ function _applyInputArea() {
 }
 
 function _applyTaskHub() {
-    if (!window.canSeeTaskHub()) {
-        // Hide entire right sidebar and its toggle button
-        const rs = document.getElementById('rightSidebar');
-        if (rs) rs.style.display = 'none';
-        const resizer = document.getElementById('rightResizer');
-        if (resizer) resizer.style.display = 'none';
-        document.querySelectorAll('.topbar-icon-btn').forEach(btn => {
-            if (btn.textContent?.trim().toLowerCase() === 'tasks') {
-                btn.style.display = 'none';
-            }
-        });
+    // Task hub is visible to ALL — no hiding
+    // "Create Task" button hidden for non-creators
+    if (!window.canCreateTask()) {
+        document.querySelectorAll(
+            'button[onclick*="openCreateTask"],button[onclick*="createTask"],#createTaskBtn'
+        ).forEach(el => el.style.display = 'none');
     }
 }
 
-// ── Apply group gear visibility ──────────────────────────────
-// Called from loadChatsList() after rendering dept items
+// ─────────────────────────────────────────────────────────────
+// GROUP GEAR RBAC
+// ─────────────────────────────────────────────────────────────
 window.applyGroupGearRBAC = function() {
-    if (window.isTeacher()) {
+    if (!window.canSeeGroupGear()) {
         document.querySelectorAll('[onclick*="openGroupSettings"]')
             .forEach(el => el.style.display = 'none');
     }
-    // HOD/Exam Controller: can see gear (they manage their dept group)
-    // Principal/VP: see all gears (already visible)
 };
 
-// ── Subscription / Trial check ───────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// SUBSCRIPTION / TRIAL CHECK
+// ─────────────────────────────────────────────────────────────
 window.checkSubscription = function() {
     const sub = window.currentSubscription;
     if (!sub) return;
-
     const now      = new Date();
     const trialEnd = sub.trial_ends ? new Date(sub.trial_ends) : null;
     const isExpired = (sub.status === 'trial' || sub.status === 'expired') &&
@@ -105,80 +141,50 @@ window.checkSubscription = function() {
     const daysLeft  = trialEnd
         ? Math.max(0, Math.ceil((trialEnd - now) / 86400000))
         : null;
-
-    if (isExpired) {
-        _showTrialBanner('expired', 0);
-        _blockMessaging();
-    } else if (daysLeft !== null && daysLeft <= 7) {
-        _showTrialBanner('warning', daysLeft);
-    }
+    if (isExpired)                          { _showTrialBanner('expired', 0); _blockMessaging(); }
+    else if (daysLeft !== null && daysLeft <= 7) { _showTrialBanner('warning', daysLeft); }
 };
 
 function _showTrialBanner(type, days) {
-    // Remove existing banner
     document.getElementById('trialStatusBanner')?.remove();
-
     const isExpired = type === 'expired';
-    const bg    = isExpired ? '#fef2f2' : '#fefce8';
-    const border= isExpired ? '#fca5a5' : '#fde68a';
-    const color = isExpired ? '#dc2626'  : '#b45309';
-    const icon  = isExpired ? 'fa-circle-xmark' : 'fa-triangle-exclamation';
-    const msg   = isExpired
-        ? '⛔ Your trial has expired. Contact developer to upgrade your plan.'
-        : `⚠️ Trial expires in ${days} day${days===1?'':'s'}. Contact developer to upgrade.`;
-
+    const bg     = isExpired ? '#fef2f2' : '#fefce8';
+    const border = isExpired ? '#fca5a5' : '#fde68a';
+    const color  = isExpired ? '#dc2626'  : '#b45309';
+    const icon   = isExpired ? 'fa-circle-xmark' : 'fa-triangle-exclamation';
+    const msg    = isExpired
+        ? '⛔ Trial expired. Contact developer to upgrade.'
+        : '⚠️ Trial expires in ' + days + ' day' + (days === 1 ? '' : 's') + '. Contact developer to upgrade.';
     const banner = document.createElement('div');
     banner.id = 'trialStatusBanner';
-    banner.style.cssText = `
-        position:fixed; top:0; left:0; right:0; z-index:9998;
-        background:${bg}; border-bottom:2px solid ${border};
-        color:${color}; font-size:12px; font-weight:700;
-        padding:8px 20px; text-align:center; display:flex;
-        align-items:center; justify-content:center; gap:8px;
-        box-shadow:0 2px 8px rgba(0,0,0,.08);
-    `;
-    banner.innerHTML = `<i class="fa-solid ${icon}"></i> ${msg}`;
-
-    // Add close button for warning (not for expired)
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9998;background:' + bg +
+        ';border-bottom:2px solid ' + border + ';color:' + color +
+        ';font-size:12px;font-weight:700;padding:8px 20px;text-align:center;' +
+        'display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);';
+    banner.innerHTML = '<i class="fa-solid ' + icon + '"></i> ' + msg;
     if (!isExpired) {
-        const closeBtn = document.createElement('button');
-        closeBtn.innerHTML = '✕';
-        closeBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:14px;color:' + color + ';margin-left:12px;font-weight:700;';
-        closeBtn.onclick = () => banner.remove();
-        banner.appendChild(closeBtn);
+        const btn = document.createElement('button');
+        btn.innerHTML = '✕';
+        btn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:14px;color:' + color + ';margin-left:12px;font-weight:700;';
+        btn.onclick = () => banner.remove();
+        banner.appendChild(btn);
     }
-
     document.body.insertBefore(banner, document.body.firstChild);
-
-    // Push app content down so banner doesn't overlap
     const root = document.getElementById('root');
     if (root) root.style.paddingTop = '36px';
 }
 
 function _blockMessaging() {
     window._trialExpired = true;
-
-    // Disable send button
     const sendBtn = document.getElementById('sendBtn');
     if (sendBtn) {
         sendBtn.disabled = true;
-        sendBtn.title    = 'Trial expired — upgrade to send messages';
+        sendBtn.title    = 'Trial expired';
         sendBtn.style.opacity = '0.4';
         sendBtn.style.cursor  = 'not-allowed';
     }
-
-    // Show overlay on Quill editor
     const editor = document.getElementById('richEditor');
-    if (editor) {
-        editor.contentEditable = 'false';
-        editor.style.opacity   = '0.4';
-        editor.title = 'Trial expired — upgrade to send messages';
-    }
-
-    // Disable file attachment
+    if (editor) { editor.contentEditable = 'false'; editor.style.opacity = '0.4'; }
     const fileBtn = document.querySelector('[onclick*="fileAttachment"]');
     if (fileBtn) { fileBtn.disabled = true; fileBtn.style.opacity = '0.4'; }
 }
-
-// ── Export trial-expired flag so sendMessage() can check ─────
-// Usage in messages.js sendMessage(): if (window._trialExpired) return;

@@ -464,7 +464,7 @@ function renderStaffTable(staff) {
                     <button class="btn-outline btn-sm" onclick="openEditStaffModal('${s.id}')" title="Edit">
                         <i class="fa-solid fa-pen"></i>
                     </button>
-                    <button class="btn-outline btn-sm" onclick="openResetPwdModal('${s.id}','${window.escapeHtml(s.full_name)}')" title="Reset Password" style="color:#f59e0b;border-color:#fde68a;">
+                    <button class="btn-outline btn-sm" onclick="openResetPwdModal('${window.escapeHtml(s.email)}','${window.escapeHtml(s.full_name)}')" title="Reset Password" style="color:#f59e0b;border-color:#fde68a;">
                         <i class="fa-solid fa-key"></i>
                     </button>
                     <button class="btn-danger" onclick="softDeleteStaff('${s.id}','${window.escapeHtml(s.full_name)}')" title="Remove">
@@ -671,11 +671,11 @@ window.softDeleteStaff = async function(id, name) {
 };
 
 // ─── RESET PASSWORD ──────────────────────────────────────────
-let _resetTargetId = null;
+let _resetTargetEmail = null;
 
-window.openResetPwdModal = function(userId, name) {
-    _resetTargetId = userId;
-    document.getElementById('resetPwdForName').textContent = `Resetting password for: ${name}`;
+window.openResetPwdModal = function(email, name) {
+    _resetTargetEmail = email;
+    document.getElementById('resetPwdForName').textContent = 'Resetting password for: ' + name;
     document.getElementById('resetNewPwd').value = '';
     document.getElementById('resetPwdErr').style.display = 'none';
     document.getElementById('resetPwdModal').classList.add('open');
@@ -683,7 +683,7 @@ window.openResetPwdModal = function(userId, name) {
 
 window.closeResetPwdModal = function() {
     document.getElementById('resetPwdModal').classList.remove('open');
-    _resetTargetId = null;
+    _resetTargetEmail = null;
 };
 
 window.toggleResetEye = function() {
@@ -718,7 +718,7 @@ window.doResetPassword = async function() {
             },
             body: JSON.stringify({
                 mode:         'reset_password',
-                user_id:      _resetTargetId,
+                email:        _resetTargetEmail,
                 new_password: newPwd
             })
         });

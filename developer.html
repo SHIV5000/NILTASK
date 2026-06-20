@@ -920,8 +920,8 @@ window.toggleResetSection = function(id) {
 };
 
 window.resetPrincipalPassword = async function(tenantId) {
-    const input = document.getElementById(`newpwd-${tenantId}`);
-    const note  = document.getElementById(`pwdreset-note-${tenantId}`);
+    const input = document.getElementById('newpwd-' + tenantId);
+    const note  = document.getElementById('pwdreset-note-' + tenantId);
     const pwd   = input?.value?.trim();
     if (!pwd || pwd.length < 8) {
         note.style.color = 'var(--red)';
@@ -931,15 +931,28 @@ window.resetPrincipalPassword = async function(tenantId) {
     note.style.color = 'var(--text2)';
     note.textContent = 'Finding principal...';
 
-    const { data: profiles, error: pErr } = await sb
-        .from('profiles').select('id,full_name,email').eq('tenant_id', tenantId).eq('role','principal');
+    // Find the principal's profile id — check profiles.role first, then user_roles
+    let principalId = null, principalName = '';
 
-    let principalId = profiles?.[0]?.id;
-    if (!principalId) {
+    const { data: byRole } = await sb.from('profiles')
+        .select('id,full_name')
+        .eq('tenant_id', tenantId)
+        .eq('role', 'principal')
+        .maybeSingle();
+
+    if (byRole?.id) {
+        principalId  = byRole.id;
+        principalName = byRole.full_name || 'Principal';
+    } else {
         const { data: ur } = await sb.from('user_roles')
-            .select('user_id, roles(name)').eq('tenant_id', tenantId);
-        const principal = ur?.find(r => r.roles?.name === 'principal');
-        principalId = principal?.user_id;
+            .select('user_id, roles(name)')
+            .eq('tenant_id', tenantId);
+        const row = (ur || []).find(r => r.roles?.name === 'principal');
+        if (row?.user_id) {
+            principalId = row.user_id;
+            const { data: p } = await sb.from('profiles').select('full_name').eq('id', row.user_id).maybeSingle();
+            principalName = p?.full_name || 'Principal';
+        }
     }
 
     if (!principalId) {
@@ -949,19 +962,35 @@ window.resetPrincipalPassword = async function(tenantId) {
     }
 
     note.textContent = 'Resetting password...';
-    const { error } = await sb.rpc('dev_reset_user_password', {
-        p_user_id: principalId,
-        p_new_password: pwd
-    });
 
-    if (error) {
-        note.style.color = 'var(--red)';
-        note.textContent = 'Error: ' + error.message;
-    } else {
-        note.style.color = 'var(--accent-h)';
-        note.textContent = `✓ Password reset for ${profiles?.[0]?.full_name || 'principal'}. Share it verbally or via SMS.`;
-        input.value = '';
+    // Use the edge function (service-role key) — avoids any tenant restriction in SQL RPCs
+    const { data: { session } } = await sb.auth.getSession();
+    const resp = await fetch(SUPABASE_URL + '/functions/v1/create-school-user', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + session.access_token
+        },
+        body: JSON.stringify({ mode: 'reset_password', user_id: principalId, password: pwd })
+    });
+    const result = await resp.json();
+
+    if (!resp.ok || result.error) {
+        // Fallback: try the RPC directly
+        const { error: rpcErr } = await sb.rpc('dev_reset_user_password', {
+            p_user_id: principalId,
+            p_new_password: pwd
+        });
+        if (rpcErr) {
+            note.style.color = 'var(--red)';
+            note.textContent = 'Error: ' + rpcErr.message;
+            return;
+        }
     }
+
+    note.style.color = 'var(--accent-h)';
+    note.textContent = '✓ Password reset for ' + principalName + '. Share verbally or via SMS.';
+    input.value = '';
 };
 
 // ── PRINT SCHOOL DETAILS ──────────────────────────────────────

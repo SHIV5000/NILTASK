@@ -164,7 +164,7 @@ function renderAdmin() {
                     <thead><tr>
                         <th>Staff Member</th>
                         <th>Role</th>
-                        <th style="text-align:center;">Schedule</th>
+                        <th style="text-align:center;">Schedule Msg</th>
                         <th style="text-align:center;">Upload</th>
                         <th style="text-align:center;">Create Task</th>
                         <th style="text-align:center;">Task Hub</th>
@@ -173,9 +173,10 @@ function renderAdmin() {
                         <th style="text-align:center;">Dashboard</th>
                         <th style="text-align:center;">Admin Panel</th>
                         <th style="text-align:center;">Reminders</th>
+                        <th style="text-align:center;">Can Be Assigned</th>
                     </tr></thead>
                     <tbody id="rolesInlineTbody">
-                        <tr><td colspan="11" style="padding:20px;text-align:center;color:var(--text-secondary);">Loading...</td></tr>
+                        <tr><td colspan="12" style="padding:20px;text-align:center;color:var(--text-secondary);">Loading...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -812,44 +813,49 @@ window.loadScorecard = async function() {
 
 // ─── INLINE ROLES TABLE ──────────────────────────────────────
 const ROLE_PERMS_MAP = {
-    principal:       { schedule:1,upload:1,createTask:1,taskHub:1,groups:1,activity:1,dashboard:1,admin:1,manageStaff:1,reminders:1 },
-    vp_admin:        { schedule:1,upload:1,createTask:1,taskHub:1,groups:1,activity:1,dashboard:1,admin:1,manageStaff:1,reminders:1 },
-    hod:             { schedule:1,upload:1,createTask:1,taskHub:1,groups:1,activity:1,dashboard:1,admin:0,manageStaff:0,reminders:1 },
-    exam_controller: { schedule:1,upload:1,createTask:1,taskHub:1,groups:0,activity:1,dashboard:1,admin:0,manageStaff:0,reminders:1 },
-    coordinator:     { schedule:1,upload:1,createTask:1,taskHub:1,groups:0,activity:1,dashboard:0,admin:0,manageStaff:0,reminders:1 },
-    teacher:         { schedule:0,upload:1,createTask:0,taskHub:1,groups:0,activity:1,dashboard:0,admin:0,manageStaff:0,reminders:1 },
-    admin_staff:     { schedule:0,upload:1,createTask:0,taskHub:1,groups:0,activity:1,dashboard:0,admin:0,manageStaff:0,reminders:1 },
-    support_staff:   { schedule:0,upload:0,createTask:0,taskHub:0,groups:0,activity:1,dashboard:0,admin:0,manageStaff:0,reminders:1 },
-    management:      { schedule:1,upload:1,createTask:1,taskHub:1,groups:1,activity:1,dashboard:1,admin:1,manageStaff:0,reminders:1 },
+    principal:       { schedule:1,upload:1,createTask:1,taskHub:1,groups:1,activity:1,dashboard:1,admin:1,manageStaff:1,reminders:1,assignable:0 },
+    management:      { schedule:1,upload:1,createTask:1,taskHub:1,groups:1,activity:1,dashboard:1,admin:1,manageStaff:0,reminders:1,assignable:0 },
+    vp_admin:        { schedule:1,upload:1,createTask:1,taskHub:1,groups:1,activity:1,dashboard:1,admin:1,manageStaff:1,reminders:1,assignable:1 },
+    hod:             { schedule:1,upload:1,createTask:1,taskHub:1,groups:1,activity:1,dashboard:1,admin:0,manageStaff:0,reminders:1,assignable:1 },
+    exam_controller: { schedule:1,upload:1,createTask:1,taskHub:1,groups:1,activity:1,dashboard:1,admin:0,manageStaff:0,reminders:1,assignable:1 },
+    coordinator:     { schedule:1,upload:1,createTask:1,taskHub:1,groups:1,activity:1,dashboard:0,admin:0,manageStaff:0,reminders:1,assignable:1 },
+    teacher:         { schedule:0,upload:1,createTask:0,taskHub:1,groups:0,activity:1,dashboard:0,admin:0,manageStaff:0,reminders:1,assignable:1 },
+    admin_staff:     { schedule:0,upload:1,createTask:0,taskHub:1,groups:0,activity:1,dashboard:0,admin:0,manageStaff:0,reminders:1,assignable:1 },
+    support_staff:   { schedule:0,upload:1,createTask:0,taskHub:1,groups:0,activity:1,dashboard:0,admin:0,manageStaff:0,reminders:1,assignable:1 },
 };
 const PERM_LABELS = [
-    {key:'schedule',   label:'Schedule'},
-    {key:'upload',     label:'Upload'},
-    {key:'createTask', label:'Create Task'},
-    {key:'taskHub',    label:'Task Hub'},
-    {key:'groups',     label:'Manage Groups'},
-    {key:'activity',   label:'Activity Feed'},
-    {key:'dashboard',  label:'Dashboard'},
-    {key:'admin',      label:'Admin Panel'},
-    {key:'reminders',  label:'Reminders'},
+    {key:'schedule',    label:'Schedule Msg'},
+    {key:'upload',      label:'Upload Files'},
+    {key:'createTask',  label:'Create Task'},
+    {key:'taskHub',     label:'Task Hub'},
+    {key:'groups',      label:'Manage Groups'},
+    {key:'activity',    label:'Activity Feed'},
+    {key:'dashboard',   label:'Dashboard'},
+    {key:'admin',       label:'Admin Panel'},
+    {key:'reminders',   label:'Reminders'},
+    {key:'assignable',  label:'Can Be Assigned'},
 ];
 const ROLE_PERMS_MATRIX = [
-    { perm:'Send Messages',      principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:1 },
-    { perm:'Schedule Messages',  principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:0,support_staff:0 },
-    { perm:'Upload Files',       principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:0 },
-    { perm:'Create Tasks',       principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:0,support_staff:0 },
-    { perm:'View Task Hub',      principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:0 },
-    { perm:'Manage Groups',      principal:1,vp_admin:1,hod:1,exam_controller:0,teacher:0,support_staff:0 },
-    { perm:'View Activity Feed', principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:1 },
-    { perm:'View Dashboard',     principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:0,support_staff:0 },
-    { perm:'Admin Panel Access', principal:1,vp_admin:1,hod:0,exam_controller:0,teacher:0,support_staff:0 },
-    { perm:'Manage Staff',       principal:1,vp_admin:1,hod:0,exam_controller:0,teacher:0,support_staff:0 },
-    { perm:'Set Reminders',      principal:1,vp_admin:1,hod:1,exam_controller:1,teacher:1,support_staff:1 },
+    { perm:'Send Messages',      principal:1,vp_admin:1,hod:1,exam_controller:1,coordinator:1,teacher:1,support_staff:1 },
+    { perm:'Schedule Messages',  principal:1,vp_admin:1,hod:1,exam_controller:1,coordinator:1,teacher:0,support_staff:0 },
+    { perm:'Upload Files',       principal:1,vp_admin:1,hod:1,exam_controller:1,coordinator:1,teacher:1,support_staff:1 },
+    { perm:'Create Tasks',       principal:1,vp_admin:1,hod:1,exam_controller:1,coordinator:1,teacher:0,support_staff:0 },
+    { perm:'View Task Hub',      principal:1,vp_admin:1,hod:1,exam_controller:1,coordinator:1,teacher:1,support_staff:1 },
+    { perm:'Can Be Assigned Task',principal:0,vp_admin:1,hod:1,exam_controller:1,coordinator:1,teacher:1,support_staff:1 },
+    { perm:'Manage Groups/Depts',principal:1,vp_admin:1,hod:1,exam_controller:1,coordinator:1,teacher:0,support_staff:0 },
+    { perm:'View Activity Feed', principal:1,vp_admin:1,hod:1,exam_controller:1,coordinator:1,teacher:1,support_staff:1 },
+    { perm:'View Dashboard',     principal:1,vp_admin:1,hod:1,exam_controller:1,coordinator:0,teacher:0,support_staff:0 },
+    { perm:'Admin Panel',        principal:1,vp_admin:1,hod:0,exam_controller:0,coordinator:0,teacher:0,support_staff:0 },
+    { perm:'Manage Staff',       principal:1,vp_admin:1,hod:0,exam_controller:0,coordinator:0,teacher:0,support_staff:0 },
+    { perm:'Set Reminders',      principal:1,vp_admin:1,hod:1,exam_controller:1,coordinator:1,teacher:1,support_staff:1 },
+    { perm:'Edit/Delete Own Msg',principal:1,vp_admin:1,hod:1,exam_controller:1,coordinator:1,teacher:1,support_staff:1 },
+    { perm:'Moderate Others Msg',principal:1,vp_admin:1,hod:0,exam_controller:0,coordinator:0,teacher:0,support_staff:0 },
 ];
 const ROLE_COLS = [
     {key:'principal',label:'Principal'},{key:'vp_admin',label:'VP/Admin'},
     {key:'hod',label:'HOD'},{key:'exam_controller',label:'Exam Ctrl'},
-    {key:'teacher',label:'Teacher'},{key:'support_staff',label:'Support'},
+    {key:'coordinator',label:'Coordinator'},{key:'teacher',label:'Teacher'},
+    {key:'support_staff',label:'Support'},
 ];
 
 async function renderInlineRolesTable() {

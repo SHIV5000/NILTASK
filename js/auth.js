@@ -218,6 +218,7 @@ window.loadTenantContext = async function() {
     window.currentRole        = userRole?.role?.name        || 'teacher';
     window.currentRoleName    = userRole?.role?.display_name || 'Teacher';
     window.currentPermissions = userRole?.role?.permissions  || {};
+    window.currentDesignation = profile.designation || '';
 
     // Get feature flags for this school
     const { data: flags } = await sb.from('feature_flags')

@@ -38,6 +38,7 @@ function fmtLogin(ts) {
     renderInlineRolesTable();
     loadQuickTagsUI();
     await loadAdminData();
+    await loadArchivedStaff();
 })();
 
 // ─── RENDER SHELL ──────────────────────────────────────────────
@@ -135,6 +136,23 @@ function renderAdmin() {
                         </td></tr>
                     </tbody>
                 </table>
+            </div>
+            <!-- Archived Staff -->
+            <div id="archivedSection" style="display:none;border-top:1px solid var(--border-color);">
+                <div style="padding:10px 20px;background:var(--bg-body);display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-size:12px;font-weight:700;color:var(--text-secondary);"><i class="fa-solid fa-box-archive" style="margin-right:6px;color:#f59e0b;"></i>Archived Staff</span>
+                    <button class="btn-outline btn-sm" onclick="loadArchivedStaff()" style="font-size:11px;">Refresh</button>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="staff-table">
+                        <thead><tr>
+                            <th>Staff Member</th><th>Role</th><th>Archived</th><th>Actions</th>
+                        </tr></thead>
+                        <tbody id="archivedTableBody">
+                            <tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text-secondary);">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div></div>
 
@@ -467,9 +485,28 @@ function renderStaffTable(staff) {
                     <button class="btn-outline btn-sm" onclick="openResetPwdModal('${window.escapeHtml(s.email)}','${window.escapeHtml(s.full_name)}')" title="Reset Password" style="color:#f59e0b;border-color:#fde68a;">
                         <i class="fa-solid fa-key"></i>
                     </button>
-                    <button class="btn-danger" onclick="softDeleteStaff('${s.id}','${window.escapeHtml(s.full_name)}')" title="Remove">
-                        <i class="fa-solid fa-ban"></i>
-                    </button>
+                    <div style="position:relative;display:inline-block;" class="action-menu-wrap">
+                        <button class="btn-danger" title="Remove Options"
+                            onclick="window._toggleStaffMenu(this)"
+                            style="padding:5px 10px;">
+                            <i class="fa-solid fa-ellipsis-vertical"></i>
+                        </button>
+                        <div class="staff-action-menu" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;
+                             background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:10px;
+                             box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:9999;min-width:180px;overflow:hidden;">
+                            <button onclick="window._toggleStaffMenu(this.closest('.action-menu-wrap').querySelector('button'));archiveStaff('${s.id}','${window.escapeHtml(s.full_name)}')"
+                                style="width:100%;padding:10px 14px;background:none;border:none;cursor:pointer;
+                                       text-align:left;font-size:13px;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+                                <i class="fa-solid fa-box-archive" style="color:#f59e0b;"></i> Archive
+                            </button>
+                            <div style="height:1px;background:var(--border-color);"></div>
+                            <button onclick="window._toggleStaffMenu(this.closest('.action-menu-wrap').querySelector('button'));permanentDeleteStaff('${s.id}','${window.escapeHtml(s.full_name)}')"
+                                style="width:100%;padding:10px 14px;background:none;border:none;cursor:pointer;
+                                       text-align:left;font-size:13px;color:#ef4444;display:flex;align-items:center;gap:8px;">
+                                <i class="fa-solid fa-trash"></i> Delete Permanently
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </td>
         </tr>`;
@@ -657,17 +694,94 @@ window.toggleApproval = async function(id, current) {
 };
 
 // ─── SOFT DELETE ─────────────────────────────────────────────
-window.softDeleteStaff = async function(id, name) {
-    if (!confirm(`Remove ${name} from this school?\n\nThis will block their login. They will not be deleted from the system.`)) return;
+// ─── STAFF MENU TOGGLE ───────────────────────────────────────
+window._toggleStaffMenu = function(btn) {
+    const menu = btn.closest('.action-menu-wrap').querySelector('.staff-action-menu');
+    const isOpen = menu.style.display === 'block';
+    document.querySelectorAll('.staff-action-menu').forEach(m => m.style.display = 'none');
+    menu.style.display = isOpen ? 'none' : 'block';
+    if (!isOpen) {
+        setTimeout(() => {
+            document.addEventListener('click', function _c(e) {
+                if (!e.target.closest('.action-menu-wrap')) {
+                    document.querySelectorAll('.staff-action-menu').forEach(m => m.style.display = 'none');
+                    document.removeEventListener('click', _c);
+                }
+            });
+        }, 0);
+    }
+};
 
+// ─── ARCHIVE (soft delete — recoverable by developer) ─────────
+window.archiveStaff = async function(id, name) {
+    if (!confirm('Archive ' + name + '?\n\nThey will be blocked from logging in but can be restored later.')) return;
     const { error } = await sb.from('allowed_users')
         .update({ deleted_at: new Date().toISOString(), approved: false })
         .eq('id', id)
         .eq('tenant_id', window.currentTenantId);
-
-    if (error) { showToast('Remove failed: ' + error.message, '#dc2626'); return; }
-    showToast(`${name} removed from school`, '#f59e0b');
+    if (error) { showToast('Archive failed: ' + error.message, '#dc2626'); return; }
+    showToast(name + ' archived ✓', '#f59e0b');
     await loadStaff();
+    await loadArchivedStaff();
+};
+
+// ─── PERMANENT DELETE ─────────────────────────────────────────
+window.permanentDeleteStaff = async function(id, name) {
+    if (!confirm('⚠️ Permanently delete ' + name + '?\n\nThis cannot be undone. Their messages and task history will remain but their account will be gone.')) return;
+    if (!confirm('Are you absolutely sure? Type OK to confirm.')) return;
+    const { error } = await sb.from('allowed_users')
+        .delete()
+        .eq('id', id)
+        .eq('tenant_id', window.currentTenantId);
+    if (error) { showToast('Delete failed: ' + error.message, '#dc2626'); return; }
+    showToast(name + ' permanently deleted', '#ef4444');
+    await loadStaff();
+};
+
+// ─── LOAD ARCHIVED STAFF ──────────────────────────────────────
+window.loadArchivedStaff = async function() {
+    const section = document.getElementById('archivedSection');
+    const tbody   = document.getElementById('archivedTableBody');
+    if (!section || !tbody) return;
+
+    const { data, error } = await sb.from('allowed_users')
+        .select('*')
+        .eq('tenant_id', window.currentTenantId)
+        .not('deleted_at', 'is', null)
+        .order('deleted_at', { ascending: false });
+
+    if (error) { tbody.innerHTML = '<tr><td colspan="4" style="padding:16px;color:#ef4444;">Error: ' + error.message + '</td></tr>'; return; }
+
+    if (!data || data.length === 0) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = 'block';
+    tbody.innerHTML = data.map(s => {
+        const archivedDate = s.deleted_at ? new Date(s.deleted_at).toLocaleDateString('en-IN') : '—';
+        return '<tr>' +
+            '<td><div style="font-weight:700;font-size:13px;">' + window.escapeHtml(s.full_name || '—') + '</div>' +
+            '<div style="font-size:11px;color:var(--text-secondary);">' + window.escapeHtml(s.email || '') + '</div></td>' +
+            '<td><span class="role-pill role-' + (s.role||'teacher') + '">' + (s.role||'').replace('_',' ') + '</span></td>' +
+            '<td style="font-size:12px;color:var(--text-secondary);">' + archivedDate + '</td>' +
+            '<td><button class="btn-outline btn-sm" onclick="restoreStaff(\'' + s.id + '\',\'' + window.escapeHtml(s.full_name) + '\')" style="color:#16a34a;border-color:#16a34a;">' +
+            '<i class="fa-solid fa-rotate-left"></i> Restore</button></td>' +
+            '</tr>';
+    }).join('');
+};
+
+// ─── RESTORE ARCHIVED STAFF ───────────────────────────────────
+window.restoreStaff = async function(id, name) {
+    if (!confirm('Restore ' + name + '? They will be able to log in again.')) return;
+    const { error } = await sb.from('allowed_users')
+        .update({ deleted_at: null, approved: true })
+        .eq('id', id)
+        .eq('tenant_id', window.currentTenantId);
+    if (error) { showToast('Restore failed: ' + error.message, '#dc2626'); return; }
+    showToast(name + ' restored ✓', '#16a34a');
+    await loadStaff();
+    await loadArchivedStaff();
 };
 
 // ─── RESET PASSWORD ──────────────────────────────────────────

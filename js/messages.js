@@ -280,10 +280,7 @@ window.renderMessages = function(messages) {
         const isBookmarked = window.bookmarkedSet.has(msg.id);
 
         // Create Task visible only to non-teachers and only if tasks_enabled
-        const showCreateTask = window.canCreateTask ? window.canCreateTask() : false;
-        const createTaskBtn  = showCreateTask
-            ? `<button class="dd-item" onclick="window.closeDropdowns(); window.openTaskModal('${msg.id}', '${window.escapeHtml(msg.text)}')"><i class="ti ti-clipboard-check"></i>Create Task</button>`
-            : '';
+        const createTaskBtn = `<button class="dd-item rbac-create-task" onclick="window.closeDropdowns(); window.openTaskModal('${msg.id}', '${window.escapeHtml(msg.text)}')"><i class="ti ti-clipboard-check"></i>Create Task</button>`;
 
         const ddItems = isSent
             ? `${createTaskBtn}
@@ -374,6 +371,7 @@ window.renderMessages = function(messages) {
 
     const dateLabel = `<div class="day-label">Today — ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>`;
     c.innerHTML = dateLabel + topLevel.map(msg => buildMsgHTML(msg)).join('');
+    if (typeof window.applyRBAC === 'function') window.applyRBAC();
 };
 
 // ─── REACTION PICKER (body-appended, fixed position, never clipped) ──────────

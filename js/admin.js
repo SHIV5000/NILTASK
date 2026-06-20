@@ -1191,7 +1191,7 @@ window.openBulkAddModal = function() {
                                 <td style="padding:5px 8px;border-bottom:1px solid var(--border-color);">${(role||'teacher').replace(/_/g,' ')}</td>
                                 <td style="padding:5px 8px;border-bottom:1px solid var(--border-color);">${dept||'—'}</td>
                                 <td style="padding:5px 8px;border-bottom:1px solid var(--border-color);">
-                                    <span class="pwd-cell" data-pwd="${pwd}" data-hidden="1" style="font-family:'Inter',sans-serif;letter-spacing:2px;">••••••••</span>
+                                    <span class="pwd-cell" data-pwd="${pwd}" data-hidden="1" style="font-family:monospace;letter-spacing:1px;">••••••••</span>
                                 </td>
                             </tr>`;
                         }).join('')}

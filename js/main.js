@@ -291,7 +291,7 @@ window.renderMainApp = function() {
                         </button>
                     </div>
                     <div class="flex items-center gap-4" style="color:var(--text-secondary);">
-                        ${window.canSchedule?.() !== false ? `
+                        ${window.canSchedule?.() === true ? `
                         <div class="topbar-icon-btn top-bar-icon" id="topBarScheduleBtn" onclick="window.openTopPanel('scheduled')" title="Scheduled Messages">
                             <i class="ti ti-clock text-xl"></i><span>Schedule</span>
                         </div>` : ''}
@@ -346,7 +346,7 @@ window.renderMainApp = function() {
                                 <div id="richEditor" class="w-full" style="color:var(--text-primary);"></div>
                             </div>
                             <button onclick="window.openLinkModal('main')" class="p-2 transition-colors" title="Insert Link Pill" style="color:var(--text-secondary);"><i class="fa-solid fa-link text-[16px]"></i></button>
-                            ${window.canSchedule?.() !== false ? '<button onclick="window.showScheduleModal()" class="p-2 transition-colors" title="Schedule" style="color:var(--text-secondary);"><i class="ti ti-clock text-xl"></i></button>' : ''}
+                            ${window.canSchedule?.() === true ? '<button onclick="window.showScheduleModal()" class="p-2 transition-colors" title="Schedule" style="color:var(--text-secondary);"><i class="ti ti-clock text-xl"></i></button>' : ''}
                             <button id="sendBtn" class="text-white rounded-lg shadow-md transition-colors h-[38px] w-[46px] flex items-center justify-center mb-0.5" style="background-color:var(--accent);"><i class="ti ti-send text-lg"></i></button>
                         </div>
                     </div>

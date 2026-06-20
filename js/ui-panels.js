@@ -284,6 +284,7 @@ window.animateBell = function() {
 // ─── ACTIVITY FEED (right sidebar, task-hub size) ──────────────────────────
 
 window.showScheduleModal = function() {
+    if (window.guardSchedule?.()) return; // RBAC gate
     if (!window.quillEditor) return;
     let txt = window.quillEditor.root.innerHTML.trim();
     txt = txt.replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');

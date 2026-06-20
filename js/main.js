@@ -213,7 +213,7 @@ window.renderMainApp = function() {
 
                 <!-- B: App name + actions row -->
                 <div style="padding:8px 10px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:6px;">
-                    <span style="flex:1;font-size:12px;font-weight:800;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Noted For Action</span>
+                    <span style="flex:1;font-size:13px;font-weight:600;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Noted For Action</span>
                     ${window.canCreateGroup?.() !== false ? `
                     <button onclick="window.openNewGroupModal()" title="Create Department"
                         style="width:26px;height:26px;border-radius:7px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0;">

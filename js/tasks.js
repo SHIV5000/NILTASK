@@ -37,6 +37,7 @@ window.notifyUser = async function(userId, message, messageId = null, type = 'ta
 };
 
 window.openTaskModal = async function(mid, text) {
+    if (window.guardCreateTask?.()) return; // RBAC gate
     window.currentMessageId = mid;
     let tmp = document.createElement('DIV');
     tmp.innerHTML = text;

@@ -209,7 +209,39 @@
     --badge-low-bg: #1a3d2a;      --badge-low-text: #4ade80;
 }
 
-body, input, select, textarea, button, .jira-card { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+body, input, select, textarea, button, .jira-card {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── WhatsApp-scale type system ─────────────────────────────────────── */
+/* App name / screen header */
+.app-name, .topbar-title            { font-size: 19px; font-weight: 600; }
+/* Room / chat name in header */
+#roomTitleDisplay                   { font-size: 16px; font-weight: 600; }
+/* Sidebar section label (DEPARTMENTS / STAFF MEMBERS) */
+.sidebar-section-label              { font-size: 12px; font-weight: 700; letter-spacing: .04em; }
+/* Sidebar chat-list item name */
+.channel-item span                  { font-size: 14px; font-weight: 500; }
+/* Message bubbles */
+.msg-bubble, .ql-editor, .ql-editor p { font-size: 14.5px !important; line-height: 1.55; }
+/* Message sender name above bubble */
+.msg-sender-name                    { font-size: 13px; font-weight: 600; }
+/* Message timestamp */
+.msg-ts, .msg-time, [class*="timestamp"] { font-size: 11px; font-weight: 400; }
+/* Input / composer */
+.ql-editor                          { font-size: 15px !important; }
+/* Modal headings */
+.modal-card h3, .modal-title        { font-size: 15px; font-weight: 700; }
+/* Stat values in scorecard / dashboard */
+.stat-val                           { font-size: 26px; font-weight: 800; }
+/* Small labels / badges */
+.stat-lbl, .role-pill, .notif-badge-text { font-size: 11px; font-weight: 600; }
+/* Version string */
+.version-str                        { font-size: 10px; }
 body { background-color: var(--bg-body); color: var(--text-primary); transition: background-color 0.3s, color 0.3s; }
 
 /* Dark Mode Accessibility Tweaks */

@@ -559,18 +559,45 @@ window.saveStaff = async function() {
 
     try {
         if (editId) {
-            // ── EDIT: update allowed_users only (no auth changes)
-            const { error } = await sb.from('allowed_users')
+            // 1. Update allowed_users (name, role, designation, dept)
+            const { error: auErr } = await sb.from('allowed_users')
                 .update({ full_name, role, designation, department })
                 .eq('id', editId)
                 .eq('tenant_id', window.currentTenantId);
-            if (error) throw new Error(error.message);
+            if (auErr) throw new Error(auErr.message);
 
-            // Also update profile if it exists
+            // 2. Update profiles (name, designation, dept, role column)
+            const staffEmail = document.getElementById('sfEmail').value.trim().toLowerCase();
             await sb.from('profiles')
-                .update({ full_name, designation, department })
-                .eq('email', document.getElementById('sfEmail').value.trim())
+                .update({ full_name, designation, department, role })
+                .eq('email', staffEmail)
                 .eq('tenant_id', window.currentTenantId);
+
+            // 3. Update user_roles — THIS is what auth.js reads at login
+            // First find the role_id from the roles table
+            const { data: roleRow } = await sb.from('roles')
+                .select('id')
+                .eq('name', role)
+                .maybeSingle();
+
+            if (roleRow?.id) {
+                // Find the profile id for this user
+                const { data: prof } = await sb.from('profiles')
+                    .select('id')
+                    .eq('email', staffEmail)
+                    .eq('tenant_id', window.currentTenantId)
+                    .maybeSingle();
+
+                if (prof?.id) {
+                    // Upsert user_roles so role takes effect on next login
+                    await sb.from('user_roles')
+                        .upsert({
+                            user_id:   prof.id,
+                            tenant_id: window.currentTenantId,
+                            role_id:   roleRow.id
+                        }, { onConflict: 'user_id,tenant_id' });
+                }
+            }
 
         } else {
             // ── ADD: call Edge Function which creates auth user + profile + role + allowed_users
@@ -589,7 +616,10 @@ window.saveStaff = async function() {
 
         window.closeStaffModal();
         await loadStaff();
-        showToast(editId ? 'Staff updated ✓' : 'Staff member added ✓', '#16a34a');
+        const msg = editId
+            ? 'Staff updated ✓' + (editId ? ' — user must log out and back in for role change to take effect.' : '')
+            : 'Staff member added ✓';
+        showToast(msg, '#16a34a');
 
     } catch (e) {
         showErr(e.message);

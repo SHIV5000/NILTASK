@@ -106,47 +106,48 @@ window.guardSchedule = function() {
 // MAIN RBAC ENFORCEMENT
 // ─────────────────────────────────────────────────────────────
 window.applyRBAC = function() {
-    _applyTopBar();
-    _applyInputArea();
-    _applyTaskHub();
+    const role = window.currentRole || '';
+
+    const canTask  = window._ROLES?.TASK_CREATORS.includes(role) && window.hasFeature('tasks_enabled');
+    const canSched = window._ROLES?.SCHEDULERS.includes(role)     && window.hasFeature('scheduling_enabled');
+    const canGroup = window._ROLES?.GROUP_MANAGERS.includes(role);
+
+    // ── Schedule ─────────────────────────────────────────────
+    const hide = v => v ? '' : 'none';
+    const topSched = document.getElementById('topBarScheduleBtn');
+    if (topSched) topSched.style.display = hide(canSched);
+
+    const compSched = document.getElementById('composerScheduleBtn');
+    if (compSched) compSched.style.display = hide(canSched);
+
+    // ── Create Task (all dd-items with class rbac-create-task) ─
+    document.querySelectorAll('.rbac-create-task')
+        .forEach(el => { el.style.display = hide(canTask); });
+
+    // ── Group gear ────────────────────────────────────────────
+    document.querySelectorAll('[onclick*="openGroupSettings"]')
+        .forEach(el => { el.style.display = hide(canGroup); });
+
+    // ── Create group button ───────────────────────────────────
+    document.querySelectorAll('[onclick*="openNewGroupModal"]')
+        .forEach(el => { el.style.display = hide(canGroup); });
+
+    // ── Right sidebar / Task hub (visible to ALL) ─────────────
+    // no hiding — task hub is open to all roles
+
     checkSubscription();
 };
 
-function _applyTopBar() {
-    if (!window.canSchedule()) {
-        document.querySelectorAll(
-            '.topbar-icon-btn[onclick*="openTopPanel(\'scheduled\'"],' +
-            '.topbar-icon-btn[onclick*="showScheduleModal"]'
-        ).forEach(el => el.style.display = 'none');
-        document.querySelectorAll('.top-bar-icon').forEach(btn => {
-            if (btn.textContent?.trim().toLowerCase() === 'schedule')
-                btn.style.display = 'none';
-        });
-    }
-}
-
+function _applyTopBar()    {}
 function _applyInputArea() {
-    if (!window.canUpload()) {
+    if (!window.canUpload?.()) {
         const fileBtn = document.querySelector('[onclick*="fileAttachment"]');
         if (fileBtn) fileBtn.style.display = 'none';
         const fileInput = document.getElementById('fileAttachment');
         if (fileInput) fileInput.disabled = true;
     }
-    if (!window.canSchedule()) {
-        document.querySelectorAll('button[onclick*="showScheduleModal"]')
-            .forEach(el => el.style.display = 'none');
-    }
 }
-
-function _applyTaskHub() {
-    // Task hub is visible to ALL — no hiding
-    // "Create Task" button hidden for non-creators
-    if (!window.canCreateTask()) {
-        document.querySelectorAll(
-            'button[onclick*="openCreateTask"],button[onclick*="createTask"],#createTaskBtn'
-        ).forEach(el => el.style.display = 'none');
-    }
-}
+function _applyTaskHub() {}
 
 // ─────────────────────────────────────────────────────────────
 // GROUP GEAR RBAC

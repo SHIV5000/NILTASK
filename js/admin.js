@@ -36,6 +36,7 @@ function fmtLogin(ts) {
     }
     renderAdmin();
     renderInlineRolesTable();
+    loadQuickTagsUI();
     await loadAdminData();
 })();
 
@@ -179,6 +180,28 @@ function renderAdmin() {
                 </table>
             </div>
         </div></div>
+
+        <hr style="border:none;border-top:1px solid var(--border-color);margin:0 0 24px;">
+
+        <!-- QUICK TAGS -->
+        <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;margin-bottom:24px;box-shadow:0 1px 4px rgba(0,0,0,.07);">
+            ${sectionHead('🏷️ Quick Text Tags','Manage tag chips shown in the reaction menu for all staff','tags')}
+            <div id="section-tags">
+                <div style="padding:12px 20px;border-bottom:1px solid var(--border-color);display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                    <input type="text" id="newTagInput" placeholder="New tag label..." maxlength="20"
+                        style="padding:8px 12px;border-radius:9px;border:1px solid var(--border-color);background:var(--bg-body);color:var(--text-primary);font-size:13px;outline:none;flex:1;min-width:140px;">
+                    <input type="color" id="newTagColor" value="#1d4ed8" title="Tag colour"
+                        style="width:36px;height:34px;border-radius:8px;border:1px solid var(--border-color);cursor:pointer;padding:2px;">
+                    <button class="btn-accent" onclick="window.addQuickTag()" style="font-size:13px;padding:8px 14px;">
+                        <i class="fa-solid fa-plus"></i> Add Tag
+                    </button>
+                </div>
+                <div id="tagsContainer" style="padding:14px 20px;display:flex;flex-wrap:wrap;gap:10px;min-height:56px;">
+                    <span style="font-size:12px;color:var(--text-secondary);">Loading...</span>
+                </div>
+                <div style="padding:4px 20px 12px;font-size:11px;color:var(--text-secondary);">Changes appear immediately in the reaction menu for all staff.</div>
+            </div>
+        </div>
 
         <hr style="border:none;border-top:1px solid var(--border-color);margin:0 0 24px;">
 
@@ -1306,6 +1329,81 @@ window._toggleSection = function(id) {
     const collapsed = body.style.display === 'none';
     body.style.display = collapsed ? '' : 'none';
     if (chev) chev.style.transform = collapsed ? '' : 'rotate(180deg)';
+};
+
+// ─── QUICK TAGS ───────────────────────────────────────────────
+const DEFAULT_TAGS = [
+    {v:'Thank You',c:'#16a34a',bg:'#f0fdf4',border:'#bbf7d0'},
+    {v:'Noted',    c:'#1d4ed8',bg:'#eff6ff',border:'#bfdbfe'},
+    {v:'Copied',   c:'#7c3aed',bg:'#f5f3ff',border:'#ddd6fe'},
+    {v:'Yes Sir',  c:'#c2410c',bg:'#fff7ed',border:'#fed7aa'},
+    {v:'Yes Madam',c:'#be185d',bg:'#fdf2f8',border:'#fbcfe8'},
+];
+
+function getTagKey() { return 'quickTags_' + (window.currentTenantId || 'default'); }
+
+function loadQuickTagsUI() {
+    const container = document.getElementById('tagsContainer');
+    if (!container) return;
+    const raw = localStorage.getItem(getTagKey());
+    const tags = raw ? JSON.parse(raw) : DEFAULT_TAGS;
+    window._quickTags = tags; // keep messages.js in sync
+    if (!tags.length) {
+        container.innerHTML = '<span style="font-size:12px;color:var(--text-secondary);">No tags yet. Add one above.</span>';
+        return;
+    }
+    container.innerHTML = tags.map((t,i) =>
+        '<div style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px 5px 12px;border-radius:20px;font-size:13px;font-weight:700;cursor:default;border:1px solid ' + t.border + ';background:' + t.bg + ';color:' + t.c + ';">' +
+        t.v +
+        '<button onclick="window.editQuickTag(' + i + ')" title="Edit" style="background:none;border:none;cursor:pointer;color:' + t.c + ';font-size:11px;padding:0 2px;opacity:.7;">✏️</button>' +
+        '<button onclick="window.deleteQuickTag(' + i + ')" title="Delete" style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:11px;padding:0 2px;">✕</button>' +
+        '</div>'
+    ).join('');
+}
+
+window.addQuickTag = function() {
+    const label = document.getElementById('newTagInput')?.value.trim();
+    const hex   = document.getElementById('newTagColor')?.value || '#1d4ed8';
+    if (!label) { showToast('Enter a tag label first.','#ef4444'); return; }
+    const raw  = localStorage.getItem(getTagKey());
+    const tags = raw ? JSON.parse(raw) : [...DEFAULT_TAGS];
+    if (tags.find(t => t.v.toLowerCase() === label.toLowerCase())) {
+        showToast('Tag already exists.','#f59e0b'); return;
+    }
+    const bg = hex + '18', border = hex + '55';
+    tags.push({v:label, c:hex, bg, border});
+    localStorage.setItem(getTagKey(), JSON.stringify(tags));
+    window._quickTags = tags;
+    document.getElementById('newTagInput').value = '';
+    loadQuickTagsUI();
+    showToast('"' + label + '" tag added.','#16a34a');
+};
+
+window.editQuickTag = function(idx) {
+    const raw  = localStorage.getItem(getTagKey());
+    const tags = raw ? JSON.parse(raw) : [...DEFAULT_TAGS];
+    const t    = tags[idx];
+    if (!t) return;
+    const newLabel = prompt('Edit tag label:', t.v);
+    if (newLabel === null) return;
+    const trimmed = newLabel.trim();
+    if (!trimmed) return;
+    tags[idx].v = trimmed;
+    localStorage.setItem(getTagKey(), JSON.stringify(tags));
+    window._quickTags = tags;
+    loadQuickTagsUI();
+};
+
+window.deleteQuickTag = function(idx) {
+    const raw  = localStorage.getItem(getTagKey());
+    const tags = raw ? JSON.parse(raw) : [...DEFAULT_TAGS];
+    const name = tags[idx]?.v;
+    if (!name || !confirm('Delete tag "' + name + '"?')) return;
+    tags.splice(idx, 1);
+    localStorage.setItem(getTagKey(), JSON.stringify(tags));
+    window._quickTags = tags;
+    loadQuickTagsUI();
+    showToast('"' + name + '" deleted.','#ef4444');
 };
 
 // ─── THEME TOGGLE ─────────────────────────────────────────────

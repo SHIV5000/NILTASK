@@ -963,29 +963,41 @@ window.resetPrincipalPassword = async function(tenantId) {
 
     note.textContent = 'Resetting password...';
 
-    // Use the edge function (service-role key) — avoids any tenant restriction in SQL RPCs
     const { data: { session } } = await sb.auth.getSession();
+
+    // Get the principal's email — more reliable than user_id for auth lookup
+    let principalEmail = '';
+    const { data: profEmail } = await sb.from('profiles')
+        .select('email').eq('id', principalId).maybeSingle();
+    principalEmail = profEmail?.email || '';
+
+    // If RLS blocked profiles query, fall back to allowed_users
+    if (!principalEmail) {
+        const { data: au } = await sb.from('allowed_users')
+            .select('email').eq('tenant_id', tenantId).eq('role', 'principal').maybeSingle();
+        principalEmail = au?.email || '';
+    }
+
+    if (!principalEmail) {
+        note.style.color = 'var(--red)';
+        note.textContent = 'Could not find principal email.';
+        return;
+    }
+
     const resp = await fetch(SUPABASE_URL + '/functions/v1/create-school-user', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer ' + session.access_token
         },
-        body: JSON.stringify({ mode: 'reset_password', user_id: principalId, password: pwd })
+        body: JSON.stringify({ mode: 'reset_password', email: principalEmail, password: pwd })
     });
     const result = await resp.json();
 
     if (!resp.ok || result.error) {
-        // Fallback: try the RPC directly
-        const { error: rpcErr } = await sb.rpc('dev_reset_user_password', {
-            p_user_id: principalId,
-            p_new_password: pwd
-        });
-        if (rpcErr) {
-            note.style.color = 'var(--red)';
-            note.textContent = 'Error: ' + rpcErr.message;
-            return;
-        }
+        note.style.color = 'var(--red)';
+        note.textContent = 'Error: ' + (result.error || 'Reset failed');
+        return;
     }
 
     note.style.color = 'var(--accent-h)';

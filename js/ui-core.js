@@ -227,9 +227,9 @@ window.setTheme = function(themeId) {
     localStorage.setItem('theme', themeId);
     window.applyTheme();
     const label = (window.THEME_LIST.find(t => t.id === themeId) || {}).label || themeId;
-    window.showCenterToast(`${label} theme activated`, 'fa-solid fa-palette');
+    window.showCenterToast(label + ' theme activated', 'fa-solid fa-palette');
     const panel = document.getElementById('themePanel');
-    if (panel) panel.style.display = 'none';
+    if (panel) panel.remove();
 };
 
 window.toggleThemePanel = function() {
@@ -243,7 +243,7 @@ window.toggleThemePanel = function() {
     panel = document.createElement('div');
     panel.id = 'themePanel';
     panel.className = 'top-panel-dropdown';
-    panel.style.cssText = 'position:fixed;padding:10px;min-width:240px;z-index:99999;';
+    panel.style.cssText = 'position:fixed;padding:12px;min-width:260px;z-index:99999;';
     panel.innerHTML = `<div class="theme-panel-title">Choose Theme</div>
         <div class="theme-toggle-wrap" id="themeToggleWrap"></div>`;
     document.body.appendChild(panel);

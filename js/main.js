@@ -291,10 +291,9 @@ window.renderMainApp = function() {
                         </button>
                     </div>
                     <div class="flex items-center gap-4" style="color:var(--text-secondary);">
-                        ${window.canSchedule?.() === true ? `
                         <div class="topbar-icon-btn top-bar-icon" id="topBarScheduleBtn" onclick="window.openTopPanel('scheduled')" title="Scheduled Messages">
                             <i class="ti ti-clock text-xl"></i><span>Schedule</span>
-                        </div>` : ''}
+                        </div>
                         <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('reminders')" title="Reminders">
                             <i class="fa-solid fa-stopwatch text-[18px]"></i><span>Remind</span>
                         </div>
@@ -346,7 +345,7 @@ window.renderMainApp = function() {
                                 <div id="richEditor" class="w-full" style="color:var(--text-primary);"></div>
                             </div>
                             <button onclick="window.openLinkModal('main')" class="p-2 transition-colors" title="Insert Link Pill" style="color:var(--text-secondary);"><i class="fa-solid fa-link text-[16px]"></i></button>
-                            ${window.canSchedule?.() === true ? '<button onclick="window.showScheduleModal()" class="p-2 transition-colors" title="Schedule" style="color:var(--text-secondary);"><i class="ti ti-clock text-xl"></i></button>' : ''}
+                            <button id="composerScheduleBtn" onclick="window.showScheduleModal()" class="p-2 transition-colors" title="Schedule" style="color:var(--text-secondary);"><i class="ti ti-clock text-xl"></i></button>
                             <button id="sendBtn" class="text-white rounded-lg shadow-md transition-colors h-[38px] w-[46px] flex items-center justify-center mb-0.5" style="background-color:var(--accent);"><i class="ti ti-send text-lg"></i></button>
                         </div>
                     </div>
@@ -732,7 +731,9 @@ window.renderMainApp = function() {
 
     if (typeof window.initResizers === 'function') window.initResizers();
     if (typeof window.loadChatsList === 'function') window.loadChatsList();
-    if (typeof window.loadMessages === 'function') window.loadMessages();
+    if (typeof window.loadMessages === 'function') window.loadMessages().then?.(() => {
+        if (typeof window.applyRBAC === 'function') window.applyRBAC();
+    });
     if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel();
 
     // ── Initialise mobile layout after render ────────────────

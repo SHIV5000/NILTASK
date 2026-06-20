@@ -73,6 +73,36 @@ window.canForward      = () => true;
 window.canAccessAdmin  = () => R.ADMIN_PANEL.includes(window.currentRole);
 
 // ─────────────────────────────────────────────────────────────
+// SERVER-SIDE GUARD — called at submission, not just UI hide
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Call this at the TOP of any task creation function.
+ * Returns true if blocked (show error), false if allowed.
+ */
+window.guardCreateTask = function() {
+    if (!window.canCreateTask()) {
+        window.showCenterToast(
+            'Task creation is not allowed for your role (' + (window.currentRoleName || window.currentRole) + ').',
+            'fa-solid fa-ban', 'text-red-400'
+        );
+        return true; // blocked
+    }
+    return false; // allowed
+};
+
+window.guardSchedule = function() {
+    if (!window.canSchedule()) {
+        window.showCenterToast(
+            'Scheduled messages are not available for your role.',
+            'fa-solid fa-ban', 'text-red-400'
+        );
+        return true;
+    }
+    return false;
+};
+
+// ─────────────────────────────────────────────────────────────
 // MAIN RBAC ENFORCEMENT
 // ─────────────────────────────────────────────────────────────
 window.applyRBAC = function() {

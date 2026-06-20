@@ -280,7 +280,7 @@ window.renderMessages = function(messages) {
         const isBookmarked = window.bookmarkedSet.has(msg.id);
 
         // Create Task visible only to non-teachers and only if tasks_enabled
-        const showCreateTask = window.canCreateTask ? window.canCreateTask() : true;
+        const showCreateTask = window.canCreateTask ? window.canCreateTask() : false;
         const createTaskBtn  = showCreateTask
             ? `<button class="dd-item" onclick="window.closeDropdowns(); window.openTaskModal('${msg.id}', '${window.escapeHtml(msg.text)}')"><i class="ti ti-clipboard-check"></i>Create Task</button>`
             : '';

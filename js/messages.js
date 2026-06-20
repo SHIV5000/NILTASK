@@ -358,24 +358,8 @@ window.renderMessages = function(messages) {
             <div class="b-text">${displayHtml}</div>
             <div class="b-footer" id="footer-${msg.id}">
               ${persistedReactionsHTML}
-              <div class="relative inline-block group/reaction z-50">
-                  <button class="e-add" title="Add reaction"><i class="ti ti-mood-smile"></i></button>
-                  <div class="absolute bottom-full ${isSent ? 'right-0' : 'left-0'} pb-1.5 hidden group-hover/reaction:block cursor-default z-[100]">
-                      <div class="bg-white border border-gray-200 shadow-2xl rounded-xl p-3 min-w-[280px] flex flex-col">
-                          <div class="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Reactions</div>
-                          <div class="flex flex-wrap gap-1 border-b border-gray-100 pb-2 mb-2">
-                              ${['👍','❤️','😂','😮','😢','🙏','🎉','🔥'].map(e =>
-                                  `<span class="cursor-pointer hover:bg-gray-100 p-1.5 rounded-lg text-lg transition-transform hover:scale-125" onclick="window.applyReaction('${msg.id}', '${e}', 'emoji')">${e}</span>`
-                              ).join('')}
-                          </div>
-                          <div class="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Quick Tags</div>
-                          <div class="flex flex-wrap gap-2">
-                              ${[['Thank You','green'],['Noted','blue'],['Copied','purple'],['Yes Sir','orange'],['Yes Madam','pink']].map(([v,c]) =>
-                                  `<span class="cursor-pointer bg-${c}-50 hover:bg-${c}-100 text-${c}-700 px-3 py-1 rounded-md text-[11px] font-bold border border-${c}-200 shadow-sm" onclick="window.applyReaction('${msg.id}', '${v}', 'tag')">${v}</span>`
-                              ).join('')}
-                          </div>
-                      </div>
-                  </div>
+              <div class="relative inline-block group/reaction">
+                  <button class="e-add" title="Add reaction" onclick="window._showReactionPicker('${msg.id}', this)"><i class="ti ti-mood-smile"></i></button>
               </div>
             </div>
             <div class="b-actions">
@@ -390,6 +374,63 @@ window.renderMessages = function(messages) {
 
     const dateLabel = `<div class="day-label">Today — ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>`;
     c.innerHTML = dateLabel + topLevel.map(msg => buildMsgHTML(msg)).join('');
+};
+
+// ─── REACTION PICKER (body-appended, fixed position, never clipped) ──────────
+window._getQuickTags = function() {
+    const key = 'quickTags_' + (window.currentTenantId || 'default');
+    const raw = localStorage.getItem(key);
+    if (raw) { try { return JSON.parse(raw); } catch(e) {} }
+    return [
+        {v:'Thank You',c:'#16a34a',bg:'#f0fdf4',border:'#bbf7d0'},
+        {v:'Noted',    c:'#1d4ed8',bg:'#eff6ff',border:'#bfdbfe'},
+        {v:'Copied',   c:'#7c3aed',bg:'#f5f3ff',border:'#ddd6fe'},
+        {v:'Yes Sir',  c:'#c2410c',bg:'#fff7ed',border:'#fed7aa'},
+        {v:'Yes Madam',c:'#be185d',bg:'#fdf2f8',border:'#fbcfe8'},
+    ];
+};
+
+window._showReactionPicker = function(msgId, btn) {
+    document.querySelectorAll('#__reactionPicker').forEach(el => el.remove());
+    const r = btn.getBoundingClientRect();
+    const tags = window._getQuickTags();
+    const panel = document.createElement('div');
+    panel.id = '__reactionPicker';
+    panel.style.cssText = 'position:fixed;z-index:99999;background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:14px;padding:12px;box-shadow:0 12px 32px rgba(0,0,0,.18);min-width:280px;';
+    panel.innerHTML =
+        '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);margin-bottom:8px;">Reactions</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:4px;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border-color);">' +
+        ['👍','❤️','😂','😮','😢','🙏','🎉','🔥'].map(e =>
+            '<span style="cursor:pointer;font-size:20px;padding:4px 6px;border-radius:8px;transition:background .1s;" ' +
+            'onmouseover="this.style.background=\'var(--bg-body)\'" onmouseout="this.style.background=\'\'" ' +
+            'onclick="window.applyReaction(\'' + msgId + '\',\'' + e + '\',\'emoji\');document.getElementById(\'__reactionPicker\')?.remove();">' + e + '</span>'
+        ).join('') +
+        '</div>' +
+        '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);margin-bottom:8px;">Quick Tags</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px;">' +
+        tags.map(t =>
+            '<span style="cursor:pointer;padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700;color:' + t.c + ';background:' + t.bg + ';border:1px solid ' + t.border + ';" ' +
+            'onclick="window.applyReaction(\'' + msgId + '\',\'' + t.v + '\',\'tag\');document.getElementById(\'__reactionPicker\')?.remove();">' + t.v + '</span>'
+        ).join('') +
+        '</div>';
+    document.body.appendChild(panel);
+    // Position: prefer above button, fall back to below
+    const pw = 292, ph = 180;
+    let top = r.top - ph - 8;
+    if (top < 8) top = r.bottom + 8;
+    let left = r.left - pw + 28;
+    if (left < 8) left = 8;
+    if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+    panel.style.top  = top + 'px';
+    panel.style.left = left + 'px';
+    setTimeout(() => {
+        document.addEventListener('click', function _cp(e) {
+            if (!e.target.closest('#__reactionPicker') && !e.target.closest('.e-add')) {
+                document.getElementById('__reactionPicker')?.remove();
+                document.removeEventListener('click', _cp);
+            }
+        });
+    }, 0);
 };
 
 // Apply reaction — updates DOM immediately, broadcasts to all users, optionally persists.
@@ -450,8 +491,13 @@ window.applyReactionDOM = function(msgId, value, type) {
         if (existing) { const cnt = existing.querySelector('.e-cnt'); if(cnt) cnt.textContent = parseInt(cnt.textContent||'1')+1; }
         else { const rm = footer.querySelector('.group\\/reaction'); rm?.insertAdjacentHTML('beforebegin', `<button class="e-chip active" data-emoji="${value}">${value} <span class="e-cnt">1</span></button>`); }
     } else {
-        if (!footer.querySelector(`[data-tag="${value}"]`)) {
-            footer.insertAdjacentHTML('beforeend', `<span class="${colorMap[value]||'bg-blue-50 text-blue-700 border-blue-200'} px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ml-1" data-tag="${value}">${value}</span>`);
+        if (!footer.querySelector('[data-tag="' + value + '"]')) {
+            const cls = colorMap[value] || 'bg-blue-50 text-blue-700 border-blue-200';
+            footer.insertAdjacentHTML('beforeend',
+                '<span class="' + cls + ' px-2 py-0.5 rounded text-[11px] font-bold border shadow-sm ml-1 cursor-pointer" ' +
+                'data-tag="' + value + '" ' +
+                'title="Click to remove" ' +
+                'onclick="window.applyReaction(\'' + msgId + '\',\'' + value + '\',\'tag\')">' + value + '</span>');
         }
     }
     const hoverMenu = row.querySelector('.group\\/reaction .absolute');

@@ -204,55 +204,46 @@ window.renderMainApp = function() {
             <!-- LEFT SIDEBAR -->
             <div id="leftSidebar" class="left-sidebar flex-col border-r z-20" style="display:${leftDisplay};width:${leftWidth};background-color:var(--bg-sidebar);border-color:var(--border-color);">
 
-                <!-- ═══ A: School Name (styled as heading) ═══ -->
-        <div style="padding:16px 14px 10px;border-bottom:1px solid var(--border-color);">
-            <div style="text-align:center;line-height:1.3;">
-                <span id="schoolNameDisplay" class="school-heading">DeepSeek</span>
-                <!-- optional subtitle: can be added if needed -->
-            </div>
-        </div>
+                <!-- A: School Name -->
+                <div style="padding:14px 14px 8px;border-bottom:1px solid var(--border-color);">
+                    <div style="font-family:'Georgia',serif;font-size:15px;font-weight:700;color:#7f1d1d;letter-spacing:.02em;text-align:center;line-height:1.3;">
+                        ${window.escapeHtml(window.currentSchoolName || 'My School')}
+                    </div>
+                </div>
 
-        <!-- ═══ B: App name + actions row ═══ -->
-        <div style="padding:8px 10px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:6px;">
-            <!-- App name changed to "DeepSeek" with brand style -->
-            <span style="flex:1;font-size:13px;font-weight:700;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" class="brand-name">
-                <i class="fa-regular fa-message" style="margin-right:6px;color:#2563eb;"></i>DeepSeek
-            </span>
+                <!-- B: App name + actions row -->
+                <div style="padding:8px 10px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:6px;">
+                    <span style="flex:1;font-size:12px;font-weight:800;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Noted For Action</span>
+                    ${window.canCreateGroup?.() !== false ? `
+                    <button onclick="window.openNewGroupModal()" title="Create Department"
+                        style="width:26px;height:26px;border-radius:7px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <i class="fa-solid fa-plus" style="font-size:11px;"></i>
+                    </button>` : ''}
+                    <button id="searchToggleBtn" onclick="window._toggleSearch()"
+                        title="Search"
+                        style="width:26px;height:26px;border-radius:7px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <i class="fa-solid fa-magnifying-glass" style="font-size:11px;"></i>
+                    </button>
+                    <div class="menu-wrap" style="flex-shrink:0;">
+                        <button id="themePaletteBtn" onclick="window.toggleThemePanel()" title="Theme"
+                            style="width:26px;height:26px;border-radius:7px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;">
+                            <i class="fa-solid fa-palette" style="font-size:11px;"></i>
+                        </button>
+                    </div>
+                    <button onclick="window.logout()" title="Logout"
+                        style="width:26px;height:26px;border-radius:7px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:#ef4444;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <i class="fa-solid fa-arrow-right-from-bracket" style="font-size:11px;"></i>
+                    </button>
+                </div>
 
-            <!-- Create Department -->
-            <button onclick="window.openNewGroupModal()" title="Create Department"
-            style="width:26px;height:26px;border-radius:7px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-            <i class="fa-solid fa-plus" style="font-size:11px;"></i>
-        </button>
+                <!-- Search (collapsible) -->
+                <div id="sidebarSearchWrap" style="display:none;padding:6px 10px;border-bottom:1px solid var(--border-color);">
+                    <input type="text" id="sidebarSearch" placeholder="Search departments & staff..."
+                        class="ui-input w-full p-2 rounded-xl text-sm outline-none"
+                        oninput="window.filterSidebar(this.value)"
+                        style="font-size:12px;">
+                </div>
 
-        <!-- Search toggle -->
-        <button id="searchToggleBtn" onclick="window._toggleSearch()" title="Search"
-        style="width:26px;height:26px;border-radius:7px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-        <i class="fa-solid fa-magnifying-glass" style="font-size:11px;"></i>
-    </button>
-
-    <!-- Theme -->
-    <div class="menu-wrap" style="flex-shrink:0;">
-        <button id="themePaletteBtn" onclick="window.toggleThemePanel()" title="Theme"
-        style="width:26px;height:26px;border-radius:7px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;">
-        <i class="fa-solid fa-palette" style="font-size:11px;"></i>
-    </button>
-</div>
-
-<!-- Logout -->
-<button onclick="window.logout()" title="Logout"
-style="width:26px;height:26px;border-radius:7px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:#ef4444;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-<i class="fa-solid fa-arrow-right-from-bracket" style="font-size:11px;"></i>
-</button>
-</div>
-
-<!-- ═══ Search (collapsible) ═══ -->
-<div id="sidebarSearchWrap" style="display:none;padding:6px 10px;border-bottom:1px solid var(--border-color);">
-    <input type="text" id="sidebarSearch" placeholder="Search departments & staff…"
-    class="ui-input w-full p-2 rounded-xl text-sm outline-none"
-    oninput="window.filterSidebar(this.value)"
-    style="font-size:12px;">
-</div>
                 <!-- C+D: Departments + Staff list -->
                 <div id="chatsList" class="flex-1 overflow-y-auto pb-2"></div>
 

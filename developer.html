@@ -929,39 +929,7 @@ window.resetPrincipalPassword = async function(tenantId) {
         return;
     }
     note.style.color = 'var(--text2)';
-    note.textContent = 'Finding principal...';
-
-    // Find the principal's profile id — check profiles.role first, then user_roles
-    let principalId = null, principalName = '';
-
-    const { data: byRole } = await sb.from('profiles')
-        .select('id,full_name')
-        .eq('tenant_id', tenantId)
-        .eq('role', 'principal')
-        .maybeSingle();
-
-    if (byRole?.id) {
-        principalId  = byRole.id;
-        principalName = byRole.full_name || 'Principal';
-    } else {
-        const { data: ur } = await sb.from('user_roles')
-            .select('user_id, roles(name)')
-            .eq('tenant_id', tenantId);
-        const row = (ur || []).find(r => r.roles?.name === 'principal');
-        if (row?.user_id) {
-            principalId = row.user_id;
-            const { data: p } = await sb.from('profiles').select('full_name').eq('id', row.user_id).maybeSingle();
-            principalName = p?.full_name || 'Principal';
-        }
-    }
-
-    if (!principalId) {
-        note.style.color = 'var(--red)';
-        note.textContent = 'No principal found for this school.';
-        return;
-    }
-
-    note.textContent = 'Resetting password...';
+    note.textContent = 'Resetting...';
 
     const { data: { session } } = await sb.auth.getSession();
     const resp = await fetch(SUPABASE_URL + '/functions/v1/create-school-user', {
@@ -979,10 +947,10 @@ window.resetPrincipalPassword = async function(tenantId) {
         note.textContent = 'Error: ' + (result.error || 'Reset failed');
         return;
     }
-
     note.style.color = 'var(--accent-h)';
-    note.textContent = '✓ Password reset for ' + principalName + '. Share verbally or via SMS.';
+    note.textContent = '✓ Password reset. Share it verbally or via SMS.';
     input.value = '';
+};
 };
 
 // ── PRINT SCHOOL DETAILS ──────────────────────────────────────

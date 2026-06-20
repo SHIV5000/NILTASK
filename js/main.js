@@ -173,16 +173,6 @@ window.saveNewGroup = async function() {
     if (typeof window.loadChatsList==='function') window.loadChatsList();
 };
 
-window._toggleSearch = function() {
-    const wrap = document.getElementById('sidebarSearchWrap');
-    const inp  = document.getElementById('sidebarSearch');
-    if (!wrap) return;
-    const open = wrap.style.display === 'none';
-    wrap.style.display = open ? 'block' : 'none';
-    if (open && inp) { inp.focus(); }
-    else if (inp) { inp.value = ''; window.filterSidebar(''); }
-};
-
 window.renderMainApp = function() {
     if (typeof window.applyTheme === 'function') window.applyTheme();
     const userNameDisplay = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
@@ -202,72 +192,67 @@ window.renderMainApp = function() {
         <div class="flex h-full w-full" style="background-color:var(--bg-body);">
 
             <!-- LEFT SIDEBAR -->
-            <div id="leftSidebar" class="left-sidebar flex-col border-r z-20" style="display:${leftDisplay};width:${leftWidth};background-color:var(--bg-sidebar);border-color:var(--border-color);">
-
-                <!-- A: School Name -->
-                <div style="padding:14px 14px 8px;border-bottom:1px solid var(--border-color);">
-                    <div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:#7f1d1d;letter-spacing:.02em;text-align:center;line-height:1.3;">
-                        ${window.escapeHtml(window.currentSchoolName || 'My School')}
-                    </div>
+            <div id="leftSidebar" class="left-sidebar flex-col border-r z-20 shadow-sm" style="display:${leftDisplay};width:${leftWidth};background-color:var(--bg-sidebar);border-color:var(--border-color);">
+                <!-- School Name 3D Badge -->
+                <div style="margin:10px 10px 0;background:linear-gradient(135deg,var(--accent) 0%,color-mix(in srgb,var(--accent) 55%,#000) 100%);border-radius:13px;padding:12px 15px;text-align:center;box-shadow:0 5px 0 rgba(0,0,0,.22),0 8px 20px rgba(0,0,0,.15),inset 0 1px 0 rgba(255,255,255,.16);position:relative;overflow:hidden;transform:perspective(400px) rotateX(1.5deg);">
+                    <div style="position:absolute;top:0;left:0;right:0;height:50%;background:rgba(255,255,255,.08);border-radius:13px 13px 0 0;"></div>
+                    <div style="font-size:12px;font-weight:900;color:#fff;letter-spacing:1.5px;text-transform:uppercase;text-shadow:0 2px 4px rgba(0,0,0,.4),0 -1px 0 rgba(255,255,255,.18);position:relative;z-index:1;">${window.escapeHtml(window.currentSchoolName || 'MPGS TaskFlow')}</div>
+                    <div style="font-size:8px;color:rgba(255,255,255,.6);letter-spacing:2px;text-transform:uppercase;margin-top:3px;position:relative;z-index:1;">✦ &nbsp; Powered by TaskFlow &nbsp; ✦</div>
                 </div>
-
-                <!-- B: App name + actions row -->
-                <div style="padding:8px 10px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:6px;">
-                    <span style="flex:1;font-size:12px;font-weight:800;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Noted For Action</span>
-                    ${window.canCreateGroup?.() !== false ? `
-                    <button onclick="window.openNewGroupModal()" title="Create Department"
-                        style="width:26px;height:26px;border-radius:7px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                        <i class="fa-solid fa-plus" style="font-size:11px;"></i>
-                    </button>` : ''}
-                    <button id="searchToggleBtn" onclick="window._toggleSearch()"
-                        title="Search"
-                        style="width:26px;height:26px;border-radius:7px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                        <i class="fa-solid fa-magnifying-glass" style="font-size:11px;"></i>
-                    </button>
-                    <div class="menu-wrap" style="flex-shrink:0;">
-                        <button id="themePaletteBtn" onclick="window.toggleThemePanel()" title="Theme"
-                            style="width:26px;height:26px;border-radius:7px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;">
-                            <i class="fa-solid fa-palette" style="font-size:11px;"></i>
+                <div class="p-4 flex justify-between items-center border-b" style="border-color:var(--border-color);">
+                    <h2 class="text-xl font-bold tracking-tight flex items-center gap-2" style="color:var(--text-primary);">
+                        <i class="fa-solid fa-comments" style="color:var(--accent);"></i> Departments
+                    </h2>
+                    <div class="flex gap-2" style="position:relative;">
+                        ${window.canCreateGroup?.() !== false ? `
+                        <button onclick="window.openNewGroupModal()" class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors" title="Create New Department" style="color:var(--text-secondary);">
+                            <i class="fa-solid fa-plus text-sm"></i>
+                        </button>` : ''}
+                        <div class="menu-wrap">
+                            <button id="themePaletteBtn" onclick="window.toggleThemePanel()" class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors" title="Choose Theme" style="color:var(--text-secondary);">
+                                <i id="themeToggleIcon" class="fa-solid fa-palette text-sm"></i>
+                            </button>
+                        </div>
+                        <button onclick="window.logout()" class="w-8 h-8 rounded-full hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-colors" style="color:var(--text-secondary);">
+                            <i class="fa-solid fa-arrow-right-from-bracket text-sm"></i>
                         </button>
                     </div>
-                    <button onclick="window.logout()" title="Logout"
-                        style="width:26px;height:26px;border-radius:7px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:#ef4444;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                        <i class="fa-solid fa-arrow-right-from-bracket" style="font-size:11px;"></i>
-                    </button>
                 </div>
 
-                <!-- Search (collapsible) -->
-                <div id="sidebarSearchWrap" style="display:none;padding:6px 10px;border-bottom:1px solid var(--border-color);">
+                <!-- SEARCH BAR -->
+                <div class="p-3">
                     <input type="text" id="sidebarSearch" placeholder="Search departments & staff..."
                         class="ui-input w-full p-2 rounded-xl text-sm outline-none"
-                        oninput="window.filterSidebar(this.value)"
-                        style="font-size:12px;">
+                        oninput="window.filterSidebar(this.value)">
                 </div>
 
-                <!-- C+D: Departments + Staff list -->
-                <div id="chatsList" class="flex-1 overflow-y-auto pb-2"></div>
+                <div id="chatsList" class="flex-1 overflow-y-auto px-2 pb-4"></div>
 
-                <!-- E: User strip -->
-                <div style="border-top:1px solid var(--border-color);background:var(--bg-body);padding:8px 10px;">
-                    <div style="display:flex;align-items:center;gap:7px;">
-                        <div id="sidebarAvatar" style="width:30px;height:30px;border-radius:50%;background:var(--accent);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;">
-                            ${(window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + (window.currentUser?.id||''))) ? '<img src="' + (window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + (window.currentUser?.id||''))) + '" style="width:100%;height:100%;object-fit:cover;">' : userNameDisplay.charAt(0).toUpperCase()}
-                        </div>
-                        <div style="flex:1;min-width:0;">
-                            <div id="sidebarNameDisplay" style="font-size:12px;font-weight:700;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${window.escapeHtml(userNameDisplay)}</div>
-                            <div style="font-size:9px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.06em;">${window.currentDesignation || window.currentRoleName || ''}</div>
+                <div class="p-3 border-t flex flex-col gap-1.5" style="border-color:var(--border-color);background-color:var(--bg-body);">
+                    <div class="flex items-center gap-2 w-full">
+                        <div class="flex-1 text-[12px] font-bold flex items-center gap-2 border shadow-sm px-2 py-1.5 rounded-full justify-center min-w-0" style="color:var(--text-primary);border-color:var(--border-color);background-color:var(--bg-sidebar);">
+                            <div id="sidebarAvatar" class="w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px] flex-shrink-0 overflow-hidden" style="background-color:var(--accent);">
+                                ${(window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + (window.currentUser?.id||''))) ? `<img src="${window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + (window.currentUser?.id||''))}" style="width:100%;height:100%;object-fit:cover;">` : userNameDisplay.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <span class="truncate" id="sidebarNameDisplay">${window.escapeHtml(userNameDisplay.toUpperCase())}</span>
+                                <div style="font-size:9px;font-weight:700;color:var(--accent);letter-spacing:.06em;text-transform:uppercase;margin-top:1px;opacity:.85;">
+                                    ${window.currentRoleName || ''}
+                                </div>
+                            </div>
                         </div>
                         <button onclick="window.openSettings()" title="Profile Settings"
-                            style="width:26px;height:26px;border-radius:7px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                            <i class="fa-solid fa-gear" style="font-size:11px;"></i>
+                            class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border hover:bg-gray-100 transition-colors"
+                            style="color:var(--text-secondary);border-color:var(--border-color);background-color:var(--bg-sidebar);">
+                            <i class="fa-solid fa-gear text-sm"></i>
                         </button>
                         <button onclick="window.openDashboard()" title="My Dashboard"
-                            style="width:26px;height:26px;border-radius:7px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                            <i class="fa-solid fa-chart-bar" style="font-size:11px;"></i>
+                            class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border hover:bg-gray-100 transition-colors"
+                            style="color:var(--text-secondary);border-color:var(--border-color);background-color:var(--bg-sidebar);">
+                            <i class="fa-solid fa-chart-bar text-sm"></i>
                         </button>
                     </div>
-                    <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.62.0 &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div class="text-[9px] font-bold tracking-wider uppercase text-center" style="color:var(--text-secondary);">VER 1.61.0</div>
                 </div>
             </div>
 

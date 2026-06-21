@@ -146,11 +146,13 @@ window.openTopPanel = async function(type) {
         } else {
             // Mark all unread as read silently
             const unreadIds=data.filter(d=>!d.is_read).map(d=>d.id);
-            if(unreadIds.length) sb.from('notifications').update({is_read:true}).in('id',unreadIds).then(()=>// ─── BADGE: Refresh unread count on the bell icon ─────────────────────────────
-window.refreshNotificationBadge?.());
+            if(unreadIds.length) {
+                sb.from('notifications').update({is_read:true}).in('id',unreadIds)
+                  .then(() => { if(typeof window.refreshNotificationBadge==='function') window.refreshNotificationBadge(); });
+            }
 
-            const iconMap={reminder:'fa-stopwatch',task:'fa-clipboard-check',message:'fa-comment',general:'fa-bell'};
-            const colorMap={reminder:'#a855f7',task:'#3b82f6',message:'#22c55e',general:'#f59e0b'};
+            const iconMap={reminder:'fa-stopwatch',task:'fa-clipboard-check',message:'fa-comment',reply:'fa-reply',reaction:'fa-heart',scheduled:'fa-clock',general:'fa-bell'};
+            const colorMap={reminder:'#a855f7',task:'#3b82f6',message:'#22c55e',reply:'#6366f1',reaction:'#ec4899',scheduled:'#f59e0b',general:'#f59e0b'};
 
             data.forEach(d=>{
                 const msg=window.stripHtml(d.message);

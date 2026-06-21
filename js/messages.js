@@ -113,7 +113,7 @@ window.sendMessage = async function() {
 
 window.loadMessages = async function() {
     const { data: msgs } = await sb.from('messages')
-        .select('*, profiles(full_name, email)')
+        .select('*, profiles(full_name, email, role, designation)')
         .eq('room_id', window.currentRoom)
         .order('created_at', { ascending: true });
 
@@ -274,7 +274,9 @@ window.renderMessages = function(messages) {
         const bubbleClass = isSent ? 'bubble sent' : 'bubble rcvd';
         const avClass = isSent ? 'b-avatar sent-av' : 'b-avatar rcvd-av';
         const avatarInitial = senderName.charAt(0).toUpperCase();
-        const roleStr = 'Teacher';
+        const rawRole = msg.profiles?.designation || msg.profiles?.role || 'Staff';
+        const roleStr = isSent ? (window.currentDesignation || window.currentRoleName || 'Staff')
+            : rawRole.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
         const tickHTML = isSent ? `<span class="b-tick">✓✓</span>` : '';
         const replyCount = replies[msg.id] ? replies[msg.id].length : 0;
         const isBookmarked = window.bookmarkedSet.has(msg.id);

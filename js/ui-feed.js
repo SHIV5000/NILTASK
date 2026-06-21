@@ -61,48 +61,79 @@ window.openActivityFeed = async function() {
 window._loadActivityFeed = async function() {
     const list = document.getElementById('activityFeedList');
     if (!list) return;
+    list.innerHTML = '<p style="text-align:center;padding:24px;color:var(--text-secondary);font-size:12px;"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p>';
 
-    // Pull from notifications table — persistent, all types
-    const { data: notifs, error } = await sb.from('notifications')
-        .select('*')
-        .eq('user_id', window.currentUser.id)
-        .order('created_at', { ascending: false })
-        .limit(80);
+    const [{ data: msgs }, { data: trails }, { data: notifs }] = await Promise.all([
+        sb.from('messages').select('*, profiles(full_name, email)')
+            .eq('tenant_id', window.currentTenantId).is('deleted_at', null)
+            .order('created_at', { ascending: false }).limit(40),
+        sb.from('task_trails').select('*, profiles(full_name, email), tasks(title)')
+            .eq('tenant_id', window.currentTenantId)
+            .order('created_at', { ascending: false }).limit(20),
+        sb.from('notifications').select('*')
+            .eq('user_id', window.currentUser.id)
+            .order('created_at', { ascending: false }).limit(30)
+    ]);
 
-    if (error) { list.innerHTML = '<p style="padding:20px;color:#ef4444;font-size:12px;">Error: ' + error.message + '</p>'; return; }
-    if (!notifs || !notifs.length) {
+    const items = [];
+    (msgs||[]).forEach(m  => items.push({ kind:'message', time:m.created_at, data:m }));
+    (trails||[]).forEach(t => items.push({ kind:'trail',  time:t.created_at, data:t }));
+    (notifs||[]).forEach(n => {
+        if (['reminder','scheduled','task'].includes(n.type))
+            items.push({ kind:'notif', time:n.created_at, data:n });
+    });
+    items.sort((a,b) => new Date(b.time) - new Date(a.time));
+
+    if (!items.length) {
         list.innerHTML = '<p style="text-align:center;padding:24px;color:var(--text-secondary);font-size:12px;">No activity yet.</p>';
         return;
     }
 
-    const iconMap   = { reminder:'fa-stopwatch', task:'fa-clipboard-check', message:'fa-comment', reply:'fa-reply', reaction:'fa-heart', scheduled:'fa-clock', general:'fa-bell' };
-    const colorMap  = { reminder:'#a855f7', task:'#3b82f6', message:'#10b981', reply:'#6366f1', reaction:'#ec4899', scheduled:'#f59e0b', general:'#f59e0b' };
+    const iconMap  = { reminder:'fa-stopwatch', task:'fa-clipboard-check', scheduled:'fa-clock', general:'fa-bell' };
+    const colorMap = { reminder:'#a855f7', task:'#3b82f6', scheduled:'#f59e0b', general:'#f59e0b' };
 
-    list.innerHTML = notifs.map(n => {
-        const ic  = iconMap[n.type]  || 'fa-bell';
-        const col = colorMap[n.type] || '#f59e0b';
-        const t   = typeof window.getISTTime === 'function' ? window.getISTTime(n.created_at)
-            : new Date(n.created_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true});
-        const msg = window.stripHtml ? window.stripHtml(n.message) : n.message;
-        const clickTarget = n.task_id
-            ? 'window.goToTask && window.goToTask(\'' + n.task_id + '\')'
-            : n.message_id
-                ? 'window.goToMessage && window.goToMessage(\'' + n.message_id + '\',null,null)'
-                : '';
-        return '<div style="display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border-color);cursor:' + (clickTarget?'pointer':'default') + ';' + (n.is_read?'':'background:rgba(99,102,241,.04);') + '" ' +
-            (clickTarget ? 'onclick="' + clickTarget + '"' : '') + '>' +
-            '<div style="width:30px;height:30px;border-radius:50%;background:' + col + '18;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
-            '<i class="fa-solid ' + ic + '" style="color:' + col + ';font-size:13px;"></i></div>' +
-            '<div style="flex:1;min-width:0;">' +
-            '<div style="font-size:12px;color:var(--text-primary);line-height:1.45;">' + window.escapeHtml(msg.substring(0,120)) + '</div>' +
-            '<div style="font-size:10px;color:var(--text-secondary);margin-top:3px;">' + t + '</div>' +
-            '</div>' +
-            '<button onclick="event.stopPropagation();window._deleteActivityItem('' + n.id + '',this)" ' +
-            'style="background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:12px;padding:2px 4px;flex-shrink:0;opacity:.5;" title="Remove">✕</button>' +
-            '</div>';
+    list.innerHTML = items.map(item => {
+        const t = typeof window.getISTTime === 'function' ? window.getISTTime(item.time)
+            : new Date(item.time).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true});
+
+        if (item.kind === 'message') {
+            const m = item.data;
+            const isMine = m.sender_id === window.currentUser.id;
+            const name = isMine ? 'You' : (window.toSentenceCase?.(m.profiles?.full_name||m.profiles?.email?.split('@')[0]||'Unknown')||'Unknown');
+            const txt  = (window.stripHtml?window.stripHtml(m.text):m.text||'').substring(0,90)||'📎 Attachment';
+            const roomLabel = window.getRoomDisplayName?.(m.room_id)||m.room_id;
+            const col  = isMine ? 'var(--accent)' : '#6366f1';
+            return '<div style="display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border-color);cursor:pointer;" onclick="window.goToMessage&&window.goToMessage(''+m.id+'',null,''+m.room_id+'')">'
+                +'<div style="width:30px;height:30px;border-radius:50%;background:'+col+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:700;color:#fff;">'+name.charAt(0).toUpperCase()+'</div>'
+                +'<div style="flex:1;min-width:0;">'
+                +'<div style="font-size:12px;font-weight:600;color:var(--text-primary);">'+window.escapeHtml(name)+' <span style="font-weight:400;color:var(--text-secondary);">in '+window.escapeHtml(roomLabel)+'</span></div>'
+                +'<div style="font-size:12px;color:var(--text-secondary);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+window.escapeHtml(txt)+'</div>'
+                +'<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">'+t+'</div>'
+                +'</div></div>';
+        }
+        if (item.kind === 'trail') {
+            const tr = item.data;
+            const tName = window.toSentenceCase?.(tr.profiles?.full_name||tr.profiles?.email?.split('@')[0]||'Unknown')||'Unknown';
+            return '<div style="display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border-color);cursor:pointer;" onclick="window.goToTask&&window.goToTask(''+(tr.task_id||'')+'')">'
+                +'<div style="width:30px;height:30px;border-radius:50%;background:#3b82f618;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="fa-solid fa-clipboard-check" style="color:#3b82f6;font-size:13px;"></i></div>'
+                +'<div style="flex:1;min-width:0;">'
+                +'<div style="font-size:12px;font-weight:600;color:var(--text-primary);">'+window.escapeHtml(tName)+'</div>'
+                +'<div style="font-size:12px;color:var(--text-secondary);">'+window.escapeHtml(tr.tasks?.title||'Task')+' · '+(tr.action||'update')+'</div>'
+                +'<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">'+t+'</div>'
+                +'</div></div>';
+        }
+        const n   = item.data;
+        const ic  = iconMap[n.type]||'fa-bell';
+        const col = colorMap[n.type]||'#f59e0b';
+        const msg = (window.stripHtml?window.stripHtml(n.message):n.message)||'';
+        return '<div style="display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border-color);">'
+            +'<div style="width:30px;height:30px;border-radius:50%;background:'+col+'18;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="fa-solid '+ic+'" style="color:'+col+';font-size:13px;"></i></div>'
+            +'<div style="flex:1;min-width:0;">'
+            +'<div style="font-size:12px;color:var(--text-primary);">'+window.escapeHtml(msg.substring(0,120))+'</div>'
+            +'<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">'+t+'</div>'
+            +'</div></div>';
     }).join('');
 };
-
 window._deleteActivityItem = async function(id, btn) {
     await sb.from('notifications').delete().eq('id', id);
     btn.closest('div[style*="border-bottom"]')?.remove();

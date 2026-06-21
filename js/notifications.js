@@ -125,18 +125,25 @@ window.showSystemNotification = function(title, body, options = {}) {
 // ── MAIN NOTIFICATION TRIGGER ─────────────────────────────────
 // Called whenever a new message arrives via Supabase Realtime
 window.triggerMessageNotification = function(msg) {
+    // Skip own messages
     if (msg.sender_id === window.currentUser?.id) return;
 
-    const sender  = window.globalUsersCache?.find(u => u.id === msg.sender_id);
-    const name    = window.toSentenceCase?.(sender?.full_name || sender?.email?.split('@')[0] || 'Someone');
-    const room    = window.getRoomDisplayName?.(msg.room_id) || msg.room_id || 'General';
-    const text    = _stripHtml(msg.text || '📎 File shared');
-    const preview = text.length > 80 ? text.substring(0, 80) + '…' : text;
+    // Find sender name from cache
+    const sender = window.globalUsersCache?.find(u => u.id === msg.sender_id);
+    const name   = sender?.full_name || sender?.email?.split('@')[0] || 'Someone';
+    const room   = msg.room_id || window.currentRoom || 'General';
+    const text   = _stripHtml(msg.text || '📎 File shared');
+    const preview= text.length > 80 ? text.substring(0, 80) + '\u2026' : text;
 
+    // 1. Play chime sound
     _makeChime(0.35);
+
+    // 2. Vibrate (mobile)
     if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+
+    // 3. System notification (wakes screen if off)
     window.showSystemNotification(
-        name + ' — ' + room,
+        name + ' — ' + room.charAt(0).toUpperCase() + room.slice(1),
         preview,
         { tag: 'msg-' + msg.room_id, room: msg.room_id }
     );

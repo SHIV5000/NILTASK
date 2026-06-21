@@ -21,18 +21,49 @@ window.taskFmtList = function(listType, boxId) {
 window.notifyUser = async function(userId, message, messageId = null, type = 'task', taskId = null) {
     if (!userId || !message) return;
     try {
+        const cleanMsg = window.stripHtml ? window.stripHtml(message) : message;
+
+        // Deduplicate: skip if same user+type+message_id exists in last 5 seconds
+        if (messageId) {
+            const { count } = await sb.from('notifications')
+                .select('id', { count: 'exact', head: true })
+                .eq('user_id', userId)
+                .eq('type', type)
+                .eq('message_id', messageId);
+            if (count > 0) return;
+        }
+
         const payload = {
-            user_id:   userId,
+            user_id:    userId,
             type,
-            message:   window.stripHtml ? window.stripHtml(message) : message,
-            message_id: messageId,
-            tenant_id: window.currentTenantId,
-            is_read:   false
+            message:    cleanMsg.substring(0, 200),
+            message_id: messageId || null,
+            tenant_id:  window.currentTenantId,
+            is_read:    false
         };
         if (taskId) payload.task_id = taskId;
         await sb.from('notifications').insert(payload);
     } catch (e) {
         console.warn('notifyUser failed:', e.message);
+    }
+};
+
+// Notify all members of a room except the sender
+window.notifyGroupMembers = async function(roomId, senderId, message, messageId, type = 'message') {
+    if (!roomId || !senderId) return;
+    try {
+        // Get all users in the tenant who participate in this room (have sent at least one message)
+        const { data: members } = await sb.from('messages')
+            .select('sender_id')
+            .eq('room_id', roomId)
+            .eq('tenant_id', window.currentTenantId)
+            .neq('sender_id', senderId);
+        const uniqueIds = [...new Set((members || []).map(m => m.sender_id))];
+        for (const uid of uniqueIds) {
+            await window.notifyUser(uid, message, messageId, type);
+        }
+    } catch(e) {
+        console.warn('notifyGroupMembers failed:', e.message);
     }
 };
 

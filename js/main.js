@@ -1007,16 +1007,23 @@ window.startSubscriptions = function() {
                         : senderName + ' in ' + roomName + ': ' + text;
 
                     try {
-                        await sb.from('notifications').insert({
-                            user_id:    window.currentUser.id,
-                            type:       isDM ? 'message' : 'message',
-                            message:    notifMsg,
-                            message_id: p.new.id,
-                            tenant_id:  window.currentTenantId,
-                            is_read:    false
-                        });
-                        if (typeof window.refreshNotificationBadge === 'function')
-                            window.refreshNotificationBadge();
+                        // Deduplicate — skip if notification for this message already exists
+                        const { count } = await sb.from('notifications')
+                            .select('id', { count: 'exact', head: true })
+                            .eq('user_id', window.currentUser.id)
+                            .eq('message_id', p.new.id);
+                        if (!count || count === 0) {
+                            await sb.from('notifications').insert({
+                                user_id:    window.currentUser.id,
+                                type:       'message',
+                                message:    notifMsg,
+                                message_id: p.new.id,
+                                tenant_id:  window.currentTenantId,
+                                is_read:    false
+                            });
+                            if (typeof window.refreshNotificationBadge === 'function')
+                                window.refreshNotificationBadge();
+                        }
                     } catch(e) { console.warn('notification insert failed:', e.message); }
 
                     if (typeof window.triggerMessageNotification === 'function')

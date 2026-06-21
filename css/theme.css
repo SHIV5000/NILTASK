@@ -379,7 +379,7 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 .bubble.sent .b-subject { color: var(--accent); }
 .bubble.rcvd .b-subject { color: var(--text-primary); }
 
-.b-text { font-size: 15px; color: var(--text-primary); line-height: 1.6; padding: 6px 12px 6px; }
+.b-text { font-size: 13.5px; color: var(--text-primary); line-height: 1.55; padding: 6px 12px 6px; }
 .b-text p { margin: 0 !important; padding: 0 !important; } 
 .b-text a { color: #0d6efd; text-decoration: none; font-weight: 500; }
 .b-text a:hover { text-decoration: underline; }

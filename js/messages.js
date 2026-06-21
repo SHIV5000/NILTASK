@@ -336,7 +336,7 @@ window.renderMessages = function(messages) {
         };
         const persistedReactionsHTML = Object.entries(rGroups).map(([val, info]) => {
             if (info.type === 'emoji') {
-                return `<button class="e-chip active" data-emoji="${val}">${val} <span class="e-cnt">${info.count}</span></button>`;
+                return `<button class="e-chip active" data-emoji="${val}" onclick="window.applyReaction('${msg.id}','${val}','emoji')" title="Click to remove">${val} <span class="e-cnt">${info.count}</span></button>`;
             } else {
                 return `<span class="${tagColorMap[val]||'bg-blue-50 text-blue-700 border-blue-200'} px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ml-1" data-tag="${val}">${val}</span>`;
             }
@@ -487,9 +487,10 @@ window.applyReactionDOM = function(msgId, value, type) {
     if (!footer) return;
     const colorMap = { 'Thank You':'bg-green-50 text-green-700 border-green-200', 'Noted':'bg-blue-50 text-blue-700 border-blue-200', 'Copied':'bg-purple-50 text-purple-700 border-purple-200', 'Yes Sir':'bg-orange-50 text-orange-700 border-orange-200', 'Yes Madam':'bg-pink-50 text-pink-700 border-pink-200' };
     if (type === 'emoji') {
-        const existing = Array.from(footer.querySelectorAll('.e-chip')).find(c => c.textContent.trim().startsWith(value));
+        const existing = Array.from(footer.querySelectorAll('.e-chip')).find(c => c.dataset.emoji === value);
         if (existing) { const cnt = existing.querySelector('.e-cnt'); if(cnt) cnt.textContent = parseInt(cnt.textContent||'1')+1; }
-        else { const rm = footer.querySelector('.group\\/reaction'); rm?.insertAdjacentHTML('beforebegin', `<button class="e-chip active" data-emoji="${value}">${value} <span class="e-cnt">1</span></button>`); }
+        else { footer.querySelector('.group\\/reaction, .relative.inline-block')?.insertAdjacentHTML('beforebegin',
+            `<button class="e-chip active" data-emoji="${value}" onclick="window.applyReaction('${msgId}','${value}','emoji')" title="Click to remove">${value} <span class="e-cnt">1</span></button>`); }
     } else {
         if (!footer.querySelector('[data-tag="' + value + '"]')) {
             const cls = colorMap[value] || 'bg-blue-50 text-blue-700 border-blue-200';

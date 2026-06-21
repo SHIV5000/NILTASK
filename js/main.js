@@ -1046,13 +1046,19 @@ window.startSubscriptions = function() {
             if (p.new.status === 'sent' && p.new.sender_id === window.currentUser.id) {
                 const msg = window.stripHtml ? window.stripHtml(p.new.message_text) : p.new.message_text;
                 const preview = msg.substring(0, 60);
-                window.showCenterToast(`📨 Scheduled: ${preview}`, 'fa-solid fa-clock', 'text-blue-400');
+                window.showCenterToast('📨 Scheduled: ' + preview, 'fa-solid fa-clock', 'text-blue-400');
                 window.playSound('message');
-                // Insert into notifications table so it appears in bell icon
-                if (typeof window.notifyUser === 'function') {
-                    window.notifyUser(window.currentUser.id, `📨 Scheduled message sent: ${preview}`, null, 'task');
+                // Notify all room members that a scheduled message was posted
+                if (typeof window.notifyGroupMembers === 'function') {
+                    const sched = p.new;
+                    window.notifyGroupMembers(
+                        sched.room_id,
+                        sched.sender_id,
+                        '📅 Scheduled message: ' + preview,
+                        sched.id,
+                        'scheduled'
+                    );
                 }
-                // Refresh badge
                 if (typeof window.refreshNotificationBadge === 'function') window.refreshNotificationBadge();
                 // Also reload messages if the scheduled message is for current room
                 if (p.new.room_id === window.currentRoom && typeof window.loadMessages === 'function') {
@@ -1087,24 +1093,30 @@ window.startSubscriptions = function() {
             event: 'INSERT', schema: 'public', table: 'notifications',
             filter: `user_id=eq.${window.currentUser.id}`
         }, (payload) => {
-            const n = payload.new;
+            const n   = payload.new;
             const msg = window.stripHtml ? window.stripHtml(n.message) : n.message;
             const type = n.type || 'general';
 
-            // ── Every notification type: toast + sound + badge + bell animation
+            // Don't toast if it's a message notification for the room currently open
+            if (type === 'message' && n.message_id) {
+                if (window.currentRoom && n.message) return; // user sees it live
+            }
+
             const toastConfig = {
-                reminder: { icon:'fa-solid fa-stopwatch',       color:'text-purple-400', sound:'reminder' },
-                task:     { icon:'fa-solid fa-clipboard-check', color:'text-blue-400',   sound:'task'     },
-                message:  { icon:'fa-solid fa-comment',         color:'text-green-400',  sound:'message'  },
-                reply:    { icon:'fa-solid fa-reply',           color:'text-indigo-400', sound:'message'  },
-                reaction: { icon:'fa-solid fa-heart',           color:'text-pink-400',   sound:'message'  },
-                general:  { icon:'fa-solid fa-bell',            color:'text-yellow-400', sound:'task'     }
+                reminder:  { icon:'fa-solid fa-stopwatch',       color:'text-purple-400', sound:'reminder' },
+                task:      { icon:'fa-solid fa-clipboard-check', color:'text-blue-400',   sound:'task'     },
+                message:   { icon:'fa-solid fa-comment',         color:'text-green-400',  sound:'message'  },
+                reply:     { icon:'fa-solid fa-reply',           color:'text-indigo-400', sound:'message'  },
+                reaction:  { icon:'fa-solid fa-heart',           color:'text-pink-400',   sound:'message'  },
+                scheduled: { icon:'fa-solid fa-clock',           color:'text-yellow-400', sound:'message'  },
+                general:   { icon:'fa-solid fa-bell',            color:'text-yellow-400', sound:'task'     },
             };
             const cfg = toastConfig[type] || toastConfig.general;
             window.showCenterToast(msg.substring(0, 100), cfg.icon, cfg.color);
             window.playSound(cfg.sound);
             if (typeof window.refreshNotificationBadge === 'function') window.refreshNotificationBadge();
             window.animateBell?.();
+            if (window._activityFeedOpen && typeof window.refreshActivityFeed === 'function') window.refreshActivityFeed();
         }).subscribe();
 
     if (typeof window.refreshNotificationBadge === 'function') window.refreshNotificationBadge();
@@ -1168,7 +1180,11 @@ window.getRoomDisplayName = function(roomId) {
         if (other) return window.toSentenceCase?.(other.full_name || other.email?.split('@')[0]) || 'Direct Message';
         return 'Direct Message';
     }
-    return roomId.charAt(0).toUpperCase() + roomId.slice(1);
+    // Check localStorage for custom name set via group settings
+    const stored = localStorage.getItem('dept_name_' + roomId);
+    if (stored) return stored;
+    // Fallback: capitalise roomId
+    return roomId.charAt(0).toUpperCase() + roomId.slice(1).replace(/_/g,' ');
 };
 
 // Boot Sequence

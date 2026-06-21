@@ -132,23 +132,11 @@ window.triggerMessageNotification = function(msg) {
     const room    = window.getRoomDisplayName?.(msg.room_id) || msg.room_id || 'General';
     const text    = _stripHtml(msg.text || '📎 File shared');
     const preview = text.length > 80 ? text.substring(0, 80) + '…' : text;
-    const isDM    = msg.room_id?.startsWith('dm_');
-    const notifMsg = isDM ? `💬 ${name}: ${preview}` : `${name} in ${room}: ${preview}`;
-
-    // Only insert DB notification if message is NOT in the currently open room
-    if (msg.room_id !== window.currentRoom) {
-        if (typeof window.notifyUser === 'function') {
-            window.notifyUser(window.currentUser.id, notifMsg, msg.id, 'message');
-        }
-        if (typeof window.refreshNotificationBadge === 'function') {
-            window.refreshNotificationBadge();
-        }
-    }
 
     _makeChime(0.35);
     if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
     window.showSystemNotification(
-        `${name} — ${room}`,
+        name + ' — ' + room,
         preview,
         { tag: 'msg-' + msg.room_id, room: msg.room_id }
     );

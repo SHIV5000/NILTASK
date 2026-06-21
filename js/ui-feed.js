@@ -156,36 +156,12 @@ window.closeActivityFeed = function() {
     document.getElementById('activityFeedPanel')?.remove();
     const tp = document.getElementById('tasksPanel');
     if (tp) tp.style.removeProperty('display');
-window.closeActivityFeed = function() {
-    window._activityFeedOpen = false;
-    document.getElementById('activityFeedPanel')?.remove();
-    const tp = document.getElementById('tasksPanel');
-    if (tp) tp.style.removeProperty('display');
     const fi = document.getElementById('rightSidebarFilters');
     if (fi) fi.style.removeProperty('display');
+    const dr = document.getElementById('dateRangeFilter');
+    if (dr) dr.style.removeProperty('display');
 };
 
-// Called by subscriptions when feed is open — refresh items list only
-
-window.refreshActivityFeed = async function() {
-    if (!window._activityFeedOpen) return;
-    const list = document.getElementById('activityFeedList');
-    if (!list) return;
-    const [{ data: msgs }, { data: trails }] = await Promise.all([
-        sb.from('messages').select('*, profiles(full_name, email)').order('created_at', {ascending: false}).limit(40),
-        sb.from('task_trails').select('*, profiles(full_name, email), tasks(title)').order('created_at', {ascending: false}).limit(20)
-    ]);
-    const items = [];
-    msgs?.forEach(m => items.push({ kind: 'message', time: m.created_at, data: m }));
-    trails?.forEach(t => items.push({ kind: 'trail', time: t.created_at, data: t }));
-    items.sort((a, b) => new Date(b.time) - new Date(a.time));
-    // Update count badge
-    const badge = document.querySelector('#activityFeedPanel .text-\[10px\]');
-    if (badge) badge.textContent = items.length + ' items';
-    // Re-render list (trigger openActivityFeed logic by calling the render part)
-    window._activityFeedItems = items;
-    window.renderActivityFeedItems(items, list);
-};
 
 window.renderActivityFeedItems = function(items, list) {
     if (!list) return;

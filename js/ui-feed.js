@@ -13,20 +13,13 @@ import { sb } from './shared.js';
 window.openActivityFeed = async function() {
     const rs = document.getElementById('rightSidebar');
     if (!rs) return;
-    // Show right sidebar if hidden
     if (window.getComputedStyle(rs).display === 'none') {
         rs.style.setProperty('display', 'flex', 'important');
         localStorage.setItem('mpgs_right_sidebar_state', 'flex');
     }
-    // Toggle off if already open
     const existing = document.getElementById('activityFeedPanel');
-    if (existing) {
-        existing.remove();
-        document.getElementById('tasksPanel')?.style.removeProperty('display');
-        document.getElementById('rightSidebarFilters')?.style.removeProperty('display');
-        return;
-    }
-    // Hide BOTH filter bar AND tasks panel so feed stretches full height
+    if (existing) { existing.remove(); document.getElementById('tasksPanel')?.style.removeProperty('display'); document.getElementById('rightSidebarFilters')?.style.removeProperty('display'); return; }
+
     const tasksPanelEl = document.getElementById('tasksPanel');
     if (tasksPanelEl) tasksPanelEl.style.display = 'none';
     const filtersEl = document.getElementById('rightSidebarFilters');
@@ -35,99 +28,103 @@ window.openActivityFeed = async function() {
     if (dateRangeEl) dateRangeEl.style.display = 'none';
 
     window._activityFeedOpen = true;
-    // Fetch data — Activity Feed = raw activity (messages + task trails). NOT notifications table.
-    const [{ data: msgs }, { data: trails }] = await Promise.all([
-        sb.from('messages').select('*, profiles(full_name, email)').order('created_at', {ascending: false}).limit(40),
-        sb.from('task_trails').select('*, profiles(full_name, email), tasks(title)').order('created_at', {ascending: false}).limit(20)
-    ]);
 
-    // Merge and sort newest first
-    const items = [];
-    msgs?.forEach(m => items.push({ kind: 'message', time: m.created_at, data: m }));
-    trails?.forEach(t => items.push({ kind: 'trail', time: t.created_at, data: t }));
-    items.sort((a, b) => new Date(b.time) - new Date(a.time));
-
-    // Create feed panel — same flex-1 as tasksPanel, NOT absolute
     const feed = document.createElement('div');
     feed.id = 'activityFeedPanel';
     feed.className = 'flex-1 flex flex-col overflow-hidden';
     feed.style.backgroundColor = 'var(--bg-body)';
-
     feed.innerHTML = `
     <div class="p-3 border-b flex items-center justify-between flex-shrink-0" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
         <span class="font-bold text-sm flex items-center gap-2" style="color:var(--text-primary);">
             <i class="fa-solid fa-bolt" style="color:var(--accent);"></i> Activity Feed
-            <span class="text-[10px] font-normal px-1.5 py-0.5 rounded-full" style="background:rgba(99,102,241,0.1);color:#6366f1;">${items.length} items</span>
         </span>
-        <button onclick="window.closeActivityFeed()" title="Close & show Task Hub"
-            class="w-7 h-7 rounded-full flex items-center justify-center hover:bg-red-50 hover:text-red-500 transition-colors"
-            style="color:var(--text-secondary);">
-            <i class="fa-solid fa-times text-sm"></i>
-        </button>
+        <div style="display:flex;gap:6px;align-items:center;">
+            <button onclick="window._clearAllActivity()" title="Clear all"
+                style="font-size:11px;padding:3px 10px;border-radius:8px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:var(--text-secondary);">
+                Clear All
+            </button>
+            <button onclick="window.closeActivityFeed()" style="width:26px;height:26px;border-radius:50%;border:none;background:transparent;cursor:pointer;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;">
+                <i class="fa-solid fa-times text-sm"></i>
+            </button>
+        </div>
     </div>
-    <div class="flex-1 overflow-y-auto p-3" id="activityFeedList"></div>`;
+    <div class="flex-1 overflow-y-auto p-3" id="activityFeedList">
+        <p style="text-align:center;padding:24px;color:var(--text-secondary);font-size:12px;"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p>
+    </div>`;
 
-    // Insert right after tasksPanel's parent flex container
     const innerWrap = tasksPanelEl ? tasksPanelEl.parentElement : rs.querySelector('.w-full.h-full.flex');
     if (innerWrap) innerWrap.appendChild(feed);
 
+    await window._loadActivityFeed();
+};
+
+window._loadActivityFeed = async function() {
     const list = document.getElementById('activityFeedList');
-    if (!items.length) {
-        list.innerHTML = '<p class="text-xs italic text-center py-8" style="color:var(--text-secondary);">No recent activity.</p>';
+    if (!list) return;
+
+    // Pull from notifications table — persistent, all types
+    const { data: notifs, error } = await sb.from('notifications')
+        .select('*')
+        .eq('user_id', window.currentUser.id)
+        .order('created_at', { ascending: false })
+        .limit(80);
+
+    if (error) { list.innerHTML = '<p style="padding:20px;color:#ef4444;font-size:12px;">Error: ' + error.message + '</p>'; return; }
+    if (!notifs || !notifs.length) {
+        list.innerHTML = '<p style="text-align:center;padding:24px;color:var(--text-secondary);font-size:12px;">No activity yet.</p>';
         return;
     }
 
-    list.innerHTML = items.map(item => {
-        const t = typeof window.getISTTime === 'function'
-            ? window.getISTTime(item.time)
-            : new Date(item.time).toLocaleString('en-IN', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata',hour12:true});
-        if (item.kind === 'message') {
-            const m = item.data;
-            const isMine = m.sender_id === window.currentUser.id;
-            const name = isMine ? 'You' : (window.toSentenceCase?.(m.profiles?.full_name || m.profiles?.email?.split('@')[0] || 'Unknown') || 'Unknown');
-            const txt = window.stripHtml(m.text).substring(0, 90) || '📎 Attachment';
-            const roomLabel = m.room_id?.startsWith('dm_') ? '💬 DM' : `# ${m.room_id}`;
-            const av = name.charAt(0).toUpperCase();
-            const bgAv = isMine ? 'var(--accent)' : '#6366f1';
-            return `<div class="mb-2 rounded-xl overflow-hidden border cursor-pointer group transition-all hover:shadow-md" style="border-color:var(--border-color);border-left:3px solid ${bgAv};" onclick="window.goToMessage('${m.id}',null,'${m.room_id}')">
-                <div class="p-2.5" style="background-color:var(--bg-sidebar);">
-                    <div class="flex items-center gap-2 mb-1.5">
-                        <div class="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 shadow-sm" style="background:${bgAv};">${av}</div>
-                        <span class="text-[11px] font-bold truncate flex-1" style="color:var(--text-primary);">${window.escapeHtml(name)}</span>
-                        <span class="text-[9px] px-2 py-0.5 rounded-full font-bold flex-shrink-0" style="background:rgba(99,102,241,0.1);color:#6366f1;">${roomLabel}</span>
-                        <span class="text-[9px] flex-shrink-0 whitespace-nowrap" style="color:var(--text-secondary);">${t}</span>
-                    </div>
-                    <p class="text-[11px] line-clamp-2 pl-8 leading-relaxed" style="color:var(--text-secondary);">${window.escapeHtml(txt)}</p>
-                </div>
-            </div>`;
-        } else {
-            // Task trail entry
-            const tr = item.data;
-            const tName = window.toSentenceCase?.(tr.profiles?.full_name || tr.profiles?.email?.split('@')[0] || 'Unknown') || 'Unknown';
-            const taskTitle = tr.tasks?.title || 'Task';
-            const action = tr.action || 'UPDATE';
-            const comment = tr.comment ? ` — ${tr.comment.split('|')[0]}` : '';
-            const actionColors = { FILE:'#10b981', UPDATE:'#3b82f6', CREATE:'#6366f1' };
-            const co = actionColors[action] || '#6b7280';
-            return `<div class="mb-2 rounded-xl overflow-hidden border cursor-pointer group transition-all hover:shadow-md" style="border-color:var(--border-color);border-left:3px solid ${co};" onclick="window.goToTask('${tr.task_id||''}')">
-                <div class="p-2.5" style="background-color:var(--bg-sidebar);">
-                    <div class="flex items-center gap-2 mb-1.5">
-                        <div class="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm" style="background:${co}18;">
-                            <i class="fa-solid ${action==='FILE'?'fa-paperclip':action==='CREATE'?'fa-plus':'fa-tasks'}" style="color:${co};font-size:10px;"></i>
-                        </div>
-                        <span class="text-[11px] font-bold truncate flex-1" style="color:var(--text-primary);">${window.escapeHtml(tName)}</span>
-                        <span class="text-[9px] px-2 py-0.5 rounded-full font-bold flex-shrink-0" style="background:${co}15;color:${co};">${action}</span>
-                        <span class="text-[9px] flex-shrink-0 whitespace-nowrap" style="color:var(--text-secondary);">${t}</span>
-                    </div>
-                    <p class="text-[11px] line-clamp-2 pl-8 leading-relaxed" style="color:var(--text-secondary);">📋 ${window.escapeHtml(taskTitle)}${window.escapeHtml(comment)}</p>
-                </div>
-            </div>`;
-        }
+    const iconMap   = { reminder:'fa-stopwatch', task:'fa-clipboard-check', message:'fa-comment', reply:'fa-reply', reaction:'fa-heart', scheduled:'fa-clock', general:'fa-bell' };
+    const colorMap  = { reminder:'#a855f7', task:'#3b82f6', message:'#10b981', reply:'#6366f1', reaction:'#ec4899', scheduled:'#f59e0b', general:'#f59e0b' };
+
+    list.innerHTML = notifs.map(n => {
+        const ic  = iconMap[n.type]  || 'fa-bell';
+        const col = colorMap[n.type] || '#f59e0b';
+        const t   = typeof window.getISTTime === 'function' ? window.getISTTime(n.created_at)
+            : new Date(n.created_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true});
+        const msg = window.stripHtml ? window.stripHtml(n.message) : n.message;
+        const clickTarget = n.task_id
+            ? 'window.goToTask && window.goToTask(\'' + n.task_id + '\')'
+            : n.message_id
+                ? 'window.goToMessage && window.goToMessage(\'' + n.message_id + '\',null,null)'
+                : '';
+        return '<div style="display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border-color);cursor:' + (clickTarget?'pointer':'default') + ';' + (n.is_read?'':'background:rgba(99,102,241,.04);') + '" ' +
+            (clickTarget ? 'onclick="' + clickTarget + '"' : '') + '>' +
+            '<div style="width:30px;height:30px;border-radius:50%;background:' + col + '18;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
+            '<i class="fa-solid ' + ic + '" style="color:' + col + ';font-size:13px;"></i></div>' +
+            '<div style="flex:1;min-width:0;">' +
+            '<div style="font-size:12px;color:var(--text-primary);line-height:1.45;">' + window.escapeHtml(msg.substring(0,120)) + '</div>' +
+            '<div style="font-size:10px;color:var(--text-secondary);margin-top:3px;">' + t + '</div>' +
+            '</div>' +
+            '<button onclick="event.stopPropagation();window._deleteActivityItem('' + n.id + '',this)" ' +
+            'style="background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:12px;padding:2px 4px;flex-shrink:0;opacity:.5;" title="Remove">✕</button>' +
+            '</div>';
     }).join('');
 };
 
-// ─── Close activity feed and restore the task hub ──────────────────────────────
+window._deleteActivityItem = async function(id, btn) {
+    await sb.from('notifications').delete().eq('id', id);
+    btn.closest('div[style*="border-bottom"]')?.remove();
+};
 
+window._clearAllActivity = async function() {
+    if (!confirm('Clear all activity?')) return;
+    await sb.from('notifications').delete().eq('user_id', window.currentUser.id);
+    const list = document.getElementById('activityFeedList');
+    if (list) list.innerHTML = '<p style="text-align:center;padding:24px;color:var(--text-secondary);font-size:12px;">All cleared.</p>';
+};
+
+window.refreshActivityFeed = async function() {
+    if (!window._activityFeedOpen) return;
+    await window._loadActivityFeed();
+};
+
+window.closeActivityFeed = function() {
+    window._activityFeedOpen = false;
+    document.getElementById('activityFeedPanel')?.remove();
+    const tp = document.getElementById('tasksPanel');
+    if (tp) tp.style.removeProperty('display');
 window.closeActivityFeed = function() {
     window._activityFeedOpen = false;
     document.getElementById('activityFeedPanel')?.remove();

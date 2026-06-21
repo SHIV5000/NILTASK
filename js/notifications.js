@@ -125,25 +125,30 @@ window.showSystemNotification = function(title, body, options = {}) {
 // ── MAIN NOTIFICATION TRIGGER ─────────────────────────────────
 // Called whenever a new message arrives via Supabase Realtime
 window.triggerMessageNotification = function(msg) {
-    // Skip own messages
     if (msg.sender_id === window.currentUser?.id) return;
 
-    // Find sender name from cache
-    const sender = window.globalUsersCache?.find(u => u.id === msg.sender_id);
-    const name   = sender?.full_name || sender?.email?.split('@')[0] || 'Someone';
-    const room   = msg.room_id || window.currentRoom || 'General';
-    const text   = _stripHtml(msg.text || '📎 File shared');
-    const preview= text.length > 80 ? text.substring(0, 80) + '…' : text;
+    const sender  = window.globalUsersCache?.find(u => u.id === msg.sender_id);
+    const name    = window.toSentenceCase?.(sender?.full_name || sender?.email?.split('@')[0] || 'Someone');
+    const room    = window.getRoomDisplayName?.(msg.room_id) || msg.room_id || 'General';
+    const text    = _stripHtml(msg.text || '📎 File shared');
+    const preview = text.length > 80 ? text.substring(0, 80) + '…' : text;
+    const isDM    = msg.room_id?.startsWith('dm_');
+    const notifMsg = isDM ? `💬 ${name}: ${preview}` : `${name} in ${room}: ${preview}`;
 
-    // 1. Play chime sound
+    // Only insert DB notification if message is NOT in the currently open room
+    if (msg.room_id !== window.currentRoom) {
+        if (typeof window.notifyUser === 'function') {
+            window.notifyUser(window.currentUser.id, notifMsg, msg.id, 'message');
+        }
+        if (typeof window.refreshNotificationBadge === 'function') {
+            window.refreshNotificationBadge();
+        }
+    }
+
     _makeChime(0.35);
-
-    // 2. Vibrate (mobile)
     if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
-
-    // 3. System notification (wakes screen if off)
     window.showSystemNotification(
-        `${name} — ${room.charAt(0).toUpperCase() + room.slice(1)}`,
+        `${name} — ${room}`,
         preview,
         { tag: 'msg-' + msg.room_id, room: msg.room_id }
     );

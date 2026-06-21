@@ -978,32 +978,55 @@ window.debouncedLoadTasks = function() {
 window.startSubscriptions = function() {
     if (messageSubscription) messageSubscription.unsubscribe();
     messageSubscription = sb.channel('public:messages')
-        .on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, (p) => {
+        .on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, async (p) => {
             const incomingRoom = p.new.room_id;
-            if (incomingRoom === window.currentRoom) {
+            const isMine = p.new.sender_id === window.currentUser?.id;
+            const isCurrentRoom = incomingRoom === window.currentRoom;
+
+            if (isCurrentRoom) {
                 if (typeof window.loadMessages === 'function') window.loadMessages();
-                if (p.new.sender_id !== window.currentUser.id) {
+                if (!isMine) {
                     window.playSound('message');
-                    // Trigger system notification + sound when screen may be off
-                    if (typeof window.triggerMessageNotification === 'function') {
+                    if (typeof window.triggerMessageNotification === 'function')
                         window.triggerMessageNotification(p.new);
-                    }
                 }
             } else {
                 window.unreadCounts = window.unreadCounts || {};
                 window.unreadCounts[incomingRoom] = (window.unreadCounts[incomingRoom] || 0) + 1;
-                // Notification for message in OTHER room (always notify)
-                if (p.new.sender_id !== window.currentUser?.id) {
-                    if (typeof window.triggerMessageNotification === 'function') {
+                if (!isMine) {
+                    // ── Insert notification for RECEIVER only ───────────────
+                    // receiver is the current user (their browser fires this)
+                    // sender is p.new.sender_id (different person)
+                    const sender = window.globalUsersCache?.find(u => u.id === p.new.sender_id);
+                    const senderName = window.toSentenceCase?.(sender?.full_name || sender?.email?.split('@')[0] || 'Someone');
+                    const roomName = window.getRoomDisplayName?.(incomingRoom) || incomingRoom;
+                    const text = (window.stripHtml ? window.stripHtml(p.new.text) : p.new.text || '').substring(0, 80);
+                    const isDM = incomingRoom.startsWith('dm_');
+                    const notifMsg = isDM
+                        ? '💬 ' + senderName + ': ' + text
+                        : senderName + ' in ' + roomName + ': ' + text;
+
+                    try {
+                        await sb.from('notifications').insert({
+                            user_id:    window.currentUser.id,
+                            type:       isDM ? 'message' : 'message',
+                            message:    notifMsg,
+                            message_id: p.new.id,
+                            tenant_id:  window.currentTenantId,
+                            is_read:    false
+                        });
+                        if (typeof window.refreshNotificationBadge === 'function')
+                            window.refreshNotificationBadge();
+                    } catch(e) { console.warn('notification insert failed:', e.message); }
+
+                    if (typeof window.triggerMessageNotification === 'function')
                         window.triggerMessageNotification(p.new);
-                    }
                 }
                 if (typeof window.loadChatsList === 'function') window.loadChatsList();
-                if (incomingRoom.startsWith('dm_') && incomingRoom.includes(window.currentUser.id) && p.new.sender_id !== window.currentUser.id) {
+                if (incomingRoom.startsWith('dm_') && incomingRoom.includes(window.currentUser.id) && !isMine) {
                     window.playSound('message');
                 }
             }
-            // Refresh activity feed if open
             if (window._activityFeedOpen && typeof window.refreshActivityFeed === 'function') window.refreshActivityFeed();
         }).subscribe();
 

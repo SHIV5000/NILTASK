@@ -48,51 +48,36 @@ window._loadActivityFeed = async function() {
     const tid = window.currentTenantId;
     const uid = window.currentUser?.id;
     if (!tid || !uid) {
-        list.innerHTML = '<p style="text-align:center;padding:24px;color:var(--text-secondary);font-size:12px;">Session loading — please close and reopen.</p>';
+        list.innerHTML = '<p style="text-align:center;padding:24px;color:var(--text-secondary);font-size:12px;">Session loading — close and reopen.</p>';
         return;
     }
 
-    // Get room IDs from sidebar (rooms user participates in) — avoids tenant-wide RLS issue
-    const knownRooms = window.globalUsersCache
-        ? null  // will query by tenant_id, safer
-        : null;
-
-    // Run queries in parallel, log any errors
     const [r1, r2, r3] = await Promise.all([
-        // Messages: try tenant_id first; RLS may restrict to rooms user is in
         sb.from('messages')
             .select('id,created_at,room_id,sender_id,text,profiles(full_name,email)')
-            .eq('tenant_id', tid)
-            .is('deleted_at', null)
-            .order('created_at', { ascending: false })
-            .limit(60),
+            .eq('tenant_id', tid).is('deleted_at', null)
+            .order('created_at', { ascending: false }).limit(60),
         sb.from('task_trails')
             .select('id,created_at,action,task_id,comment,profiles(full_name,email),tasks(title)')
             .eq('tenant_id', tid)
-            .order('created_at', { ascending: false })
-            .limit(20),
+            .order('created_at', { ascending: false }).limit(20),
         sb.from('notifications')
             .select('id,created_at,type,message,task_id,message_id,is_read')
             .eq('user_id', uid)
-            .order('created_at', { ascending: false })
-            .limit(50)
+            .order('created_at', { ascending: false }).limit(50)
     ]);
 
-    if (r1.error) console.warn('[activity] messages error:', r1.error.message, '— try running fix_messages_rls.sql in Supabase');
-    if (r2.error) console.warn('[activity] task_trails error:', r2.error.message);
-    if (r3.error) console.warn('[activity] notifications error:', r3.error.message);
+    if (r1.error) console.warn('[activity] messages:', r1.error.message);
+    if (r2.error) console.warn('[activity] trails:', r2.error.message);
+    if (r3.error) console.warn('[activity] notifs:', r3.error.message);
 
-    // If messages blocked by RLS, fall back to current room messages only
     let msgData = r1.data || [];
-    if ((!msgData.length || r1.error) && window.currentRoom) {
-        const { data: fallback } = await sb.from('messages')
+    if (!msgData.length && window.currentRoom) {
+        const { data: fb } = await sb.from('messages')
             .select('id,created_at,room_id,sender_id,text,profiles(full_name,email)')
-            .eq('room_id', window.currentRoom)
-            .is('deleted_at', null)
-            .order('created_at', { ascending: false })
-            .limit(60);
-        msgData = fallback || [];
-        if (msgData.length) console.info('[activity] Using current-room fallback for messages');
+            .eq('room_id', window.currentRoom).is('deleted_at', null)
+            .order('created_at', { ascending: false }).limit(60);
+        msgData = fb || [];
     }
 
     const items = [];
@@ -100,7 +85,8 @@ window._loadActivityFeed = async function() {
     (r2.data||[]).forEach(tr => items.push({ k:'trail', t:tr.created_at, d:tr }));
     (r3.data||[]).forEach(n  => items.push({ k:'notif', t:n.created_at,  d:n }));
     items.sort((a,b) => new Date(b.t) - new Date(a.t));
-    console.info('[activity] msgs:', msgData.length, 'trails:', (r2.data||[]).length, 'notifs:', (r3.data||[]).length, 'total items:', items.length);
+
+    console.info('[activity] msgs:', msgData.length, 'trails:', (r2.data||[]).length, 'notifs:', (r3.data||[]).length, 'total:', items.length);
 
     if (!items.length) {
         list.innerHTML = '<p style="text-align:center;padding:32px;color:var(--text-secondary);font-size:12px;">No activity yet.</p>';
@@ -109,87 +95,62 @@ window._loadActivityFeed = async function() {
 
     const fmt = ts => {
         try { return new Date(ts).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true}); }
-        catch(e) { return ts; }
+        catch(e) { return ''; }
     };
-
-    const iconColor = { reminder:'#a855f7', task:'#3b82f6', scheduled:'#f59e0b', general:'#f59e0b' };
-    const iconName  = { reminder:'fa-stopwatch', task:'fa-clipboard-check', scheduled:'fa-clock', general:'fa-bell' };
+    const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const strip = s => String(s||'').replace(/<[^>]*>/g,'').trim();
+    const ic = { reminder:'fa-stopwatch', task:'fa-clipboard-check', scheduled:'fa-clock', general:'fa-bell' };
+    const col = { reminder:'#a855f7', task:'#3b82f6', scheduled:'#f59e0b', general:'#f59e0b' };
+    const base = 'display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border-color);';
 
     list.innerHTML = items.map(item => {
         try {
-        const time = fmt(item.t);
-        const base = 'display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border-color);';
-
-        if (item.k === 'msg') {
-            const m = item.d;
-            const isMine = m.sender_id === window.currentUser?.id;
-            const fullName = m.profiles?.full_name || m.profiles?.email?.split('@')[0] || 'Someone';
-            const name = isMine ? 'You' : (fullName.charAt(0).toUpperCase() + fullName.slice(1).toLowerCase());
-            const room = window.getRoomDisplayName?.(m.room_id) || m.room_id || '';
-            const txt  = (window.stripHtml ? window.stripHtml(m.text) : (m.text||'').replace(/<[^>]*>/g,'')).substring(0,90) || '📎 Attachment';
-            const col  = isMine ? 'var(--accent)' : '#6366f1';
-            const eName = name.replace(/'/g,'&#39;').replace(/"/g,'&quot;');
-            const eRoom = room.replace(/'/g,'&#39;').replace(/"/g,'&quot;');
-            const eTxt  = txt.replace(/</g,'&lt;').replace(/>/g,'&gt;');
-            return '<div style="' + base + 'cursor:pointer;" onclick="window.goToMessage&&window.goToMessage(\'' + m.id + '\',null,\'' + m.room_id + '\')">' +
-                '<div style="width:32px;height:32px;border-radius:50%;background:' + col + ';flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;">' + (name.charAt(0)||'?').toUpperCase() + '</div>' +
-                '<div style="flex:1;min-width:0;">' +
-                '<div style="font-size:12px;font-weight:600;color:var(--text-primary);">' + eName +
-                '<span style="font-weight:400;color:var(--text-secondary);"> in ' + eRoom + '</span></div>' +
-                '<div style="font-size:12px;color:var(--text-secondary);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + eTxt + '</div>' +
-                '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + time + '</div>' +
-                '</div></div>';
-        }
-
-        if (item.k === 'trail') {
-            const tr = item.d;
-            const fullName = tr.profiles?.full_name || tr.profiles?.email?.split('@')[0] || 'Staff';
-            const name  = fullName.charAt(0).toUpperCase() + fullName.slice(1).toLowerCase();
-            const title = tr.tasks?.title || 'Task';
-            const action = (tr.action||'update').toUpperCase();
-            return '<div style="' + base + 'cursor:pointer;" onclick="window.goToTask&&window.goToTask(\'' + (tr.task_id||'') + '\')">' +
-                '<div style="width:32px;height:32px;border-radius:50%;background:#3b82f618;flex-shrink:0;display:flex;align-items:center;justify-content:center;">' +
-                '<i class="fa-solid fa-clipboard-check" style="color:#3b82f6;font-size:13px;"></i></div>' +
-                '<div style="flex:1;min-width:0;">' +
-                '<div style="font-size:12px;font-weight:600;color:var(--text-primary);">' + name.replace(/</g,'&lt;') +
-                '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;background:#3b82f618;color:#3b82f6;margin-left:6px;">' + action + '</span></div>' +
-                '<div style="font-size:12px;color:var(--text-secondary);margin-top:1px;">' + title.replace(/</g,'&lt;') + '</div>' +
-                '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + time + '</div>' +
-                '</div></div>';
-        }
-
-        // notification
-        const n = item.d;
-        const ic  = iconName[n.type]  || 'fa-bell';
-        const col = iconColor[n.type] || '#f59e0b';
-        const msg = (window.stripHtml ? window.stripHtml(n.message||'') : (n.message||'').replace(/<[^>]*>/g,'')).substring(0,120);
-        return '<div style="' + base + (n.is_read?'':'background:rgba(99,102,241,.04);') + '">' +
-            '<div style="width:32px;height:32px;border-radius:50%;background:' + col + '18;flex-shrink:0;display:flex;align-items:center;justify-content:center;">' +
-            '<i class="fa-solid ' + ic + '" style="color:' + col + ';font-size:13px;"></i></div>' +
-            '<div style="flex:1;min-width:0;">' +
-            '<div style="font-size:12px;color:var(--text-primary);">' + msg.replace(/</g,'&lt;') + '</div>' +
-            '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + time + '</div>' +
-            '</div></div>';
+            const time = fmt(item.t);
+            if (item.k === 'msg') {
+                const m = item.d;
+                const mine = m.sender_id === window.currentUser?.id;
+                const fn  = m.profiles?.full_name || m.profiles?.email?.split('@')[0] || '?';
+                const nm  = mine ? 'You' : fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase();
+                const rm  = window.getRoomDisplayName?.(m.room_id) || m.room_id || '';
+                const tx  = strip(m.text).substring(0,90) || '📎 Attachment';
+                const bg  = mine ? 'var(--accent)' : '#6366f1';
+                return '<div style="' + base + 'cursor:pointer;" onclick="window.goToMessage&&window.goToMessage(\'' + m.id + '\',null,\'' + m.room_id + '\')">'
+                    + '<div style="width:32px;height:32px;border-radius:50%;background:' + bg + ';flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;">' + esc(nm.charAt(0)||'?').toUpperCase() + '</div>'
+                    + '<div style="flex:1;min-width:0;">'
+                    + '<div style="font-size:12px;font-weight:600;color:var(--text-primary);">' + esc(nm) + '<span style="font-weight:400;color:var(--text-secondary);"> in ' + esc(rm) + '</span></div>'
+                    + '<div style="font-size:12px;color:var(--text-secondary);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(tx) + '</div>'
+                    + '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + time + '</div>'
+                    + '</div></div>';
+            }
+            if (item.k === 'trail') {
+                const tr = item.d;
+                const fn  = tr.profiles?.full_name || tr.profiles?.email?.split('@')[0] || 'Staff';
+                const nm  = fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase();
+                const ttl = tr.tasks?.title || 'Task';
+                const act = (tr.action||'update').toUpperCase();
+                return '<div style="' + base + 'cursor:pointer;" onclick="window.goToTask&&window.goToTask(\'' + (tr.task_id||'') + '\')">'
+                    + '<div style="width:32px;height:32px;border-radius:50%;background:#3b82f618;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><i class="fa-solid fa-clipboard-check" style="color:#3b82f6;font-size:13px;"></i></div>'
+                    + '<div style="flex:1;min-width:0;">'
+                    + '<div style="font-size:12px;font-weight:600;color:var(--text-primary);">' + esc(nm) + '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;background:#3b82f618;color:#3b82f6;margin-left:6px;">' + act + '</span></div>'
+                    + '<div style="font-size:12px;color:var(--text-secondary);margin-top:1px;">' + esc(ttl) + '</div>'
+                    + '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + time + '</div>'
+                    + '</div></div>';
+            }
+            const n   = item.d;
+            const tic = ic[n.type]  || 'fa-bell';
+            const tcl = col[n.type] || '#f59e0b';
+            const msg = strip(n.message||'').substring(0,120);
+            return '<div style="' + base + (n.is_read ? '' : 'background:rgba(99,102,241,.04);') + '">'
+                + '<div style="width:32px;height:32px;border-radius:50%;background:' + tcl + '18;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><i class="fa-solid ' + tic + '" style="color:' + tcl + ';font-size:13px;"></i></div>'
+                + '<div style="flex:1;min-width:0;">'
+                + '<div style="font-size:12px;color:var(--text-primary);">' + esc(msg) + '</div>'
+                + '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + time + '</div>'
+                + '</div></div>';
         } catch(err) {
-            console.warn('[activity] render error for item', item.k, err.message);
-            return ''; // skip bad item, don't blank everything
+            return '';
         }
     }).join('');
-                '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + time + '</div>' +
-                '</div></div>';
-        }
-
-        if (item.k === 'trail') {
-            const tr = item.d;
-            const name = window.toSentenceCase?.(tr.profiles?.full_name || tr.profiles?.email?.split('@')[0] || 'Staff') || 'Staff';
-            const title = tr.tasks?.title || 'Task';
-            const action = (tr.action||'update').toUpperCase();
-            return '<div style="' + base + 'cursor:pointer;" onclick="window.goToTask&&window.goToTask(\'' + (tr.task_id||'') + '\')">' +
-                '<div style="width:32px;height:32px;border-radius:50%;background:#3b82f618;flex-shrink:0;display:flex;align-items:center;justify-content:center;">' +
-                '<i class="fa-solid fa-clipboard-check" style="color:#3b82f6;font-size:13px;"></i></div>' +
-                '<div style="flex:1;min-width:0;">' +
 };
-
 window.closeActivityFeed = function() {
     window._activityFeedOpen = false;
     document.getElementById('activityFeedPanel')?.remove();

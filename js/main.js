@@ -1020,10 +1020,10 @@ window.startSubscriptions = function() {
                                 tenant_id:  window.currentTenantId,
                                 is_read:    false
                             });
-                            if (typeof window.refreshNotificationBadge === 'function')
-                                window.refreshNotificationBadge();
                         }
                     } catch(e) { console.warn('[notif insert]', e.message); }
+                    // Increment badge instantly — no DB read needed
+                    window._incrementBellBadge?.();
                 }
                 if (typeof window.loadChatsList === 'function') window.loadChatsList();
                 if (incomingRoom.startsWith('dm_') && incomingRoom.includes(window.currentUser.id) && !isMine)

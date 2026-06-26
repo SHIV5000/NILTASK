@@ -172,9 +172,6 @@ window.closeDashboard = function() {
     const modal = document.getElementById('dashboardModal');
     if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
 };
-import { sb } from './shared.js';
-
-// ─── ACTIVITY FEED ────────────────────────────────────────────────────────────
 window.loadDashboard = async function(filter) {
     document.querySelectorAll('.dash-tab').forEach(b => {
         const on = b.dataset.period === filter;

@@ -978,32 +978,57 @@ window.debouncedLoadTasks = function() {
 window.startSubscriptions = function() {
     if (messageSubscription) messageSubscription.unsubscribe();
     messageSubscription = sb.channel('public:messages')
-        .on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, (p) => {
+        .on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, async (p) => {
             const incomingRoom = p.new.room_id;
+            const isMine = p.new.sender_id === window.currentUser?.id;
+
             if (incomingRoom === window.currentRoom) {
                 if (typeof window.loadMessages === 'function') window.loadMessages();
-                if (p.new.sender_id !== window.currentUser.id) {
+                if (!isMine) {
                     window.playSound('message');
-                    // Trigger system notification + sound when screen may be off
-                    if (typeof window.triggerMessageNotification === 'function') {
+                    if (typeof window.triggerMessageNotification === 'function')
                         window.triggerMessageNotification(p.new);
-                    }
                 }
             } else {
                 window.unreadCounts = window.unreadCounts || {};
                 window.unreadCounts[incomingRoom] = (window.unreadCounts[incomingRoom] || 0) + 1;
-                // Notification for message in OTHER room (always notify)
-                if (p.new.sender_id !== window.currentUser?.id) {
-                    if (typeof window.triggerMessageNotification === 'function') {
+
+                if (!isMine) {
+                    if (typeof window.triggerMessageNotification === 'function')
                         window.triggerMessageNotification(p.new);
-                    }
+
+                    // ── Insert into notifications table (powers the bell badge) ──
+                    // Deduplicate by message_id to prevent double entries
+                    try {
+                        const { count } = await sb.from('notifications')
+                            .select('id', { count: 'exact', head: true })
+                            .eq('user_id', window.currentUser.id)
+                            .eq('message_id', p.new.id);
+                        if (!count) {
+                            const sender = window.globalUsersCache?.find(u => u.id === p.new.sender_id);
+                            const name   = window.toSentenceCase?.(sender?.full_name || sender?.email?.split('@')[0] || 'Someone') || 'Someone';
+                            const room   = window.getRoomDisplayName?.(incomingRoom) || incomingRoom;
+                            const text   = (window.stripHtml?.(p.new.text) || '').substring(0, 80);
+                            const msg    = incomingRoom.startsWith('dm_')
+                                ? '💬 ' + name + ': ' + text
+                                : name + ' in ' + room + ': ' + text;
+                            await sb.from('notifications').insert({
+                                user_id:    window.currentUser.id,
+                                type:       'message',
+                                message:    msg,
+                                message_id: p.new.id,
+                                tenant_id:  window.currentTenantId,
+                                is_read:    false
+                            });
+                            if (typeof window.refreshNotificationBadge === 'function')
+                                window.refreshNotificationBadge();
+                        }
+                    } catch(e) { console.warn('[notif insert]', e.message); }
                 }
                 if (typeof window.loadChatsList === 'function') window.loadChatsList();
-                if (incomingRoom.startsWith('dm_') && incomingRoom.includes(window.currentUser.id) && p.new.sender_id !== window.currentUser.id) {
+                if (incomingRoom.startsWith('dm_') && incomingRoom.includes(window.currentUser.id) && !isMine)
                     window.playSound('message');
-                }
             }
-            // Refresh activity feed if open
             if (window._activityFeedOpen && typeof window.refreshActivityFeed === 'function') window.refreshActivityFeed();
         }).subscribe();
 

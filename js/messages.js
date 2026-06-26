@@ -111,266 +111,58 @@ window.sendMessage = async function() {
     if (sendBtn) sendBtn.innerHTML = '<i class="ti ti-send text-lg"></i>';
 };
 
-// ── Message pagination state ──────────────────────────────────
-window._msgPageSize   = 50;  // messages per load
-window._msgOldestTs  = null; // ISO timestamp of oldest loaded message
-window._msgAllLoaded = false; // true when no more older messages exist
-
-window.loadMessages = async function(prepend = false) {
-    const room = window.currentRoom;
-    if (!room) return;
-
-    // Build query — newest 50 first, then reverse for display
-    let q = sb.from('messages')
+window.loadMessages = async function() {
+    const { data: msgs } = await sb.from('messages')
         .select('*, profiles(full_name, email, role, designation)')
-        .eq('room_id', room)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false })
-        .limit(window._msgPageSize);
+        .eq('room_id', window.currentRoom)
+        .order('created_at', { ascending: true });
 
-    if (prepend && window._msgOldestTs) {
-        q = q.lt('created_at', window._msgOldestTs);
+    const { data: bms } = await sb.from('bookmarks')
+        .select('message_id')
+        .eq('user_id', window.currentUser.id);
+    window.bookmarkedSet = new Set(bms?.map(b => b.message_id) || []);
+
+    // ── Fetch reactions so they survive re-renders ──────────────────────────
+    const msgIds = msgs?.map(m => m.id) || [];
+    window.reactionsCache = {};
+    if (msgIds.length) {
+        try {
+            const { data: rData } = await sb.from('reactions').select('*').in('message_id', msgIds);
+            (rData || []).forEach(r => {
+                if (!window.reactionsCache[r.message_id]) window.reactionsCache[r.message_id] = [];
+                window.reactionsCache[r.message_id].push(r);
+            });
+        } catch(e) { /* reactions table may not exist yet */ }
     }
 
-    const { data: msgs } = await q;
-    const ordered = (msgs || []).reverse(); // oldest→newest for display
+    const c = document.getElementById('messagesContainer');
+    const isNearBottom = c ? (c.scrollHeight - c.scrollTop - c.clientHeight < 150) : false;
 
-    if (!prepend) {
-        // Fresh load — reset state
-        window._msgOldestTs  = ordered.length ? ordered[0].created_at : null;
-        window._msgAllLoaded = ordered.length < window._msgPageSize;
+    window.renderMessages(msgs || []);
+    if (typeof window.applyFilters === 'function') window.applyFilters();
 
-        // Bookmarks + reactions
-        const { data: bms } = await sb.from('bookmarks')
-            .select('message_id').eq('user_id', window.currentUser.id);
-        window.bookmarkedSet = new Set(bms?.map(b => b.message_id) || []);
-
-        const msgIds = ordered.map(m => m.id);
-        window.reactionsCache = {};
-        if (msgIds.length) {
-            try {
-                const { data: rData } = await sb.from('reactions').select('*').in('message_id', msgIds);
-                (rData||[]).forEach(r => {
-                    if (!window.reactionsCache[r.message_id]) window.reactionsCache[r.message_id] = [];
-                    window.reactionsCache[r.message_id].push(r);
-                });
-            } catch(e) {}
-        }
-
-        const c = document.getElementById('messagesContainer');
-        const isNearBottom = c ? (c.scrollHeight - c.scrollTop - c.clientHeight < 150) : true;
-
-        window.renderMessages(ordered);
-        if (typeof window.applyRBAC === 'function') window.applyRBAC();
-        if (typeof window.applyFilters === 'function') window.applyFilters();
-        window._renderLoadOlderBtn();
-
-        if (c) {
-            setTimeout(() => {
-                if (window.pendingScrollId && window.pendingScrollId !== 'BOTTOM') {
-                    const row = document.getElementById('row-' + window.pendingScrollId);
-                    if (row) {
-                        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        const bubble = row.querySelector('.bubble');
-                        if (bubble) {
-                            bubble.classList.add('glow-target');
-                            setTimeout(() => bubble.classList.add('active-glow'), 50);
-                            setTimeout(() => bubble.classList.remove('glow-target','active-glow'), 3500);
-                        }
+    if (c) {
+        setTimeout(() => {
+            if (window.pendingScrollId && window.pendingScrollId !== 'BOTTOM') {
+                const row = document.getElementById(`row-${window.pendingScrollId}`);
+                if (row) {
+                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    const bubble = row.querySelector('.bubble');
+                    if (bubble) {
+                        bubble.classList.add('glow-target');
+                        setTimeout(() => bubble.classList.add('active-glow'), 50);
+                        setTimeout(() => bubble.classList.remove('glow-target', 'active-glow'), 3500);
                     }
-                    window.pendingScrollId = null;
-                } else if (window.pendingScrollId === 'BOTTOM' || isNearBottom) {
-                    c.scrollTop = c.scrollHeight;
-                    window.pendingScrollId = null;
                 }
-            }, 100);
-        }
-
-    } else {
-        // Prepend older messages
-        if (!ordered.length) { window._msgAllLoaded = true; window._renderLoadOlderBtn(); return; }
-        window._msgOldestTs  = ordered[0].created_at;
-        window._msgAllLoaded = ordered.length < window._msgPageSize;
-
-        // Fetch reactions for newly loaded older messages
-        const oldIds = ordered.map(m => m.id);
-        if (oldIds.length) {
-            try {
-                const { data: rData } = await sb.from('reactions').select('*').in('message_id', oldIds);
-                (rData||[]).forEach(r => {
-                    if (!window.reactionsCache[r.message_id]) window.reactionsCache[r.message_id] = [];
-                    window.reactionsCache[r.message_id].push(r);
-                });
-            } catch(e) {}
-        }
-
-        const container = document.getElementById('chatShellContainer');
-        if (!container) return;
-        const c = document.getElementById('messagesContainer');
-        const prevHeight = c ? c.scrollHeight : 0;
-
-        // Render new rows and prepend
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = window._renderMessagesToHtml(ordered);
-        const rows = Array.from(tempDiv.children);
-        const firstChild = container.firstChild;
-        rows.reverse().forEach(row => container.insertBefore(row, firstChild));
-
-        // Restore scroll position so user stays at same spot
-        if (c) requestAnimationFrame(() => { c.scrollTop = c.scrollHeight - prevHeight; });
-        window._renderLoadOlderBtn();
-    }
-};
-
-window._renderLoadOlderBtn = function() {
-    const container = document.getElementById('chatShellContainer');
-    if (!container) return;
-    // Remove any existing button
-    container.querySelector('#loadOlderBtn')?.remove();
-    if (window._msgAllLoaded) return;
-
-    const btn = document.createElement('div');
-    btn.id = 'loadOlderBtn';
-    btn.style.cssText = 'text-align:center;padding:10px;';
-    btn.innerHTML = '<button onclick="window._loadOlderMessages()" ' +
-        'style="font-size:12px;font-weight:600;padding:6px 18px;border-radius:20px;' +
-        'background:var(--bg-sidebar);border:1px solid var(--border-color);' +
-        'color:var(--accent);cursor:pointer;">↑ Load older messages</button>';
-    container.insertBefore(btn, container.firstChild);
-};
-
-window._loadOlderMessages = async function() {
-    const btn = document.getElementById('loadOlderBtn');
-    if (btn) btn.querySelector('button').textContent = 'Loading...';
-    await window.loadMessages(true);
-};
-
-window._renderMessagesToHtml = function(messages) {
-    if (!messages.length) return '';
-
-    // Build message map and reply tree
-    const msgMap = new Map();
-    messages.forEach(m => msgMap.set(m.id, m));
-    const topLevel = [];
-    const replies = {};
-    messages.forEach(msg => {
-        if (msg.parent_message_id && msgMap.has(msg.parent_message_id)) {
-            if (!replies[msg.parent_message_id]) replies[msg.parent_message_id] = [];
-            replies[msg.parent_message_id].push(msg);
-        } else {
-            topLevel.push(msg);
-        }
-    });
-
-    function buildMsgHTML(msg) {
-        const isSent      = msg.sender_id === window.currentUser?.id;
-        const senderName  = isSent
-            ? (window.toSentenceCase?.(window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0]) || 'You')
-            : (window.toSentenceCase?.(msg.profiles?.full_name || msg.profiles?.email?.split('@')[0] || 'Unknown') || 'Unknown');
-        const rawRole     = msg.profiles?.designation || msg.profiles?.role || '';
-        const roleStr     = isSent
-            ? (window.currentDesignation || window.currentRoleName || '')
-            : rawRole.replace(/_/g,' ').replace(/\b\w/g, ch => ch.toUpperCase());
-        const time        = typeof window.getISTTime === 'function' ? window.getISTTime(msg.created_at) : '';
-        const isBookmarked = window.bookmarkedSet?.has(msg.id);
-        const snippetText = (window.stripHtml?.(msg.text) || '').substring(0,60);
-
-        // Process display HTML — file links + url pills
-        let displayHtml = msg.text || '';
-        displayHtml = displayHtml.replace(
-            /<a\s+href="https:\/\/secure-file\.local\/([^"]+)"[^>]*>([^<]*)<\/a>/g,
-            (_, path, label) => {
-                const ext = (path.split('.').pop()||'').toLowerCase().split('?')[0];
-                const icon = ['jpg','jpeg','png','gif','webp','heic'].includes(ext) ? 'fa-file-image'
-                    : ext === 'pdf' ? 'fa-file-pdf'
-                    : ['doc','docx'].includes(ext) ? 'fa-file-word'
-                    : 'fa-file';
-                return `<div onclick="window.openSecureFile('${path}')" style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:10px;background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);cursor:pointer;max-width:240px;"><i class="fa-solid ${icon}" style="color:var(--accent);font-size:16px;flex-shrink:0;"></i><span style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${window.escapeHtml(label.replace(/^📁\s*/,'').trim())}</span></div>`;
+                window.pendingScrollId = null;
+            } else if (window.pendingScrollId === 'BOTTOM') {
+                c.scrollTop = c.scrollHeight;
+                window.pendingScrollId = null;
+            } else if (isNearBottom) {
+                c.scrollTop = c.scrollHeight;
             }
-        );
-
-        // Reactions from cache
-        const cachedRx = window.reactionsCache?.[msg.id] || [];
-        const emojiMap = {};
-        cachedRx.forEach(r => { if (r.type==='emoji') emojiMap[r.value] = (emojiMap[r.value]||0)+r.count; });
-        const emojiChips = Object.entries(emojiMap).map(([v,n]) =>
-            `<button class="e-chip active" data-emoji="${v}" onclick="window.applyReaction('${msg.id}','${v}','emoji')" title="Click to remove">${v} <span class="e-cnt">${n}</span></button>`
-        ).join('');
-
-        const canEdit = isSent;
-        const canDel  = isSent || window._ROLES?.MSG_MODERATORS?.includes(window.currentRole);
-        const canTask = window.canCreateTask?.() === true;
-
-        const ddItems = [
-            canEdit ? `<button class="dd-item" onclick="window.closeDropdowns();window.startEditMessage('${msg.id}')"><i class="ti ti-pencil"></i>Edit</button>` : '',
-            `<button class="dd-item" onclick="window.closeDropdowns();window.forwardMessage('${msg.id}')"><i class="ti ti-share"></i>Forward</button>`,
-            `<button class="dd-item" onclick="window.closeDropdowns();window.showReminderModal('${msg.id}','${window.escapeHtml(snippetText)}')"><i class="ti ti-bell"></i>Reminder</button>`,
-            canTask ? `<button class="dd-item rbac-create-task" onclick="window.closeDropdowns();window.openTaskModal('${msg.id}','${window.escapeHtml(snippetText)}')"><i class="ti ti-clipboard-check"></i>Create Task</button>` : '',
-            canDel  ? `<button class="dd-item" style="color:#ef4444;" onclick="window.closeDropdowns();window.deleteMessage('${msg.id}')"><i class="ti ti-trash"></i>Delete</button>` : '',
-        ].filter(Boolean).join('');
-
-        // Reply thread
-        const threadMsgs = replies[msg.id] || [];
-        const repliesHTML = threadMsgs.length ? `
-            <div class="b-divider"></div>
-            <div class="replies-wrap" id="rw-${msg.id}">
-                <div class="replies-label"><i class="ti ti-git-branch"></i> Replies</div>
-                ${threadMsgs.map((r,i) => {
-                    const rName = window.toSentenceCase?.(r.profiles?.full_name || r.profiles?.email?.split('@')[0] || 'Unknown') || 'Unknown';
-                    const rTime = typeof window.getISTTime === 'function' ? window.getISTTime(r.created_at) : '';
-                    return `<div class="reply-item">
-                        <div class="reply-num">${i+1}</div>
-                        <div class="reply-body">
-                            <div class="reply-meta"><span class="reply-name">${window.escapeHtml(rName)}</span><span class="reply-time">${rTime}</span></div>
-                            <div class="reply-text">${r.text||''}</div>
-                        </div>
-                    </div>`;
-                }).join('')}
-            </div>` : '';
-
-        const replyCount = threadMsgs.length;
-        return `<div class="msg-row ${isSent?'sent':'rcvd'}" id="row-${msg.id}">
-            <div class="bubble ${isSent?'sent':'rcvd'}" style="background:var(--bg-sidebar);">
-                <div class="b-header">
-                    <div class="b-name">${window.escapeHtml(senderName)} <span class="b-role">· ${window.escapeHtml(roleStr)}</span></div>
-                    <span style="font-size:10px;color:var(--text-secondary);margin-left:auto;white-space:nowrap;">${time}${isSent?' <i class="ti ti-checks" style="color:var(--accent);font-size:11px;"></i>':''}</span>
-                    <div class="relative inline-block group/reaction">
-                        <button class="e-add" title="Add reaction" onclick="window._showReactionPicker('${msg.id}',this)"><i class="ti ti-mood-smile"></i></button>
-                    </div>
-                    <div class="relative">
-                        <button class="e-add" onclick="window.toggleDropdown('dd-${msg.id}')"><i class="ti ti-dots-vertical"></i></button>
-                        <div class="bubble-dropdown" id="dd-${msg.id}">${ddItems}</div>
-                    </div>
-                </div>
-                <div class="b-text" id="text-${msg.id}">${displayHtml}</div>
-                <div class="b-footer" id="footer-${msg.id}">${emojiChips}</div>
-                ${repliesHTML}
-                <div class="b-actions">
-                    ${replyCount>0?`<button class="reply-btn" onclick="window.initiateReply('${msg.id}','${window.escapeHtml(senderName)}')"><i class="ti ti-arrow-back-up"></i> Replies ${replyCount}</button>`
-                        :`<button class="reply-btn" onclick="window.initiateReply('${msg.id}','${window.escapeHtml(senderName)}')"><i class="ti ti-arrow-back-up"></i> Reply</button>`}
-                    <button class="bookmark-btn ${isBookmarked?'bookmarked':''}" onclick="window.toggleBookmark('${msg.id}')">
-                        <i class="ti ${isBookmarked?'ti-bookmark-filled':'ti-bookmark'}"></i> ${isBookmarked?'Bookmarked':'Bookmark'}
-                    </button>
-                </div>
-            </div>
-        </div>`;
+        }, 100);
     }
-
-    // Group by date and render
-    const groups = {};
-    topLevel.forEach(m => {
-        const day = (m.created_at||'').substring(0,10);
-        if (!groups[day]) groups[day] = [];
-        groups[day].push(m);
-    });
-    let html = '';
-    Object.keys(groups).sort().forEach(day => {
-        const label = new Date(day + 'T00:00:00').toLocaleDateString('en-GB',
-            { weekday:'long', day:'numeric', month:'short', year:'numeric' });
-        html += `<div class="day-label">Today — ${label}</div>`;
-        groups[day].forEach(msg => { html += buildMsgHTML(msg); });
-    });
-    return html;
 };
 
 window.renderMessages = function(messages) {
@@ -380,11 +172,209 @@ window.renderMessages = function(messages) {
         c.innerHTML = '<div class="m-auto flex flex-col items-center opacity-50 pt-10"><i class="ti ti-messages text-5xl mb-3 text-gray-300"></i><p class="font-medium text-gray-500">Say hello!</p></div>';
         return;
     }
-    c.innerHTML = window._renderMessagesToHtml(messages);
+
+    window.bookmarkedSet = window.bookmarkedSet || new Set();
+
+    const msgMap = new Map();
+    messages.forEach(m => msgMap.set(m.id, m));
+    const topLevel = [];
+    const replies = {};
+
+    messages.forEach(msg => {
+        if (msg.parent_message_id) {
+            let rootId = msg.parent_message_id;
+            const visited = new Set();
+            while (msgMap.has(rootId) && msgMap.get(rootId).parent_message_id) {
+                if (visited.has(rootId)) break;
+                visited.add(rootId);
+                rootId = msgMap.get(rootId).parent_message_id;
+            }
+            if (!replies[rootId]) replies[rootId] = [];
+            replies[rootId].push(msg);
+        } else {
+            topLevel.push(msg);
+        }
+    });
+
+    function buildMsgHTML(msg) {
+        const isSent = msg.sender_id === window.currentUser.id;
+        const senderName = isSent ? 'You' : window.toSentenceCase(msg.profiles?.full_name || msg.profiles?.email.split('@')[0] || 'Unknown');
+        const time = window.getISTTime(msg.created_at);
+        const snippetText = window.getSnippet(msg.text);
+
+        // ── Transform secure-file links to styled file cards ────────────────────
+        let displayHtml = msg.text.replace(
+            /<a\s+href="https:\/\/secure-file\.local\/([^"]+)"[^>]*>([^<]*)<\/a>/g,
+            (match, path, anchorText) => {
+                const ext = (path.split('.').pop() || '').toLowerCase().split('?')[0];
+                const nameRaw = anchorText.replace(/^📁\s*/, '').trim();
+                const sizeMatch = nameRaw.match(/\(([^)]+)\)$/);
+                const sizePart = sizeMatch ? sizeMatch[1] : '';
+                const displayName = nameRaw.replace(/\s*\([^)]+\)$/, '').trim() || 'Attached File';
+                // Icon + color per file type
+                let icon='fa-file', iconColor='#6b7280', bg='#f9fafb', typeLabel='File';
+                if (ext==='pdf') { icon='fa-file-pdf'; iconColor='#dc2626'; bg='#fef2f2'; typeLabel='PDF'; }
+                else if (['doc','docx'].includes(ext)) { icon='fa-file-word'; iconColor='#2563eb'; bg='#eff6ff'; typeLabel='Word'; }
+                else if (['xls','xlsx'].includes(ext)) { icon='fa-file-excel'; iconColor='#16a34a'; bg='#f0fdf4'; typeLabel='Excel'; }
+                else if (['ppt','pptx'].includes(ext)) { icon='fa-file-powerpoint'; iconColor='#ea580c'; bg='#fff7ed'; typeLabel='PowerPoint'; }
+                else if (['jpg','jpeg','png','gif','webp','svg'].includes(ext)) { icon='fa-file-image'; iconColor='#7c3aed'; bg='#f5f3ff'; typeLabel='Image'; }
+                const safePath = path.replace(/'/g, '%27');
+                return `<div onclick="window.openSecureFile('${safePath}')"
+                    class="file-card"
+                    style="background:${bg};border:1px solid ${iconColor}25;"
+                    onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
+                    <div style="width:38px;height:38px;border-radius:8px;background:${iconColor}15;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <i class="fa-solid ${icon}" style="color:${iconColor};font-size:20px;"></i>
+                    </div>
+                    <div style="min-width:0;flex:1;">
+                        <div style="font-size:12px;font-weight:700;color:#1f2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;">${displayName}</div>
+                        <div style="font-size:10px;display:flex;gap:6px;align-items:center;margin-top:1px;">
+                            <span style="font-weight:700;color:${iconColor};">${typeLabel}</span>
+                            ${sizePart ? `<span style="color:#9ca3af;">${sizePart}</span>` : ''}
+                        </div>
+                    </div>
+                    <div style="font-size:10px;font-weight:700;color:${iconColor};white-space:nowrap;display:flex;align-items:center;gap:3px;">
+                        <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:9px;"></i> Open
+                    </div>
+                </div>`;
+            }
+        );
+
+        // ── Transform link-pill URLs into beautiful styled buttons ────────────
+        // Quill stores these as <a href="https://link-pill.local/ENCODED">NAME</a>
+        displayHtml = displayHtml.replace(
+            /<a\s+href="https:\/\/link-pill\.local\/([^"]+)"[^>]*>([^<]*)<\/a>/g,
+            (match, encoded, anchorText) => {
+                try {
+                    const decoded = decodeURIComponent(encoded);
+                    const sepIdx  = decoded.indexOf('|||');
+                    const name    = sepIdx > -1 ? decoded.substring(0, sepIdx) : (anchorText || decoded);
+                    const url     = sepIdx > -1 ? decoded.substring(sepIdx + 3) : decoded;
+                    // Detect file vs web link
+                    const fileExts = /\.(pdf|doc|docx|xlsx|xls|ppt|pptx|zip|rar|png|jpg|jpeg|gif|mp4|mp3)$/i;
+                    const isFile   = fileExts.test(url.split('?')[0]);
+                    const label    = isFile ? 'Click to Download' : 'Click to Visit';
+                    const icon     = isFile ? 'fa-download' : 'fa-arrow-up-right-from-square';
+                    const safeUrl  = url.replace(/'/g, '%27');
+                    return `<a href="javascript:void(0);"
+                        onclick="window.open('${safeUrl}','_blank')"
+                        title="${url}"
+                        style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;text-decoration:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,0.35);white-space:nowrap;vertical-align:middle;">
+                        <i class="fa-solid ${icon}" style="font-size:9px;"></i>
+                        <span>${name}</span>
+                        <span style="font-size:9px;opacity:0.75;border-left:1px solid rgba(255,255,255,0.35);padding-left:7px;margin-left:3px;">${label}</span>
+                    </a>`;
+                } catch(e) {
+                    return match; // fallback to original if decode fails
+                }
+            }
+        );
+
+        const rowClass = isSent ? 'row-sent' : 'row-rcvd';
+        const bubbleClass = isSent ? 'bubble sent' : 'bubble rcvd';
+        const avClass = isSent ? 'b-avatar sent-av' : 'b-avatar rcvd-av';
+        const avatarInitial = senderName.charAt(0).toUpperCase();
+        const rawRole = msg.profiles?.designation || msg.profiles?.role || 'Staff';
+        const roleStr = isSent ? (window.currentDesignation || window.currentRoleName || 'Staff')
+            : rawRole.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+        const tickHTML = isSent ? `<span class="b-tick">✓✓</span>` : '';
+        const replyCount = replies[msg.id] ? replies[msg.id].length : 0;
+        const isBookmarked = window.bookmarkedSet.has(msg.id);
+
+        // Create Task visible only to non-teachers and only if tasks_enabled
+        const createTaskBtn = `<button class="dd-item rbac-create-task" onclick="window.closeDropdowns(); window.openTaskModal('${msg.id}', '${window.escapeHtml(msg.text)}')"><i class="ti ti-clipboard-check"></i>Create Task</button>`;
+
+        const ddItems = isSent
+            ? `${createTaskBtn}
+               <button class="dd-item" onclick="window.closeDropdowns(); window.showReminderModal('${msg.id}', '${snippetText}')"><i class="ti ti-bell"></i>Reminder</button>
+               <button class="dd-item" onclick="window.closeDropdowns(); window.startEditMessage('${msg.id}')"><i class="ti ti-edit"></i>Edit</button>
+               <button class="dd-item" onclick="window.closeDropdowns(); window.openForwardModal('${msg.id}', '${snippetText}', '${window.escapeHtml(senderName)}')"><i class="ti ti-share"></i>Forward</button>
+               <button class="dd-item danger" onclick="window.closeDropdowns(); window.deleteMessage('${msg.id}')"><i class="ti ti-trash"></i>Delete</button>`
+            : `${createTaskBtn}
+               <button class="dd-item" onclick="window.closeDropdowns(); window.showReminderModal('${msg.id}', '${snippetText}')"><i class="ti ti-bell"></i>Reminder</button>
+               <button class="dd-item" onclick="window.closeDropdowns(); window.openForwardModal('${msg.id}', '${snippetText}', '${window.escapeHtml(senderName)}')"><i class="ti ti-share"></i>Forward</button>`;
+
+        let repliesHTML = '';
+        if (replyCount > 0) {
+            repliesHTML = `
+            <div class="b-divider"></div>
+            <div class="replies-wrap" id="rw-${msg.id}" style="display:flex;flex-direction:column;gap:2px;">
+              <div class="replies-label"><i class="ti ti-git-branch"></i>Replies</div>
+              ${replies[msg.id].map((r, idx) => {
+                  const rName = window.toSentenceCase(r.profiles?.full_name || r.profiles?.email.split('@')[0] || 'Unknown');
+                  const rTime = window.getISTTime(r.created_at);
+                  const rDisplayHtml = r.text.replace(/href="https:\/\/secure-file\.local\/([^"]+)"/g,
+                      `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium"`);
+                  return `<div class="reply-item">
+                    <div class="reply-num">${idx + 1}</div>
+                    <div class="reply-body">
+                      <div class="reply-meta">
+                        <span class="reply-name">${window.escapeHtml(rName)}</span>
+                        <span class="reply-role">Teacher</span>
+                        <span class="reply-time">${rTime}</span>
+                      </div>
+                      <div class="reply-text">${rDisplayHtml}</div>
+                    </div>
+                  </div>`;
+              }).join('')}
+            </div>`;
+        }
+
+        // Build persisted reactions HTML from cache (survives re-renders)
+        const msgReactions = window.reactionsCache?.[msg.id] || [];
+        const rGroups = {};
+        msgReactions.forEach(r => {
+            if (!rGroups[r.value]) rGroups[r.value] = { count:0, type:r.type };
+            rGroups[r.value].count += (r.count||1);
+        });
+        const tagColorMap = {
+            'Thank You':'bg-green-50 text-green-700 border-green-200',
+            'Noted':'bg-blue-50 text-blue-700 border-blue-200',
+            'Copied':'bg-purple-50 text-purple-700 border-purple-200',
+            'Yes Sir':'bg-orange-50 text-orange-700 border-orange-200',
+            'Yes Madam':'bg-pink-50 text-pink-700 border-pink-200'
+        };
+        const persistedReactionsHTML = Object.entries(rGroups).map(([val, info]) => {
+            if (info.type === 'emoji') {
+                return `<button class="e-chip active" data-emoji="${val}" onclick="window.applyReaction('${msg.id}','${val}','emoji')" title="Click to remove">${val} <span class="e-cnt">${info.count}</span></button>`;
+            } else {
+                return `<span class="${tagColorMap[val]||'bg-blue-50 text-blue-700 border-blue-200'} px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ml-1" data-tag="${val}">${val}</span>`;
+            }
+        }).join('');
+
+        return `
+        <div class="${rowClass} transition-colors" id="row-${msg.id}">
+          <div class="${bubbleClass}">
+            <div class="b-header">
+              <div class="${avClass}">${avatarInitial}</div>
+              <div class="b-name">${window.escapeHtml(senderName)} <span class="b-role">· ${roleStr}</span></div>
+              <span class="b-time">${time} ${tickHTML}</span>
+              <div class="menu-wrap">
+                <button class="dot-btn" onclick="window.toggleDropdown('dd-${msg.id}')" aria-label="Options"><i class="ti ti-dots-vertical"></i></button>
+                <div class="bubble-dropdown" id="dd-${msg.id}">${ddItems}</div>
+              </div>
+            </div>
+            <div class="b-text">${displayHtml}</div>
+            <div class="b-footer" id="footer-${msg.id}">
+              ${persistedReactionsHTML}
+              <div class="relative inline-block group/reaction">
+                  <button class="e-add" title="Add reaction" onclick="window._showReactionPicker('${msg.id}', this)"><i class="ti ti-mood-smile"></i></button>
+              </div>
+            </div>
+            <div class="b-actions">
+              ${replyCount > 0 ? `<button class="act-btn" onclick="window.toggleReplies('rw-${msg.id}')"><i class="ti ti-message-2"></i> Replies <span class="reply-badge">${replyCount}</span></button>` : ''}
+              <button class="act-btn" onclick="window.initiateReply('${msg.id}', '${snippetText}')"><i class="ti ti-corner-up-left"></i> Reply</button>
+              <button class="act-btn ${isBookmarked ? 'bookmarked' : ''}" onclick="window.toggleBookmark('${msg.id}')"><i class="ti ${isBookmarked ? 'ti-bookmark-filled' : 'ti-bookmark'}"></i> ${isBookmarked ? 'Bookmarked' : 'Bookmark'}</button>
+            </div>
+            ${repliesHTML}
+          </div>
+        </div>`;
+    }
+
+    const dateLabel = `<div class="day-label">Today — ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>`;
+    c.innerHTML = dateLabel + topLevel.map(msg => buildMsgHTML(msg)).join('');
     if (typeof window.applyRBAC === 'function') window.applyRBAC();
 };
-
-
 
 // ─── REACTION PICKER (body-appended, fixed position, never clipped) ──────────
 window._getQuickTags = function() {

@@ -301,7 +301,7 @@ window.renderMainApp = function() {
                             <i class="ti ti-bookmark text-xl"></i><span>Bookmarks</span>
                         </div>
                         <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('alerts')" title="Notifications">
-                            <i class="ti ti-bell text-xl"></i><span>Alerts</span>
+                            <i class="ti ti-bell text-xl" style="color:var(--text-secondary,#5b6e8c);"></i><span>Alerts</span>
                         </div>
                         <div class="topbar-icon-btn top-bar-icon" onclick="window.openActivityFeed()" title="Activity Feed">
                             <i class="fa-solid fa-bolt text-[17px]"></i><span>Activity</span>
@@ -872,7 +872,7 @@ window.loadChatsList = async function() {
             data-room="${g}" data-name="${storedName}">
             <div class="relative flex-shrink-0">
                 <div class="w-9 h-9 rounded-lg flex items-center justify-center text-white text-[11px] font-bold shadow-sm"
-                    style="${storedPhoto ? `background:url('${storedPhoto}') center/cover;color:transparent;` : `background:${storedColor};`}">${storedPhoto ? '' : initials}</div>
+                    style="${storedPhoto ? `background-image:url('${storedPhoto}');background-size:cover;background-position:center;color:transparent;` : `background:${storedColor};`}">${storedPhoto ? '' : initials}</div>
                 ${unread > 0 ? `<span class="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full" style="background:#22c55e;"></span>
                     <span class="absolute -top-1 -right-1 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center" style="background:#22c55e;">${unread > 9 ? '9+' : unread}</span>` : ''}
             </div>
@@ -899,7 +899,7 @@ window.loadChatsList = async function() {
             data-room="${dmRoomId}" data-name="${name}">
             <div class="relative flex-shrink-0">
                 <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm"
-                    style="${u.avatar_url ? `background:url('${u.avatar_url}') center/cover;color:transparent;` : 'background:var(--accent);'}">${u.avatar_url ? '' : name.charAt(0).toUpperCase()}</div>
+                    style="${u.avatar_url ? `background-image:url('${u.avatar_url}');background-size:cover;background-position:center;color:transparent;` : 'background:var(--accent);'}">${u.avatar_url ? '' : name.charAt(0).toUpperCase()}</div>
                 ${unread > 0 ? `<span class="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full" style="background:#22c55e;"></span>
                     <span class="absolute -top-1 -right-1 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center" style="background:#22c55e;">${unread > 9 ? '9+' : unread}</span>` : ''}
             </div>
@@ -1018,7 +1018,6 @@ window.startSubscriptions = function() {
                                 message:    msg,
                                 message_id: p.new.id,
                                 tenant_id:  window.currentTenantId,
-                                room_id:    incomingRoom,
                                 is_read:    false
                             });
                         }
@@ -1125,9 +1124,6 @@ window.startSubscriptions = function() {
 
             // Real-time prepend to activity feed if open
             if (typeof window.prependFeedItem === 'function') window.prependFeedItem(n);
-
-            // Don't toast if it's a notification for the room the user is currently viewing
-            if (type === 'message' && n.room_id && n.room_id === window.currentRoom) return;
 
             const toastConfig = {
                 reminder:  { icon:'fa-solid fa-stopwatch',       color:'text-purple-400', sound:'reminder' },

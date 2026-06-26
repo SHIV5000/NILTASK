@@ -109,6 +109,9 @@ window.sendMessage = async function() {
     window.quillEditor.root.innerHTML = '';
     window.cancelReply();
     if (sendBtn) sendBtn.innerHTML = '<i class="ti ti-send text-lg"></i>';
+    // Supabase Realtime doesn't echo INSERT events back to the sender's own connection,
+    // so reload explicitly so the sender sees their message immediately.
+    if (typeof window.loadMessages === 'function') window.loadMessages();
 };
 
 window.loadMessages = async function() {

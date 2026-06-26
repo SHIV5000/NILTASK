@@ -39,10 +39,10 @@ import { sb } from './shared.js';
         .chat-scroll-btn { position:absolute;right:14px;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:10;border:1px solid var(--border-color);transition:all 0.2s;box-shadow:0 2px 8px rgba(0,0,0,0.12); }
         .chat-scroll-btn:hover { transform:scale(1.1); }
         /* Top bar icon labels */
-        .topbar-icon-btn { display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;color:var(--text-secondary);transition:color 0.18s;padding:2px 6px;border-radius:8px; }
+        .topbar-icon-btn { display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;color:var(--text-secondary,#5b6e8c);transition:color 0.18s;padding:2px 6px;border-radius:8px; }
         .topbar-icon-btn:hover { color:var(--accent);background:rgba(var(--accent-rgb,99,102,241),0.08); }
-        .topbar-icon-btn span { font-size:8px;font-weight:800;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap; }
-        .topbar-icon-btn i { font-size:1.25rem; }
+        .topbar-icon-btn span { font-size:8px;font-weight:800;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap;color:inherit; }
+        .topbar-icon-btn i { font-size:1.25rem;color:inherit; }
         /* File card in bubbles */
         .file-card { display:inline-flex;align-items:center;gap:10px;border-radius:12px;padding:8px 14px;cursor:pointer;margin:4px 0;max-width:280px;transition:opacity 0.2s; }
         .file-card:hover { opacity:0.8; }

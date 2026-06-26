@@ -4,7 +4,7 @@ import { sb } from './shared.js';
 
 // ─── UNIVERSAL NOTIFY HELPER ───────────────────────────────────────────────
 // type: 'message' | 'task' | 'reminder' | 'general'
-// ─── RICH TEXT HELPERS FOR TASK UPDATE BOX ────────────────────────────────
+// ─── RICH TEXT HELPERS FOR TASK UPDATE BOX ──────────────────────── ────────
 window.taskFmtCmd = function(cmd, boxId) {
     const el = document.getElementById('update-txt-' + boxId);
     if (!el) return;

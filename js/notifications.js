@@ -19,31 +19,30 @@
 
 // ── SHARED AUDIO CONTEXT — unlocked once on first user gesture ────
 let _sharedCtx = null;
+let _audioUnlocked = false;
+
 function _unlockSharedAudio() {
-    if (_sharedCtx) return;
+    if (_audioUnlocked) return;
+    _audioUnlocked = true;
+
+    // 1. Unlock Web Audio API
     try {
         _sharedCtx = new (window.AudioContext || window.webkitAudioContext)();
         if (_sharedCtx.state === 'suspended') _sharedCtx.resume();
+
+        // Play a zero-duration silent buffer — this satisfies the <audio> element
+        // autoplay gate in the same gesture, because Web Audio and HTMLAudioElement
+        // share the same "user has interacted with media" flag in Chromium
+        const buf = _sharedCtx.createBuffer(1, 1, 22050);
+        const src = _sharedCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(_sharedCtx.destination);
+        src.start(0);
     } catch(e) { /* Web Audio unsupported */ }
-    // Separately, main.js's playSound() plays real MP3 files via plain
-    // <audio> elements (new Audio(url).play()) — a totally different browser
-    // autoplay gate from the Web Audio API context above. It was never
-    // unlocked, so every playSound() call triggered from a realtime
-    // callback (not a direct tap) was silently rejected by the browser —
-    // this is the actual reason message/reminder/task/scheduled sounds were
-    // missing, separate from the chime fix. A muted, near-silent play+pause
-    // during this same first gesture satisfies the browser's "user has
-    // engaged with media" requirement for the rest of the page session.
-    try {
-        const warm = new Audio();
-        warm.muted = true;
-        warm.src = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAACAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA//8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAASDs90hvAAAAAAAAAAAAAAAAAAAA';
-        warm.play().catch(()=>{}).finally(() => { warm.pause(); });
-    } catch(e) {}
 }
 document.addEventListener('touchstart', _unlockSharedAudio, { once:true, passive:true });
-document.addEventListener('click', _unlockSharedAudio, { once:true });
-document.addEventListener('keydown', _unlockSharedAudio, { once:true });
+document.addEventListener('click',      _unlockSharedAudio, { once:true });
+document.addEventListener('keydown',    _unlockSharedAudio, { once:true });
 
 // ── NOTIFICATION SOUND ─────────────────────────────────────────
 // Generates a gentle chime via Web Audio API — no file needed
@@ -94,23 +93,24 @@ window.requestNotificationPermission = async function() {
 window.showSystemNotification = function(title, body, options = {}) {
     if (!('Notification' in window)) return;
     if (Notification.permission !== 'granted') return;
-    if (document.visibilityState === 'visible') return; // don't disturb when app is open
+
+    // Only suppress if the user is already looking at the exact room this message came from
+    // Do NOT suppress just because the tab is visible — they may be in a different channel
+    if (options.room && options.room === window.currentRoom && document.visibilityState === 'visible') return;
 
     const n = new Notification(title, {
         body,
-        icon:    '/favicon.svg',
-        badge:   '/favicon.svg',
-        tag:     options.tag || 'taskflow-msg',
+        icon:     '/favicon.svg',
+        badge:    '/favicon.svg',
+        tag:      options.tag || 'taskflow-msg',
         renotify: true,
-        vibrate: [200, 100, 200],
-        silent:  false,
+        silent:   false,
         ...options
     });
 
     n.onclick = () => {
         window.focus();
         n.close();
-        // Switch to the relevant chat if we know the room
         if (options.room && typeof window.setMobileView === 'function') {
             window.currentRoom = options.room;
             window.loadMessages?.();
@@ -118,7 +118,6 @@ window.showSystemNotification = function(title, body, options = {}) {
         }
     };
 
-    // Auto-close after 8 seconds
     setTimeout(() => n.close(), 8000);
 };
 

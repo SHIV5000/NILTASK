@@ -116,23 +116,65 @@ window._loadActivityFeed = async function() {
     const iconName  = { reminder:'fa-stopwatch', task:'fa-clipboard-check', scheduled:'fa-clock', general:'fa-bell' };
 
     list.innerHTML = items.map(item => {
+        try {
         const time = fmt(item.t);
         const base = 'display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border-color);';
 
         if (item.k === 'msg') {
             const m = item.d;
             const isMine = m.sender_id === window.currentUser?.id;
-            const name = isMine ? 'You'
-                : (window.toSentenceCase?.(m.profiles?.full_name || m.profiles?.email?.split('@')[0] || 'Someone') || 'Someone');
+            const fullName = m.profiles?.full_name || m.profiles?.email?.split('@')[0] || 'Someone';
+            const name = isMine ? 'You' : (fullName.charAt(0).toUpperCase() + fullName.slice(1).toLowerCase());
             const room = window.getRoomDisplayName?.(m.room_id) || m.room_id || '';
-            const txt  = (window.stripHtml?.(m.text) || '').substring(0,90) || '📎 Attachment';
+            const txt  = (window.stripHtml ? window.stripHtml(m.text) : (m.text||'').replace(/<[^>]*>/g,'')).substring(0,90) || '📎 Attachment';
             const col  = isMine ? 'var(--accent)' : '#6366f1';
+            const eName = name.replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+            const eRoom = room.replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+            const eTxt  = txt.replace(/</g,'&lt;').replace(/>/g,'&gt;');
             return '<div style="' + base + 'cursor:pointer;" onclick="window.goToMessage&&window.goToMessage(\'' + m.id + '\',null,\'' + m.room_id + '\')">' +
-                '<div style="width:32px;height:32px;border-radius:50%;background:' + col + ';flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;">' + name.charAt(0).toUpperCase() + '</div>' +
+                '<div style="width:32px;height:32px;border-radius:50%;background:' + col + ';flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;">' + (name.charAt(0)||'?').toUpperCase() + '</div>' +
                 '<div style="flex:1;min-width:0;">' +
-                '<div style="font-size:12px;font-weight:600;color:var(--text-primary);">' + window.escapeHtml(name) +
-                '<span style="font-weight:400;color:var(--text-secondary);"> in ' + window.escapeHtml(room) + '</span></div>' +
-                '<div style="font-size:12px;color:var(--text-secondary);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + window.escapeHtml(txt) + '</div>' +
+                '<div style="font-size:12px;font-weight:600;color:var(--text-primary);">' + eName +
+                '<span style="font-weight:400;color:var(--text-secondary);"> in ' + eRoom + '</span></div>' +
+                '<div style="font-size:12px;color:var(--text-secondary);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + eTxt + '</div>' +
+                '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + time + '</div>' +
+                '</div></div>';
+        }
+
+        if (item.k === 'trail') {
+            const tr = item.d;
+            const fullName = tr.profiles?.full_name || tr.profiles?.email?.split('@')[0] || 'Staff';
+            const name  = fullName.charAt(0).toUpperCase() + fullName.slice(1).toLowerCase();
+            const title = tr.tasks?.title || 'Task';
+            const action = (tr.action||'update').toUpperCase();
+            return '<div style="' + base + 'cursor:pointer;" onclick="window.goToTask&&window.goToTask(\'' + (tr.task_id||'') + '\')">' +
+                '<div style="width:32px;height:32px;border-radius:50%;background:#3b82f618;flex-shrink:0;display:flex;align-items:center;justify-content:center;">' +
+                '<i class="fa-solid fa-clipboard-check" style="color:#3b82f6;font-size:13px;"></i></div>' +
+                '<div style="flex:1;min-width:0;">' +
+                '<div style="font-size:12px;font-weight:600;color:var(--text-primary);">' + name.replace(/</g,'&lt;') +
+                '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;background:#3b82f618;color:#3b82f6;margin-left:6px;">' + action + '</span></div>' +
+                '<div style="font-size:12px;color:var(--text-secondary);margin-top:1px;">' + title.replace(/</g,'&lt;') + '</div>' +
+                '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + time + '</div>' +
+                '</div></div>';
+        }
+
+        // notification
+        const n = item.d;
+        const ic  = iconName[n.type]  || 'fa-bell';
+        const col = iconColor[n.type] || '#f59e0b';
+        const msg = (window.stripHtml ? window.stripHtml(n.message||'') : (n.message||'').replace(/<[^>]*>/g,'')).substring(0,120);
+        return '<div style="' + base + (n.is_read?'':'background:rgba(99,102,241,.04);') + '">' +
+            '<div style="width:32px;height:32px;border-radius:50%;background:' + col + '18;flex-shrink:0;display:flex;align-items:center;justify-content:center;">' +
+            '<i class="fa-solid ' + ic + '" style="color:' + col + ';font-size:13px;"></i></div>' +
+            '<div style="flex:1;min-width:0;">' +
+            '<div style="font-size:12px;color:var(--text-primary);">' + msg.replace(/</g,'&lt;') + '</div>' +
+            '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + time + '</div>' +
+            '</div></div>';
+        } catch(err) {
+            console.warn('[activity] render error for item', item.k, err.message);
+            return ''; // skip bad item, don't blank everything
+        }
+    }).join('');
                 '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + time + '</div>' +
                 '</div></div>';
         }
@@ -146,26 +188,6 @@ window._loadActivityFeed = async function() {
                 '<div style="width:32px;height:32px;border-radius:50%;background:#3b82f618;flex-shrink:0;display:flex;align-items:center;justify-content:center;">' +
                 '<i class="fa-solid fa-clipboard-check" style="color:#3b82f6;font-size:13px;"></i></div>' +
                 '<div style="flex:1;min-width:0;">' +
-                '<div style="font-size:12px;font-weight:600;color:var(--text-primary);">' + window.escapeHtml(name) +
-                '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;background:#3b82f618;color:#3b82f6;margin-left:6px;">' + action + '</span></div>' +
-                '<div style="font-size:12px;color:var(--text-secondary);margin-top:1px;">' + window.escapeHtml(title) + '</div>' +
-                '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + time + '</div>' +
-                '</div></div>';
-        }
-
-        // notif
-        const n = item.d;
-        const ic  = iconName[n.type]  || 'fa-bell';
-        const col = iconColor[n.type] || '#f59e0b';
-        const msg = (window.stripHtml?.(n.message) || n.message || '').substring(0,120);
-        return '<div style="' + base + (n.is_read?'':'background:rgba(99,102,241,.04);') + '">' +
-            '<div style="width:32px;height:32px;border-radius:50%;background:' + col + '18;flex-shrink:0;display:flex;align-items:center;justify-content:center;">' +
-            '<i class="fa-solid ' + ic + '" style="color:' + col + ';font-size:13px;"></i></div>' +
-            '<div style="flex:1;min-width:0;">' +
-            '<div style="font-size:12px;color:var(--text-primary);">' + window.escapeHtml(msg) + '</div>' +
-            '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + time + '</div>' +
-            '</div></div>';
-    }).join('');
 };
 
 window.closeActivityFeed = function() {

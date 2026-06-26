@@ -171,22 +171,24 @@ window._loadActivityFeed = async function() {
         return;
     }
 
-    list.innerHTML = items.map(item => {
+    let renderedCount = 0;
+    const html = items.map((item, idx) => {
         try {
             const ago = _feedTimeAgo(item.t);
 
             if (item.k === 'msg') {
                 const m = item.d;
-                const mine = m.sender_id === window.currentUser?.id;
-                const fn  = m.profiles?.full_name || m.profiles?.email?.split('@')[0] || '?';
+                const mine = m.sender_id === (window.currentUser && window.currentUser.id);
+                const prof = m.profiles || {};
+                const fn  = prof.full_name || (prof.email ? prof.email.split('@')[0] : '') || '?';
                 const nm  = mine ? 'You' : fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase();
-                const rm  = window.getRoomDisplayName?.(m.room_id) || m.room_id || '';
-                const tx  = _strip(m.text).substring(0,90) || '📎 Attachment';
+                const rm  = (window.getRoomDisplayName && window.getRoomDisplayName(m.room_id)) || m.room_id || '';
+                const tx  = _strip(m.text).substring(0,90) || 'Attachment';
                 const bg  = mine ? 'var(--accent)' : '#6366f1';
-                const isReply = !!m.parent_message_id;
-                const typeLabel = isReply ? '↩ Reply' : '💬 Message';
+                const typeLabel = m.parent_message_id ? 'Reply' : 'Message';
+                renderedCount++;
                 return '<div style="display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border-color);align-items:flex-start;cursor:pointer;" onclick="window.goToMessage&&window.goToMessage(\'' + m.id + '\',null,\'' + m.room_id + '\')">'
-                    + '<div style="width:32px;height:32px;border-radius:50%;background:' + bg + ';flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;">' + _esc(nm.charAt(0)||'?').toUpperCase() + '</div>'
+                    + '<div style="width:32px;height:32px;border-radius:50%;background:' + bg + ';flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;">' + _esc((nm.charAt(0)||'?').toUpperCase()) + '</div>'
                     + '<div style="flex:1;min-width:0;">'
                     + '<div style="font-size:12px;font-weight:600;color:var(--text-primary);">' + _esc(nm) + '<span style="font-weight:400;font-size:10px;color:var(--text-secondary);margin-left:4px;">' + typeLabel + ' in ' + _esc(rm) + '</span></div>'
                     + '<div style="font-size:12px;color:var(--text-secondary);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _esc(tx) + '</div>'
@@ -196,13 +198,15 @@ window._loadActivityFeed = async function() {
 
             if (item.k === 'trail') {
                 const tr = item.d;
-                const fn  = tr.profiles?.full_name || tr.profiles?.email?.split('@')[0] || 'Staff';
+                const tprof = tr.profiles || {};
+                const fn  = tprof.full_name || (tprof.email ? tprof.email.split('@')[0] : '') || 'Staff';
                 const nm  = fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase();
-                const ttl = tr.tasks?.title || 'Task';
+                const ttl = (tr.tasks && tr.tasks.title) || 'Task';
                 const act = tr.action || 'update';
                 const trailType = act === 'created' ? 'task_created' : act === 'accepted' ? 'task_completed' : 'task_updated';
-                const cfg = _FEED_TYPES[trailType];
-                const actLabel = { created:'ASSIGNED', accepted:'DONE', submitted:'SUBMITTED', update:'UPDATED', delegate:'DELEGATED', transfer:'TRANSFERRED', review:'REVIEWED' }[act] || act.toUpperCase();
+                const cfg = _FEED_TYPES[trailType] || _FEED_TYPES.task_updated;
+                const actLabel = ({ created:'ASSIGNED', accepted:'DONE', submitted:'SUBMITTED', update:'UPDATED', delegate:'DELEGATED', transfer:'TRANSFERRED', review:'REVIEWED' })[act] || act.toUpperCase();
+                renderedCount++;
                 return '<div style="display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border-color);align-items:flex-start;cursor:pointer;" onclick="window.goToTask&&window.goToTask(\'' + (tr.task_id||'') + '\')">'
                     + '<div style="width:32px;height:32px;border-radius:50%;background:' + cfg.color + '18;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><i class="fa-solid ' + cfg.fa + '" style="color:' + cfg.color + ';font-size:13px;"></i></div>'
                     + '<div style="flex:1;min-width:0;">'
@@ -213,11 +217,16 @@ window._loadActivityFeed = async function() {
             }
 
             // Notification item
+            renderedCount++;
             return _renderNotifItem(item.d);
         } catch(err) {
+            console.error('[feed] render error at index', idx, 'kind:', item.k, err, item);
             return '';
         }
     }).join('');
+
+    console.log('[feed] rendered:', renderedCount, '/ html length:', html.length);
+    list.innerHTML = html || '<p style="text-align:center;padding:32px;color:var(--text-secondary);font-size:12px;">No activity yet.</p>';
 };
 
 // Real-time: prepend a single incoming notification to the feed list without full reload

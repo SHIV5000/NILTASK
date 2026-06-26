@@ -1044,11 +1044,11 @@ window.startSubscriptions = function() {
             const p = payload.payload;
             if (p && p.user_id !== window.currentUser.id) {
                 if (typeof window.applyReactionDOM === 'function') {
-                    window.applyReactionDOM(p.message_id, p.value, p.type);
+                    window.applyReactionDOM(p.message_id, p.value, p.type, p.user_id);
                 }
             }
         })
-        // Handle reaction REMOVE from other users (toggle off)
+        // Handle reaction REMOVE from other users — decrement count, only remove chip when count hits 0
         .on('broadcast', { event: 'reaction_remove' }, (payload) => {
             const p = payload.payload;
             if (p && p.user_id !== window.currentUser.id) {
@@ -1056,8 +1056,30 @@ window.startSubscriptions = function() {
                 if (!footer) return;
                 const chip = footer.querySelector(`[data-emoji="${p.value}"]`);
                 const tag  = footer.querySelector(`[data-tag="${p.value}"]`);
-                if (chip) chip.remove();
-                if (tag)  tag.remove();
+                if (chip) {
+                    const cnt = chip.querySelector('.e-cnt');
+                    const current = parseInt(cnt?.textContent || '1');
+                    if (current > 1) { if (cnt) cnt.textContent = current - 1; }
+                    else chip.remove();
+                }
+                if (tag) tag.remove();
+                // Keep cache in sync
+                if (window.reactionsCache?.[p.message_id]) {
+                    const cache = window.reactionsCache[p.message_id];
+                    const idx = cache.findIndex(r => r.value === p.value && r.user_id === p.user_id);
+                    if (idx !== -1) {
+                        if ((cache[idx].count || 1) > 1) cache[idx].count--;
+                        else cache.splice(idx, 1);
+                    }
+                }
+            }
+        })
+        // Sync group photo to all online users when admin saves it
+        .on('broadcast', { event: 'group_photo' }, ({ payload }) => {
+            if (payload?.room_id && payload?.photo) {
+                localStorage.setItem('dept_photo_' + payload.room_id, payload.photo);
+                if (payload.name) localStorage.setItem('dept_name_' + payload.room_id, payload.name);
+                if (typeof window.loadChatsList === 'function') window.loadChatsList();
             }
         })
         .subscribe();

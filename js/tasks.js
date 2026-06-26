@@ -494,9 +494,35 @@ window.loadTasksForPanel = async function() {
             const tTime = window.getISTTime(t.created_at);
             let content = '';
             if (t.action === 'FILE') {
-                let fName = window.escapeHtml(t.comment), fPath = window.escapeHtml(t.comment);
-                if (t.comment && t.comment.includes('|')) { const parts = t.comment.split('|'); fName = window.escapeHtml(parts[0]); fPath = window.escapeHtml(parts[1]); }
-                content = `FILE - <a href="javascript:void(0);" onclick="window.openSecureFile('${fPath}'); return false;" class="text-blue-600 underline font-medium hover:text-blue-800">${fName}</a>`;
+                let fName = t.comment || '', fPath = t.comment || '';
+                if (t.comment && t.comment.includes('|')) {
+                    const parts = t.comment.split('|');
+                    fName = parts[0]; fPath = parts[1];
+                }
+                const ext = (fName.split('.').pop() || '').toLowerCase();
+                const fileIcon = ext === 'pdf'                           ? 'fa-file-pdf'
+                    : ['jpg','jpeg','png','gif','webp','heic'].includes(ext) ? 'fa-file-image'
+                    : ['doc','docx'].includes(ext)                           ? 'fa-file-word'
+                    : ['xls','xlsx','csv'].includes(ext)                     ? 'fa-file-excel'
+                    : ['ppt','pptx'].includes(ext)                           ? 'fa-file-powerpoint'
+                    : ['mp4','mov','avi','mkv'].includes(ext)                ? 'fa-file-video'
+                    : 'fa-file';
+                const iconColor = ext === 'pdf' ? '#ef4444'
+                    : ['jpg','jpeg','png','gif','webp','heic'].includes(ext) ? '#10b981'
+                    : ['doc','docx'].includes(ext) ? '#2563eb'
+                    : ['xls','xlsx','csv'].includes(ext) ? '#16a34a'
+                    : '#6366f1';
+                const safePath = window.escapeHtml(fPath);
+                const safeName = window.escapeHtml(fName);
+                content = `<div onclick="window.openSecureFile('${safePath}')" 
+                    style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:10px;
+                           background:${iconColor}10;border:1px solid ${iconColor}30;cursor:pointer;
+                           max-width:260px;text-decoration:none;" title="Click to open ${safeName}">
+                    <i class="fa-solid ${fileIcon}" style="color:${iconColor};font-size:18px;flex-shrink:0;"></i>
+                    <span style="font-size:12px;font-weight:600;color:var(--text-primary);overflow:hidden;
+                                 text-overflow:ellipsis;white-space:nowrap;">${safeName}</span>
+                    <i class="fa-solid fa-arrow-up-right-from-square" style="color:${iconColor};font-size:10px;opacity:.7;flex-shrink:0;"></i>
+                </div>`;
             } else if (t.action === 'UPDATE') {
                 content = `UPDATE - <span class="text-gray-700">${window.escapeHtml(t.comment)}</span>`;
             } else {

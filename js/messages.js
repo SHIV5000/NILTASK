@@ -195,10 +195,18 @@ window.sendMessage = async function() {
 };
 
 window.loadMessages = async function() {
+    const PAGE = 50;
     const { data: msgs } = await sb.from('messages')
-        .select('*, profiles(full_name, email, role, designation)')
+        .select('*, profiles(full_name, email, role, designation, avatar_url)')
         .eq('room_id', window.currentRoom)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: false })
+        .limit(PAGE);
+
+    const allMsgs = (msgs || []).reverse();
+    window._roomMsgs = allMsgs;
+    window._oldestMsgTs = allMsgs[0]?.created_at || null;
+    window._allMsgsLoaded = !msgs || msgs.length < PAGE;
+    window._loadingOlder = false;
 
     const { data: bms } = await sb.from('bookmarks')
         .select('message_id')
@@ -206,12 +214,14 @@ window.loadMessages = async function() {
     window.bookmarkedSet = new Set(bms?.map(b => b.message_id) || []);
 
     // ── Fetch reactions so they survive re-renders ──────────────────────────
-    const msgIds = msgs?.map(m => m.id) || [];
+    const msgIds = allMsgs.map(m => m.id);
     window.reactionsCache = {};
+    window.removedReactions = window.removedReactions || new Set();
     if (msgIds.length) {
         try {
             const { data: rData } = await sb.from('reactions').select('*').in('message_id', msgIds);
             (rData || []).forEach(r => {
+                if (window.removedReactions.has(r.message_id + '|' + r.value)) return;
                 if (!window.reactionsCache[r.message_id]) window.reactionsCache[r.message_id] = [];
                 window.reactionsCache[r.message_id].push(r);
             });
@@ -221,8 +231,17 @@ window.loadMessages = async function() {
     const c = document.getElementById('messagesContainer');
     const isNearBottom = c ? (c.scrollHeight - c.scrollTop - c.clientHeight < 150) : false;
 
-    window.renderMessages(msgs || []);
+    window.renderMessages(allMsgs);
     if (typeof window.applyFilters === 'function') window.applyFilters();
+
+    // Attach scroll listener for scroll-up paging
+    if (c) {
+        c.onscroll = function() {
+            if (c.scrollTop < 120 && !window._loadingOlder && !window._allMsgsLoaded) {
+                window._loadOlderMsgs();
+            }
+        };
+    }
 
     if (c) {
         setTimeout(() => {
@@ -246,6 +265,53 @@ window.loadMessages = async function() {
             }
         }, 100);
     }
+};
+
+window._loadOlderMsgs = async function() {
+    if (window._loadingOlder || window._allMsgsLoaded || !window._oldestMsgTs) return;
+    window._loadingOlder = true;
+    const loader = document.getElementById('__olderMsgsLoader');
+    if (loader) {
+        loader.style.display = 'flex';
+        loader.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="color:var(--text-secondary);font-size:11px;"></i><span style="font-size:11px;color:var(--text-secondary);margin-left:6px;">Loading older messages…</span>';
+    }
+
+    const PAGE = 50;
+    const { data: older } = await sb.from('messages')
+        .select('*, profiles(full_name, email, role, designation, avatar_url)')
+        .eq('room_id', window.currentRoom)
+        .lt('created_at', window._oldestMsgTs)
+        .order('created_at', { ascending: false })
+        .limit(PAGE);
+
+    if (older && older.length) {
+        const olderChron = older.reverse();
+        window._oldestMsgTs = olderChron[0].created_at;
+        window._allMsgsLoaded = older.length < PAGE;
+        window._roomMsgs = [...olderChron, ...(window._roomMsgs || [])];
+
+        const newIds = olderChron.map(m => m.id);
+        try {
+            const { data: rData } = await sb.from('reactions').select('*').in('message_id', newIds);
+            (rData || []).forEach(r => {
+                if (window.removedReactions?.has(r.message_id + '|' + r.value)) return;
+                if (!window.reactionsCache[r.message_id]) window.reactionsCache[r.message_id] = [];
+                window.reactionsCache[r.message_id].push(r);
+            });
+        } catch(e) {}
+
+        const mc = document.getElementById('messagesContainer');
+        const prevScrollHeight = mc ? mc.scrollHeight : 0;
+        window.renderMessages(window._roomMsgs);
+        if (mc) mc.scrollTop = mc.scrollHeight - prevScrollHeight;
+    } else {
+        window._allMsgsLoaded = true;
+        if (loader) {
+            loader.style.display = 'flex';
+            loader.innerHTML = '<span style="font-size:11px;color:var(--text-secondary);">— Beginning of chat —</span>';
+        }
+    }
+    window._loadingOlder = false;
 };
 
 window.renderMessages = function(messages) {
@@ -357,6 +423,12 @@ window.renderMessages = function(messages) {
         const bubbleClass = isSent ? 'bubble sent' : 'bubble rcvd';
         const avClass = isSent ? 'b-avatar sent-av' : 'b-avatar rcvd-av';
         const avatarInitial = senderName.charAt(0).toUpperCase();
+        const sentAvUrl = window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + window.currentUser.id) || '';
+        const rcvdAvUrl = msg.profiles?.avatar_url || '';
+        const avatarUrl = isSent ? sentAvUrl : rcvdAvUrl;
+        const avatarHTML = avatarUrl
+            ? `<div class="${avClass}" style="overflow:hidden;padding:0;background:transparent;"><img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.parentElement.style.background='var(--accent)';this.parentElement.innerHTML='${avatarInitial}';"></div>`
+            : `<div class="${avClass}">${avatarInitial}</div>`;
         const rawRole = msg.profiles?.designation || msg.profiles?.role || 'Staff';
         const roleStr = isSent ? (window.currentDesignation || window.currentRoleName || 'Staff')
             : rawRole.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
@@ -429,7 +501,7 @@ window.renderMessages = function(messages) {
         <div class="${rowClass} transition-colors" id="row-${msg.id}">
           <div class="${bubbleClass}">
             <div class="b-header">
-              <div class="${avClass}">${avatarInitial}</div>
+              ${avatarHTML}
               <div class="b-name">${window.escapeHtml(senderName)} <span class="b-role">· ${roleStr}</span></div>
               <span class="b-time">${time} ${tickHTML}</span>
               <div class="menu-wrap">
@@ -455,7 +527,10 @@ window.renderMessages = function(messages) {
     }
 
     const dateLabel = `<div class="day-label">Today — ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>`;
-    c.innerHTML = dateLabel + topLevel.map(msg => buildMsgHTML(msg)).join('');
+    const loaderHtml = window._allMsgsLoaded
+        ? '<div id="__olderMsgsLoader" style="display:flex;text-align:center;padding:12px;align-items:center;justify-content:center;"><span style="font-size:11px;color:var(--text-secondary);">— Beginning of chat —</span></div>'
+        : '<div id="__olderMsgsLoader" style="display:none;text-align:center;padding:12px;align-items:center;justify-content:center;gap:6px;"></div>';
+    c.innerHTML = loaderHtml + dateLabel + topLevel.map(msg => buildMsgHTML(msg)).join('');
     if (typeof window.applyRBAC === 'function') window.applyRBAC();
 };
 
@@ -531,8 +606,10 @@ window.applyReaction = async function(msgId, value, type) {
     if (alreadySet) {
         // ── REMOVE — any user can remove any reaction from a message ─────────
         alreadySet.remove();
-        // Delete ALL rows for this (message, value) — not just current user's row.
-        // This allows any user to dismiss a reaction, not only the original reactor.
+        // Session cache prevents this reaction from re-appearing on next loadMessages if RLS blocks the DB delete
+        window.removedReactions = window.removedReactions || new Set();
+        window.removedReactions.add(msgId + '|' + value);
+        // Delete ALL rows for this (message, value) — not just current user's row
         try { await sb.from('reactions').delete()
                 .eq('message_id', msgId).eq('value', value); } catch(e) {}
         // Sync local cache

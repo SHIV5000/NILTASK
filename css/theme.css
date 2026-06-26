@@ -678,3 +678,21 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
     padding: 2px 4px 8px;
     font-family: 'Inter', sans-serif;
 }
+
+/* ── Thin overlay scrollbars ──────────────────────────────────────────────── */
+#messagesContainer {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(100,116,139,0.25) transparent;
+}
+#messagesContainer::-webkit-scrollbar { width: 4px; }
+#messagesContainer::-webkit-scrollbar-track { background: transparent; }
+#messagesContainer::-webkit-scrollbar-thumb { background: rgba(100,116,139,0.25); border-radius: 4px; }
+#messagesContainer::-webkit-scrollbar-thumb:hover { background: rgba(100,116,139,0.5); }
+
+#chatsList {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(100,116,139,0.2) transparent;
+}
+#chatsList::-webkit-scrollbar { width: 3px; }
+#chatsList::-webkit-scrollbar-track { background: transparent; }
+#chatsList::-webkit-scrollbar-thumb { background: rgba(100,116,139,0.2); border-radius: 3px; }

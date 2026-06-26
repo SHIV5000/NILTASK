@@ -191,28 +191,36 @@ window.saveGroupSettings = async function() {
 
     localStorage.setItem('dept_name_' + gid, name);
 
-    // Save photo — upload to public Storage bucket for cross-device persistence
+    // Save photo — upload to task-proofs bucket (private, signed URLs, cross-device)
     const pendingPhoto = window._gsPendingPhoto || null;
     if (pendingPhoto) {
         window._gsPendingPhoto = null;
-        let photoUrl = pendingPhoto; // fallback to base64 if upload fails
         try {
             const blob = await fetch(pendingPhoto).then(r => r.blob());
             const path = `group-photos/${window.currentTenantId}/${gid}.jpg`;
-            await sb.storage.from('chat-attachments').upload(path, blob, { upsert: true, contentType: 'image/jpeg' });
-            const { data: pub } = sb.storage.from('chat-attachments').getPublicUrl(path);
-            if (pub?.publicUrl) photoUrl = pub.publicUrl;
+            const { error: upErr } = await sb.storage.from('task-proofs').upload(path, blob, { upsert: true, contentType: 'image/jpeg' });
+            if (upErr) {
+                console.error('[group-photo] upload failed:', upErr.message);
+                window.showCenterToast('Photo saved locally only — storage error', 'fa-solid fa-triangle-exclamation', 'text-yellow-400');
+                localStorage.setItem('dept_photo_' + gid, pendingPhoto);
+            } else {
+                const { data: sd } = await sb.storage.from('task-proofs').createSignedUrl(path, 7200);
+                const photoUrl = sd?.signedUrl || '';
+                if (photoUrl) {
+                    localStorage.setItem('dept_photo_' + gid, photoUrl);
+                    localStorage.setItem('dept_photo_ts_' + gid, String(Date.now()));
+                }
+                // Broadcast room_id only — receivers fetch their own signed URL on next load
+                if (window._reactionsBroadcast) {
+                    try {
+                        window._reactionsBroadcast.send({
+                            type: 'broadcast', event: 'group_photo',
+                            payload: { room_id: gid, name }
+                        });
+                    } catch(e) {}
+                }
+            }
         } catch(e) { console.error('[group-photo] storage upload failed:', e); }
-        localStorage.setItem('dept_photo_' + gid, photoUrl);
-        // Broadcast the URL (small) so online users see it instantly
-        if (window._reactionsBroadcast) {
-            try {
-                window._reactionsBroadcast.send({
-                    type: 'broadcast', event: 'group_photo',
-                    payload: { room_id: gid, photo: photoUrl, name }
-                });
-            } catch(e) {}
-        }
     }
 
     // Save member + admin selections

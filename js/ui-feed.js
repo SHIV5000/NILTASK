@@ -48,22 +48,34 @@ window._loadActivityFeed = async function() {
     const tid = window.currentTenantId;
     const uid = window.currentUser?.id;
     if (!tid || !uid) {
-        list.innerHTML = '<p style="text-align:center;padding:24px;color:var(--text-secondary);font-size:12px;">Not logged in.</p>';
+        list.innerHTML = '<p style="text-align:center;padding:24px;color:var(--text-secondary);font-size:12px;">Session loading — please close and reopen.</p>';
         return;
     }
 
+    // Run queries in parallel, log any errors
     const [r1, r2, r3] = await Promise.all([
-        sb.from('messages').select('id,created_at,room_id,sender_id,text,profiles(full_name,email)')
-            .eq('tenant_id', tid).is('deleted_at', null)
-            .order('created_at', { ascending: false }).limit(40),
-        sb.from('task_trails').select('id,created_at,action,task_id,comment,profiles(full_name,email),tasks(title)')
+        sb.from('messages')
+            .select('id,created_at,room_id,sender_id,text,profiles(full_name,email)')
             .eq('tenant_id', tid)
-            .order('created_at', { ascending: false }).limit(20),
-        sb.from('notifications').select('id,created_at,type,message,task_id,message_id,is_read')
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(50),
+        sb.from('task_trails')
+            .select('id,created_at,action,task_id,comment,profiles(full_name,email),tasks(title)')
+            .eq('tenant_id', tid)
+            .order('created_at', { ascending: false })
+            .limit(20),
+        sb.from('notifications')
+            .select('id,created_at,type,message,task_id,message_id,is_read')
             .eq('user_id', uid)
             .in('type', ['reminder','scheduled','task'])
-            .order('created_at', { ascending: false }).limit(30)
+            .order('created_at', { ascending: false })
+            .limit(30)
     ]);
+
+    if (r1.error) console.warn('[activity] messages error:', r1.error.message);
+    if (r2.error) console.warn('[activity] task_trails error:', r2.error.message);
+    if (r3.error) console.warn('[activity] notifications error:', r3.error.message);
 
     const items = [];
     (r1.data||[]).forEach(m  => items.push({ k:'msg',   t:m.created_at,  d:m }));

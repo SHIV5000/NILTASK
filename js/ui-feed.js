@@ -90,7 +90,7 @@ window.openActivityFeed = async function() {
     // Build panel and append DIRECTLY to rightSidebar
     const panel = document.createElement('div');
     panel.id = 'activityFeedPanel';
-    panel.style.cssText = 'flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg-body);';
+    panel.style.cssText = 'display:flex;flex-direction:column;height:100%;background:var(--bg-body);';
     panel.innerHTML =
         '<div style="padding:12px 14px;border-bottom:1px solid var(--border-color);background:var(--bg-sidebar);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">' +
         '<span style="font-weight:700;font-size:14px;color:var(--text-primary);display:flex;align-items:center;gap:8px;"><i class="fa-solid fa-bolt" style="color:var(--accent);"></i> Activity Feed</span>' +
@@ -98,7 +98,7 @@ window.openActivityFeed = async function() {
         '<button onclick="window._clearAllActivity()" style="font-size:11px;padding:3px 10px;border-radius:8px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:var(--text-secondary);">Clear All</button>' +
         '<button onclick="window.closeActivityFeed()" style="width:26px;height:26px;border-radius:50%;border:none;background:transparent;cursor:pointer;color:var(--text-secondary);font-size:14px;">✕</button>' +
         '</div></div>' +
-        '<div id="activityFeedList" style="flex:1;overflow-y:auto;padding:8px;"><p style="text-align:center;padding:24px;color:var(--text-secondary);font-size:12px;"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>';
+        '<div id="activityFeedList" style="overflow-y:auto;padding:8px;max-height:calc(100vh - 60px);"><p style="text-align:center;padding:24px;color:var(--text-secondary);font-size:12px;"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>';
 
     rs.appendChild(panel);
     await window._loadActivityFeed();

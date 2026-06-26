@@ -441,13 +441,19 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
     border-top-left-radius: inherit; border-top-right-radius: inherit;
     opacity: 0; pointer-events: none; z-index: 10;
 }
-.glow-target.active-glow::after { animation: top-glow-pulse 3s ease-in-out forwards; }
+.glow-target.active-glow::after { animation: top-glow-pulse 4s ease-in-out forwards; }
 @keyframes top-glow-pulse {
     0%   { opacity: 0; box-shadow: 0 0 0 0 var(--accent); }
-    15%  { opacity: 1; box-shadow: 0 4px 15px 2px var(--accent); }
-    85%  { opacity: 1; box-shadow: 0 2px 10px 1px var(--accent); }
+    10%  { opacity: 1; box-shadow: 0 4px 15px 2px var(--accent); }
+    80%  { opacity: 1; box-shadow: 0 2px 10px 1px var(--accent); }
     100% { opacity: 0; box-shadow: 0 0 0 0 var(--accent); }
-}  
+}
+
+/* Feed panel notification dot for unread items */
+.feed-unread-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #3b82f6; display: inline-block; flex-shrink: 0;
+}
 
 /* =========================================
    STRICT GITHUB DARK MODE OVERRIDES

@@ -22,7 +22,7 @@ window.scrollToAndHighlight = function(elementId) {
     if (bubble) {
         bubble.classList.add('glow-target');
         setTimeout(() => bubble.classList.add('active-glow'), 50);
-        setTimeout(() => bubble.classList.remove('glow-target', 'active-glow'), 3000);
+        setTimeout(() => bubble.classList.remove('glow-target', 'active-glow'), 4000);
     }
     document.querySelectorAll('.top-panel-dropdown').forEach(p => p.remove());
 };
@@ -1018,6 +1018,7 @@ window.startSubscriptions = function() {
                                 message:    msg,
                                 message_id: p.new.id,
                                 tenant_id:  window.currentTenantId,
+                                room_id:    incomingRoom,
                                 is_read:    false
                             });
                         }
@@ -1122,10 +1123,11 @@ window.startSubscriptions = function() {
             const msg = window.stripHtml ? window.stripHtml(n.message) : n.message;
             const type = n.type || 'general';
 
-            // Don't toast if it's a message notification for the room currently open
-            if (type === 'message' && n.message_id) {
-                if (window.currentRoom && n.message) return; // user sees it live
-            }
+            // Real-time prepend to activity feed if open
+            if (typeof window.prependFeedItem === 'function') window.prependFeedItem(n);
+
+            // Don't toast if it's a notification for the room the user is currently viewing
+            if (type === 'message' && n.room_id && n.room_id === window.currentRoom) return;
 
             const toastConfig = {
                 reminder:  { icon:'fa-solid fa-stopwatch',       color:'text-purple-400', sound:'reminder' },

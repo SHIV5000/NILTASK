@@ -154,7 +154,7 @@ window.goToTask = async function(taskId, notifId) {
         card.scrollIntoView({ behavior: 'smooth', block: 'center' });
         card.style.transition = 'box-shadow 0.4s ease';
         card.style.boxShadow = '0 0 0 3px var(--accent), 0 4px 20px rgba(0,0,0,0.15)';
-        setTimeout(() => { card.style.boxShadow = ''; card.style.transition = ''; }, 2500);
+        setTimeout(() => { card.style.boxShadow = ''; card.style.transition = ''; }, 4000);
     } else {
         window.showCenterToast('Task not found — may be filtered out', 'fa-solid fa-exclamation-triangle', 'text-yellow-500');
     }
@@ -208,7 +208,7 @@ window.goToMessage = async function(messageId, notifId, roomId) {
             if (bubble) {
                 bubble.classList.add('glow-target');
                 setTimeout(() => bubble.classList.add('active-glow'), 50);
-                setTimeout(() => bubble.classList.remove('glow-target', 'active-glow'), 3000);
+                setTimeout(() => bubble.classList.remove('glow-target', 'active-glow'), 4000);
             }
             window.pendingScrollId = null;
         } else {

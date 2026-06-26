@@ -126,6 +126,21 @@ window.openTopPanel = async function(type) {
 
     // ── ALERTS ─────────────────────────────────────────────────────────────
     } else if (type==='alerts') {
+        // ── Permission banner ──────────────────────────────────────────────
+        if ('Notification' in window && Notification.permission !== 'granted') {
+            const denied = Notification.permission === 'denied';
+            const banner = document.createElement('div');
+            banner.style.cssText = 'margin:8px;padding:10px 12px;border-radius:10px;background:' +
+                (denied ? '#fef2f2' : '#fefce8') + ';border:1px solid ' +
+                (denied ? '#fca5a5' : '#fde68a') + ';font-size:12px;display:flex;align-items:center;gap:10px;';
+            banner.innerHTML = denied
+                ? '<i class="fa-solid fa-bell-slash" style="color:#ef4444;"></i><span style="flex:1;color:#b91c1c;">Desktop notifications blocked. Enable in browser settings → Site permissions.</span>'
+                : '<i class="fa-solid fa-bell" style="color:#ca8a04;"></i><span style="flex:1;color:#854d0e;">Enable desktop notifications for alerts when app is in background.</span>' +
+                  '<button onclick="window.requestNotificationPermission().then(()=>window.openTopPanel(\'alerts\'))" ' +
+                  'style="padding:4px 10px;border-radius:7px;background:#ca8a04;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700;white-space:nowrap;">Enable</button>';
+            panel.appendChild(banner);
+        }
+
         const {data}=await sb.from('notifications').select('*').eq('user_id',window.currentUser.id).order('created_at',{ascending:false}).limit(20);
 
         // Batch-fetch message info (sender + room) for all notifications that have message_id

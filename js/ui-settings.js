@@ -134,13 +134,23 @@ window.saveSettings = async function() {
     const photoInput = document.getElementById('settingsPhotoInput');
     let avatarDataUrl = window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + window.currentUser.id) || null;
 
-    // Encode new photo as base64 — works without any storage bucket permissions
+    // Compress and encode photo — crops to 200×200 JPEG (~10-15KB) to fit in DB text column
     if (photoInput?.files?.[0]) {
         const file = photoInput.files[0];
         avatarDataUrl = await new Promise(resolve => {
-            const r = new FileReader();
-            r.onload = e => resolve(e.target.result);
-            r.readAsDataURL(file);
+            const img = new Image();
+            const url = URL.createObjectURL(file);
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = canvas.height = 200;
+                const ctx = canvas.getContext('2d');
+                const min = Math.min(img.width, img.height);
+                const sx = (img.width - min) / 2, sy = (img.height - min) / 2;
+                ctx.drawImage(img, sx, sy, min, min, 0, 0, 200, 200);
+                URL.revokeObjectURL(url);
+                resolve(canvas.toDataURL('image/jpeg', 0.75));
+            };
+            img.src = url;
         });
         localStorage.setItem('mpgs_avatar_' + window.currentUser.id, avatarDataUrl);
     }
@@ -149,9 +159,13 @@ window.saveSettings = async function() {
     await sb.auth.updateUser({ data: { full_name: name } });
     try { const { data: { user } } = await sb.auth.getUser(); if (user) window.currentUser = user; } catch(e) {}
 
-    // Update profiles table (name always; avatar_url only if column exists)
-    try { const desig = document.getElementById('settingsDesignation')?.value?.trim() || ''; await sb.from('profiles').update({ full_name: name, designation: desig }).eq('id', window.currentUser.id); } catch(e) {}
-    try { const desig = document.getElementById('settingsDesignation')?.value?.trim() || ''; if (avatarDataUrl) await sb.from('profiles').update({ full_name: name, avatar_url: avatarDataUrl, designation: desig }).eq('id', window.currentUser.id); } catch(e) {}
+    // Update profiles table — log errors so avatar failures are visible in DevTools
+    const desig = document.getElementById('settingsDesignation')?.value?.trim() || '';
+    try { await sb.from('profiles').update({ full_name: name, designation: desig }).eq('id', window.currentUser.id); } catch(e) { console.error('[settings] profile name update failed:', e); }
+    if (avatarDataUrl) {
+        const { error: avatarErr } = await sb.from('profiles').update({ avatar_url: avatarDataUrl }).eq('id', window.currentUser.id);
+        if (avatarErr) console.error('[settings] avatar_url save failed:', avatarErr.message, '— avatar may not be visible to others');
+    }
 
     // Update sidebar DOM immediately — no page reload needed
     window._userAvatarUrl = avatarDataUrl;
@@ -177,10 +191,20 @@ window.saveGroupSettings = function() {
 
     localStorage.setItem('dept_name_' + gid, name);
 
-    // Save photo if one was selected
-    if (window._gsPendingPhoto) {
-        localStorage.setItem('dept_photo_' + gid, window._gsPendingPhoto);
+    // Save photo if one was selected, then broadcast to all online users
+    const pendingPhoto = window._gsPendingPhoto || null;
+    if (pendingPhoto) {
+        localStorage.setItem('dept_photo_' + gid, pendingPhoto);
         window._gsPendingPhoto = null;
+        // Broadcast so other devices see the group photo without needing a reload
+        if (window._reactionsBroadcast) {
+            try {
+                window._reactionsBroadcast.send({
+                    type: 'broadcast', event: 'group_photo',
+                    payload: { room_id: gid, photo: pendingPhoto, name }
+                });
+            } catch(e) {}
+        }
     }
 
     // Save member + admin selections

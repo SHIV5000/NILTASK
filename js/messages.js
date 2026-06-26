@@ -109,9 +109,89 @@ window.sendMessage = async function() {
     window.quillEditor.root.innerHTML = '';
     window.cancelReply();
     if (sendBtn) sendBtn.innerHTML = '<i class="ti ti-send text-lg"></i>';
-    // Supabase Realtime doesn't echo INSERT events back to the sender's own connection,
-    // so reload explicitly so the sender sees their message immediately.
-    if (typeof window.loadMessages === 'function') window.loadMessages();
+
+    // Optimistic append — show new message immediately without re-rendering whole list.
+    // Supabase Realtime doesn't echo INSERTs back to the sender, and full loadMessages()
+    // causes all rows to re-animate (flicker). Append only the new row instead.
+    if (msgData) {
+        const container = document.getElementById('chatShellContainer');
+        if (container) {
+            const newId  = msgData.id;
+            const newTime = window.getISTTime ? window.getISTTime(msgData.created_at) : new Date(msgData.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+            const nameInitial = (window.currentUser?.user_metadata?.full_name || window.currentUser?.email || 'Y').charAt(0).toUpperCase();
+            const roleStr = window.currentDesignation || window.currentRoleName || 'Staff';
+            const snippetText = window.getSnippet ? window.getSnippet(text) : text.replace(/<[^>]*>/g,'').substring(0,50);
+            const escapedSnippet = snippetText.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+
+            // Apply link-pill and secure-file transforms so the message renders correctly
+            let displayHtml = text.replace(
+                /<a\s+href="https:\/\/secure-file\.local\/([^"]+)"[^>]*>([^<]*)<\/a>/g,
+                (match, path, anchorText) => {
+                    const ext = (path.split('.').pop()||'').toLowerCase().split('?')[0];
+                    const nameRaw = anchorText.replace(/^📁\s*/,'').trim();
+                    const sizeMatch = nameRaw.match(/\(([^)]+)\)$/);
+                    const sizePart = sizeMatch ? sizeMatch[1] : '';
+                    const displayName = nameRaw.replace(/\s*\([^)]+\)$/,'').trim()||'Attached File';
+                    let icon='fa-file',iconColor='#6b7280',bg='#f9fafb',typeLabel='File';
+                    if (ext==='pdf'){icon='fa-file-pdf';iconColor='#dc2626';bg='#fef2f2';typeLabel='PDF';}
+                    else if(['doc','docx'].includes(ext)){icon='fa-file-word';iconColor='#2563eb';bg='#eff6ff';typeLabel='Word';}
+                    else if(['xls','xlsx'].includes(ext)){icon='fa-file-excel';iconColor='#16a34a';bg='#f0fdf4';typeLabel='Excel';}
+                    else if(['jpg','jpeg','png','gif','webp','svg'].includes(ext)){icon='fa-file-image';iconColor='#7c3aed';bg='#f5f3ff';typeLabel='Image';}
+                    const safePath = path.replace(/'/g,'%27');
+                    return `<div onclick="window.openSecureFile('${safePath}')" class="file-card" style="background:${bg};border:1px solid ${iconColor}25;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'"><div style="width:38px;height:38px;border-radius:8px;background:${iconColor}15;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="fa-solid ${icon}" style="color:${iconColor};font-size:20px;"></i></div><div style="min-width:0;flex:1;"><div style="font-size:12px;font-weight:700;color:#1f2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;">${displayName}</div><div style="font-size:10px;display:flex;gap:6px;align-items:center;margin-top:1px;"><span style="font-weight:700;color:${iconColor};">${typeLabel}</span>${sizePart?`<span style="color:#9ca3af;">${sizePart}</span>`:''}</div></div><div style="font-size:10px;font-weight:700;color:${iconColor};white-space:nowrap;display:flex;align-items:center;gap:3px;"><i class="fa-solid fa-arrow-up-right-from-square" style="font-size:9px;"></i> Open</div></div>`;
+                }
+            ).replace(
+                /<a\s+href="https:\/\/link-pill\.local\/([^"]+)"[^>]*>([^<]*)<\/a>/g,
+                (match, encoded, anchorText) => {
+                    try {
+                        const decoded = decodeURIComponent(encoded);
+                        const sepIdx  = decoded.indexOf('|||');
+                        const name    = sepIdx > -1 ? decoded.substring(0, sepIdx) : (anchorText||decoded);
+                        const url     = sepIdx > -1 ? decoded.substring(sepIdx+3) : decoded;
+                        const isFile  = /\.(pdf|doc|docx|xlsx|xls|ppt|pptx|zip|rar|png|jpg|jpeg|gif|mp4|mp3)$/i.test(url.split('?')[0]);
+                        const label   = isFile ? 'Click to Download' : 'Click to Visit';
+                        const icon    = isFile ? 'fa-download' : 'fa-arrow-up-right-from-square';
+                        const safeUrl = url.replace(/'/g,'%27');
+                        return `<a href="javascript:void(0);" onclick="window.open('${safeUrl}','_blank')" title="${url}" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;text-decoration:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,0.35);white-space:nowrap;vertical-align:middle;"><i class="fa-solid ${icon}" style="font-size:9px;"></i><span>${name}</span><span style="font-size:9px;opacity:0.75;border-left:1px solid rgba(255,255,255,0.35);padding-left:7px;margin-left:3px;">${label}</span></a>`;
+                    } catch(e) { return match; }
+                }
+            );
+
+            const optimisticRow = `<div class="row-sent transition-colors" id="row-${newId}">
+  <div class="bubble sent">
+    <div class="b-header">
+      <div class="b-avatar sent-av">${nameInitial}</div>
+      <div class="b-name">You <span class="b-role">· ${roleStr}</span></div>
+      <span class="b-time">${newTime} <span class="b-tick">✓✓</span></span>
+      <div class="menu-wrap">
+        <button class="dot-btn" onclick="window.toggleDropdown('dd-${newId}')" aria-label="Options"><i class="ti ti-dots-vertical"></i></button>
+        <div class="bubble-dropdown" id="dd-${newId}">
+          <button class="dd-item rbac-create-task" onclick="window.closeDropdowns();window.openTaskModal('${newId}','${escapedSnippet}')"><i class="ti ti-clipboard-check"></i>Create Task</button>
+          <button class="dd-item" onclick="window.closeDropdowns();window.showReminderModal('${newId}','${escapedSnippet}')"><i class="ti ti-bell"></i>Reminder</button>
+          <button class="dd-item" onclick="window.closeDropdowns();window.startEditMessage('${newId}')"><i class="ti ti-edit"></i>Edit</button>
+          <button class="dd-item" onclick="window.closeDropdowns();window.openForwardModal('${newId}','${escapedSnippet}','You')"><i class="ti ti-share"></i>Forward</button>
+          <button class="dd-item danger" onclick="window.closeDropdowns();window.deleteMessage('${newId}')"><i class="ti ti-trash"></i>Delete</button>
+        </div>
+      </div>
+    </div>
+    <div class="b-text">${displayHtml}</div>
+    <div class="b-footer" id="footer-${newId}">
+      <div class="relative inline-block group/reaction">
+        <button class="e-add" title="Add reaction" onclick="window._showReactionPicker('${newId}',this)"><i class="ti ti-mood-smile"></i></button>
+      </div>
+    </div>
+    <div class="b-actions">
+      <button class="act-btn" onclick="window.initiateReply('${newId}','${escapedSnippet}')"><i class="ti ti-corner-up-left"></i> Reply</button>
+      <button class="act-btn" onclick="window.toggleBookmark('${newId}')"><i class="ti ti-bookmark"></i> Bookmark</button>
+    </div>
+  </div>
+</div>`;
+            container.insertAdjacentHTML('beforeend', optimisticRow);
+            if (typeof window.applyRBAC === 'function') window.applyRBAC();
+            const mc = document.getElementById('messagesContainer');
+            if (mc) mc.scrollTop = mc.scrollHeight;
+        }
+    }
 };
 
 window.loadMessages = async function() {
@@ -483,7 +563,7 @@ window.applyReaction = async function(msgId, value, type) {
 };
 
 // DOM-only update — called by applyReaction and can be called by real-time subscription
-window.applyReactionDOM = function(msgId, value, type) {
+window.applyReactionDOM = function(msgId, value, type, userId) {
     const row = document.getElementById(`row-${msgId}`);
     if (!row) return;
     const footer = row.querySelector('.b-footer');
@@ -504,6 +584,14 @@ window.applyReactionDOM = function(msgId, value, type) {
                 'onclick="window.applyReaction(\'' + msgId + '\',\'' + value + '\',\'tag\')">' + value + '</span>');
         }
     }
+    // Keep reactionsCache in sync so re-renders preserve real-time reactions
+    if (!window.reactionsCache) window.reactionsCache = {};
+    if (!window.reactionsCache[msgId]) window.reactionsCache[msgId] = [];
+    const cache = window.reactionsCache[msgId];
+    const cacheEntry = cache.find(r => r.value === value && r.user_id === (userId || '_rt_'));
+    if (cacheEntry) { cacheEntry.count = (cacheEntry.count || 1) + 1; }
+    else { cache.push({ message_id: msgId, value, type, count: 1, user_id: userId || '_rt_' }); }
+
     const hoverMenu = row.querySelector('.group\\/reaction .absolute');
     if (hoverMenu) { hoverMenu.style.display='none'; setTimeout(() => hoverMenu.style.display='', 300); }
 };

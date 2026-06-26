@@ -529,10 +529,16 @@ window.applyReaction = async function(msgId, value, type) {
     const alreadySet    = existingEmoji || existingTag;
 
     if (alreadySet) {
-        // ── REMOVE (toggle off) ──────────────────────────────────────────────
+        // ── REMOVE — any user can remove any reaction from a message ─────────
         alreadySet.remove();
+        // Delete ALL rows for this (message, value) — not just current user's row.
+        // This allows any user to dismiss a reaction, not only the original reactor.
         try { await sb.from('reactions').delete()
-                .eq('message_id', msgId).eq('value', value).eq('user_id', window.currentUser.id); } catch(e) {}
+                .eq('message_id', msgId).eq('value', value); } catch(e) {}
+        // Sync local cache
+        if (window.reactionsCache?.[msgId]) {
+            window.reactionsCache[msgId] = window.reactionsCache[msgId].filter(r => r.value !== value);
+        }
         try {
             if (window._reactionsBroadcast) await window._reactionsBroadcast.send({
                 type:'broadcast', event:'reaction_remove',

@@ -863,16 +863,21 @@ window.loadChatsList = async function() {
         const initials = deptInitials[g] || g.substring(0,2).toUpperCase();
         const displayName = g.charAt(0).toUpperCase() + g.slice(1);
 
-        // Check for stored group display name
+        // Check for stored group display name and photo
         const storedName = localStorage.getItem('dept_name_' + g) || displayName;
         const storedColor = localStorage.getItem('dept_color_' + g) || bgColor;
-        const storedPhoto = localStorage.getItem('dept_photo_' + g) || '';
+        let storedPhoto = localStorage.getItem('dept_photo_' + g) || '';
+        // If no cached photo, try deterministic public Storage URL (set once, readable by all)
+        if (!storedPhoto && window.currentTenantId) {
+            const { data: pub } = sb.storage.from('chat-attachments').getPublicUrl(`group-photos/${window.currentTenantId}/${g}.jpg`);
+            if (pub?.publicUrl) { storedPhoto = pub.publicUrl; localStorage.setItem('dept_photo_' + g, storedPhoto); }
+        }
         html += `<div class="channel-item group/dept p-2.5 mx-2 mb-1 rounded-xl cursor-pointer flex items-center gap-3 transition-colors border"
             style="background-color:${isCurrent ? 'var(--bg-body)' : 'transparent'};border-color:${isCurrent ? 'var(--border-color)' : 'transparent'};font-weight:${isCurrent ? 'bold' : 'normal'};"
             data-room="${g}" data-name="${storedName}">
             <div class="relative flex-shrink-0">
-                <div class="w-9 h-9 rounded-lg flex items-center justify-center text-white text-[11px] font-bold shadow-sm"
-                    style="${storedPhoto ? `background-image:url('${storedPhoto}');background-size:cover;background-position:center;color:transparent;` : `background:${storedColor};`}">${storedPhoto ? '' : initials}</div>
+                <div class="w-9 h-9 rounded-lg flex items-center justify-center text-white text-[11px] font-bold shadow-sm overflow-hidden"
+                    style="background:${storedColor};">${storedPhoto ? `<img src="${storedPhoto}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;" onerror="this.style.display='none'">` : ''}${initials}</div>
                 ${unread > 0 ? `<span class="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full" style="background:#22c55e;"></span>
                     <span class="absolute -top-1 -right-1 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center" style="background:#22c55e;">${unread > 9 ? '9+' : unread}</span>` : ''}
             </div>

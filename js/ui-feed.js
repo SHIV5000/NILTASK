@@ -100,6 +100,7 @@ window._loadActivityFeed = async function() {
     (r2.data||[]).forEach(tr => items.push({ k:'trail', t:tr.created_at, d:tr }));
     (r3.data||[]).forEach(n  => items.push({ k:'notif', t:n.created_at,  d:n }));
     items.sort((a,b) => new Date(b.t) - new Date(a.t));
+    console.info('[activity] msgs:', msgData.length, 'trails:', (r2.data||[]).length, 'notifs:', (r3.data||[]).length, 'total items:', items.length);
 
     if (!items.length) {
         list.innerHTML = '<p style="text-align:center;padding:32px;color:var(--text-secondary);font-size:12px;">No activity yet.</p>';

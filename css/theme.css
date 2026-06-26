@@ -295,7 +295,7 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 ::-webkit-scrollbar-thumb { background: rgba(134, 150, 160, 0.3); border-radius: 10px; }
 
 .left-sidebar { overflow: hidden; width: var(--saved-left-width, 320px); min-width: 200px; max-width: 50vw; flex: 0 0 auto !important; }
-.right-sidebar { overflow: hidden; width: var(--saved-right-width, 450px); min-width: 250px; max-width: 50vw; flex: 0 0 auto !important; direction: rtl; }
+.right-sidebar { overflow: hidden; width: var(--saved-right-width, 450px); min-width: 250px; max-width: 50vw; flex: 0 0 auto !important; direction: rtl; height: 100%; }
 .right-sidebar > * { direction: ltr; }
 .drag-resizer { width: 6px; cursor: col-resize; background: transparent; transition: background 0.2s; z-index: 50; flex-shrink: 0; }
 .drag-resizer:hover, .drag-resizer:active { background: var(--accent); opacity: 0.5; }

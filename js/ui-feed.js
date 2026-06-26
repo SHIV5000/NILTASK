@@ -52,14 +52,20 @@ window._loadActivityFeed = async function() {
         return;
     }
 
+    // Get room IDs from sidebar (rooms user participates in) — avoids tenant-wide RLS issue
+    const knownRooms = window.globalUsersCache
+        ? null  // will query by tenant_id, safer
+        : null;
+
     // Run queries in parallel, log any errors
     const [r1, r2, r3] = await Promise.all([
+        // Messages: try tenant_id first; RLS may restrict to rooms user is in
         sb.from('messages')
             .select('id,created_at,room_id,sender_id,text,profiles(full_name,email)')
             .eq('tenant_id', tid)
             .is('deleted_at', null)
             .order('created_at', { ascending: false })
-            .limit(50),
+            .limit(60),
         sb.from('task_trails')
             .select('id,created_at,action,task_id,comment,profiles(full_name,email),tasks(title)')
             .eq('tenant_id', tid)
@@ -68,17 +74,29 @@ window._loadActivityFeed = async function() {
         sb.from('notifications')
             .select('id,created_at,type,message,task_id,message_id,is_read')
             .eq('user_id', uid)
-            .in('type', ['reminder','scheduled','task'])
             .order('created_at', { ascending: false })
-            .limit(30)
+            .limit(50)
     ]);
 
-    if (r1.error) console.warn('[activity] messages error:', r1.error.message);
+    if (r1.error) console.warn('[activity] messages error:', r1.error.message, '— try running fix_messages_rls.sql in Supabase');
     if (r2.error) console.warn('[activity] task_trails error:', r2.error.message);
     if (r3.error) console.warn('[activity] notifications error:', r3.error.message);
 
+    // If messages blocked by RLS, fall back to current room messages only
+    let msgData = r1.data || [];
+    if ((!msgData.length || r1.error) && window.currentRoom) {
+        const { data: fallback } = await sb.from('messages')
+            .select('id,created_at,room_id,sender_id,text,profiles(full_name,email)')
+            .eq('room_id', window.currentRoom)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(60);
+        msgData = fallback || [];
+        if (msgData.length) console.info('[activity] Using current-room fallback for messages');
+    }
+
     const items = [];
-    (r1.data||[]).forEach(m  => items.push({ k:'msg',   t:m.created_at,  d:m }));
+    msgData.forEach(m  => items.push({ k:'msg',   t:m.created_at,  d:m }));
     (r2.data||[]).forEach(tr => items.push({ k:'trail', t:tr.created_at, d:tr }));
     (r3.data||[]).forEach(n  => items.push({ k:'notif', t:n.created_at,  d:n }));
     items.sort((a,b) => new Date(b.t) - new Date(a.t));

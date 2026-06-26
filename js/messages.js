@@ -111,58 +111,156 @@ window.sendMessage = async function() {
     if (sendBtn) sendBtn.innerHTML = '<i class="ti ti-send text-lg"></i>';
 };
 
-window.loadMessages = async function() {
-    const { data: msgs } = await sb.from('messages')
+// ── Message pagination state ──────────────────────────────────
+window._msgPageSize   = 50;  // messages per load
+window._msgOldestTs  = null; // ISO timestamp of oldest loaded message
+window._msgAllLoaded = false; // true when no more older messages exist
+
+window.loadMessages = async function(prepend = false) {
+    const room = window.currentRoom;
+    if (!room) return;
+
+    // Build query — newest 50 first, then reverse for display
+    let q = sb.from('messages')
         .select('*, profiles(full_name, email, role, designation)')
-        .eq('room_id', window.currentRoom)
-        .order('created_at', { ascending: true });
+        .eq('room_id', room)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(window._msgPageSize);
 
-    const { data: bms } = await sb.from('bookmarks')
-        .select('message_id')
-        .eq('user_id', window.currentUser.id);
-    window.bookmarkedSet = new Set(bms?.map(b => b.message_id) || []);
-
-    // ── Fetch reactions so they survive re-renders ──────────────────────────
-    const msgIds = msgs?.map(m => m.id) || [];
-    window.reactionsCache = {};
-    if (msgIds.length) {
-        try {
-            const { data: rData } = await sb.from('reactions').select('*').in('message_id', msgIds);
-            (rData || []).forEach(r => {
-                if (!window.reactionsCache[r.message_id]) window.reactionsCache[r.message_id] = [];
-                window.reactionsCache[r.message_id].push(r);
-            });
-        } catch(e) { /* reactions table may not exist yet */ }
+    if (prepend && window._msgOldestTs) {
+        q = q.lt('created_at', window._msgOldestTs);
     }
 
-    const c = document.getElementById('messagesContainer');
-    const isNearBottom = c ? (c.scrollHeight - c.scrollTop - c.clientHeight < 150) : false;
+    const { data: msgs } = await q;
+    const ordered = (msgs || []).reverse(); // oldest→newest for display
 
-    window.renderMessages(msgs || []);
-    if (typeof window.applyFilters === 'function') window.applyFilters();
+    if (!prepend) {
+        // Fresh load — reset state
+        window._msgOldestTs  = ordered.length ? ordered[0].created_at : null;
+        window._msgAllLoaded = ordered.length < window._msgPageSize;
 
-    if (c) {
-        setTimeout(() => {
-            if (window.pendingScrollId && window.pendingScrollId !== 'BOTTOM') {
-                const row = document.getElementById(`row-${window.pendingScrollId}`);
-                if (row) {
-                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    const bubble = row.querySelector('.bubble');
-                    if (bubble) {
-                        bubble.classList.add('glow-target');
-                        setTimeout(() => bubble.classList.add('active-glow'), 50);
-                        setTimeout(() => bubble.classList.remove('glow-target', 'active-glow'), 3500);
+        // Bookmarks + reactions
+        const { data: bms } = await sb.from('bookmarks')
+            .select('message_id').eq('user_id', window.currentUser.id);
+        window.bookmarkedSet = new Set(bms?.map(b => b.message_id) || []);
+
+        const msgIds = ordered.map(m => m.id);
+        window.reactionsCache = {};
+        if (msgIds.length) {
+            try {
+                const { data: rData } = await sb.from('reactions').select('*').in('message_id', msgIds);
+                (rData||[]).forEach(r => {
+                    if (!window.reactionsCache[r.message_id]) window.reactionsCache[r.message_id] = [];
+                    window.reactionsCache[r.message_id].push(r);
+                });
+            } catch(e) {}
+        }
+
+        const c = document.getElementById('messagesContainer');
+        const isNearBottom = c ? (c.scrollHeight - c.scrollTop - c.clientHeight < 150) : true;
+
+        window.renderMessages(ordered);
+        if (typeof window.applyRBAC === 'function') window.applyRBAC();
+        if (typeof window.applyFilters === 'function') window.applyFilters();
+        window._renderLoadOlderBtn();
+
+        if (c) {
+            setTimeout(() => {
+                if (window.pendingScrollId && window.pendingScrollId !== 'BOTTOM') {
+                    const row = document.getElementById('row-' + window.pendingScrollId);
+                    if (row) {
+                        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        const bubble = row.querySelector('.bubble');
+                        if (bubble) {
+                            bubble.classList.add('glow-target');
+                            setTimeout(() => bubble.classList.add('active-glow'), 50);
+                            setTimeout(() => bubble.classList.remove('glow-target','active-glow'), 3500);
+                        }
                     }
+                    window.pendingScrollId = null;
+                } else if (window.pendingScrollId === 'BOTTOM' || isNearBottom) {
+                    c.scrollTop = c.scrollHeight;
+                    window.pendingScrollId = null;
                 }
-                window.pendingScrollId = null;
-            } else if (window.pendingScrollId === 'BOTTOM') {
-                c.scrollTop = c.scrollHeight;
-                window.pendingScrollId = null;
-            } else if (isNearBottom) {
-                c.scrollTop = c.scrollHeight;
-            }
-        }, 100);
+            }, 100);
+        }
+
+    } else {
+        // Prepend older messages
+        if (!ordered.length) { window._msgAllLoaded = true; window._renderLoadOlderBtn(); return; }
+        window._msgOldestTs  = ordered[0].created_at;
+        window._msgAllLoaded = ordered.length < window._msgPageSize;
+
+        // Fetch reactions for newly loaded older messages
+        const oldIds = ordered.map(m => m.id);
+        if (oldIds.length) {
+            try {
+                const { data: rData } = await sb.from('reactions').select('*').in('message_id', oldIds);
+                (rData||[]).forEach(r => {
+                    if (!window.reactionsCache[r.message_id]) window.reactionsCache[r.message_id] = [];
+                    window.reactionsCache[r.message_id].push(r);
+                });
+            } catch(e) {}
+        }
+
+        const container = document.getElementById('chatShellContainer');
+        if (!container) return;
+        const c = document.getElementById('messagesContainer');
+        const prevHeight = c ? c.scrollHeight : 0;
+
+        // Render new rows and prepend
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = window._renderMessagesToHtml(ordered);
+        const rows = Array.from(tempDiv.children);
+        const firstChild = container.firstChild;
+        rows.reverse().forEach(row => container.insertBefore(row, firstChild));
+
+        // Restore scroll position so user stays at same spot
+        if (c) requestAnimationFrame(() => { c.scrollTop = c.scrollHeight - prevHeight; });
+        window._renderLoadOlderBtn();
     }
+};
+
+window._renderLoadOlderBtn = function() {
+    const container = document.getElementById('chatShellContainer');
+    if (!container) return;
+    // Remove any existing button
+    container.querySelector('#loadOlderBtn')?.remove();
+    if (window._msgAllLoaded) return;
+
+    const btn = document.createElement('div');
+    btn.id = 'loadOlderBtn';
+    btn.style.cssText = 'text-align:center;padding:10px;';
+    btn.innerHTML = '<button onclick="window._loadOlderMessages()" ' +
+        'style="font-size:12px;font-weight:600;padding:6px 18px;border-radius:20px;' +
+        'background:var(--bg-sidebar);border:1px solid var(--border-color);' +
+        'color:var(--accent);cursor:pointer;">↑ Load older messages</button>';
+    container.insertBefore(btn, container.firstChild);
+};
+
+window._loadOlderMessages = async function() {
+    const btn = document.getElementById('loadOlderBtn');
+    if (btn) btn.querySelector('button').textContent = 'Loading...';
+    await window.loadMessages(true);
+};
+
+window._renderMessagesToHtml = function(messages) {
+    if (!messages.length) return '';
+    // Group by date
+    const groups = {};
+    messages.forEach(m => {
+        const day = m.created_at?.substring(0,10) || 'unknown';
+        if (!groups[day]) groups[day] = [];
+        groups[day].push(m);
+    });
+    let html = '';
+    Object.keys(groups).sort().forEach(day => {
+        const label = new Date(day).toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+        html += `<div class="date-divider text-center my-3"><span class="text-[11px] font-semibold px-3 py-1 rounded-full" style="background:var(--bg-sidebar);color:var(--text-secondary);">Today — ${label}</span></div>`;
+        groups[day].forEach(msg => { html += buildMsgHTML(msg); });
+    });
+    return html;
 };
 
 window.renderMessages = function(messages) {
@@ -172,7 +270,11 @@ window.renderMessages = function(messages) {
         c.innerHTML = '<div class="m-auto flex flex-col items-center opacity-50 pt-10"><i class="ti ti-messages text-5xl mb-3 text-gray-300"></i><p class="font-medium text-gray-500">Say hello!</p></div>';
         return;
     }
+    c.innerHTML = window._renderMessagesToHtml(messages);
+    if (typeof window.applyRBAC === 'function') window.applyRBAC();
+};
 
+    // message map for replies
     window.bookmarkedSet = window.bookmarkedSet || new Set();
 
     const msgMap = new Map();

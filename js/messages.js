@@ -247,102 +247,130 @@ window._loadOlderMessages = async function() {
 
 window._renderMessagesToHtml = function(messages) {
     if (!messages.length) return '';
+
+    // Build message map and reply tree
+    const msgMap = new Map();
+    messages.forEach(m => msgMap.set(m.id, m));
+    const topLevel = [];
+    const replies = {};
+    messages.forEach(msg => {
+        if (msg.parent_message_id && msgMap.has(msg.parent_message_id)) {
+            if (!replies[msg.parent_message_id]) replies[msg.parent_message_id] = [];
+            replies[msg.parent_message_id].push(msg);
+        } else {
+            topLevel.push(msg);
+        }
+    });
+
+    function buildMsgHTML(msg) {
+        const isSent      = msg.sender_id === window.currentUser?.id;
+        const senderName  = isSent
+            ? (window.toSentenceCase?.(window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0]) || 'You')
+            : (window.toSentenceCase?.(msg.profiles?.full_name || msg.profiles?.email?.split('@')[0] || 'Unknown') || 'Unknown');
+        const rawRole     = msg.profiles?.designation || msg.profiles?.role || '';
+        const roleStr     = isSent
+            ? (window.currentDesignation || window.currentRoleName || '')
+            : rawRole.replace(/_/g,' ').replace(/\b\w/g, ch => ch.toUpperCase());
+        const time        = typeof window.getISTTime === 'function' ? window.getISTTime(msg.created_at) : '';
+        const isBookmarked = window.bookmarkedSet?.has(msg.id);
+        const snippetText = (window.stripHtml?.(msg.text) || '').substring(0,60);
+
+        // Process display HTML — file links + url pills
+        let displayHtml = msg.text || '';
+        displayHtml = displayHtml.replace(
+            /<a\s+href="https:\/\/secure-file\.local\/([^"]+)"[^>]*>([^<]*)<\/a>/g,
+            (_, path, label) => {
+                const ext = (path.split('.').pop()||'').toLowerCase().split('?')[0];
+                const icon = ['jpg','jpeg','png','gif','webp','heic'].includes(ext) ? 'fa-file-image'
+                    : ext === 'pdf' ? 'fa-file-pdf'
+                    : ['doc','docx'].includes(ext) ? 'fa-file-word'
+                    : 'fa-file';
+                return `<div onclick="window.openSecureFile('${path}')" style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:10px;background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);cursor:pointer;max-width:240px;"><i class="fa-solid ${icon}" style="color:var(--accent);font-size:16px;flex-shrink:0;"></i><span style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${window.escapeHtml(label.replace(/^📁\s*/,'').trim())}</span></div>`;
+            }
+        );
+
+        // Reactions from cache
+        const cachedRx = window.reactionsCache?.[msg.id] || [];
+        const emojiMap = {};
+        cachedRx.forEach(r => { if (r.type==='emoji') emojiMap[r.value] = (emojiMap[r.value]||0)+r.count; });
+        const emojiChips = Object.entries(emojiMap).map(([v,n]) =>
+            `<button class="e-chip active" data-emoji="${v}" onclick="window.applyReaction('${msg.id}','${v}','emoji')" title="Click to remove">${v} <span class="e-cnt">${n}</span></button>`
+        ).join('');
+
+        const canEdit = isSent;
+        const canDel  = isSent || window._ROLES?.MSG_MODERATORS?.includes(window.currentRole);
+        const canTask = window.canCreateTask?.() === true;
+
+        const ddItems = [
+            canEdit ? `<button class="dd-item" onclick="window.closeDropdowns();window.startEditMessage('${msg.id}')"><i class="ti ti-pencil"></i>Edit</button>` : '',
+            `<button class="dd-item" onclick="window.closeDropdowns();window.forwardMessage('${msg.id}')"><i class="ti ti-share"></i>Forward</button>`,
+            `<button class="dd-item" onclick="window.closeDropdowns();window.showReminderModal('${msg.id}','${window.escapeHtml(snippetText)}')"><i class="ti ti-bell"></i>Reminder</button>`,
+            canTask ? `<button class="dd-item rbac-create-task" onclick="window.closeDropdowns();window.openTaskModal('${msg.id}','${window.escapeHtml(snippetText)}')"><i class="ti ti-clipboard-check"></i>Create Task</button>` : '',
+            canDel  ? `<button class="dd-item" style="color:#ef4444;" onclick="window.closeDropdowns();window.deleteMessage('${msg.id}')"><i class="ti ti-trash"></i>Delete</button>` : '',
+        ].filter(Boolean).join('');
+
+        // Reply thread
+        const threadMsgs = replies[msg.id] || [];
+        const repliesHTML = threadMsgs.length ? `
+            <div class="b-divider"></div>
+            <div class="replies-wrap" id="rw-${msg.id}">
+                <div class="replies-label"><i class="ti ti-git-branch"></i> Replies</div>
+                ${threadMsgs.map((r,i) => {
+                    const rName = window.toSentenceCase?.(r.profiles?.full_name || r.profiles?.email?.split('@')[0] || 'Unknown') || 'Unknown';
+                    const rTime = typeof window.getISTTime === 'function' ? window.getISTTime(r.created_at) : '';
+                    return `<div class="reply-item">
+                        <div class="reply-num">${i+1}</div>
+                        <div class="reply-body">
+                            <div class="reply-meta"><span class="reply-name">${window.escapeHtml(rName)}</span><span class="reply-time">${rTime}</span></div>
+                            <div class="reply-text">${r.text||''}</div>
+                        </div>
+                    </div>`;
+                }).join('')}
+            </div>` : '';
+
+        const replyCount = threadMsgs.length;
+        return `<div class="msg-row ${isSent?'sent':'rcvd'}" id="row-${msg.id}">
+            <div class="bubble ${isSent?'sent':'rcvd'}" style="background:var(--bg-sidebar);">
+                <div class="b-header">
+                    <div class="b-name">${window.escapeHtml(senderName)} <span class="b-role">· ${window.escapeHtml(roleStr)}</span></div>
+                    <span style="font-size:10px;color:var(--text-secondary);margin-left:auto;white-space:nowrap;">${time}${isSent?' <i class="ti ti-checks" style="color:var(--accent);font-size:11px;"></i>':''}</span>
+                    <div class="relative inline-block group/reaction">
+                        <button class="e-add" title="Add reaction" onclick="window._showReactionPicker('${msg.id}',this)"><i class="ti ti-mood-smile"></i></button>
+                    </div>
+                    <div class="relative">
+                        <button class="e-add" onclick="window.toggleDropdown('dd-${msg.id}')"><i class="ti ti-dots-vertical"></i></button>
+                        <div class="bubble-dropdown" id="dd-${msg.id}">${ddItems}</div>
+                    </div>
+                </div>
+                <div class="b-text" id="text-${msg.id}">${displayHtml}</div>
+                <div class="b-footer" id="footer-${msg.id}">${emojiChips}</div>
+                ${repliesHTML}
+                <div class="b-actions">
+                    ${replyCount>0?`<button class="reply-btn" onclick="window.initiateReply('${msg.id}','${window.escapeHtml(senderName)}')"><i class="ti ti-arrow-back-up"></i> Replies ${replyCount}</button>`
+                        :`<button class="reply-btn" onclick="window.initiateReply('${msg.id}','${window.escapeHtml(senderName)}')"><i class="ti ti-arrow-back-up"></i> Reply</button>`}
+                    <button class="bookmark-btn ${isBookmarked?'bookmarked':''}" onclick="window.toggleBookmark('${msg.id}')">
+                        <i class="ti ${isBookmarked?'ti-bookmark-filled':'ti-bookmark'}"></i> ${isBookmarked?'Bookmarked':'Bookmark'}
+                    </button>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    // Group by date and render
     const groups = {};
-    messages.forEach(m => {
-        const day = m.created_at?.substring(0,10) || 'unknown';
+    topLevel.forEach(m => {
+        const day = (m.created_at||'').substring(0,10);
         if (!groups[day]) groups[day] = [];
         groups[day].push(m);
     });
     let html = '';
     Object.keys(groups).sort().forEach(day => {
-        const label = new Date(day + 'T00:00:00').toLocaleDateString('en-IN',
-            { weekday:'long', day:'numeric', month:'long', year:'numeric' });
-        html += '<div class="day-label">Today — ' + label + '</div>';
-        groups[day].forEach(msg => { html += window.buildMsgHTML(msg); });
+        const label = new Date(day + 'T00:00:00').toLocaleDateString('en-GB',
+            { weekday:'long', day:'numeric', month:'short', year:'numeric' });
+        html += `<div class="day-label">Today — ${label}</div>`;
+        groups[day].forEach(msg => { html += buildMsgHTML(msg); });
     });
     return html;
-};
-
-// ── BUILD SINGLE MESSAGE BUBBLE HTML ─────────────────────────────────────────
-window.buildMsgHTML = function(msg) {
-    const isSent    = msg.sender_id === window.currentUser?.id;
-    const senderName = isSent
-        ? (window.toSentenceCase?.(window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0]) || 'You')
-        : (window.toSentenceCase?.(msg.profiles?.full_name || msg.profiles?.email?.split('@')[0] || 'Unknown') || 'Unknown');
-    const rawRole   = msg.profiles?.designation || msg.profiles?.role || '';
-    const roleStr   = isSent
-        ? (window.currentDesignation || window.currentRoleName || '')
-        : rawRole.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
-    const time      = typeof window.getISTTime === 'function' ? window.getISTTime(msg.created_at) : '';
-    const isBookmarked = window.bookmarkedSet?.has(msg.id);
-
-    // ── Text / display HTML ──────────────────────────────────────────────────
-    let displayHtml = msg.text || '';
-    // Convert secure-file links to file cards
-    displayHtml = displayHtml.replace(
-        /<a\s+href="https:\/\/secure-file\.local\/([^"]+)"[^>]*>([^<]*)<\/a>/g,
-        (match, path, anchorText) => {
-            const ext = (path.split('.').pop() || '').toLowerCase().split('?')[0];
-            const nameRaw = anchorText.replace(/^📁\s*/, '').trim();
-            const icon = ['jpg','jpeg','png','gif','webp'].includes(ext) ? 'fa-file-image'
-                : ext === 'pdf' ? 'fa-file-pdf'
-                : ['doc','docx'].includes(ext) ? 'fa-file-word'
-                : 'fa-file';
-            return `<div onclick="window.openSecureFile('${path}')" style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:10px;background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);cursor:pointer;max-width:240px;">
-                <i class="fa-solid ${icon}" style="color:var(--accent);font-size:18px;flex-shrink:0;"></i>
-                <span style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${window.escapeHtml(nameRaw)}</span>
-            </div>`;
-        }
-    );
-    // Convert link-pill links
-    displayHtml = displayHtml.replace(
-        /<a\s+href="https:\/\/link-pill\.local\/([^"]+)"[^>]*>([^<]*)<\/a>/g,
-        (match, url, label) => `<a href="${url}" target="_blank" rel="noopener" class="link-pill">${window.escapeHtml(label)}</a>`
-    );
-
-    // ── Reactions from cache ─────────────────────────────────────────────────
-    const cachedRx = window.reactionsCache?.[msg.id] || [];
-    const emojiMap = {};
-    cachedRx.forEach(r => { if (r.type === 'emoji') { emojiMap[r.value] = (emojiMap[r.value] || 0) + r.count; } });
-    const emojiChips = Object.entries(emojiMap).map(([val, cnt]) =>
-        `<button class="e-chip active" data-emoji="${val}" onclick="window.applyReaction('${msg.id}','${val}','emoji')" title="Click to remove">${val} <span class="e-cnt">${cnt}</span></button>`
-    ).join('');
-
-    const canEdit = msg.sender_id === window.currentUser?.id;
-    const canDel  = canEdit || window._ROLES?.MSG_MODERATORS?.includes(window.currentRole);
-
-    const ddItems = isSent
-        ? `${canEdit ? `<button class="dd-item" onclick="window.closeDropdowns();window.startEditMessage('${msg.id}')"><i class="ti ti-pencil"></i>Edit</button>` : ''}
-           <button class="dd-item" onclick="window.closeDropdowns();window.forwardMessage('${msg.id}')"><i class="ti ti-share"></i>Forward</button>
-           ${canDel ? `<button class="dd-item rbac-create-task" onclick="window.closeDropdowns();window.openTaskModal('${msg.id}','${window.escapeHtml(msg.text?.substring(0,60)||'')}')"><i class="ti ti-clipboard-check"></i>Create Task</button>` : ''}
-           ${canDel ? `<button class="dd-item text-red-500" onclick="window.closeDropdowns();window.deleteMessage('${msg.id}')"><i class="ti ti-trash"></i>Delete</button>` : ''}`
-        : `<button class="dd-item" onclick="window.closeDropdowns();window.forwardMessage('${msg.id}')"><i class="ti ti-share"></i>Forward</button>
-           <button class="dd-item rbac-create-task" onclick="window.closeDropdowns();window.openTaskModal('${msg.id}','${window.escapeHtml(msg.text?.substring(0,60)||'')}')"><i class="ti ti-clipboard-check"></i>Create Task</button>
-           ${canDel ? `<button class="dd-item text-red-500" onclick="window.closeDropdowns();window.deleteMessage('${msg.id}')"><i class="ti ti-trash"></i>Delete</button>` : ''}`;
-
-    return `<div class="msg-row ${isSent ? 'sent' : 'rcvd'}" id="row-${msg.id}">
-        <div class="bubble ${isSent ? 'sent' : 'rcvd'}" style="background:var(--bg-sidebar);">
-            <div class="b-header">
-                <div class="b-name">${window.escapeHtml(senderName)} <span class="b-role">· ${window.escapeHtml(roleStr)}</span></div>
-                <span style="font-size:10px;color:var(--text-secondary);margin-left:auto;white-space:nowrap;">${time}${isSent ? ' <i class="ti ti-checks" style="color:var(--accent);font-size:11px;" title="Sent"></i>' : ''}</span>
-                <div class="relative inline-block group/reaction">
-                    <button class="e-add" title="Add reaction" onclick="window._showReactionPicker('${msg.id}', this)"><i class="ti ti-mood-smile"></i></button>
-                </div>
-                <div class="relative">
-                    <button class="e-add" onclick="window.toggleDropdown('dd-${msg.id}')"><i class="ti ti-dots-vertical"></i></button>
-                    <div class="bubble-dropdown" id="dd-${msg.id}">${ddItems}</div>
-                </div>
-            </div>
-            <div class="b-text" id="text-${msg.id}">${displayHtml}</div>
-            <div class="b-footer" id="footer-${msg.id}">${emojiChips}</div>
-            <div class="b-actions">
-                <button class="reply-btn" onclick="window.setReply('${msg.id}','${window.escapeHtml(senderName)}')"><i class="ti ti-arrow-back-up"></i> Reply</button>
-                <button class="bookmark-btn ${isBookmarked ? 'bookmarked' : ''}" onclick="window.toggleBookmark('${msg.id}')">
-                    <i class="ti ${isBookmarked ? 'ti-bookmark-filled' : 'ti-bookmark'}"></i> ${isBookmarked ? 'Bookmarked' : 'Bookmark'}
-                </button>
-            </div>
-        </div>
-    </div>`;
 };
 
 window.renderMessages = function(messages) {
@@ -355,6 +383,7 @@ window.renderMessages = function(messages) {
     c.innerHTML = window._renderMessagesToHtml(messages);
     if (typeof window.applyRBAC === 'function') window.applyRBAC();
 };
+
 
 
 // ─── REACTION PICKER (body-appended, fixed position, never clipped) ──────────

@@ -126,6 +126,8 @@ window.openTopPanel = async function(type) {
 
     // ── ALERTS ─────────────────────────────────────────────────────────────
     } else if (type==='alerts') {
+        // Clear badge as soon as user opens the panel
+        window._clearBellBadge?.();
         // ── Permission banner ──────────────────────────────────────────────
         if ('Notification' in window && Notification.permission !== 'granted') {
             const denied = Notification.permission === 'denied';
@@ -261,13 +263,49 @@ window.clearFiredReminders = async function() {
 
 // ─── BADGE ─────────────────────────────────────────────────────────────────
 
-window.refreshNotificationBadge = async function() {
-    const {count}=await sb.from('notifications').select('*',{count:'exact',head:true}).eq('user_id',window.currentUser.id).eq('is_read',false);
-    const bellEl=document.querySelector('i.ti-bell'); if(!bellEl) return;
-    let host=bellEl.closest('.bell-host');
-    if(!host){host=document.createElement('span');host.className='bell-host';bellEl.parentNode.insertBefore(host,bellEl);host.appendChild(bellEl);}
+// ── In-memory unread counter — instant, no DB dependency ─────
+window._bellCount = 0;
+
+window._setBellBadge = function(n) {
+    window._bellCount = Math.max(0, n);
+    // Find the bell button — it has ti-bell class
+    const bellBtn = document.querySelector('.topbar-icon-btn [class*="ti-bell"]')?.closest('.topbar-icon-btn');
+    if (!bellBtn) return;
+
+    // Ensure bell-host wrapper exists
+    let host = bellBtn.querySelector('.bell-host');
+    if (!host) {
+        const icon = bellBtn.querySelector('[class*="ti-bell"]');
+        if (!icon) return;
+        host = document.createElement('span');
+        host.className = 'bell-host';
+        icon.parentNode.insertBefore(host, icon);
+        host.appendChild(icon);
+    }
+
+    // Remove old badge
     host.querySelector('.notif-badge')?.remove();
-    if(count&&count>0){const b=document.createElement('span');b.className='notif-badge';b.textContent=count>9?'9+':count;host.appendChild(b);}
+
+    // Add new badge if count > 0
+    if (window._bellCount > 0) {
+        const b = document.createElement('span');
+        b.className = 'notif-badge';
+        b.textContent = window._bellCount > 99 ? '99+' : String(window._bellCount);
+        host.appendChild(b);
+    }
+};
+
+window._incrementBellBadge = function() {
+    window._setBellBadge(window._bellCount + 1);
+};
+
+window._clearBellBadge = function() {
+    window._setBellBadge(0);
+};
+
+// Keep for compatibility — now just re-reads from memory, no async DB call
+window.refreshNotificationBadge = function() {
+    window._setBellBadge(window._bellCount);
 };
 
 window.markNotifRead = async function(id) {

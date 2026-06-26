@@ -1,6 +1,67 @@
 import { sb } from './shared.js';
 
 // ─── ACTIVITY FEED ────────────────────────────────────────────────────────────
+
+// Type config: icon class, hex color, label for each event type
+const _FEED_TYPES = {
+    message:        { fa: 'fa-comment',         color: '#6366f1', label: 'Message'     },
+    reply:          { fa: 'fa-reply',            color: '#8b5cf6', label: 'Reply'       },
+    reaction:       { fa: 'fa-heart',            color: '#ec4899', label: 'Reaction'    },
+    task:           { fa: 'fa-clipboard-check',  color: '#3b82f6', label: 'Task'        },
+    task_created:   { fa: 'fa-clipboard-list',   color: '#0ea5e9', label: 'Task Assigned'},
+    task_updated:   { fa: 'fa-rotate',           color: '#f59e0b', label: 'Task Updated'},
+    task_completed: { fa: 'fa-circle-check',     color: '#22c55e', label: 'Task Done'   },
+    reminder:       { fa: 'fa-stopwatch',        color: '#a855f7', label: 'Reminder'    },
+    scheduled:      { fa: 'fa-clock',            color: '#f59e0b', label: 'Scheduled'   },
+    general:        { fa: 'fa-bell',             color: '#f59e0b', label: 'Alert'       },
+};
+
+// Convert ISO timestamp to "5m ago", "2h ago", "3d ago"
+function _feedTimeAgo(isoStr) {
+    try {
+        const diff = Date.now() - new Date(isoStr).getTime();
+        const s = Math.floor(diff / 1000);
+        if (s < 60)  return s + 's ago';
+        const m = Math.floor(s / 60);
+        if (m < 60)  return m + 'm ago';
+        const h = Math.floor(m / 60);
+        if (h < 24)  return h + 'h ago';
+        const d = Math.floor(h / 24);
+        if (d < 7)   return d + 'd ago';
+        return new Date(isoStr).toLocaleDateString('en-IN', { day:'2-digit', month:'short' });
+    } catch(e) { return ''; }
+}
+
+const _esc  = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const _strip = s => String(s||'').replace(/<[^>]*>/g,'').trim();
+
+// Render a single notification row (real-time prepend + full-reload reuse)
+function _renderNotifItem(n) {
+    const cfg  = _FEED_TYPES[n.type] || _FEED_TYPES.general;
+    const msg  = _strip(n.message||'').substring(0, 120);
+    const ago  = _feedTimeAgo(n.created_at);
+    const unread = !n.is_read;
+    const clickTarget = n.task_id
+        ? `window.goToTask&&window.goToTask('${n.task_id}','${n.id}')`
+        : n.message_id
+            ? `window.goToMessage&&window.goToMessage('${n.message_id}','${n.id}')`
+            : '';
+    return '<div id="feed-notif-' + n.id + '" style="display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border-color);align-items:flex-start;'
+        + (unread ? 'background:rgba(99,102,241,.06);' : '')
+        + (clickTarget ? 'cursor:pointer;" onclick="' + clickTarget + '"' : '"')
+        + '>'
+        + '<div style="width:32px;height:32px;border-radius:50%;background:' + cfg.color + '18;flex-shrink:0;display:flex;align-items:center;justify-content:center;">'
+        + '<i class="fa-solid ' + cfg.fa + '" style="color:' + cfg.color + ';font-size:13px;"></i></div>'
+        + '<div style="flex:1;min-width:0;">'
+        + '<div style="font-size:11px;font-weight:700;color:' + cfg.color + ';text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;">' + cfg.label + '</div>'
+        + '<div style="font-size:12px;color:var(--text-primary);' + (unread ? 'font-weight:600;' : '') + 'line-height:1.4;">' + _esc(msg) + '</div>'
+        + '<div style="font-size:10px;color:var(--text-secondary);margin-top:3px;display:flex;align-items:center;gap:6px;">'
+        + ago
+        + (unread ? '<span style="width:6px;height:6px;border-radius:50%;background:#3b82f6;display:inline-block;"></span>' : '')
+        + '</div>'
+        + '</div></div>';
+}
+
 window.openActivityFeed = async function() {
     // If already open — close it and restore task hub
     if (document.getElementById('activityFeedPanel')) {
@@ -23,6 +84,8 @@ window.openActivityFeed = async function() {
     });
 
     window._activityFeedOpen = true;
+    // Track when feed was last opened to detect new items
+    localStorage.setItem('feedLastOpened', Date.now());
 
     // Build panel and append DIRECTLY to rightSidebar
     const panel = document.createElement('div');
@@ -54,17 +117,17 @@ window._loadActivityFeed = async function() {
 
     const [r1, r2, r3] = await Promise.all([
         sb.from('messages')
-            .select('id,created_at,room_id,sender_id,text,profiles(full_name,email)')
+            .select('id,created_at,room_id,sender_id,text,parent_message_id,profiles(full_name,email)')
             .eq('tenant_id', tid).is('deleted_at', null)
             .order('created_at', { ascending: false }).limit(60),
         sb.from('task_trails')
             .select('id,created_at,action,task_id,comment,profiles(full_name,email),tasks(title)')
             .eq('tenant_id', tid)
-            .order('created_at', { ascending: false }).limit(20),
+            .order('created_at', { ascending: false }).limit(30),
         sb.from('notifications')
             .select('id,created_at,type,message,task_id,message_id,is_read')
             .eq('user_id', uid)
-            .order('created_at', { ascending: false }).limit(50)
+            .order('created_at', { ascending: false }).limit(60)
     ]);
 
     if (r1.error) console.warn('[activity] messages:', r1.error.message);
@@ -74,83 +137,92 @@ window._loadActivityFeed = async function() {
     let msgData = r1.data || [];
     if (!msgData.length && window.currentRoom) {
         const { data: fb } = await sb.from('messages')
-            .select('id,created_at,room_id,sender_id,text,profiles(full_name,email)')
+            .select('id,created_at,room_id,sender_id,text,parent_message_id,profiles(full_name,email)')
             .eq('room_id', window.currentRoom).is('deleted_at', null)
             .order('created_at', { ascending: false }).limit(60);
         msgData = fb || [];
     }
 
+    // Deduplicate: notifications already cover message events for the user,
+    // so only show raw messages that are NOT already in notifications
+    const notifMsgIds = new Set((r3.data||[]).map(n => n.message_id).filter(Boolean));
+    const filteredMsgs = msgData.filter(m => !notifMsgIds.has(m.id));
+
     const items = [];
-    msgData.forEach(m  => items.push({ k:'msg',   t:m.created_at,  d:m }));
+    filteredMsgs.forEach(m  => items.push({ k:'msg',   t:m.created_at,  d:m }));
     (r2.data||[]).forEach(tr => items.push({ k:'trail', t:tr.created_at, d:tr }));
     (r3.data||[]).forEach(n  => items.push({ k:'notif', t:n.created_at,  d:n }));
     items.sort((a,b) => new Date(b.t) - new Date(a.t));
 
-    console.info('[activity] msgs:', msgData.length, 'trails:', (r2.data||[]).length, 'notifs:', (r3.data||[]).length, 'total:', items.length);
+    // Update bell badge to reflect actual unread count
+    const unreadCount = (r3.data||[]).filter(n => !n.is_read).length;
+    window._setBellBadge?.(unreadCount);
 
     if (!items.length) {
         list.innerHTML = '<p style="text-align:center;padding:32px;color:var(--text-secondary);font-size:12px;">No activity yet.</p>';
         return;
     }
 
-    const fmt = ts => {
-        try { return new Date(ts).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true}); }
-        catch(e) { return ''; }
-    };
-    const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    const strip = s => String(s||'').replace(/<[^>]*>/g,'').trim();
-    const ic = { reminder:'fa-stopwatch', task:'fa-clipboard-check', scheduled:'fa-clock', general:'fa-bell' };
-    const col = { reminder:'#a855f7', task:'#3b82f6', scheduled:'#f59e0b', general:'#f59e0b' };
-    const base = 'display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border-color);';
-
     list.innerHTML = items.map(item => {
         try {
-            const time = fmt(item.t);
+            const ago = _feedTimeAgo(item.t);
+
             if (item.k === 'msg') {
                 const m = item.d;
                 const mine = m.sender_id === window.currentUser?.id;
                 const fn  = m.profiles?.full_name || m.profiles?.email?.split('@')[0] || '?';
                 const nm  = mine ? 'You' : fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase();
                 const rm  = window.getRoomDisplayName?.(m.room_id) || m.room_id || '';
-                const tx  = strip(m.text).substring(0,90) || '📎 Attachment';
+                const tx  = _strip(m.text).substring(0,90) || '📎 Attachment';
                 const bg  = mine ? 'var(--accent)' : '#6366f1';
-                return '<div style="' + base + 'cursor:pointer;" onclick="window.goToMessage&&window.goToMessage(\'' + m.id + '\',null,\'' + m.room_id + '\')">'
-                    + '<div style="width:32px;height:32px;border-radius:50%;background:' + bg + ';flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;">' + esc(nm.charAt(0)||'?').toUpperCase() + '</div>'
+                const isReply = !!m.parent_message_id;
+                const typeLabel = isReply ? '↩ Reply' : '💬 Message';
+                return '<div style="display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border-color);align-items:flex-start;cursor:pointer;" onclick="window.goToMessage&&window.goToMessage(\'' + m.id + '\',null,\'' + m.room_id + '\')">'
+                    + '<div style="width:32px;height:32px;border-radius:50%;background:' + bg + ';flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;">' + _esc(nm.charAt(0)||'?').toUpperCase() + '</div>'
                     + '<div style="flex:1;min-width:0;">'
-                    + '<div style="font-size:12px;font-weight:600;color:var(--text-primary);">' + esc(nm) + '<span style="font-weight:400;color:var(--text-secondary);"> in ' + esc(rm) + '</span></div>'
-                    + '<div style="font-size:12px;color:var(--text-secondary);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(tx) + '</div>'
-                    + '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + time + '</div>'
+                    + '<div style="font-size:12px;font-weight:600;color:var(--text-primary);">' + _esc(nm) + '<span style="font-weight:400;font-size:10px;color:var(--text-secondary);margin-left:4px;">' + typeLabel + ' in ' + _esc(rm) + '</span></div>'
+                    + '<div style="font-size:12px;color:var(--text-secondary);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _esc(tx) + '</div>'
+                    + '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + ago + '</div>'
                     + '</div></div>';
             }
+
             if (item.k === 'trail') {
                 const tr = item.d;
                 const fn  = tr.profiles?.full_name || tr.profiles?.email?.split('@')[0] || 'Staff';
                 const nm  = fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase();
                 const ttl = tr.tasks?.title || 'Task';
-                const act = (tr.action||'update').toUpperCase();
-                return '<div style="' + base + 'cursor:pointer;" onclick="window.goToTask&&window.goToTask(\'' + (tr.task_id||'') + '\')">'
-                    + '<div style="width:32px;height:32px;border-radius:50%;background:#3b82f618;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><i class="fa-solid fa-clipboard-check" style="color:#3b82f6;font-size:13px;"></i></div>'
+                const act = tr.action || 'update';
+                const trailType = act === 'created' ? 'task_created' : act === 'accepted' ? 'task_completed' : 'task_updated';
+                const cfg = _FEED_TYPES[trailType];
+                const actLabel = { created:'ASSIGNED', accepted:'DONE', submitted:'SUBMITTED', update:'UPDATED', delegate:'DELEGATED', transfer:'TRANSFERRED', review:'REVIEWED' }[act] || act.toUpperCase();
+                return '<div style="display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border-color);align-items:flex-start;cursor:pointer;" onclick="window.goToTask&&window.goToTask(\'' + (tr.task_id||'') + '\')">'
+                    + '<div style="width:32px;height:32px;border-radius:50%;background:' + cfg.color + '18;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><i class="fa-solid ' + cfg.fa + '" style="color:' + cfg.color + ';font-size:13px;"></i></div>'
                     + '<div style="flex:1;min-width:0;">'
-                    + '<div style="font-size:12px;font-weight:600;color:var(--text-primary);">' + esc(nm) + '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;background:#3b82f618;color:#3b82f6;margin-left:6px;">' + act + '</span></div>'
-                    + '<div style="font-size:12px;color:var(--text-secondary);margin-top:1px;">' + esc(ttl) + '</div>'
-                    + '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + time + '</div>'
+                    + '<div style="font-size:12px;font-weight:600;color:var(--text-primary);">' + _esc(nm) + '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;background:' + cfg.color + '18;color:' + cfg.color + ';margin-left:6px;">' + actLabel + '</span></div>'
+                    + '<div style="font-size:12px;color:var(--text-secondary);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _esc(ttl) + '</div>'
+                    + '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + ago + '</div>'
                     + '</div></div>';
             }
-            const n   = item.d;
-            const tic = ic[n.type]  || 'fa-bell';
-            const tcl = col[n.type] || '#f59e0b';
-            const msg = strip(n.message||'').substring(0,120);
-            return '<div style="' + base + (n.is_read ? '' : 'background:rgba(99,102,241,.04);') + '">'
-                + '<div style="width:32px;height:32px;border-radius:50%;background:' + tcl + '18;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><i class="fa-solid ' + tic + '" style="color:' + tcl + ';font-size:13px;"></i></div>'
-                + '<div style="flex:1;min-width:0;">'
-                + '<div style="font-size:12px;color:var(--text-primary);">' + esc(msg) + '</div>'
-                + '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + time + '</div>'
-                + '</div></div>';
+
+            // Notification item
+            return _renderNotifItem(item.d);
         } catch(err) {
             return '';
         }
     }).join('');
 };
+
+// Real-time: prepend a single incoming notification to the feed list without full reload
+window.prependFeedItem = function(notif) {
+    if (!notif) return;
+    const list = document.getElementById('activityFeedList');
+    if (!list) return;
+    // Remove empty-state placeholder if present
+    const placeholder = list.querySelector('p');
+    if (placeholder && !list.querySelector('[id^="feed-notif-"]')) placeholder.remove();
+    list.insertAdjacentHTML('afterbegin', _renderNotifItem(notif));
+};
+
 window.closeActivityFeed = function() {
     window._activityFeedOpen = false;
     document.getElementById('activityFeedPanel')?.remove();

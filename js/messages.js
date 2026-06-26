@@ -151,7 +151,7 @@ window.loadMessages = async function() {
                     if (bubble) {
                         bubble.classList.add('glow-target');
                         setTimeout(() => bubble.classList.add('active-glow'), 50);
-                        setTimeout(() => bubble.classList.remove('glow-target', 'active-glow'), 3500);
+                        setTimeout(() => bubble.classList.remove('glow-target', 'active-glow'), 4000);
                     }
                 }
                 window.pendingScrollId = null;

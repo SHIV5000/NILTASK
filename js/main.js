@@ -856,7 +856,7 @@ window.loadChatsList = async function() {
 
     let html = `<div class="sidebar-section-label px-4 py-2 mt-2 text-[10px] font-black tracking-widest uppercase" style="color:var(--text-secondary);">Departments</div>`;
 
-    departments.forEach(g => {
+    for (const g of departments) {
         const isCurrent = window.currentRoom === g;
         const unread = window.unreadCounts?.[g] || 0;
         const bgColor = deptColors[g] || 'var(--accent)';
@@ -867,10 +867,22 @@ window.loadChatsList = async function() {
         const storedName = localStorage.getItem('dept_name_' + g) || displayName;
         const storedColor = localStorage.getItem('dept_color_' + g) || bgColor;
         let storedPhoto = localStorage.getItem('dept_photo_' + g) || '';
-        // If no cached photo, try deterministic public Storage URL (set once, readable by all)
-        if (!storedPhoto && window.currentTenantId) {
-            const { data: pub } = sb.storage.from('chat-attachments').getPublicUrl(`group-photos/${window.currentTenantId}/${g}.jpg`);
-            if (pub?.publicUrl) { storedPhoto = pub.publicUrl; localStorage.setItem('dept_photo_' + g, storedPhoto); }
+        const storedTs = parseInt(localStorage.getItem('dept_photo_ts_' + g) || '0');
+        const expired = !storedTs || (Date.now() - storedTs > 3600000);
+
+        // Fetch signed URL from task-proofs when cache empty or expired (1h TTL)
+        if ((!storedPhoto || expired) && window.currentTenantId) {
+            const path = `group-photos/${window.currentTenantId}/${g}.jpg`;
+            const { data: sd, error: sdErr } = await sb.storage.from('task-proofs').createSignedUrl(path, 7200);
+            if (!sdErr && sd?.signedUrl) {
+                storedPhoto = sd.signedUrl;
+                localStorage.setItem('dept_photo_' + g, storedPhoto);
+                localStorage.setItem('dept_photo_ts_' + g, String(Date.now()));
+            } else {
+                localStorage.removeItem('dept_photo_' + g);
+                localStorage.removeItem('dept_photo_ts_' + g);
+                storedPhoto = '';
+            }
         }
         html += `<div class="channel-item group/dept p-2.5 mx-2 mb-1 rounded-xl cursor-pointer flex items-center gap-3 transition-colors border"
             style="background-color:${isCurrent ? 'var(--bg-body)' : 'transparent'};border-color:${isCurrent ? 'var(--border-color)' : 'transparent'};font-weight:${isCurrent ? 'bold' : 'normal'};"
@@ -888,7 +900,7 @@ window.loadChatsList = async function() {
                 <i class="fa-solid fa-gear text-[10px]"></i>
             </button>
         </div>`;
-    });
+    }
 
     html += `<div class="sidebar-section-label px-4 py-2 mt-4 text-[10px] font-black tracking-widest uppercase" style="color:var(--text-secondary);">Staff Members</div>`;
 
@@ -1079,10 +1091,11 @@ window.startSubscriptions = function() {
                 }
             }
         })
-        // Sync group photo to all online users when admin saves it
+        // Sync group photo to all online users — clear cache so next loadChatsList fetches a fresh signed URL
         .on('broadcast', { event: 'group_photo' }, ({ payload }) => {
-            if (payload?.room_id && payload?.photo) {
-                localStorage.setItem('dept_photo_' + payload.room_id, payload.photo);
+            if (payload?.room_id) {
+                localStorage.removeItem('dept_photo_' + payload.room_id);
+                localStorage.removeItem('dept_photo_ts_' + payload.room_id);
                 if (payload.name) localStorage.setItem('dept_name_' + payload.room_id, payload.name);
                 if (typeof window.loadChatsList === 'function') window.loadChatsList();
             }

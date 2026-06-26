@@ -74,6 +74,35 @@ window.stripHtml = function(html) {
     return (d.textContent || d.innerText || '').trim();
 };
 
+// Escape HTML special characters
+window.escapeHtml = function(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
+// Sentence case: "hello world" → "Hello World"
+window.toSentenceCase = function(str) {
+    if (!str) return '';
+    return String(str).toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
+};
+
+// Format timestamp to IST locale string
+window.getISTTime = function(ts) {
+    if (!ts) return '';
+    try {
+        return new Date(ts).toLocaleString('en-IN', {
+            day: '2-digit', month: 'short',
+            hour: '2-digit', minute: '2-digit',
+            hour12: true, timeZone: 'Asia/Kolkata'
+        });
+    } catch(e) { return String(ts); }
+};
+
 // ─── SCROLL TO TASK CARD ───────────────────────────────────────────────────
 // ─── NAVIGATION: Scroll right sidebar to a specific task card ────────────────
 

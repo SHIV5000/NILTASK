@@ -184,24 +184,32 @@ window.saveSettings = async function() {
     if (typeof window.loadChatsList === 'function') window.loadChatsList();
 }
 
-window.saveGroupSettings = function() {
+window.saveGroupSettings = async function() {
     const gid  = document.getElementById('groupSettingsId')?.value;
     const name = document.getElementById('groupSettingsName')?.value.trim();
     if (!gid || !name) { window.showCenterToast('Name cannot be empty','fa-solid fa-times','text-red-500'); return; }
 
     localStorage.setItem('dept_name_' + gid, name);
 
-    // Save photo if one was selected, then broadcast to all online users
+    // Save photo — upload to public Storage bucket for cross-device persistence
     const pendingPhoto = window._gsPendingPhoto || null;
     if (pendingPhoto) {
-        localStorage.setItem('dept_photo_' + gid, pendingPhoto);
         window._gsPendingPhoto = null;
-        // Broadcast so other devices see the group photo without needing a reload
+        let photoUrl = pendingPhoto; // fallback to base64 if upload fails
+        try {
+            const blob = await fetch(pendingPhoto).then(r => r.blob());
+            const path = `group-photos/${window.currentTenantId}/${gid}.jpg`;
+            await sb.storage.from('chat-attachments').upload(path, blob, { upsert: true, contentType: 'image/jpeg' });
+            const { data: pub } = sb.storage.from('chat-attachments').getPublicUrl(path);
+            if (pub?.publicUrl) photoUrl = pub.publicUrl;
+        } catch(e) { console.error('[group-photo] storage upload failed:', e); }
+        localStorage.setItem('dept_photo_' + gid, photoUrl);
+        // Broadcast the URL (small) so online users see it instantly
         if (window._reactionsBroadcast) {
             try {
                 window._reactionsBroadcast.send({
                     type: 'broadcast', event: 'group_photo',
-                    payload: { room_id: gid, photo: pendingPhoto, name }
+                    payload: { room_id: gid, photo: photoUrl, name }
                 });
             } catch(e) {}
         }

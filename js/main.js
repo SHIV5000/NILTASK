@@ -205,9 +205,9 @@ window.renderMainApp = function() {
             <div id="leftSidebar" class="left-sidebar flex-col border-r z-20" style="display:${leftDisplay};width:${leftWidth};background-color:var(--bg-sidebar);border-color:var(--border-color);">
 
                 <!-- A+B: School branding + actions row -->
-                <div style="padding:10px 12px 0;border-bottom:1px solid var(--border-color);background:var(--bg-sidebar);">
-                    <div style="font-size:9px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-secondary);margin-bottom:2px;">Noted For Action</div>
-                    <div style="font-size:15px;font-weight:800;color:#7f1d1d;letter-spacing:-0.01em;line-height:1.25;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${window.escapeHtml(window.currentSchoolName || 'My School')}">${window.escapeHtml(window.currentSchoolName || 'My School')}</div>
+                <div style="padding:12px 14px 0;border-bottom:1px solid var(--border-color);background:var(--bg-sidebar);">
+                    <div style="font-family:'Inter',system-ui,sans-serif;font-size:10px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#9b2c2c;margin-bottom:3px;text-shadow:0 1px 0 rgba(255,255,255,0.6),0 -1px 0 rgba(0,0,0,0.12);">Noted For Action</div>
+                    <div style="font-family:Georgia,'Times New Roman',serif;font-size:17px;font-weight:700;color:#7f1d1d;letter-spacing:0.01em;line-height:1.2;margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:1px 1px 0 rgba(0,0,0,0.18),2px 2px 0 rgba(0,0,0,0.09),0 1px 5px rgba(127,29,29,0.22);" title="${window.escapeHtml(window.currentSchoolName || 'My School')}">${window.escapeHtml(window.currentSchoolName || 'My School')}</div>
                     <div style="display:flex;align-items:center;gap:5px;padding-bottom:8px;">
                     ${window.canCreateGroup?.() !== false ? `
                     <button onclick="window.openNewGroupModal()" title="Create Department"
@@ -1217,31 +1217,33 @@ window.setTaskSort = function(val) {
 window.initScrollArrows = function() {
     const mc = document.getElementById('messagesContainer');
     if (!mc || document.getElementById('scrollTopBtn')) return;
-    mc.style.position = 'relative';
-    const btnTop = document.createElement('button');
-    btnTop.id = 'scrollTopBtn';
-    btnTop.className = 'chat-scroll-btn';
-    // btnTop (near top of viewport) → scrolls DOWN to latest messages
-    btnTop.style.cssText = 'bottom:72px;display:flex;opacity:0.5;background:var(--bg-sidebar);color:var(--text-secondary);transition:opacity .2s;';
-    btnTop.innerHTML = '<i class="fa-solid fa-chevron-down text-xs"></i>';
-    btnTop.title = 'Go to latest messages';
-    btnTop.onclick = () => mc.scrollTo({top:mc.scrollHeight,behavior:'smooth'});
-    const btnBot = document.createElement('button');
-    btnBot.id = 'scrollBotBtn';
-    btnBot.className = 'chat-scroll-btn';
-    // btnBot (near bottom of viewport) → scrolls UP to oldest messages
-    btnBot.style.cssText = 'bottom:32px;display:flex;opacity:0.5;background:var(--bg-sidebar);color:var(--text-secondary);transition:opacity .2s;';
-    btnBot.innerHTML = '<i class="fa-solid fa-chevron-up text-xs"></i>';
-    btnBot.title = 'Go to oldest messages';
-    btnBot.onclick = () => mc.scrollTo({top:0,behavior:'smooth'});
-    mc.appendChild(btnTop);
-    mc.appendChild(btnBot);
-    // Always visible — raise opacity when actionable
+    // Append to .chat-area (position:relative) so buttons stay fixed in viewport, not scrolling with messages
+    const chatArea = mc.closest('.chat-area') || mc.parentElement;
+    const btnBase = (bottom) =>
+        `position:absolute;right:12px;bottom:${bottom};z-index:10;width:30px;height:30px;` +
+        `border-radius:50%;border:1px solid var(--border-color);display:flex;align-items:center;` +
+        `justify-content:center;cursor:pointer;transition:opacity .2s;box-shadow:0 2px 8px rgba(0,0,0,0.18);`;
+    // Down arrow → scroll to latest (bottom)
+    const btnDown = document.createElement('button');
+    btnDown.id = 'scrollTopBtn';
+    btnDown.style.cssText = btnBase('72px') + 'background:var(--accent);color:#fff;opacity:0.7;';
+    btnDown.innerHTML = '<i class="fa-solid fa-chevron-down" style="font-size:11px;"></i>';
+    btnDown.title = 'Go to latest messages';
+    btnDown.onclick = () => mc.scrollTo({top:mc.scrollHeight, behavior:'smooth'});
+    // Up arrow → scroll to oldest (top)
+    const btnUp = document.createElement('button');
+    btnUp.id = 'scrollBotBtn';
+    btnUp.style.cssText = btnBase('110px') + 'background:var(--bg-sidebar);color:var(--text-secondary);opacity:0.7;';
+    btnUp.innerHTML = '<i class="fa-solid fa-chevron-up" style="font-size:11px;"></i>';
+    btnUp.title = 'Go to oldest messages';
+    btnUp.onclick = () => mc.scrollTo({top:0, behavior:'smooth'});
+    chatArea.appendChild(btnDown);
+    chatArea.appendChild(btnUp);
     const updateArrows = () => {
         const atTop = mc.scrollTop < 10;
         const atBot = mc.scrollHeight - mc.scrollTop - mc.clientHeight < 10;
-        btnTop.style.opacity = atBot ? '0.25' : '0.75';
-        btnBot.style.opacity = atTop ? '0.25' : '0.75';
+        btnDown.style.opacity = atBot ? '0.3' : '0.85';
+        btnUp.style.opacity = atTop ? '0.3' : '0.85';
     };
     mc.addEventListener('scroll', updateArrows, { passive: true });
     setTimeout(updateArrows, 500);

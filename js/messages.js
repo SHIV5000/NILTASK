@@ -255,6 +255,17 @@ window.loadMessages = async function() {
             });
         } catch(e) { /* reactions table may not exist yet */ }
     }
+    // Merge localStorage backup — survives refresh even if DB insert was blocked by RLS
+    try {
+        const myRx = JSON.parse(localStorage.getItem('myreactions_' + window.currentRoom) || '[]');
+        myRx.forEach(r => {
+            if (window.removedReactions?.has(r.message_id + '|' + r.value + '|' + r.user_id)) return;
+            if (!window.reactionsCache[r.message_id]) window.reactionsCache[r.message_id] = [];
+            if (!window.reactionsCache[r.message_id].find(c => c.value === r.value && c.user_id === r.user_id)) {
+                window.reactionsCache[r.message_id].push(r);
+            }
+        });
+    } catch(e) {}
 
     const c = document.getElementById('messagesContainer');
     const isNearBottom = c ? (c.scrollHeight - c.scrollTop - c.clientHeight < 150) : false;
@@ -669,6 +680,14 @@ window.applyReaction = async function(msgId, value, type) {
         // Session cache prevents re-appearance if RLS blocks the DB delete
         window.removedReactions = window.removedReactions || new Set();
         window.removedReactions.add(msgId + '|' + value + '|' + window.currentUser.id);
+        // Remove from localStorage backup
+        try {
+            const lsKey = 'myreactions_' + window.currentRoom;
+            const myRx = JSON.parse(localStorage.getItem(lsKey) || '[]').filter(
+                r => !(r.message_id === msgId && r.value === value)
+            );
+            localStorage.setItem(lsKey, JSON.stringify(myRx));
+        } catch(e) {}
         // Delete only this user's row
         try { await sb.from('reactions').delete()
                 .eq('message_id', msgId).eq('value', value).eq('user_id', window.currentUser.id); } catch(e) {}
@@ -688,7 +707,7 @@ window.applyReaction = async function(msgId, value, type) {
     }
 
     // ── ADD (toggle on) ──────────────────────────────────────────────────────
-    window.applyReactionDOM(msgId, value, type);
+    window.applyReactionDOM(msgId, value, type, window.currentUser.id);
 
     // Broadcast to all connected users via Supabase Broadcast (no schema needed)
     try {
@@ -698,12 +717,21 @@ window.applyReaction = async function(msgId, value, type) {
         });
     } catch(e) {}
 
-    // Persist to reactions table for page-reload survival (optional table)
+    // Save to localStorage so reaction survives refresh even if DB is blocked by RLS
     try {
-        await sb.from('reactions').insert({
+        const lsKey = 'myreactions_' + window.currentRoom;
+        const myRx = JSON.parse(localStorage.getItem(lsKey) || '[]');
+        if (!myRx.find(r => r.message_id === msgId && r.value === value)) {
+            myRx.push({ message_id: msgId, value, type, user_id: window.currentUser.id });
+            localStorage.setItem(lsKey, JSON.stringify(myRx));
+        }
+    } catch(e) {}
+    // Persist to reactions table (upsert handles unique constraint conflicts)
+    try {
+        await sb.from('reactions').upsert({
             message_id:msgId, user_id:window.currentUser.id,
             tenant_id:window.currentTenantId, value, type, count:1
-        });
+        }, { onConflict: 'message_id,user_id,value' });
     } catch(e) {}
 };
 
@@ -718,8 +746,14 @@ window.applyReactionDOM = function(msgId, value, type, userId) {
     if (type === 'emoji') {
         const existing = Array.from(footer.querySelectorAll('.e-chip')).find(c => c.dataset.emoji === value);
         if (existing) { const cnt = existing.querySelector('.e-cnt'); if(cnt) cnt.textContent = parseInt(cnt.textContent||'1')+1; }
-        else { footer.querySelector('.group\\/reaction, .relative.inline-block')?.insertAdjacentHTML('beforebegin',
-            `<button class="e-chip active mine" data-emoji="${value}" onclick="window.applyReaction('${msgId}','${value}','emoji')" title="Click to remove your reaction" style="cursor:pointer;">${value} <span class="e-cnt">1</span><span class="chip-remove">✕</span></button>`); }
+        else {
+            const chipClass = `e-chip active${isMineAdd ? ' mine' : ''}`;
+            const chipOnclick = isMineAdd ? `onclick="window.applyReaction('${msgId}','${value}','emoji')"` : '';
+            const chipCursor = isMineAdd ? 'cursor:pointer;' : 'cursor:default;';
+            const chipRemove = isMineAdd ? '<span class="chip-remove">✕</span>' : '';
+            footer.querySelector('.group\\/reaction, .relative.inline-block')?.insertAdjacentHTML('beforebegin',
+                `<button class="${chipClass}" data-emoji="${value}" ${chipOnclick} title="${isMineAdd ? 'Click to remove your reaction' : value}" style="${chipCursor}">${value} <span class="e-cnt">1</span>${chipRemove}</button>`);
+        }
     } else {
         if (!footer.querySelector('[data-tag="' + value + '"]')) {
             const cls = colorMap[value] || 'bg-blue-50 text-blue-700 border-blue-200';

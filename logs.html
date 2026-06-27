@@ -3,315 +3,447 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NILTASK — Log Viewer</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <title>NILTASK — Live Log Monitor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg:      #0d1117;
-      --bg2:     #161b22;
-      --bg3:     #21262d;
-      --border:  #30363d;
-      --text:    #e6edf3;
-      --text2:   #8b949e;
-      --radius:  8px;
+      --bg:     #0d1117; --bg2: #161b22; --bg3: #21262d;
+      --border: #30363d; --text: #e6edf3; --text2: #8b949e;
+      --accent: #238636; --accent-h: #2ea043;
+      --blue: #388bfd; --red: #f85149; --orange: #e3b341;
+      --radius: 8px;
     }
-    body {
-      font-family: 'Inter', system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      padding: 1.5rem 2rem;
-      font-size: 14px;
-    }
-    h1 {
-      font-size: 1.2rem;
-      font-weight: 600;
-      margin-bottom: 1.25rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      color: var(--text);
-    }
-    h1 .count {
-      font-size: 0.8rem;
-      font-weight: 400;
-      color: var(--text2);
-      margin-left: 0.5rem;
-    }
+    body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; font-size:14px; }
 
-    /* ── Controls ── */
-    .controls {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.6rem;
-      margin-bottom: 1.25rem;
-      align-items: center;
-    }
-    .controls input,
-    .controls select {
-      padding: 0.35rem 0.7rem;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      background: var(--bg2);
-      color: var(--text);
-      font-size: 0.85rem;
-      outline: none;
-      font-family: inherit;
-    }
-    .controls input:focus,
-    .controls select:focus { border-color: #388bfd; }
-    .controls input[type="text"] { flex: 1; min-width: 160px; }
-    .controls button {
-      padding: 0.35rem 0.85rem;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      background: var(--bg3);
-      color: var(--text);
-      font-size: 0.85rem;
-      cursor: pointer;
-      font-family: inherit;
-      transition: background 0.15s;
-      display: flex;
-      align-items: center;
-      gap: 0.35rem;
-    }
-    .controls button:hover { background: #2d3748; }
-    .controls button.danger { background: #3d0f0f; border-color: #7f1d1d; }
-    .controls button.danger:hover { background: #7f1d1d; }
-    .auto-label {
-      display: flex;
-      align-items: center;
-      gap: 0.35rem;
-      font-size: 0.85rem;
-      color: var(--text2);
-      cursor: pointer;
-      user-select: none;
-    }
-    #refreshNote { font-size: 0.75rem; color: var(--text2); }
+    /* ── LOGIN ── */
+    .login-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; }
+    .login-card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:32px; width:100%; max-width:360px; }
+    .login-logo { text-align:center; margin-bottom:24px; }
+    .login-logo i { font-size:28px; color:var(--blue); }
+    .login-logo h1 { font-size:18px; font-weight:800; margin-top:8px; }
+    .login-logo p { color:var(--text2); font-size:12px; margin-top:4px; }
+    .field { margin-bottom:14px; }
+    .field label { display:block; font-size:12px; font-weight:600; color:var(--text2); margin-bottom:5px; text-transform:uppercase; letter-spacing:.05em; }
+    .field input { width:100%; padding:9px 12px; background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-size:14px; outline:none; font-family:inherit; }
+    .field input:focus { border-color:var(--blue); }
+    .btn-primary { width:100%; padding:10px; background:var(--accent); color:#fff; border:none; border-radius:var(--radius); font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; }
+    .btn-primary:hover { background:var(--accent-h); }
+    .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
+    .err { color:var(--red); font-size:13px; margin-top:8px; text-align:center; display:none; }
 
-    /* ── Badges ── */
-    .badge {
-      display: inline-block;
-      padding: 0.15rem 0.5rem;
-      border-radius: 10px;
-      font-size: 0.7rem;
-      font-weight: 700;
-      letter-spacing: 0.03em;
-      text-transform: uppercase;
-    }
-    .badge.debug { background: #2d3748; color: #94a3b8; }
-    .badge.info  { background: #0c2340; color: #60a5fa; }
-    .badge.warn  { background: #3b2000; color: #fbbf24; }
-    .badge.error { background: #3b0a0a; color: #f87171; }
+    /* ── MAIN CONSOLE ── */
+    #console { display:none; padding:1.5rem 2rem; }
 
-    /* ── Table ── */
-    .table-wrap {
-      overflow: auto;
-      max-height: calc(100vh - 175px);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.82rem;
-    }
-    thead th {
-      background: var(--bg2);
-      position: sticky;
-      top: 0;
-      z-index: 5;
-      padding: 0.5rem 0.75rem;
-      text-align: left;
-      font-weight: 500;
-      color: var(--text2);
-      border-bottom: 1px solid var(--border);
-      white-space: nowrap;
-    }
-    tbody td {
-      padding: 0.45rem 0.75rem;
-      border-bottom: 1px solid var(--border);
-      vertical-align: top;
-    }
-    tbody tr:hover td { background: var(--bg2); }
-    tbody tr:last-child td { border-bottom: none; }
+    .topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:1.25rem; flex-wrap:wrap; gap:10px; }
+    .topbar-left { display:flex; align-items:center; gap:10px; }
+    .topbar h1 { font-size:1.1rem; font-weight:800; display:flex; align-items:center; gap:8px; }
+    .live-dot { width:8px; height:8px; border-radius:50%; background:#22c55e; animation:pulse 1.5s infinite; display:inline-block; }
+    .live-dot.off { background:var(--text2); animation:none; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-    .ts { color: var(--text2); font-size: 0.75rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
-    .cat { color: #a371f7; font-size: 0.75rem; font-weight: 500; }
-    .msg { color: var(--text); max-width: 380px; word-break: break-word; }
-    .data-cell {
-      max-width: 260px;
-      white-space: pre;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      font-family: 'SFMono-Regular', Consolas, monospace;
-      font-size: 0.72rem;
-      color: var(--text2);
-      cursor: pointer;
-      max-height: 3.6em;
-      line-height: 1.4;
+    .btn-sm { padding:6px 14px; border-radius:var(--radius); font-size:13px; font-weight:600; cursor:pointer; border:1px solid var(--border); background:var(--bg3); color:var(--text); font-family:inherit; display:inline-flex; align-items:center; gap:6px; transition:.15s; }
+    .btn-sm:hover { border-color:var(--text2); }
+    .btn-danger { background:rgba(248,81,73,.12); color:var(--red); border-color:rgba(248,81,73,.3); }
+    .btn-danger:hover { background:rgba(248,81,73,.22); }
+
+    /* ── FILTERS ── */
+    .filters { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:1rem; align-items:center; }
+    .filters input, .filters select {
+      padding:6px 10px; border-radius:var(--radius); border:1px solid var(--border);
+      background:var(--bg2); color:var(--text); font-size:13px; font-family:inherit; outline:none;
     }
-    .data-cell.expanded {
-      max-height: none;
-      white-space: pre-wrap;
-      word-break: break-all;
-      overflow: visible;
-    }
-    .empty-row td {
-      text-align: center;
-      padding: 3rem;
-      color: var(--text2);
-    }
+    .filters input:focus, .filters select:focus { border-color:var(--blue); }
+    .filters input[type=text] { flex:1; min-width:160px; }
+    .count-badge { font-size:12px; color:var(--text2); margin-left:auto; white-space:nowrap; }
+
+    /* ── DELETE BAR ── */
+    .del-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:1rem; padding:10px 14px; background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); }
+    .del-bar label { font-size:13px; color:var(--text2); }
+    .del-bar select { padding:5px 8px; border-radius:var(--radius); border:1px solid var(--border); background:var(--bg3); color:var(--text); font-size:13px; font-family:inherit; }
+
+    /* ── TABLE ── */
+    .table-wrap { overflow:auto; max-height:calc(100vh - 230px); border:1px solid var(--border); border-radius:var(--radius); }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    thead th { background:var(--bg2); position:sticky; top:0; z-index:5; padding:8px 10px; text-align:left; font-weight:600; color:var(--text2); border-bottom:1px solid var(--border); white-space:nowrap; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+    tbody td { padding:7px 10px; border-bottom:1px solid #1c2230; vertical-align:top; }
+    tbody tr:hover td { background:var(--bg2); }
+    tbody tr:last-child td { border-bottom:none; }
+    tbody tr.new-row td { animation:fadeIn .4s ease; }
+    @keyframes fadeIn { from{background:#1a2a1a} to{background:transparent} }
+
+    .ts { color:var(--text2); font-size:11px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .cat { color:#a371f7; font-size:12px; font-weight:600; }
+    .school-cell { font-size:11px; color:var(--blue); max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .msg-cell { max-width:320px; word-break:break-word; }
+    .data-cell { max-width:240px; font-family:'SFMono-Regular',Consolas,monospace; font-size:11px; color:var(--text2); cursor:pointer; max-height:3.2em; overflow:hidden; white-space:pre; text-overflow:ellipsis; }
+    .data-cell.exp { max-height:none; white-space:pre-wrap; word-break:break-all; }
+    .empty-row td { text-align:center; padding:3rem; color:var(--text2); }
+
+    .badge { display:inline-block; padding:2px 7px; border-radius:10px; font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; }
+    .badge.debug { background:#2d3748; color:#94a3b8; }
+    .badge.info  { background:#0c2340; color:#60a5fa; }
+    .badge.warn  { background:#3b2000; color:#fbbf24; }
+    .badge.error { background:#3b0a0a; color:#f87171; }
+
+    #toast { position:fixed; top:16px; right:16px; padding:10px 18px; border-radius:var(--radius); font-size:14px; font-weight:700; display:none; z-index:9999; box-shadow:0 4px 16px rgba(0,0,0,.4); }
   </style>
 </head>
 <body>
 
-<h1>
-  <i class="fa-solid fa-scroll" style="color:#388bfd"></i>
-  NILTASK Log Viewer
-  <span class="count" id="countLabel"></span>
-</h1>
-
-<div class="controls">
-  <input type="text" id="search" placeholder="Search messages or data…">
-  <select id="levelFilter">
-    <option value="all">All levels</option>
-    <option value="debug">Debug</option>
-    <option value="info">Info</option>
-    <option value="warn">Warning</option>
-    <option value="error">Error</option>
-  </select>
-  <select id="catFilter">
-    <option value="all">All categories</option>
-  </select>
-  <button id="refreshBtn"><i class="fa-solid fa-rotate-right"></i> Refresh</button>
-  <button id="exportBtn"><i class="fa-solid fa-file-export"></i> Export JSON</button>
-  <button id="clearBtn" class="danger"><i class="fa-solid fa-trash"></i> Clear</button>
-  <label class="auto-label">
-    <input type="checkbox" id="autoRefresh" checked>
-    Auto-refresh (5s)
-  </label>
-  <span id="refreshNote"></span>
+<!-- ── LOGIN ─────────────────────────────────────────────── -->
+<div class="login-wrap" id="loginWrap">
+  <div class="login-card">
+    <div class="login-logo">
+      <i class="fa-solid fa-scroll"></i>
+      <h1>Live Log Monitor</h1>
+      <p>NILTASK Developer Access Only</p>
+    </div>
+    <div class="field">
+      <label>Developer Email</label>
+      <input type="email" id="devEmail" placeholder="dev@niltask.in" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="devPwd" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn-primary" id="loginBtn" onclick="doLogin()">
+      <i class="fa-solid fa-arrow-right-to-bracket"></i> Sign In
+    </button>
+    <div class="err" id="loginErr"></div>
+  </div>
 </div>
 
-<div class="table-wrap">
-  <table>
-    <thead>
-      <tr>
-        <th style="width:155px">Timestamp</th>
-        <th style="width:72px">Level</th>
-        <th style="width:100px">Category</th>
-        <th>Message</th>
-        <th style="width:220px">Data</th>
-      </tr>
-    </thead>
-    <tbody id="logBody">
-      <tr class="empty-row"><td colspan="5">No logs yet</td></tr>
-    </tbody>
-  </table>
+<!-- ── MAIN CONSOLE ──────────────────────────────────────── -->
+<div id="console">
+
+  <div class="topbar">
+    <div class="topbar-left">
+      <h1><i class="fa-solid fa-scroll" style="color:var(--blue)"></i> Live Log Monitor <span class="live-dot" id="liveDot"></span></h1>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn-sm" id="liveBtn" onclick="toggleLive()"><i class="fa-solid fa-tower-broadcast"></i> Live: ON</button>
+      <button class="btn-sm" onclick="loadLogs()"><i class="fa-solid fa-rotate-right"></i> Refresh</button>
+      <button class="btn-sm" onclick="exportJson()"><i class="fa-solid fa-file-export"></i> Export JSON</button>
+      <button class="btn-sm btn-danger" onclick="doLogout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout</button>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters">
+    <input type="text" id="search" placeholder="Search message or data…" oninput="renderTable()">
+    <select id="fLevel" onchange="renderTable()">
+      <option value="all">All levels</option>
+      <option value="error">Error</option>
+      <option value="warn">Warning</option>
+      <option value="info">Info</option>
+      <option value="debug">Debug</option>
+    </select>
+    <select id="fCat" onchange="renderTable()">
+      <option value="all">All categories</option>
+    </select>
+    <select id="fSchool" onchange="renderTable()">
+      <option value="all">All schools</option>
+    </select>
+    <span class="count-badge" id="countBadge"></span>
+  </div>
+
+  <!-- Delete bar -->
+  <div class="del-bar">
+    <label><i class="fa-solid fa-trash" style="color:var(--red);margin-right:4px"></i> Delete logs older than:</label>
+    <select id="delAge">
+      <option value="7">7 days</option>
+      <option value="14">14 days</option>
+      <option value="30" selected>30 days</option>
+      <option value="90">90 days</option>
+    </select>
+    <button class="btn-sm" onclick="deleteLogs('age')">Delete Old</button>
+    <label style="margin-left:12px;">or delete by level:</label>
+    <select id="delLevel">
+      <option value="debug">Debug only</option>
+      <option value="info">Info only</option>
+    </select>
+    <button class="btn-sm" onclick="deleteLogs('level')">Delete Level</button>
+    <button class="btn-sm btn-danger" onclick="deleteLogs('all')" style="margin-left:auto">Delete ALL</button>
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:145px">Time</th>
+          <th style="width:68px">Level</th>
+          <th style="width:90px">Category</th>
+          <th style="width:130px">School</th>
+          <th>Message</th>
+          <th style="width:210px">Data</th>
+        </tr>
+      </thead>
+      <tbody id="logBody">
+        <tr class="empty-row"><td colspan="6"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
 </div>
 
-<script>
-  const STORAGE_KEY = 'niltask_logs';
-  const $ = id => document.getElementById(id);
+<div id="toast"></div>
 
-  function loadLogs() {
-    try { const r = localStorage.getItem(STORAGE_KEY); return r ? JSON.parse(r) : []; }
-    catch { return []; }
-  }
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-  function render() {
-    const logs     = loadLogs();
-    const search   = $('search').value.toLowerCase();
-    const level    = $('levelFilter').value;
-    const cat      = $('catFilter').value;
+const SUPABASE_URL      = 'https://apfymygzwkzjhhgmtkaj.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwZnlteWd6d2t6amhoZ210a2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5MjM5MTIsImV4cCI6MjA5NjQ5OTkxMn0.RiV6kDDeSq5ZIP68RGwtpLtqPALFloq23owoNm2aA-c';
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Refresh category dropdown (preserve selection)
-    const cats = [...new Set(logs.map(l => l.category).filter(Boolean))].sort();
-    const curCat = $('catFilter').value;
-    $('catFilter').innerHTML =
-      '<option value="all">All categories</option>' +
-      cats.map(c => `<option value="${c}"${c === curCat ? ' selected' : ''}>${c}</option>`).join('');
+let allLogs    = [];      // full dataset from Supabase
+let schoolMap  = {};      // tenant_id → school_name
+let realtimeCh = null;
+let liveOn     = true;
 
-    const filtered = logs.filter(l => {
-      if (level !== 'all' && l.level !== level) return false;
-      if (cat !== 'all' && l.category !== cat) return false;
-      if (search) {
-        const haystack = (l.message || '') + ' ' + (l.data || '');
-        if (!haystack.toLowerCase().includes(search)) return false;
-      }
-      return true;
+// ── LOGIN ────────────────────────────────────────────────
+window.doLogin = async function() {
+    const btn = document.getElementById('loginBtn');
+    const err = document.getElementById('loginErr');
+    btn.disabled = true;
+    btn.textContent = 'Signing in…';
+    err.style.display = 'none';
+
+    try {
+        const email = document.getElementById('devEmail').value.trim();
+        const pwd   = document.getElementById('devPwd').value;
+        const { data, error } = await sb.auth.signInWithPassword({ email, password: pwd });
+        if (error) throw new Error(error.message);
+
+        const { data: isDev, error: devErr } = await sb.rpc('is_developer');
+        if (devErr || !isDev) {
+            await sb.auth.signOut();
+            throw new Error('Access denied — developer account required.');
+        }
+
+        document.getElementById('loginWrap').style.display = 'none';
+        document.getElementById('console').style.display   = 'block';
+        await boot();
+
+    } catch(e) {
+        err.textContent = e.message;
+        err.style.display = 'block';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-arrow-right-to-bracket"></i> Sign In';
+    }
+};
+
+// Auto-login if session already exists
+(async() => {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return;
+    const { data: isDev } = await sb.rpc('is_developer');
+    if (isDev) {
+        document.getElementById('loginWrap').style.display = 'none';
+        document.getElementById('console').style.display   = 'block';
+        await boot();
+    }
+})();
+
+document.getElementById('devPwd').addEventListener('keydown', e => {
+    if (e.key === 'Enter') window.doLogin();
+});
+
+// ── LOGOUT ───────────────────────────────────────────────
+window.doLogout = async function() {
+    stopLive();
+    await sb.auth.signOut();
+    document.getElementById('loginWrap').style.display = 'flex';
+    document.getElementById('console').style.display   = 'none';
+    document.getElementById('devEmail').value = '';
+    document.getElementById('devPwd').value   = '';
+};
+
+// ── BOOT ─────────────────────────────────────────────────
+async function boot() {
+    await loadSchoolMap();
+    await loadLogs();
+    startLive();
+}
+
+// ── SCHOOL MAP ───────────────────────────────────────────
+async function loadSchoolMap() {
+    const { data } = await sb.from('tenants').select('id, school_name');
+    if (data) data.forEach(t => { schoolMap[t.id] = t.school_name; });
+    rebuildSchoolDropdown();
+}
+
+function rebuildSchoolDropdown() {
+    const sel = document.getElementById('fSchool');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="all">All schools</option>';
+    Object.entries(schoolMap).forEach(([id, name]) => {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = name;
+        if (id === cur) opt.selected = true;
+        sel.appendChild(opt);
     });
+}
 
-    $('countLabel').textContent = `${filtered.length} of ${logs.length} entries`;
+// ── LOAD LOGS ────────────────────────────────────────────
+window.loadLogs = async function() {
+    const { data, error } = await sb.from('app_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(2000);
 
-    if (!filtered.length) {
-      $('logBody').innerHTML = '<tr class="empty-row"><td colspan="5">No entries match your filters</td></tr>';
-      return;
+    if (error) { toast('Load error: ' + error.message, 'red'); return; }
+    allLogs = data || [];
+    rebuildCatDropdown();
+    renderTable();
+};
+
+// ── REALTIME ─────────────────────────────────────────────
+function startLive() {
+    if (realtimeCh) return;
+    realtimeCh = sb.channel('app_logs_live')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'app_logs' }, p => {
+            if (!p.new) return;
+            // Add school name if not yet in map
+            if (p.new.tenant_id && !schoolMap[p.new.tenant_id]) {
+                sb.from('tenants').select('id,school_name').eq('id', p.new.tenant_id).single()
+                  .then(({ data }) => { if (data) schoolMap[data.id] = data.school_name; rebuildSchoolDropdown(); });
+            }
+            allLogs.unshift(p.new);
+            if (allLogs.length > 2000) allLogs.pop();
+            rebuildCatDropdown();
+            renderTable(true);
+        })
+        .subscribe();
+    setLiveDot(true);
+}
+
+function stopLive() {
+    if (realtimeCh) { realtimeCh.unsubscribe(); realtimeCh = null; }
+    setLiveDot(false);
+}
+
+window.toggleLive = function() {
+    liveOn = !liveOn;
+    const btn = document.getElementById('liveBtn');
+    if (liveOn) { startLive(); btn.innerHTML = '<i class="fa-solid fa-tower-broadcast"></i> Live: ON'; }
+    else         { stopLive();  btn.innerHTML = '<i class="fa-solid fa-tower-broadcast"></i> Live: OFF'; }
+};
+
+function setLiveDot(on) {
+    const d = document.getElementById('liveDot');
+    d.classList.toggle('off', !on);
+}
+
+// ── RENDER TABLE ─────────────────────────────────────────
+function filtered() {
+    const search  = document.getElementById('search').value.toLowerCase();
+    const level   = document.getElementById('fLevel').value;
+    const cat     = document.getElementById('fCat').value;
+    const school  = document.getElementById('fSchool').value;
+
+    return allLogs.filter(l => {
+        if (level  !== 'all' && l.level     !== level)     return false;
+        if (cat    !== 'all' && l.category  !== cat)       return false;
+        if (school !== 'all' && l.tenant_id !== school)    return false;
+        if (search) {
+            const h = (l.message||'') + ' ' + (l.data ? JSON.stringify(l.data) : '');
+            if (!h.toLowerCase().includes(search)) return false;
+        }
+        return true;
+    });
+}
+
+window.renderTable = function(highlightFirst = false) {
+    const rows = filtered();
+    document.getElementById('countBadge').textContent = `${rows.length} of ${allLogs.length} entries`;
+
+    if (!rows.length) {
+        document.getElementById('logBody').innerHTML =
+            '<tr class="empty-row"><td colspan="6">No entries match filters</td></tr>';
+        return;
     }
 
-    // Render newest-first
-    $('logBody').innerHTML = [...filtered].reverse().map(l => {
-      const ts   = new Date(l.timestamp).toLocaleString('en-IN', { hour12: false, timeZone: 'Asia/Kolkata' });
-      const data = l.data || '';
-      const preview = data.length > 80 ? data.slice(0, 80) + '…' : data;
-      return `<tr>
-        <td class="ts">${ts}</td>
-        <td><span class="badge ${l.level || 'info'}">${(l.level || 'info').toUpperCase()}</span></td>
-        <td class="cat">${l.category || ''}</td>
-        <td class="msg">${escHtml(l.message || '')}</td>
-        <td class="data-cell" title="Click to expand" onclick="this.classList.toggle('expanded')">${escHtml(preview)}</td>
-      </tr>`;
+    document.getElementById('logBody').innerHTML = rows.map((l, i) => {
+        const ts    = new Date(l.created_at).toLocaleString('en-IN', { hour12:false, timeZone:'Asia/Kolkata', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+        const sc    = schoolMap[l.tenant_id] || (l.tenant_id ? l.tenant_id.slice(0,8)+'…' : '—');
+        const dataStr = l.data ? JSON.stringify(l.data) : '';
+        const preview = dataStr.length > 70 ? dataStr.slice(0, 70) + '…' : dataStr;
+        const newCls  = (highlightFirst && i === 0) ? 'new-row' : '';
+        return `<tr class="${newCls}">
+          <td class="ts">${ts}</td>
+          <td><span class="badge ${l.level||'info'}">${(l.level||'info').toUpperCase()}</span></td>
+          <td class="cat">${esc(l.category||'')}</td>
+          <td class="school-cell" title="${esc(sc)}">${esc(sc)}</td>
+          <td class="msg-cell">${esc(l.message||'')}</td>
+          <td class="data-cell" title="Click to expand" onclick="this.classList.toggle('exp')">${esc(preview)}</td>
+        </tr>`;
     }).join('');
-  }
+};
 
-  function escHtml(s) {
-    return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
-  }
+// ── CATEGORY DROPDOWN ─────────────────────────────────────
+function rebuildCatDropdown() {
+    const sel = document.getElementById('fCat');
+    const cur = sel.value;
+    const cats = [...new Set(allLogs.map(l => l.category).filter(Boolean))].sort();
+    sel.innerHTML = '<option value="all">All categories</option>' +
+        cats.map(c => `<option value="${c}"${c===cur?' selected':''}>${c}</option>`).join('');
+}
 
-  function stamp() {
-    $('refreshNote').textContent = 'Updated ' + new Date().toLocaleTimeString();
-  }
+// ── DELETE LOGS ──────────────────────────────────────────
+window.deleteLogs = async function(mode) {
+    let q;
+    let label;
 
-  function refresh() { render(); stamp(); }
+    if (mode === 'age') {
+        const days = parseInt(document.getElementById('delAge').value);
+        const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+        label = `logs older than ${days} days`;
+        q = sb.from('app_logs').delete().lt('created_at', cutoff);
+    } else if (mode === 'level') {
+        const lvl = document.getElementById('delLevel').value;
+        label = `all ${lvl} logs`;
+        q = sb.from('app_logs').delete().eq('level', lvl);
+    } else {
+        label = 'ALL logs';
+        q = sb.from('app_logs').delete().neq('id', '00000000-0000-0000-0000-000000000000'); // match all
+    }
 
-  // Auto-refresh
-  let timer = null;
-  function setupAuto() {
-    clearInterval(timer);
-    if ($('autoRefresh').checked) timer = setInterval(refresh, 5000);
-  }
+    if (!confirm(`Delete ${label}? This cannot be undone.`)) return;
 
-  // Export
-  $('exportBtn').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify(loadLogs(), null, 2)], { type: 'application/json' });
+    const { error, count } = await q;
+    if (error) { toast('Delete failed: ' + error.message, 'red'); return; }
+    toast(`Deleted ${label}`, 'green');
+    await loadLogs();
+};
+
+// ── EXPORT ───────────────────────────────────────────────
+window.exportJson = function() {
+    const rows = filtered();
+    const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `niltask_logs_${new Date().toISOString().slice(0, 10)}.json`;
+    a.href = url;
+    a.download = `niltask_logs_${new Date().toISOString().slice(0,10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  });
+};
 
-  // Clear
-  $('clearBtn').addEventListener('click', () => {
-    if (confirm('Delete all logs permanently?')) {
-      localStorage.removeItem(STORAGE_KEY);
-      refresh();
-    }
-  });
+// ── HELPERS ───────────────────────────────────────────────
+function esc(s) {
+    return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+}
 
-  $('refreshBtn').addEventListener('click', refresh);
-  $('search').addEventListener('input', render);
-  $('levelFilter').addEventListener('change', render);
-  $('catFilter').addEventListener('change', render);
-  $('autoRefresh').addEventListener('change', setupAuto);
-
-  // Boot
-  refresh();
-  setupAuto();
+function toast(msg, color) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.style.background = color === 'red' ? '#7f1d1d' : '#14532d';
+    el.style.color = '#fff';
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 3500);
+}
 </script>
 </body>
 </html>

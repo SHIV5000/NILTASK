@@ -681,6 +681,16 @@ window.renderMainApp = function() {
         </div>
     `;
 
+    // Lazy-load Quill JS on first use — removes ~200KB from initial page load
+    if (!window.Quill) {
+        await new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = 'https://cdn.quilljs.com/1.3.6/quill.js';
+            s.onload = resolve;
+            s.onerror = reject;
+            document.head.appendChild(s);
+        });
+    }
     window.quillEditor = new Quill('#richEditor', {
         theme: 'snow',
         placeholder: 'Type a message...',

@@ -226,7 +226,7 @@ window.loadMessages = async function() {
     const roomAtStart = window.currentRoom;
     const [{ data: msgs }, { data: bms }] = await Promise.all([
         sb.from('messages')
-            .select('*, profiles(full_name, email, role, designation, avatar_url)')
+            .select('*')
             .eq('room_id', window.currentRoom)
             .eq('tenant_id', window.currentTenantId)
             .order('created_at', { ascending: false })
@@ -241,7 +241,12 @@ window.loadMessages = async function() {
     // Discard results if user switched rooms while we were fetching
     if (window.currentRoom !== roomAtStart) return;
 
-    const allMsgs = (msgs || []).reverse();
+    // Enrich messages with sender profiles from in-memory cache — no SQL JOIN needed
+    const usersMap = new Map((window.globalUsersCache || []).map(u => [u.id, u]));
+    const allMsgs = (msgs || []).reverse().map(m => ({
+        ...m,
+        profiles: usersMap.get(m.sender_id) || null
+    }));
     window._roomMsgs = allMsgs;
     window._oldestMsgTs = allMsgs[0]?.created_at || null;
     window._allMsgsLoaded = !msgs || msgs.length === 0 || msgs.length < PAGE;
@@ -350,13 +355,17 @@ window._loadOlderMsgs = async function() {
     }
 
     const PAGE = 50;
-    const { data: older } = await sb.from('messages')
-        .select('*, profiles(full_name, email, role, designation, avatar_url)')
+    const { data: olderRaw } = await sb.from('messages')
+        .select('*')
         .eq('room_id', window.currentRoom)
         .eq('tenant_id', window.currentTenantId)
         .lt('created_at', window._oldestMsgTs)
         .order('created_at', { ascending: false })
         .limit(PAGE);
+
+    // Enrich with profiles from in-memory cache
+    const _olderMap = new Map((window.globalUsersCache || []).map(u => [u.id, u]));
+    const older = olderRaw?.map(m => ({ ...m, profiles: _olderMap.get(m.sender_id) || null }));
 
     if (older && older.length) {
         const olderChron = older.reverse();

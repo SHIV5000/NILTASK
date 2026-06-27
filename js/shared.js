@@ -62,7 +62,6 @@ window.openSecureFile = async function(filePath) {
     window.showCenterToast('Requesting secure access...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
     const { data, error } = await sb.storage.from('task-proofs').createSignedUrl(filePath, 3600);
     if (error || !data) {
-        console.error(error);
         window.showCenterToast('Failed to retrieve file securely.', 'fa-solid fa-times', 'text-red-500');
         return;
     }

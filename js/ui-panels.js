@@ -240,7 +240,6 @@ window.clearAllNotifications = async function() {
     const { error } = await sb.from('notifications').delete().eq('user_id', window.currentUser.id);
     if (error) {
         window.showCenterToast('Clear failed — check RLS policy: notifications DELETE', 'fa-solid fa-lock', 'text-red-500');
-        console.error('clearAll error:', error);
         return;
     }
     document.querySelectorAll('.top-panel-dropdown').forEach(m=>m.remove());
@@ -253,7 +252,6 @@ window.clearFiredReminders = async function() {
         .eq('user_id', window.currentUser.id).eq('type', 'reminder');
     if (error) {
         window.showCenterToast('Clear failed — check RLS policy','fa-solid fa-lock','text-red-500');
-        console.error('clearFired error:', error);
         return;
     }
     document.querySelectorAll('.top-panel-dropdown').forEach(m=>m.remove());

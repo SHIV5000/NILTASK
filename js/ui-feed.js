@@ -110,9 +110,7 @@ window._loadActivityFeed = async function() {
 
     const tid = window.currentTenantId;
     const uid = window.currentUser?.id;
-    console.log('[feed] opening — tenant:', tid, 'user:', uid);
     if (!tid || !uid) {
-        console.warn('[feed] missing tenant or user — aborting');
         list.innerHTML = '<p style="text-align:center;padding:24px;color:var(--text-secondary);font-size:12px;">Session loading — close and reopen.</p>';
         return;
     }
@@ -131,13 +129,6 @@ window._loadActivityFeed = async function() {
             .eq('user_id', uid)
             .order('created_at', { ascending: false }).limit(60)
     ]);
-
-    console.log('[feed] msgs fetched:', r1.data?.length ?? 0, r1.error ? '❌ ' + r1.error.message : '✓');
-    console.log('[feed] trails fetched:', r2.data?.length ?? 0, r2.error ? '❌ ' + r2.error.message : '✓');
-    console.log('[feed] notifs fetched:', r3.data?.length ?? 0, r3.error ? '❌ ' + r3.error.message : '✓');
-    if (r1.error) console.warn('[feed] messages error:', r1.error);
-    if (r2.error) console.warn('[feed] trails error:', r2.error);
-    if (r3.error) console.warn('[feed] notifs error:', r3.error);
 
     let msgData = r1.data || [];
     if (!msgData.length && window.currentRoom) {
@@ -163,10 +154,7 @@ window._loadActivityFeed = async function() {
     const unreadCount = (r3.data||[]).filter(n => !n.is_read).length;
     window._setBellBadge?.(unreadCount);
 
-    console.log('[feed] total items after merge:', items.length, '| unread notifs:', unreadCount);
-
     if (!items.length) {
-        console.log('[feed] nothing to show — rendering empty state');
         list.innerHTML = '<p style="text-align:center;padding:32px;color:var(--text-secondary);font-size:12px;">No activity yet.</p>';
         return;
     }
@@ -220,12 +208,9 @@ window._loadActivityFeed = async function() {
             renderedCount++;
             return _renderNotifItem(item.d);
         } catch(err) {
-            console.error('[feed] render error at index', idx, 'kind:', item.k, err, item);
             return '';
         }
     }).join('');
-
-    console.log('[feed] rendered:', renderedCount, '/ html length:', html.length);
     list.innerHTML = html || '<p style="text-align:center;padding:32px;color:var(--text-secondary);font-size:12px;">No activity yet.</p>';
 };
 

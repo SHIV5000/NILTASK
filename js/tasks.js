@@ -44,7 +44,7 @@ window.notifyUser = async function(userId, message, messageId = null, type = 'ta
         if (taskId) payload.task_id = taskId;
         await sb.from('notifications').insert(payload);
     } catch (e) {
-        console.warn('notifyUser failed:', e.message);
+        // notification insert failed — non-fatal
     }
 };
 
@@ -63,7 +63,7 @@ window.notifyGroupMembers = async function(roomId, senderId, message, messageId,
             await window.notifyUser(uid, message, messageId, type);
         }
     } catch(e) {
-        console.warn('notifyGroupMembers failed:', e.message);
+        // group notify failed — non-fatal
     }
 };
 
@@ -158,7 +158,7 @@ window.saveTaskMultiAssignee = async function() {
         status: 'pending'
     }).select().single();
 
-    if (tErr || !task) { console.error(tErr); return window.showCenterToast('Failed to create task.', 'fa-solid fa-times', 'text-red-500'); }
+    if (tErr || !task) { return window.showCenterToast('Failed to create task.', 'fa-solid fa-times', 'text-red-500'); }
 
     await sb.from('task_assignees').insert(aids.map(aid => ({ task_id: task.id, assignee_id: aid, tenant_id: window.currentTenantId, status: 'pending_ack', state: 'pending' })));
     await sb.from('task_trails').insert({ task_id: task.id, user_id: window.currentUser.id, tenant_id: window.currentTenantId, action: 'UPDATE', comment: 'Task Created' });

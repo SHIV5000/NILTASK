@@ -21,10 +21,10 @@ create index if not exists app_logs_created_at   on app_logs (created_at desc);
 -- RLS
 alter table app_logs enable row level security;
 
--- Developers see everything
+-- Developers see everything (uses same is_developer() RPC as the login gate)
 create policy "developer full access" on app_logs
     for all using (
-        exists (select 1 from profiles where id = auth.uid() and role = 'developer')
+        (select is_developer())
     );
 
 -- Regular users can insert their own tenant's logs

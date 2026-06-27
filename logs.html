@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NILTASK — Log Viewer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #0d1117;
+      --bg2:     #161b22;
+      --bg3:     #21262d;
+      --border:  #30363d;
+      --text:    #e6edf3;
+      --text2:   #8b949e;
+      --radius:  8px;
+    }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 1.5rem 2rem;
+      font-size: 14px;
+    }
+    h1 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--text);
+    }
+    h1 .count {
+      font-size: 0.8rem;
+      font-weight: 400;
+      color: var(--text2);
+      margin-left: 0.5rem;
+    }
+
+    /* ── Controls ── */
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      margin-bottom: 1.25rem;
+      align-items: center;
+    }
+    .controls input,
+    .controls select {
+      padding: 0.35rem 0.7rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--bg2);
+      color: var(--text);
+      font-size: 0.85rem;
+      outline: none;
+      font-family: inherit;
+    }
+    .controls input:focus,
+    .controls select:focus { border-color: #388bfd; }
+    .controls input[type="text"] { flex: 1; min-width: 160px; }
+    .controls button {
+      padding: 0.35rem 0.85rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--bg3);
+      color: var(--text);
+      font-size: 0.85rem;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .controls button:hover { background: #2d3748; }
+    .controls button.danger { background: #3d0f0f; border-color: #7f1d1d; }
+    .controls button.danger:hover { background: #7f1d1d; }
+    .auto-label {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.85rem;
+      color: var(--text2);
+      cursor: pointer;
+      user-select: none;
+    }
+    #refreshNote { font-size: 0.75rem; color: var(--text2); }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 10px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+    .badge.debug { background: #2d3748; color: #94a3b8; }
+    .badge.info  { background: #0c2340; color: #60a5fa; }
+    .badge.warn  { background: #3b2000; color: #fbbf24; }
+    .badge.error { background: #3b0a0a; color: #f87171; }
+
+    /* ── Table ── */
+    .table-wrap {
+      overflow: auto;
+      max-height: calc(100vh - 175px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+    thead th {
+      background: var(--bg2);
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      padding: 0.5rem 0.75rem;
+      text-align: left;
+      font-weight: 500;
+      color: var(--text2);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    tbody td {
+      padding: 0.45rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    tbody tr:hover td { background: var(--bg2); }
+    tbody tr:last-child td { border-bottom: none; }
+
+    .ts { color: var(--text2); font-size: 0.75rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .cat { color: #a371f7; font-size: 0.75rem; font-weight: 500; }
+    .msg { color: var(--text); max-width: 380px; word-break: break-word; }
+    .data-cell {
+      max-width: 260px;
+      white-space: pre;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 0.72rem;
+      color: var(--text2);
+      cursor: pointer;
+      max-height: 3.6em;
+      line-height: 1.4;
+    }
+    .data-cell.expanded {
+      max-height: none;
+      white-space: pre-wrap;
+      word-break: break-all;
+      overflow: visible;
+    }
+    .empty-row td {
+      text-align: center;
+      padding: 3rem;
+      color: var(--text2);
+    }
+  </style>
+</head>
+<body>
+
+<h1>
+  <i class="fa-solid fa-scroll" style="color:#388bfd"></i>
+  NILTASK Log Viewer
+  <span class="count" id="countLabel"></span>
+</h1>
+
+<div class="controls">
+  <input type="text" id="search" placeholder="Search messages or data…">
+  <select id="levelFilter">
+    <option value="all">All levels</option>
+    <option value="debug">Debug</option>
+    <option value="info">Info</option>
+    <option value="warn">Warning</option>
+    <option value="error">Error</option>
+  </select>
+  <select id="catFilter">
+    <option value="all">All categories</option>
+  </select>
+  <button id="refreshBtn"><i class="fa-solid fa-rotate-right"></i> Refresh</button>
+  <button id="exportBtn"><i class="fa-solid fa-file-export"></i> Export JSON</button>
+  <button id="clearBtn" class="danger"><i class="fa-solid fa-trash"></i> Clear</button>
+  <label class="auto-label">
+    <input type="checkbox" id="autoRefresh" checked>
+    Auto-refresh (5s)
+  </label>
+  <span id="refreshNote"></span>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th style="width:155px">Timestamp</th>
+        <th style="width:72px">Level</th>
+        <th style="width:100px">Category</th>
+        <th>Message</th>
+        <th style="width:220px">Data</th>
+      </tr>
+    </thead>
+    <tbody id="logBody">
+      <tr class="empty-row"><td colspan="5">No logs yet</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+  const STORAGE_KEY = 'niltask_logs';
+  const $ = id => document.getElementById(id);
+
+  function loadLogs() {
+    try { const r = localStorage.getItem(STORAGE_KEY); return r ? JSON.parse(r) : []; }
+    catch { return []; }
+  }
+
+  function render() {
+    const logs     = loadLogs();
+    const search   = $('search').value.toLowerCase();
+    const level    = $('levelFilter').value;
+    const cat      = $('catFilter').value;
+
+    // Refresh category dropdown (preserve selection)
+    const cats = [...new Set(logs.map(l => l.category).filter(Boolean))].sort();
+    const curCat = $('catFilter').value;
+    $('catFilter').innerHTML =
+      '<option value="all">All categories</option>' +
+      cats.map(c => `<option value="${c}"${c === curCat ? ' selected' : ''}>${c}</option>`).join('');
+
+    const filtered = logs.filter(l => {
+      if (level !== 'all' && l.level !== level) return false;
+      if (cat !== 'all' && l.category !== cat) return false;
+      if (search) {
+        const haystack = (l.message || '') + ' ' + (l.data || '');
+        if (!haystack.toLowerCase().includes(search)) return false;
+      }
+      return true;
+    });
+
+    $('countLabel').textContent = `${filtered.length} of ${logs.length} entries`;
+
+    if (!filtered.length) {
+      $('logBody').innerHTML = '<tr class="empty-row"><td colspan="5">No entries match your filters</td></tr>';
+      return;
+    }
+
+    // Render newest-first
+    $('logBody').innerHTML = [...filtered].reverse().map(l => {
+      const ts   = new Date(l.timestamp).toLocaleString('en-IN', { hour12: false, timeZone: 'Asia/Kolkata' });
+      const data = l.data || '';
+      const preview = data.length > 80 ? data.slice(0, 80) + '…' : data;
+      return `<tr>
+        <td class="ts">${ts}</td>
+        <td><span class="badge ${l.level || 'info'}">${(l.level || 'info').toUpperCase()}</span></td>
+        <td class="cat">${l.category || ''}</td>
+        <td class="msg">${escHtml(l.message || '')}</td>
+        <td class="data-cell" title="Click to expand" onclick="this.classList.toggle('expanded')">${escHtml(preview)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+  }
+
+  function stamp() {
+    $('refreshNote').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  }
+
+  function refresh() { render(); stamp(); }
+
+  // Auto-refresh
+  let timer = null;
+  function setupAuto() {
+    clearInterval(timer);
+    if ($('autoRefresh').checked) timer = setInterval(refresh, 5000);
+  }
+
+  // Export
+  $('exportBtn').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(loadLogs(), null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `niltask_logs_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // Clear
+  $('clearBtn').addEventListener('click', () => {
+    if (confirm('Delete all logs permanently?')) {
+      localStorage.removeItem(STORAGE_KEY);
+      refresh();
+    }
+  });
+
+  $('refreshBtn').addEventListener('click', refresh);
+  $('search').addEventListener('input', render);
+  $('levelFilter').addEventListener('change', render);
+  $('catFilter').addEventListener('change', render);
+  $('autoRefresh').addEventListener('change', setupAuto);
+
+  // Boot
+  refresh();
+  setupAuto();
+</script>
+</body>
+</html>

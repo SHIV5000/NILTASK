@@ -1,4 +1,5 @@
 import { sb } from './shared.js';
+import logger from './utils/logger.js';
 
 // v1.58.0 - Edit/Forward/Delete, Reply+Reaction notifications, Broadcast reactions
 
@@ -64,7 +65,10 @@ window.sendMessage = async function() {
         window.pendingScrollId = 'BOTTOM';
     }
 
+    logger.logAction('sendMessage', { room: window.currentRoom });
+    const _t0 = performance.now();
     const { data: msgData } = await sb.from('messages').insert(payload).select().single();
+    logger.logApi('messages.insert', { room: window.currentRoom }, performance.now() - _t0);
 
     // ── Notify original author when someone replies to their message
     if (window.currentlyReplyingTo && msgData) {
@@ -214,11 +218,13 @@ window.loadMessages = async function() {
         } catch(e) {}
     }
 
+    const _t1 = performance.now();
     const { data: msgs } = await sb.from('messages')
         .select('*, profiles(full_name, email, role, designation, avatar_url)')
         .eq('room_id', window.currentRoom)
         .order('created_at', { ascending: false })
         .limit(PAGE);
+    logger.logApi('messages.select', { room: window.currentRoom, count: msgs?.length }, performance.now() - _t1);
 
     const allMsgs = (msgs || []).reverse();
     window._roomMsgs = allMsgs;

@@ -7,6 +7,7 @@
  * ─────────────────────────────────────────────────────────────
  */
 import { sb } from './shared.js';
+import logger from './utils/logger.js';
 
 // ─── PASSWORD RECOVERY HANDLER ────────────────────────────────
 // When the user clicks the reset link in their email, Supabase
@@ -117,8 +118,13 @@ import { sb } from './shared.js';
 
 // ─── LOGIN ──────────────────────────────────────────────────────
 window.signIn = async function(email, pwd) {
+    logger.logAction('login:attempt', { email });
     const { data, error } = await sb.auth.signInWithPassword({ email, password: pwd });
-    if (error || !data?.user) return false;
+    if (error || !data?.user) {
+        logger.warn('AUTH', 'login failed', { email });
+        return false;
+    }
+    logger.logAction('login:success', { email });
 
     window.currentUser = data.user;
 
@@ -262,6 +268,7 @@ window.signUp = async function(email, pwd) {
 
 // ─── LOGOUT ─────────────────────────────────────────────────────
 window.logout = async function() {
+    logger.logAction('logout', { email: window.currentUser?.email });
     await sb.auth.signOut();
     // Clear tenant context then redirect to login
     // Use location.href so it works from any page (admin.html, index, etc.)

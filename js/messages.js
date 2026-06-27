@@ -210,68 +210,76 @@ window.loadMessages = async function() {
         } catch(e) {}
     }
 
+    // Fetch messages and bookmarks in parallel — saves one sequential round-trip
     const _t1 = performance.now();
-    const { data: msgs } = await sb.from('messages')
-        .select('*, profiles(full_name, email, role, designation, avatar_url)')
-        .eq('room_id', window.currentRoom)
-        .eq('tenant_id', window.currentTenantId)
-        .order('created_at', { ascending: false })
-        .limit(PAGE);
+    const roomAtStart = window.currentRoom;
+    const [{ data: msgs }, { data: bms }] = await Promise.all([
+        sb.from('messages')
+            .select('*, profiles(full_name, email, role, designation, avatar_url)')
+            .eq('room_id', window.currentRoom)
+            .eq('tenant_id', window.currentTenantId)
+            .order('created_at', { ascending: false })
+            .limit(PAGE),
+        sb.from('bookmarks')
+            .select('message_id')
+            .eq('user_id', window.currentUser.id)
+            .eq('tenant_id', window.currentTenantId)
+    ]);
     logger.logApi('messages.select', { room: window.currentRoom, count: msgs?.length }, performance.now() - _t1);
+
+    // Discard results if user switched rooms while we were fetching
+    if (window.currentRoom !== roomAtStart) return;
 
     const allMsgs = (msgs || []).reverse();
     window._roomMsgs = allMsgs;
     window._oldestMsgTs = allMsgs[0]?.created_at || null;
     window._allMsgsLoaded = !msgs || msgs.length === 0 || msgs.length < PAGE;
     window._loadingOlder = false;
+    window.bookmarkedSet = new Set(bms?.map(b => b.message_id) || []);
 
     // Persist to localStorage cache (last 50, lightweight — no profiles nested)
     if (allMsgs.length) {
         try {
-            const cacheKey = 'msgcache_' + window.currentRoom;
-            // Strip nested profiles to reduce size — re-fetched on next load
             const slim = allMsgs.map(m => ({ ...m, profiles: undefined }));
             localStorage.setItem(cacheKey, JSON.stringify(slim.slice(-50)));
         } catch(e) {} // quota exceeded — not fatal
     }
 
-    const { data: bms } = await sb.from('bookmarks')
-        .select('message_id')
-        .eq('user_id', window.currentUser.id)
-        .eq('tenant_id', window.currentTenantId);
-    window.bookmarkedSet = new Set(bms?.map(b => b.message_id) || []);
-
-    // ── Fetch reactions so they survive re-renders ──────────────────────────
-    const msgIds = allMsgs.map(m => m.id);
-    window.reactionsCache = {};
-    window.removedReactions = window.removedReactions || new Set();
-    if (msgIds.length) {
-        try {
-            const { data: rData } = await sb.from('reactions').select('*').in('message_id', msgIds).eq('tenant_id', window.currentTenantId);
-            (rData || []).forEach(r => {
-                if (window.removedReactions.has(r.message_id + '|' + r.value + '|' + r.user_id)) return;
-                if (!window.reactionsCache[r.message_id]) window.reactionsCache[r.message_id] = [];
-                window.reactionsCache[r.message_id].push(r);
-            });
-        } catch(e) { /* reactions table may not exist yet */ }
-    }
-    // Merge localStorage backup — survives refresh even if DB insert was blocked by RLS
-    try {
-        const myRx = JSON.parse(localStorage.getItem('myreactions_' + window.currentRoom) || '[]');
-        myRx.forEach(r => {
-            if (window.removedReactions?.has(r.message_id + '|' + r.value + '|' + r.user_id)) return;
-            if (!window.reactionsCache[r.message_id]) window.reactionsCache[r.message_id] = [];
-            if (!window.reactionsCache[r.message_id].find(c => c.value === r.value && c.user_id === r.user_id)) {
-                window.reactionsCache[r.message_id].push(r);
-            }
-        });
-    } catch(e) {}
-
+    // Render immediately — reactions load in background and patch without full re-render
     const c = document.getElementById('messagesContainer');
     const isNearBottom = c ? (c.scrollHeight - c.scrollTop - c.clientHeight < 150) : false;
 
+    window.reactionsCache = {};
+    window.removedReactions = window.removedReactions || new Set();
+    // Merge localStorage reactions so they show instantly before DB fetch completes
+    try {
+        const myRx = JSON.parse(localStorage.getItem('myreactions_' + window.currentRoom) || '[]');
+        myRx.forEach(r => {
+            if (!window.reactionsCache[r.message_id]) window.reactionsCache[r.message_id] = [];
+            if (!window.reactionsCache[r.message_id].find(c => c.value === r.value && c.user_id === r.user_id))
+                window.reactionsCache[r.message_id].push(r);
+        });
+    } catch(e) {}
+
     window.renderMessages(allMsgs);
     if (typeof window.applyFilters === 'function') window.applyFilters();
+
+    // Fetch reactions in background — patch footers without clearing the whole list
+    const msgIds = allMsgs.map(m => m.id);
+    if (msgIds.length) {
+        sb.from('reactions').select('*').in('message_id', msgIds).eq('tenant_id', window.currentTenantId)
+            .then(({ data: rData }) => {
+                if (window.currentRoom !== roomAtStart) return;
+                (rData || []).forEach(r => {
+                    if (window.removedReactions.has(r.message_id + '|' + r.value + '|' + r.user_id)) return;
+                    if (!window.reactionsCache[r.message_id]) window.reactionsCache[r.message_id] = [];
+                    if (!window.reactionsCache[r.message_id].find(x => x.value === r.value && x.user_id === r.user_id))
+                        window.reactionsCache[r.message_id].push(r);
+                });
+                // Patch only the reaction footer of each message — no full re-render
+                if (typeof window._patchReactionFooters === 'function') window._patchReactionFooters(msgIds);
+            }).catch(() => {});
+    }
 
     // Attach scroll listener for scroll-up paging
     if (c) {
@@ -617,6 +625,42 @@ window._getQuickTags = function() {
         {v:'Yes Sir',  c:'#c2410c',bg:'#fff7ed',border:'#fed7aa'},
         {v:'Yes Madam',c:'#be185d',bg:'#fdf2f8',border:'#fbcfe8'},
     ];
+};
+
+// Patch reaction footers in-place after background fetch — no full re-render
+window._patchReactionFooters = function(msgIds) {
+    const tagColorMap = {
+        'Thank You':'bg-green-50 text-green-700 border-green-200',
+        'Noted':'bg-blue-50 text-blue-700 border-blue-200',
+        'Copied':'bg-purple-50 text-purple-700 border-purple-200',
+        'Yes Sir':'bg-orange-50 text-orange-700 border-orange-200',
+        'Yes Madam':'bg-pink-50 text-pink-700 border-pink-200'
+    };
+    msgIds.forEach(id => {
+        const footer = document.getElementById('footer-' + id);
+        if (!footer) return;
+        const msgReactions = window.reactionsCache?.[id] || [];
+        const rGroups = {};
+        msgReactions.forEach(r => {
+            if (!rGroups[r.value]) rGroups[r.value] = { count:0, type:r.type, mine:false };
+            rGroups[r.value].count += (r.count||1);
+            if (r.user_id && r.user_id !== '_rt_' && r.user_id === window.currentUser?.id) rGroups[r.value].mine = true;
+        });
+        const html = Object.entries(rGroups).map(([val, info]) => {
+            if (info.type === 'emoji') {
+                const chipClass = info.mine ? 'e-chip active mine' : 'e-chip active';
+                const onclick = info.mine ? `window.applyReaction('${id}','${val}','emoji')` : '';
+                return `<button class="${chipClass}" data-emoji="${val}" ${onclick ? `onclick="${onclick}"` : ''} title="${info.mine ? 'Click to remove your reaction' : val}" style="${info.mine ? 'cursor:pointer;' : 'cursor:default;'}">${val} <span class="e-cnt">${info.count}</span>${info.mine ? '<span class="chip-remove">✕</span>' : ''}</button>`;
+            } else {
+                const tagBase = tagColorMap[val] || 'bg-blue-50 text-blue-700 border-blue-200';
+                const onclick = info.mine ? `onclick="window.applyReaction('${id}','${val}','tag')"` : '';
+                return `<span class="${tagBase + (info.mine ? ' mine' : '')} px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ml-1" data-tag="${val}" ${onclick} title="${info.mine ? 'Click to remove your tag' : val}" style="${info.mine ? 'cursor:pointer;' : 'cursor:default;'}">${val}${info.mine ? '<span class="chip-remove">✕</span>' : ''}</span>`;
+            }
+        }).join('');
+        // Preserve the add-reaction button, replace only the chips
+        const addBtn = footer.querySelector('.relative.inline-block');
+        footer.innerHTML = html + (addBtn ? addBtn.outerHTML : '');
+    });
 };
 
 window._showReactionPicker = function(msgId, btn) {

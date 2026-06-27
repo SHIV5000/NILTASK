@@ -11,22 +11,6 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import { sb } from './shared.js';
-window.openTaskModal = async function(mid, text) {
-    window.currentMessageId = mid;
-    const tmp=document.createElement('DIV'); tmp.innerHTML=text;
-    window.currentMessageTextRaw=(tmp.textContent||tmp.innerText||'').substring(0,60)+'...';
-    window.closeDropdowns();
-    document.getElementById('taskModal').classList.remove('hidden');
-    document.getElementById('taskModal').classList.add('flex');
-    document.getElementById('taskTitle').value=(tmp.textContent||tmp.innerText||'').trim();
-    const list=document.getElementById('assigneeCheckboxList');
-    list.innerHTML=window.globalUsersCache.filter(u=>u.id!==window.currentUser.id).map(u=>`
-        <label class="assignee-item flex items-center gap-2 text-[13px] p-1.5 rounded-lg cursor-pointer transition-colors border border-transparent">
-            <input type="checkbox" value="${u.id}" class="assignee-cb w-4 h-4 accent-[var(--accent)] rounded">
-            <span class="assignee-name font-semibold" style="color:var(--text-primary);">${window.escapeHtml(window.toSentenceCase(u.full_name||u.email.split('@')[0]))}</span>
-        </label>`).join('');
-    document.getElementById('assigneeSearch').value='';
-};
 
 window.filterAssignees = function() {
     const term=document.getElementById('assigneeSearch').value.toLowerCase();

@@ -1305,6 +1305,12 @@ window.getRoomDisplayName = function(roomId) {
         }
     }
 
+    // Arm logger Supabase sync — must run after every page load (not just on signIn)
+    // because signIn redirects away before the flush timer can run
+    if (window.logger?.init && window.currentUser && window.currentTenantId) {
+        window.logger.init(sb, { userId: window.currentUser.id, tenantId: window.currentTenantId });
+    }
+
     // Route by role
     // ?mode=chat lets principal bypass admin panel and access chat directly
     const chatMode = new URLSearchParams(window.location.search).get('mode') === 'chat';

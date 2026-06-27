@@ -98,18 +98,6 @@ window.sendMessage = async function() {
     // Play sent sound
     if (typeof window.playSound === 'function') window.playSound('message');
 
-    // ── Notify the original message sender when replying
-    if (window.currentlyReplyingTo && msgData) {
-        try {
-            const { data: parentMsg } = await sb.from('messages').select('sender_id').eq('id', window.currentlyReplyingTo).single();
-            if (parentMsg && parentMsg.sender_id !== window.currentUser.id) {
-                const myName = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'Someone';
-                await window.notifyUser(parentMsg.sender_id,
-                    `↩️ ${myName} replied to your message`, msgData.id, 'reply');
-            }
-        } catch(e) {}
-    }
-
     window.quillEditor.root.innerHTML = '';
     window.cancelReply();
     if (sendBtn) sendBtn.innerHTML = '<i class="ti ti-send text-lg"></i>';
@@ -222,6 +210,7 @@ window.loadMessages = async function() {
     const { data: msgs } = await sb.from('messages')
         .select('*, profiles(full_name, email, role, designation, avatar_url)')
         .eq('room_id', window.currentRoom)
+        .eq('tenant_id', window.currentTenantId)
         .order('created_at', { ascending: false })
         .limit(PAGE);
     logger.logApi('messages.select', { room: window.currentRoom, count: msgs?.length }, performance.now() - _t1);
@@ -229,7 +218,7 @@ window.loadMessages = async function() {
     const allMsgs = (msgs || []).reverse();
     window._roomMsgs = allMsgs;
     window._oldestMsgTs = allMsgs[0]?.created_at || null;
-    window._allMsgsLoaded = !msgs || msgs.length < PAGE;
+    window._allMsgsLoaded = !msgs || msgs.length === 0 || msgs.length < PAGE;
     window._loadingOlder = false;
 
     // Persist to localStorage cache (last 50, lightweight — no profiles nested)
@@ -326,6 +315,7 @@ window._loadOlderMsgs = async function() {
     const { data: older } = await sb.from('messages')
         .select('*, profiles(full_name, email, role, designation, avatar_url)')
         .eq('room_id', window.currentRoom)
+        .eq('tenant_id', window.currentTenantId)
         .lt('created_at', window._oldestMsgTs)
         .order('created_at', { ascending: false })
         .limit(PAGE);

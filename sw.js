@@ -2,15 +2,26 @@
  * TaskFlow Service Worker — enables PWA install prompt on Android/Chrome
  * Caches core app shell for offline-capable experience
  */
-const CACHE   = 'taskflow-v9';
+const CACHE   = 'taskflow-v10';
 const PRECACHE = [
   '/',
   '/index.html',
+  '/offline.html',
   '/css/theme.css',
   '/css/mobile.css',
   '/js/shared.js',
   '/js/auth.js',
+  '/js/rbac.js',
   '/js/ui-core.js',
+  '/js/ui-panels.js',
+  '/js/ui-feed.js',
+  '/js/ui-settings.js',
+  '/js/messages.js',
+  '/js/tasks.js',
+  '/js/notifications.js',
+  '/js/mobile.js',
+  '/js/main.js',
+  '/js/utils/logger.js',
   '/manifest.json',
   '/favicon.svg',
 ];
@@ -66,10 +77,18 @@ self.addEventListener('notificationclick', e => {
 
 // Fetch — network first, cache fallback
 self.addEventListener('fetch', e => {
-  // Only handle GET, skip Supabase API calls
+  // Only handle GET, skip Supabase API calls and external CDNs
   if (e.request.method !== 'GET') return;
   if (e.request.url.includes('supabase.co')) return;
   if (e.request.url.includes('googleapis.com')) return;
+
+  // Navigation requests (page loads): serve offline.html if network fails
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      fetch(e.request).catch(() => caches.match('/offline.html'))
+    );
+    return;
+  }
 
   e.respondWith(
     fetch(e.request)

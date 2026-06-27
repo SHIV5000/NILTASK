@@ -135,6 +135,16 @@ window.downloadTaskPDF = async function(taskId) {
                 }).join('')}
             </table>
         </div>`;
+    // Lazy-load html2pdf only when user actually exports — removes ~100KB from initial load
+    if (!window.html2pdf) {
+        await new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+            s.onload = resolve;
+            s.onerror = reject;
+            document.head.appendChild(s);
+        });
+    }
     html2pdf().from(wrapper).set({ margin: 10, filename: `Task_Audit_${taskId}.pdf`, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).save()
         .then(() => window.showCenterToast('PDF Downloaded!', 'fa-solid fa-file-pdf', 'text-green-500'));
 };

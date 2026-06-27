@@ -408,7 +408,7 @@ window.deleteLogs = async function(mode) {
         q = sb.from('app_logs').delete().eq('level', lvl);
     } else {
         label = 'ALL logs';
-        q = sb.from('app_logs').delete().neq('id', '00000000-0000-0000-0000-000000000000'); // match all
+        q = sb.from('app_logs').delete().gte('created_at', '1970-01-01');
     }
 
     if (!confirm(`Delete ${label}? This cannot be undone.`)) return;

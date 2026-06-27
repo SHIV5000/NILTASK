@@ -214,11 +214,12 @@ window.saveGroupSettings = async function() {
                 window.showCenterToast('Photo saved locally only — storage error', 'fa-solid fa-triangle-exclamation', 'text-yellow-400');
                 localStorage.setItem('dept_photo_' + gid, pendingPhoto);
             } else {
-                const { data: sd } = await sb.storage.from('task-proofs').createSignedUrl(path, 7200);
+                const { data: sd } = await sb.storage.from('task-proofs').createSignedUrl(path, 3600);
                 const photoUrl = sd?.signedUrl || '';
                 if (photoUrl) {
                     localStorage.setItem('dept_photo_' + gid, photoUrl);
                     localStorage.setItem('dept_photo_ts_' + gid, String(Date.now()));
+                    localStorage.removeItem('dept_photo_none_' + gid); // clear "no photo" flag
                 }
                 // Broadcast room_id only — receivers fetch their own signed URL on next load
                 if (window._reactionsBroadcast) {

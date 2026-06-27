@@ -851,6 +851,13 @@ window.filterSidebar = function(term) {
     });
 };
 
+// ─── GROUP PHOTO CACHE HELPER ───────────────────────────────────────────────
+window._clearGroupPhoto = function(g) {
+    localStorage.removeItem('dept_photo_' + g);
+    localStorage.removeItem('dept_photo_ts_' + g);
+    localStorage.setItem('dept_photo_none_' + g, String(Date.now())); // 24h skip flag
+};
+
 // ─── LOAD CHATS LIST (Departments + Staff Members) ─────────────────────────
 window.loadChatsList = async function() {
     const departments = ['general', 'math', 'science', 'leadership'];
@@ -875,12 +882,16 @@ window.loadChatsList = async function() {
         const storedColor = localStorage.getItem('dept_color_' + g) || bgColor;
         let storedPhoto = localStorage.getItem('dept_photo_' + g) || '';
         const storedTs = parseInt(localStorage.getItem('dept_photo_ts_' + g) || '0');
-        const expired = !storedTs || (Date.now() - storedTs > 3600000);
+        const expired = !storedTs || (Date.now() - storedTs > 1800000); // 30 min cache
 
-        // Fetch signed URL from task-proofs when cache empty or expired (1h TTL)
-        if ((!storedPhoto || expired) && window.currentTenantId) {
+        // Skip if "no photo" flag set within 24h (avoids hammering Supabase for missing files)
+        const noneTs = parseInt(localStorage.getItem('dept_photo_none_' + g) || '0');
+        const noneRecent = noneTs && (Date.now() - noneTs < 86400000);
+
+        // Fetch signed URL from task-proofs when cache empty or expired
+        if ((!storedPhoto || expired) && window.currentTenantId && !noneRecent) {
             const path = `group-photos/${window.currentTenantId}/${g}.jpg`;
-            const { data: sd, error: sdErr } = await sb.storage.from('task-proofs').createSignedUrl(path, 7200);
+            const { data: sd, error: sdErr } = await sb.storage.from('task-proofs').createSignedUrl(path, 3600);
             if (!sdErr && sd?.signedUrl) {
                 storedPhoto = sd.signedUrl;
                 localStorage.setItem('dept_photo_' + g, storedPhoto);
@@ -896,7 +907,7 @@ window.loadChatsList = async function() {
             data-room="${g}" data-name="${storedName}">
             <div class="relative flex-shrink-0">
                 <div class="w-9 h-9 rounded-lg flex items-center justify-center text-white text-[11px] font-bold shadow-sm overflow-hidden"
-                    style="background:${storedColor};">${storedPhoto ? `<img src="${storedPhoto}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;" onerror="this.remove();this.parentElement.textContent='${initials}';">` : initials}</div>
+                    style="background:${storedColor};">${storedPhoto ? `<img src="${storedPhoto}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;" onerror="window._clearGroupPhoto('${g}');this.remove();this.parentElement.textContent='${initials}';">` : initials}</div>
                 ${unread > 0 ? `<span class="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full" style="background:#22c55e;"></span>
                     <span class="absolute -top-1 -right-1 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center" style="background:#22c55e;">${unread > 9 ? '9+' : unread}</span>` : ''}
             </div>

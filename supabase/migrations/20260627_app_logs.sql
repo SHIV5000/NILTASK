@@ -38,3 +38,19 @@ create policy "tenant insert" on app_logs
 -- Run once manually in Supabase SQL editor:
 -- select cron.schedule('delete-old-app-logs', '0 2 * * *',
 --   $$delete from app_logs where created_at < now() - interval '30 days';$$);
+
+-- Performance fix: make get_current_tenant_id() use session config cache
+-- instead of querying profiles on every row (was causing 2-4s message selects)
+-- After this change, main.js calls set_current_tenant_id() once on boot
+-- and all subsequent RLS checks are O(1) session variable reads.
+CREATE OR REPLACE FUNCTION app.get_current_tenant_id()
+RETURNS uuid
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT COALESCE(
+    nullif(current_setting('app.current_tenant_id', true), '')::uuid,
+    (SELECT tenant_id FROM public.profiles WHERE id = auth.uid() LIMIT 1)
+  );
+$$;

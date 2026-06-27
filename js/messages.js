@@ -238,7 +238,8 @@ window.loadMessages = async function() {
 
     const { data: bms } = await sb.from('bookmarks')
         .select('message_id')
-        .eq('user_id', window.currentUser.id);
+        .eq('user_id', window.currentUser.id)
+        .eq('tenant_id', window.currentTenantId);
     window.bookmarkedSet = new Set(bms?.map(b => b.message_id) || []);
 
     // ── Fetch reactions so they survive re-renders ──────────────────────────
@@ -247,7 +248,7 @@ window.loadMessages = async function() {
     window.removedReactions = window.removedReactions || new Set();
     if (msgIds.length) {
         try {
-            const { data: rData } = await sb.from('reactions').select('*').in('message_id', msgIds);
+            const { data: rData } = await sb.from('reactions').select('*').in('message_id', msgIds).eq('tenant_id', window.currentTenantId);
             (rData || []).forEach(r => {
                 if (window.removedReactions.has(r.message_id + '|' + r.value + '|' + r.user_id)) return;
                 if (!window.reactionsCache[r.message_id]) window.reactionsCache[r.message_id] = [];
@@ -331,7 +332,7 @@ window._loadOlderMsgs = async function() {
 
         const newIds = olderChron.map(m => m.id);
         try {
-            const { data: rData } = await sb.from('reactions').select('*').in('message_id', newIds);
+            const { data: rData } = await sb.from('reactions').select('*').in('message_id', newIds).eq('tenant_id', window.currentTenantId);
             (rData || []).forEach(r => {
                 if (window.removedReactions?.has(r.message_id + '|' + r.value + '|' + r.user_id)) return;
                 if (!window.reactionsCache[r.message_id]) window.reactionsCache[r.message_id] = [];
@@ -537,7 +538,8 @@ window.renderMessages = function(messages) {
                 const cursor = info.mine ? 'cursor:pointer;' : 'cursor:default;';
                 return `<button class="${chipClass}" data-emoji="${val}" ${onclick ? `onclick="${onclick}"` : ''} title="${title}" style="${cursor}">${val} <span class="e-cnt">${info.count}</span>${info.mine ? '<span class="chip-remove">✕</span>' : ''}</button>`;
             } else {
-                const tagClass = tagColorMap[val]||'bg-blue-50 text-blue-700 border-blue-200';
+                const tagBase = tagColorMap[val] || 'bg-blue-50 text-blue-700 border-blue-200';
+                const tagClass = tagBase + (info.mine ? ' mine' : '');
                 const title = info.mine ? 'Click to remove your tag' : val;
                 const onclick = info.mine ? `onclick="window.applyReaction('${msg.id}','${val}','tag')"` : '';
                 const cursor = info.mine ? 'cursor:pointer;' : 'cursor:default;';
@@ -690,7 +692,7 @@ window.applyReaction = async function(msgId, value, type) {
         } catch(e) {}
         // Delete only this user's row
         try { await sb.from('reactions').delete()
-                .eq('message_id', msgId).eq('value', value).eq('user_id', window.currentUser.id); } catch(e) {}
+                .eq('message_id', msgId).eq('value', value).eq('user_id', window.currentUser.id).eq('tenant_id', window.currentTenantId); } catch(e) {}
         // Sync local cache
         if (window.reactionsCache?.[msgId]) {
             window.reactionsCache[msgId] = window.reactionsCache[msgId].filter(
@@ -700,7 +702,7 @@ window.applyReaction = async function(msgId, value, type) {
         try {
             if (window._reactionsBroadcast) await window._reactionsBroadcast.send({
                 type:'broadcast', event:'reaction_remove',
-                payload:{ message_id:msgId, value, user_id:window.currentUser.id }
+                payload:{ message_id:msgId, value, user_id:window.currentUser.id, tenant_id:window.currentTenantId }
             });
         } catch(e) {}
         return; // done
@@ -709,11 +711,11 @@ window.applyReaction = async function(msgId, value, type) {
     // ── ADD (toggle on) ──────────────────────────────────────────────────────
     window.applyReactionDOM(msgId, value, type, window.currentUser.id);
 
-    // Broadcast to all connected users via Supabase Broadcast (no schema needed)
+    // Broadcast to all connected users — tenant_id scopes to own school only
     try {
         if (window._reactionsBroadcast) await window._reactionsBroadcast.send({
             type:'broadcast', event:'reaction',
-            payload:{ message_id:msgId, value, type, user_id:window.currentUser.id }
+            payload:{ message_id:msgId, value, type, user_id:window.currentUser.id, tenant_id:window.currentTenantId }
         });
     } catch(e) {}
 
@@ -830,7 +832,6 @@ window.saveEditMessage = async function(msgId) {
         .select();
     if (error) {
         window.showCenterToast('Edit failed — check RLS: messages UPDATE policy needed', 'fa-solid fa-lock', 'text-red-500');
-        console.error('Edit error:', error);
         // SQL needed: CREATE POLICY "users update own messages" ON messages FOR UPDATE USING (auth.uid()=sender_id);
         return;
     }
@@ -917,7 +918,7 @@ window.toggleBookmark = async function(mid) {
         window.bookmarkedSet.delete(mid);
         if (btn) { btn.classList.remove('bookmarked'); btn.innerHTML = '<i class="ti ti-bookmark"></i> Bookmark'; }
         window.showCenterToast('Bookmark removed', 'fa-solid fa-info-circle', 'text-yellow-400');
-        await sb.from('bookmarks').delete().eq('user_id', window.currentUser.id).eq('message_id', mid);
+        await sb.from('bookmarks').delete().eq('user_id', window.currentUser.id).eq('message_id', mid).eq('tenant_id', window.currentTenantId);
     } else {
         window.bookmarkedSet = window.bookmarkedSet || new Set();
         window.bookmarkedSet.add(mid);

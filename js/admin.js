@@ -366,7 +366,7 @@ async function loadStaff() {
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
-    if (error) { console.error('loadStaff:', error); return; }
+    if (error) { return; }
 
     // Query 2: profiles for last_login — merge by email
     const emails = (staff || []).map(s => s.email).filter(Boolean);

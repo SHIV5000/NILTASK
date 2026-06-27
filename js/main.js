@@ -861,7 +861,7 @@ window._clearGroupPhoto = function(g) {
 // ─── LOAD CHATS LIST (Departments + Staff Members) ─────────────────────────
 window.loadChatsList = async function() {
     const departments = ['general', 'math', 'science', 'leadership'];
-    const {data: users} = await sb.from('profiles').select('id, email, full_name, designation, avatar_url');
+    const {data: users} = await sb.from('profiles').select('id, email, full_name, designation, avatar_url').eq('tenant_id', window.currentTenantId);
     window.globalUsersCache = users || [];
 
     // Department label colours for avatars
@@ -1058,7 +1058,7 @@ window.startSubscriptions = function() {
                                 is_read:    false
                             });
                         }
-                    } catch(e) { console.warn('[notif insert]', e.message); }
+                    } catch(e) { /* notification insert failed — non-fatal */ }
                     // Increment badge instantly — no DB read needed
                     window._incrementBellBadge?.();
                 }
@@ -1079,7 +1079,7 @@ window.startSubscriptions = function() {
         // Handle reaction ADD from other users
         .on('broadcast', { event: 'reaction' }, (payload) => {
             const p = payload.payload;
-            if (p && p.user_id !== window.currentUser.id) {
+            if (p && p.user_id !== window.currentUser.id && p.tenant_id === window.currentTenantId) {
                 if (typeof window.applyReactionDOM === 'function') {
                     window.applyReactionDOM(p.message_id, p.value, p.type, p.user_id);
                 }
@@ -1088,7 +1088,7 @@ window.startSubscriptions = function() {
         // Handle reaction REMOVE from other users — decrement count, only remove chip when count hits 0
         .on('broadcast', { event: 'reaction_remove' }, (payload) => {
             const p = payload.payload;
-            if (p && p.user_id !== window.currentUser.id) {
+            if (p && p.user_id !== window.currentUser.id && p.tenant_id === window.currentTenantId) {
                 const footer = document.getElementById('footer-' + p.message_id);
                 if (!footer) return;
                 const chip = footer.querySelector(`[data-emoji="${p.value}"]`);

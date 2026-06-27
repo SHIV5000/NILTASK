@@ -164,7 +164,7 @@ window.triggerTaskNotification = function(taskTitle, fromName) {
 window.initNotifications = async function() {
     const granted = await window.requestNotificationPermission();
     if (!granted) {
-        console.log('[Notifications] Permission not granted — system notifications disabled');
+        // System notifications disabled — app notifications still work
     }
     return granted;
 };

@@ -164,12 +164,10 @@ window.saveSettings = async function() {
     await sb.auth.updateUser({ data: { full_name: name } });
     try { const { data: { user } } = await sb.auth.getUser(); if (user) window.currentUser = user; } catch(e) {}
 
-    // Update profiles table — log errors so avatar failures are visible in DevTools
     const desig = document.getElementById('settingsDesignation')?.value?.trim() || '';
-    try { await sb.from('profiles').update({ full_name: name, designation: desig }).eq('id', window.currentUser.id); } catch(e) { console.error('[settings] profile name update failed:', e); }
+    try { await sb.from('profiles').update({ full_name: name, designation: desig }).eq('id', window.currentUser.id); } catch(e) { /* profile update failed — non-fatal */ }
     if (avatarDataUrl) {
-        const { error: avatarErr } = await sb.from('profiles').update({ avatar_url: avatarDataUrl }).eq('id', window.currentUser.id);
-        if (avatarErr) console.error('[settings] avatar_url save failed:', avatarErr.message, '— avatar may not be visible to others');
+        await sb.from('profiles').update({ avatar_url: avatarDataUrl }).eq('id', window.currentUser.id);
     }
 
     // Update sidebar DOM immediately — no page reload needed
@@ -210,7 +208,6 @@ window.saveGroupSettings = async function() {
             const path = `group-photos/${window.currentTenantId}/${gid}.jpg`;
             const { error: upErr } = await sb.storage.from('task-proofs').upload(path, blob, { upsert: true, contentType: 'image/jpeg' });
             if (upErr) {
-                console.error('[group-photo] upload failed:', upErr.message);
                 window.showCenterToast('Photo saved locally only — storage error', 'fa-solid fa-triangle-exclamation', 'text-yellow-400');
                 localStorage.setItem('dept_photo_' + gid, pendingPhoto);
             } else {
@@ -231,7 +228,7 @@ window.saveGroupSettings = async function() {
                     } catch(e) {}
                 }
             }
-        } catch(e) { console.error('[group-photo] storage upload failed:', e); }
+        } catch(e) { /* storage upload failed — non-fatal */ }
     }
 
     // Save member + admin selections

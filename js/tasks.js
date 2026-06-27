@@ -1,4 +1,5 @@
 import { sb } from './shared.js';
+import logger from './utils/logger.js';
 
 // v1.58.0 - Rich text update input, task sort, data-task-id cards
 
@@ -147,6 +148,7 @@ window.saveTaskMultiAssignee = async function() {
     const aids = Array.from(document.querySelectorAll('.assignee-cb:checked')).map(cb => cb.value);
     if (!title || !aids.length) return window.showCenterToast('Need Title and Assignee', 'fa-solid fa-times', 'text-red-500');
 
+    logger.logAction('createTask', { title });
     const { data: task, error: tErr } = await sb.from('tasks').insert({
         original_message_id: window.currentMessageId,
         title,

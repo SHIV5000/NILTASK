@@ -102,6 +102,17 @@
 <script type="module" src="./js/notifications.js"></script>
 <script type="module" src="./js/mobile.js"></script>
 
+<script type="module">
+// ── Logger: global error capture ─────────────────────────
+import logger from './js/utils/logger.js';
+window.onerror = function(message, source, lineno, colno, error) {
+  logger.logError(error || new Error(message), { source, lineno, colno });
+  return false;
+};
+window.addEventListener('unhandledrejection', function(event) {
+  logger.logError(event.reason || 'Unhandled rejection', {});
+});
+</script>
 <script>
 // ── Service Worker registration ───────────────────────────
 if ('serviceWorker' in navigator) {

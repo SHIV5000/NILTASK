@@ -1,4 +1,5 @@
 import { sb } from './shared.js';
+import logger from './utils/logger.js';
 
 // v1.51.0 - Departments/Staff sidebar, unread badges, search fix, cross-room scroll
 
@@ -1016,6 +1017,7 @@ window.startSubscriptions = function() {
     if (messageSubscription) messageSubscription.unsubscribe();
     messageSubscription = sb.channel('public:messages')
         .on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, async (p) => {
+            logger.logRealtime('msg:INSERT', { id: p.new?.id, room: p.new?.room_id });
             const incomingRoom = p.new.room_id;
             const isMine = p.new.sender_id === window.currentUser?.id;
 

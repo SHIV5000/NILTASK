@@ -184,7 +184,7 @@ window._toggleSearch = function() {
     else if (inp) { inp.value = ''; window.filterSidebar(''); }
 };
 
-window.renderMainApp = function() {
+window.renderMainApp = async function() {
     if (typeof window.applyTheme === 'function') window.applyTheme();
     const userNameDisplay = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
 

@@ -889,7 +889,7 @@ window.loadChatsList = async function() {
             data-room="${g}" data-name="${storedName}">
             <div class="relative flex-shrink-0">
                 <div class="w-9 h-9 rounded-lg flex items-center justify-center text-white text-[11px] font-bold shadow-sm overflow-hidden"
-                    style="background:${storedColor};">${storedPhoto ? `<img src="${storedPhoto}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;" onerror="this.style.display='none'">` : ''}${initials}</div>
+                    style="background:${storedColor};">${storedPhoto ? `<img src="${storedPhoto}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;" onerror="this.remove();this.parentElement.textContent='${initials}';">` : initials}</div>
                 ${unread > 0 ? `<span class="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full" style="background:#22c55e;"></span>
                     <span class="absolute -top-1 -right-1 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center" style="background:#22c55e;">${unread > 9 ? '9+' : unread}</span>` : ''}
             </div>
@@ -1212,25 +1212,28 @@ window.initScrollArrows = function() {
     const btnTop = document.createElement('button');
     btnTop.id = 'scrollTopBtn';
     btnTop.className = 'chat-scroll-btn';
-    btnTop.style.cssText = 'bottom:72px;display:none;background:var(--bg-sidebar);color:var(--text-secondary);';
+    btnTop.style.cssText = 'bottom:72px;display:flex;opacity:0.3;background:var(--bg-sidebar);color:var(--text-secondary);transition:opacity .2s;';
     btnTop.innerHTML = '<i class="fa-solid fa-chevron-up text-xs"></i>';
     btnTop.title = 'Scroll to top';
     btnTop.onclick = () => mc.scrollTo({top:0,behavior:'smooth'});
     const btnBot = document.createElement('button');
     btnBot.id = 'scrollBotBtn';
     btnBot.className = 'chat-scroll-btn';
-    btnBot.style.cssText = 'bottom:32px;display:none;background:var(--accent);color:#fff;border-color:var(--accent);';
+    btnBot.style.cssText = 'bottom:32px;display:flex;opacity:0.85;background:var(--accent);color:#fff;border-color:var(--accent);transition:opacity .2s;';
     btnBot.innerHTML = '<i class="fa-solid fa-chevron-down text-xs"></i>';
     btnBot.title = 'Scroll to bottom';
     btnBot.onclick = () => mc.scrollTo({top:mc.scrollHeight,behavior:'smooth'});
     mc.appendChild(btnTop);
     mc.appendChild(btnBot);
-    mc.addEventListener('scroll', () => {
-        const atTop = mc.scrollTop < 120;
-        const atBot = mc.scrollHeight - mc.scrollTop - mc.clientHeight < 120;
-        btnTop.style.display = atTop ? 'none' : 'flex';
-        btnBot.style.display = atBot ? 'none' : 'flex';
-    });
+    // Always show arrows — dim when at limit, bright when actionable
+    const updateArrows = () => {
+        const atTop = mc.scrollTop < 10;
+        const atBot = mc.scrollHeight - mc.scrollTop - mc.clientHeight < 10;
+        btnTop.style.opacity = atTop ? '0.3' : '0.85';
+        btnBot.style.opacity = atBot ? '0.3' : '0.85';
+    };
+    mc.addEventListener('scroll', updateArrows, { passive: true });
+    setTimeout(updateArrows, 500);
 };
 
 // ─── ROOM DISPLAY NAME RESOLVER ────────────────────────────────────────────

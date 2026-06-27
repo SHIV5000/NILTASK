@@ -147,6 +147,9 @@ window.signIn = async function(email, pwd) {
     // .catch() doesn't exist on PostgrestFilterBuilder — use .then(null, fn) instead
     sb.rpc('record_last_login').then(null, () => {});
 
+    // Arm Supabase log sync now that user context is available
+    logger.init(sb, { userId: window.currentUser.id, tenantId: window.currentTenantId });
+
     // Request notification permission after login
     if (typeof window.initNotifications === 'function') window.initNotifications();
 

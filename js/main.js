@@ -956,15 +956,34 @@ window.loadChatsList = async function() {
         if (window.isMobileView?.() && typeof window._mobileChannelPatch === 'function') window._mobileChannelPatch();
         document.querySelectorAll('.channel-item').forEach(el => {
             el.addEventListener('click', () => {
+                // Instant visual highlight — don't wait for loadChatsList() re-render
+                document.querySelectorAll('.channel-item').forEach(el2 => {
+                    el2.style.backgroundColor = 'transparent';
+                    el2.style.borderColor = 'transparent';
+                    el2.style.fontWeight = 'normal';
+                });
+                el.style.backgroundColor = 'var(--bg-body)';
+                el.style.borderColor = 'var(--border-color)';
+                el.style.fontWeight = 'bold';
+
                 window.currentRoom = el.dataset.room;
                 localStorage.setItem('mpgs_current_room', el.dataset.room);
                 // Clear unread for this room
                 if (window.unreadCounts) window.unreadCounts[el.dataset.room] = 0;
-                window.loadChatsList();
+
                 const titleSpan = document.getElementById('roomTitleDisplay');
                 if (titleSpan) titleSpan.innerText = el.dataset.name;
+
+                // Show spinner only if no cache — otherwise old messages stay until new ones render
+                const hasCached = !!localStorage.getItem('msgcache_' + el.dataset.room);
                 const shell = document.getElementById('chatShellContainer');
-                if (shell) shell.innerHTML = '<div class="m-auto flex flex-col items-center opacity-50 pt-10"><i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3" style="color:var(--text-secondary);"></i><p class="text-sm font-medium" style="color:var(--text-secondary);">Loading chat...</p></div>';
+                if (shell && !hasCached) {
+                    shell.innerHTML = '<div class="m-auto flex flex-col items-center opacity-50 pt-10"><i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3" style="color:var(--text-secondary);"></i><p class="text-sm font-medium" style="color:var(--text-secondary);">Loading chat...</p></div>';
+                }
+
+                // Defer sidebar rebuild so it doesn't race with the synchronous cache render
+                setTimeout(() => window.loadChatsList(), 0);
+
                 if (typeof window.loadMessages === 'function') window.loadMessages();
             });
         });

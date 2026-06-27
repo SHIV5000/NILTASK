@@ -194,6 +194,16 @@ window.loadMessages = async function() {
     const PAGE = 50;
     const cacheKey = 'msgcache_' + window.currentRoom;
 
+    // Reset render-dedup key so a new room always gets a fresh render
+    window._prevRenderedIds = '';
+
+    // Restore last-read position — set pendingScrollId so the existing glow+scroll logic fires
+    // Only if not already set (explicit reply-scroll or cross-room link takes priority)
+    if (!window.pendingScrollId) {
+        const saved = localStorage.getItem('lastread_' + window.currentRoom);
+        if (saved) window.pendingScrollId = saved;
+    }
+
     // Show cached messages instantly while network fetch runs in background
     const cached = localStorage.getItem(cacheKey);
     if (cached) {
@@ -203,6 +213,7 @@ window.loadMessages = async function() {
                 window._roomMsgs = cachedMsgs;
                 window._oldestMsgTs = cachedMsgs[0]?.created_at || null;
                 window._allMsgsLoaded = false;
+                window._prevRenderedIds = cachedMsgs.map(m => m.id).join(',');
                 window.renderMessages(cachedMsgs);
                 const mc = document.getElementById('messagesContainer');
                 if (mc) mc.scrollTop = mc.scrollHeight;
@@ -261,8 +272,13 @@ window.loadMessages = async function() {
         });
     } catch(e) {}
 
-    window.renderMessages(allMsgs);
-    if (typeof window.applyFilters === 'function') window.applyFilters();
+    // Skip re-render if DB returned the same messages already shown from cache
+    const newIds = allMsgs.map(m => m.id).join(',');
+    if (newIds !== window._prevRenderedIds) {
+        window._prevRenderedIds = newIds;
+        window.renderMessages(allMsgs);
+        if (typeof window.applyFilters === 'function') window.applyFilters();
+    }
 
     // Fetch reactions in background — patch footers without clearing the whole list
     const msgIds = allMsgs.map(m => m.id);
@@ -281,11 +297,21 @@ window.loadMessages = async function() {
             }).catch(() => {});
     }
 
-    // Attach scroll listener for scroll-up paging
+    // Attach scroll listener — paging + last-read tracking
     if (c) {
         c.onscroll = function() {
             if (c.scrollTop < 120 && !window._loadingOlder && !window._allMsgsLoaded) {
                 window._loadOlderMsgs();
+            }
+            // Track last-read: last row whose top edge is above the visible bottom
+            const rows = document.querySelectorAll('#chatShellContainer [id^="row-"]');
+            const visibleBottom = c.scrollTop + c.clientHeight;
+            let lastVisible = null;
+            rows.forEach(row => {
+                if (row.offsetTop <= visibleBottom) lastVisible = row.id.slice(4); // strip "row-"
+            });
+            if (lastVisible) {
+                try { localStorage.setItem('lastread_' + window.currentRoom, lastVisible); } catch(e) {}
             }
         };
     }

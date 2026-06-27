@@ -1,7 +1,9 @@
 // js/utils/logger.js — self-hosted logger: localStorage buffer + Supabase sync
-const MAX_LOCAL   = 1000;   // localStorage ring-buffer size
-const BATCH_LIMIT = 50;     // max pending entries before forced flush
-const FLUSH_MS    = 30000;  // flush info/debug to Supabase every 30s
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../shared.js';
+
+const MAX_LOCAL   = 1000;  // localStorage ring-buffer size
+const BATCH_LIMIT = 10;    // flush info/debug after 10 entries (was 50)
+const FLUSH_MS    = 15000; // also flush every 15s (was 30s)
 const STORAGE_KEY = 'niltask_logs';
 
 // Unique per page-load — groups all logs from one browser session
@@ -9,27 +11,42 @@ const SESSION_ID = crypto.randomUUID ? crypto.randomUUID() : Math.random().toStr
 
 class Logger {
     constructor() {
-        this.logs      = this._load() || [];  // localStorage ring-buffer (local view)
-        this.isDebug   = new URLSearchParams(window.location.search).has('debug');
-        this._sb       = null;     // set by init() after login
-        this._userId   = null;
-        this._tenantId = null;
-        this._pending  = [];       // buffered info/debug rows awaiting flush
-        this._timer    = null;
+        this.logs       = this._load() || [];
+        this.isDebug    = new URLSearchParams(window.location.search).has('debug');
+        this._sb        = null;
+        this._userId    = null;
+        this._tenantId  = null;
+        this._authToken = null;  // stored for keepalive fetch on page close
+        this._pending   = [];
+        this._timer     = null;
+        this._inited    = false;
     }
 
-    // ── Called after login when Supabase client + user context are ready ──
+    // ── Called on every page boot after tenant context loads ──────
     init(sb, { userId, tenantId }) {
+        // Guard against double-init on same page
+        if (this._inited) return;
+        this._inited   = true;
         this._sb       = sb;
         this._userId   = userId;
         this._tenantId = tenantId;
 
-        // Flush on tab hide / close
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'hidden') this.flush();
+        // Grab auth token now and keep it fresh — needed for keepalive fetch
+        sb.auth.getSession().then(({ data }) => {
+            this._authToken = data?.session?.access_token || null;
+        });
+        sb.auth.onAuthStateChange((_event, session) => {
+            this._authToken = session?.access_token || null;
         });
 
-        // Periodic batch flush
+        // On tab hide / page close → guaranteed flush via keepalive fetch
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') this._flushBeacon();
+        });
+        // Fallback for browsers that skip visibilitychange on close
+        window.addEventListener('pagehide', () => this._flushBeacon(), { once: true });
+
+        // Periodic flush for long-running sessions
         this._timer = setInterval(() => this.flush(), FLUSH_MS);
     }
 
@@ -45,7 +62,7 @@ class Logger {
                 : null,
         };
 
-        // Local ring-buffer
+        // Local ring-buffer (always, even before init)
         this.logs.push(entry);
         if (this.logs.length > MAX_LOCAL) this.logs.shift();
         this._save();
@@ -55,37 +72,64 @@ class Logger {
             console.log(`%c[${level.toUpperCase()}] ${category}: ${message}`, styles[level] || '', data);
         }
 
-        // Supabase sync (only after init)
-        if (this._sb) {
-            const row = {
-                level,
-                category,
-                message,
-                data:       entry.data ? JSON.parse(entry.data) : null,
-                tenant_id:  this._tenantId,
-                user_id:    this._userId,
-                session_id: SESSION_ID,
-                page_url:   window.location.pathname,
-            };
+        if (!this._sb) return; // not inited yet — localStorage only
 
-            if (level === 'error' || level === 'warn') {
-                // Immediate insert — don't lose errors
-                this._sb.from('app_logs').insert(row).then(null, () => {});
-            } else {
-                // Batch for periodic flush
-                this._pending.push(row);
-                if (this._pending.length >= BATCH_LIMIT) this.flush();
-            }
+        const row = {
+            level,
+            category,
+            message,
+            data:       entry.data ? JSON.parse(entry.data) : null,
+            tenant_id:  this._tenantId,
+            user_id:    this._userId,
+            session_id: SESSION_ID,
+            page_url:   window.location.pathname,
+        };
+
+        if (level === 'error' || level === 'warn') {
+            // Immediate insert — never batch errors
+            this._sb.from('app_logs').insert(row).then(null, () => {});
+        } else {
+            this._pending.push(row);
+            if (this._pending.length >= BATCH_LIMIT) this.flush();
         }
     }
 
-    // ── Flush pending info/debug batch to Supabase ────────────────
+    // ── Normal async flush (periodic / on batch limit) ────────────
     async flush() {
         if (!this._sb || !this._pending.length) return;
         const batch = this._pending.splice(0);
         try {
             await this._sb.from('app_logs').insert(batch);
         } catch { /* non-fatal — data still in localStorage */ }
+    }
+
+    // ── Beacon flush — guaranteed delivery on page close ─────────
+    // Uses fetch keepalive which survives page unload (unlike regular async fetch).
+    // sendBeacon can't set Authorization headers so we use fetch+keepalive instead.
+    _flushBeacon() {
+        if (!this._pending.length || !this._authToken) {
+            // Nothing pending or no token — try normal flush as best-effort
+            this.flush();
+            return;
+        }
+        const batch = this._pending.splice(0);
+        try {
+            fetch(`${SUPABASE_URL}/rest/v1/app_logs`, {
+                method:    'POST',
+                keepalive: true,           // survives page unload
+                headers: {
+                    'Content-Type':  'application/json',
+                    'Authorization': `Bearer ${this._authToken}`,
+                    'apikey':        SUPABASE_ANON_KEY,
+                    'Prefer':        'return=minimal',
+                },
+                body: JSON.stringify(batch),
+            });
+            // Fire-and-forget — keepalive means browser completes it after unload
+        } catch {
+            // Put rows back if fetch setup itself failed (shouldn't happen)
+            this._pending.unshift(...batch);
+        }
     }
 
     // ── Convenience methods ───────────────────────────────────────
@@ -104,7 +148,7 @@ class Logger {
         this._log('error', 'ERROR', msg, { context, stack: error?.stack });
     }
 
-    // ── Local storage helpers ─────────────────────────────────────
+    // ── Local helpers ─────────────────────────────────────────────
     getLogs() { return this.logs; }
     clear()   { this.logs = []; this._save(); }
     _save() {

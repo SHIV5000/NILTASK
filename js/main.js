@@ -970,11 +970,20 @@ window.loadChatsList = async function() {
                 localStorage.setItem('mpgs_current_room', el.dataset.room);
                 // Clear unread for this room
                 if (window.unreadCounts) window.unreadCounts[el.dataset.room] = 0;
-                window.loadChatsList();
+
                 const titleSpan = document.getElementById('roomTitleDisplay');
                 if (titleSpan) titleSpan.innerText = el.dataset.name;
+
+                // Show spinner only if no cache — otherwise old messages stay until new ones render
+                const hasCached = !!localStorage.getItem('msgcache_' + el.dataset.room);
                 const shell = document.getElementById('chatShellContainer');
-                if (shell) shell.innerHTML = '<div class="m-auto flex flex-col items-center opacity-50 pt-10"><i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3" style="color:var(--text-secondary);"></i><p class="text-sm font-medium" style="color:var(--text-secondary);">Loading chat...</p></div>';
+                if (shell && !hasCached) {
+                    shell.innerHTML = '<div class="m-auto flex flex-col items-center opacity-50 pt-10"><i class="fa-solid fa-circle-notch fa-spin text-3xl mb-3" style="color:var(--text-secondary);"></i><p class="text-sm font-medium" style="color:var(--text-secondary);">Loading chat...</p></div>';
+                }
+
+                // Defer sidebar rebuild so it doesn't race with the synchronous cache render
+                setTimeout(() => window.loadChatsList(), 0);
+
                 if (typeof window.loadMessages === 'function') window.loadMessages();
             });
         });

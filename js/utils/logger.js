@@ -87,7 +87,10 @@ class Logger {
 
         if (level === 'error' || level === 'warn') {
             // Immediate insert — never batch errors
-            this._sb.from('app_logs').insert(row).then(null, () => {});
+            this._sb.from('app_logs').insert(row).then(
+                ({ error }) => { if (error) console.error('[Logger] immediate insert failed:', error.message, error.code); },
+                (e) => console.error('[Logger] immediate insert exception:', e?.message)
+            );
         } else {
             this._pending.push(row);
             if (this._pending.length >= BATCH_LIMIT) this.flush();
@@ -99,8 +102,9 @@ class Logger {
         if (!this._sb || !this._pending.length) return;
         const batch = this._pending.splice(0);
         try {
-            await this._sb.from('app_logs').insert(batch);
-        } catch { /* non-fatal — data still in localStorage */ }
+            const { error } = await this._sb.from('app_logs').insert(batch);
+            if (error) console.error('[Logger] flush insert failed:', error.message, error.code);
+        } catch(e) { console.error('[Logger] flush exception:', e?.message); }
     }
 
     // ── Beacon flush — guaranteed delivery on page close ─────────
@@ -146,6 +150,25 @@ class Logger {
     logError(error, context) {
         const msg = error?.message || String(error);
         this._log('error', 'ERROR', msg, { context, stack: error?.stack });
+    }
+
+    // ── Diagnose — call window.logger.diagnose() from DevTools ───
+    async diagnose() {
+        console.group('[Logger] Diagnosis');
+        console.log('inited:',      this._inited);
+        console.log('sb client:',   !!this._sb);
+        console.log('userId:',      this._userId);
+        console.log('tenantId:',    this._tenantId);
+        console.log('authToken:',   this._authToken ? this._authToken.slice(0,20)+'…' : null);
+        console.log('pending rows:', this._pending.length);
+        console.log('localStorage entries:', this.logs.length);
+        if (this._sb) {
+            const { data, error } = await this._sb.from('app_logs').select('id').limit(1);
+            console.log('app_logs table reachable:', error ? '❌ ' + error.message : '✅ yes, row count ≥ ' + (data?.length || 0));
+            const { data: session } = await this._sb.auth.getSession();
+            console.log('active session:', session?.session?.user?.email || '❌ no session');
+        }
+        console.groupEnd();
     }
 
     // ── Local helpers ─────────────────────────────────────────────

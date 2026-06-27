@@ -196,6 +196,24 @@ window.sendMessage = async function() {
 
 window.loadMessages = async function() {
     const PAGE = 50;
+    const cacheKey = 'msgcache_' + window.currentRoom;
+
+    // Show cached messages instantly while network fetch runs in background
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+        try {
+            const cachedMsgs = JSON.parse(cached);
+            if (cachedMsgs?.length) {
+                window._roomMsgs = cachedMsgs;
+                window._oldestMsgTs = cachedMsgs[0]?.created_at || null;
+                window._allMsgsLoaded = false;
+                window.renderMessages(cachedMsgs);
+                const mc = document.getElementById('messagesContainer');
+                if (mc) mc.scrollTop = mc.scrollHeight;
+            }
+        } catch(e) {}
+    }
+
     const { data: msgs } = await sb.from('messages')
         .select('*, profiles(full_name, email, role, designation, avatar_url)')
         .eq('room_id', window.currentRoom)
@@ -207,6 +225,16 @@ window.loadMessages = async function() {
     window._oldestMsgTs = allMsgs[0]?.created_at || null;
     window._allMsgsLoaded = !msgs || msgs.length < PAGE;
     window._loadingOlder = false;
+
+    // Persist to localStorage cache (last 50, lightweight — no profiles nested)
+    if (allMsgs.length) {
+        try {
+            const cacheKey = 'msgcache_' + window.currentRoom;
+            // Strip nested profiles to reduce size — re-fetched on next load
+            const slim = allMsgs.map(m => ({ ...m, profiles: undefined }));
+            localStorage.setItem(cacheKey, JSON.stringify(slim.slice(-50)));
+        } catch(e) {} // quota exceeded — not fatal
+    }
 
     const { data: bms } = await sb.from('bookmarks')
         .select('message_id')
@@ -221,7 +249,7 @@ window.loadMessages = async function() {
         try {
             const { data: rData } = await sb.from('reactions').select('*').in('message_id', msgIds);
             (rData || []).forEach(r => {
-                if (window.removedReactions.has(r.message_id + '|' + r.value)) return;
+                if (window.removedReactions.has(r.message_id + '|' + r.value + '|' + r.user_id)) return;
                 if (!window.reactionsCache[r.message_id]) window.reactionsCache[r.message_id] = [];
                 window.reactionsCache[r.message_id].push(r);
             });
@@ -294,7 +322,7 @@ window._loadOlderMsgs = async function() {
         try {
             const { data: rData } = await sb.from('reactions').select('*').in('message_id', newIds);
             (rData || []).forEach(r => {
-                if (window.removedReactions?.has(r.message_id + '|' + r.value)) return;
+                if (window.removedReactions?.has(r.message_id + '|' + r.value + '|' + r.user_id)) return;
                 if (!window.reactionsCache[r.message_id]) window.reactionsCache[r.message_id] = [];
                 window.reactionsCache[r.message_id].push(r);
             });
@@ -475,12 +503,13 @@ window.renderMessages = function(messages) {
             </div>`;
         }
 
-        // Build persisted reactions HTML from cache (survives re-renders)
+        // Build persisted reactions HTML — WhatsApp style: only your own reaction is removable
         const msgReactions = window.reactionsCache?.[msg.id] || [];
         const rGroups = {};
         msgReactions.forEach(r => {
-            if (!rGroups[r.value]) rGroups[r.value] = { count:0, type:r.type };
+            if (!rGroups[r.value]) rGroups[r.value] = { count:0, type:r.type, mine:false };
             rGroups[r.value].count += (r.count||1);
+            if (r.user_id === window.currentUser?.id) rGroups[r.value].mine = true;
         });
         const tagColorMap = {
             'Thank You':'bg-green-50 text-green-700 border-green-200',
@@ -491,9 +520,17 @@ window.renderMessages = function(messages) {
         };
         const persistedReactionsHTML = Object.entries(rGroups).map(([val, info]) => {
             if (info.type === 'emoji') {
-                return `<button class="e-chip active" data-emoji="${val}" onclick="window.applyReaction('${msg.id}','${val}','emoji')" title="Click to remove">${val} <span class="e-cnt">${info.count}</span></button>`;
+                const chipClass = info.mine ? 'e-chip active mine' : 'e-chip active';
+                const title = info.mine ? 'Click to remove your reaction' : val;
+                const onclick = info.mine ? `window.applyReaction('${msg.id}','${val}','emoji')` : '';
+                const cursor = info.mine ? 'cursor:pointer;' : 'cursor:default;';
+                return `<button class="${chipClass}" data-emoji="${val}" ${onclick ? `onclick="${onclick}"` : ''} title="${title}" style="${cursor}">${val} <span class="e-cnt">${info.count}</span>${info.mine ? '<span style="font-size:8px;margin-left:2px;opacity:0.6;">✕</span>' : ''}</button>`;
             } else {
-                return `<span class="${tagColorMap[val]||'bg-blue-50 text-blue-700 border-blue-200'} px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ml-1" data-tag="${val}">${val}</span>`;
+                const tagClass = tagColorMap[val]||'bg-blue-50 text-blue-700 border-blue-200';
+                const title = info.mine ? 'Click to remove your tag' : val;
+                const onclick = info.mine ? `onclick="window.applyReaction('${msg.id}','${val}','tag')"` : '';
+                const cursor = info.mine ? 'cursor:pointer;' : 'cursor:default;';
+                return `<span class="${tagClass} px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ml-1" data-tag="${val}" ${onclick} title="${title}" style="${cursor}">${val}${info.mine ? ' ✕' : ''}</span>`;
             }
         }).join('');
 
@@ -604,17 +641,21 @@ window.applyReaction = async function(msgId, value, type) {
     const alreadySet    = existingEmoji || existingTag;
 
     if (alreadySet) {
-        // ── REMOVE — any user can remove any reaction from a message ─────────
+        // ── REMOVE — only if this user added the reaction (WhatsApp style) ───
+        const isMine = alreadySet.classList.contains('mine');
+        if (!isMine) return; // not the adder — do nothing
         alreadySet.remove();
-        // Session cache prevents this reaction from re-appearing on next loadMessages if RLS blocks the DB delete
+        // Session cache prevents re-appearance if RLS blocks the DB delete
         window.removedReactions = window.removedReactions || new Set();
-        window.removedReactions.add(msgId + '|' + value);
-        // Delete ALL rows for this (message, value) — not just current user's row
+        window.removedReactions.add(msgId + '|' + value + '|' + window.currentUser.id);
+        // Delete only this user's row
         try { await sb.from('reactions').delete()
-                .eq('message_id', msgId).eq('value', value); } catch(e) {}
+                .eq('message_id', msgId).eq('value', value).eq('user_id', window.currentUser.id); } catch(e) {}
         // Sync local cache
         if (window.reactionsCache?.[msgId]) {
-            window.reactionsCache[msgId] = window.reactionsCache[msgId].filter(r => r.value !== value);
+            window.reactionsCache[msgId] = window.reactionsCache[msgId].filter(
+                r => !(r.value === value && r.user_id === window.currentUser.id)
+            );
         }
         try {
             if (window._reactionsBroadcast) await window._reactionsBroadcast.send({
@@ -652,19 +693,20 @@ window.applyReactionDOM = function(msgId, value, type, userId) {
     const footer = row.querySelector('.b-footer');
     if (!footer) return;
     const colorMap = { 'Thank You':'bg-green-50 text-green-700 border-green-200', 'Noted':'bg-blue-50 text-blue-700 border-blue-200', 'Copied':'bg-purple-50 text-purple-700 border-purple-200', 'Yes Sir':'bg-orange-50 text-orange-700 border-orange-200', 'Yes Madam':'bg-pink-50 text-pink-700 border-pink-200' };
+    const isMineAdd = !userId || userId === window.currentUser?.id;
     if (type === 'emoji') {
         const existing = Array.from(footer.querySelectorAll('.e-chip')).find(c => c.dataset.emoji === value);
         if (existing) { const cnt = existing.querySelector('.e-cnt'); if(cnt) cnt.textContent = parseInt(cnt.textContent||'1')+1; }
         else { footer.querySelector('.group\\/reaction, .relative.inline-block')?.insertAdjacentHTML('beforebegin',
-            `<button class="e-chip active" data-emoji="${value}" onclick="window.applyReaction('${msgId}','${value}','emoji')" title="Click to remove">${value} <span class="e-cnt">1</span></button>`); }
+            `<button class="e-chip active mine" data-emoji="${value}" onclick="window.applyReaction('${msgId}','${value}','emoji')" title="Click to remove your reaction" style="cursor:pointer;">${value} <span class="e-cnt">1</span><span style="font-size:8px;margin-left:2px;opacity:0.6;">✕</span></button>`); }
     } else {
         if (!footer.querySelector('[data-tag="' + value + '"]')) {
             const cls = colorMap[value] || 'bg-blue-50 text-blue-700 border-blue-200';
             footer.insertAdjacentHTML('beforeend',
-                '<span class="' + cls + ' px-2 py-0.5 rounded text-[11px] font-bold border shadow-sm ml-1 cursor-pointer" ' +
+                '<span class="' + cls + (isMineAdd ? ' mine' : '') + ' px-2 py-0.5 rounded text-[11px] font-bold border shadow-sm ml-1" ' +
                 'data-tag="' + value + '" ' +
-                'title="Click to remove" ' +
-                'onclick="window.applyReaction(\'' + msgId + '\',\'' + value + '\',\'tag\')">' + value + '</span>');
+                (isMineAdd ? 'title="Click to remove your tag" onclick="window.applyReaction(\'' + msgId + '\',\'' + value + '\',\'tag\')" style="cursor:pointer;"' : 'title="' + value + '" style="cursor:default;"') +
+                '>' + value + (isMineAdd ? ' ✕' : '') + '</span>');
         }
     }
     // Keep reactionsCache in sync so re-renders preserve real-time reactions

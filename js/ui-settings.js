@@ -92,6 +92,11 @@ window.openSettings = async function() {
         photoEl.style.display = 'none';
         if (placeholderEl) placeholderEl.style.display = 'flex';
     }
+    // Set mute toggles from localStorage
+    const muteInEl = document.getElementById('muteIncoming');
+    const muteOutEl = document.getElementById('muteOutgoing');
+    if (muteInEl) muteInEl.checked = localStorage.getItem('mpgs_mute_incoming') === '1';
+    if (muteOutEl) muteOutEl.checked = localStorage.getItem('mpgs_mute_outgoing') === '1';
     modal.classList.remove('hidden'); modal.classList.add('flex');
     // Add change password link if not already present
     if (!document.getElementById('pwdChangeLink')) {
@@ -179,6 +184,11 @@ window.saveSettings = async function() {
     const nameEl = document.getElementById('sidebarNameDisplay');
     if (nameEl) nameEl.textContent = name.toUpperCase();
 
+    // Save mute preferences
+    const muteIn = document.getElementById('muteIncoming');
+    const muteOut = document.getElementById('muteOutgoing');
+    if (muteIn) localStorage.setItem('mpgs_mute_incoming', muteIn.checked ? '1' : '0');
+    if (muteOut) localStorage.setItem('mpgs_mute_outgoing', muteOut.checked ? '1' : '0');
     window.showCenterToast('Profile saved ✓','fa-solid fa-check-circle','text-green-400');
     window.closeSettings();
     if (typeof window.loadChatsList === 'function') window.loadChatsList();

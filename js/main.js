@@ -1022,7 +1022,8 @@ window.startSubscriptions = function() {
             const isMine = p.new.sender_id === window.currentUser?.id;
 
             if (incomingRoom === window.currentRoom) {
-                if (typeof window.loadMessages === 'function') window.loadMessages();
+                // Skip full reload for own messages — optimistic row already in DOM
+                if (!isMine && typeof window.loadMessages === 'function') window.loadMessages();
                 if (!isMine) {
                     window.playSound('message');
                     if (typeof window.triggerMessageNotification === 'function')

@@ -106,6 +106,10 @@ window.sendMessage = async function() {
     // Supabase Realtime doesn't echo INSERTs back to the sender, and full loadMessages()
     // causes all rows to re-animate (flicker). Append only the new row instead.
     if (msgData) {
+        // Keep _roomMsgs in sync so any subsequent renderMessages() includes this message
+        if (!Array.isArray(window._roomMsgs)) window._roomMsgs = [];
+        if (!window._roomMsgs.find(m => m.id === msgData.id)) window._roomMsgs.push(msgData);
+
         const container = document.getElementById('chatShellContainer');
         if (container) {
             const newId  = msgData.id;

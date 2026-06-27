@@ -509,7 +509,7 @@ window.renderMessages = function(messages) {
         msgReactions.forEach(r => {
             if (!rGroups[r.value]) rGroups[r.value] = { count:0, type:r.type, mine:false };
             rGroups[r.value].count += (r.count||1);
-            if (r.user_id === window.currentUser?.id) rGroups[r.value].mine = true;
+            if (r.user_id && r.user_id !== '_rt_' && r.user_id === window.currentUser?.id) rGroups[r.value].mine = true;
         });
         const tagColorMap = {
             'Thank You':'bg-green-50 text-green-700 border-green-200',
@@ -524,13 +524,13 @@ window.renderMessages = function(messages) {
                 const title = info.mine ? 'Click to remove your reaction' : val;
                 const onclick = info.mine ? `window.applyReaction('${msg.id}','${val}','emoji')` : '';
                 const cursor = info.mine ? 'cursor:pointer;' : 'cursor:default;';
-                return `<button class="${chipClass}" data-emoji="${val}" ${onclick ? `onclick="${onclick}"` : ''} title="${title}" style="${cursor}">${val} <span class="e-cnt">${info.count}</span>${info.mine ? '<span style="font-size:8px;margin-left:2px;opacity:0.6;">✕</span>' : ''}</button>`;
+                return `<button class="${chipClass}" data-emoji="${val}" ${onclick ? `onclick="${onclick}"` : ''} title="${title}" style="${cursor}">${val} <span class="e-cnt">${info.count}</span>${info.mine ? '<span class="chip-remove">✕</span>' : ''}</button>`;
             } else {
                 const tagClass = tagColorMap[val]||'bg-blue-50 text-blue-700 border-blue-200';
                 const title = info.mine ? 'Click to remove your tag' : val;
                 const onclick = info.mine ? `onclick="window.applyReaction('${msg.id}','${val}','tag')"` : '';
                 const cursor = info.mine ? 'cursor:pointer;' : 'cursor:default;';
-                return `<span class="${tagClass} px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ml-1" data-tag="${val}" ${onclick} title="${title}" style="${cursor}">${val}${info.mine ? ' ✕' : ''}</span>`;
+                return `<span class="${tagClass} px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ml-1" data-tag="${val}" ${onclick} title="${title}" style="${cursor}">${val}${info.mine ? '<span class="chip-remove">✕</span>' : ''}</span>`;
             }
         }).join('');
 
@@ -563,11 +563,32 @@ window.renderMessages = function(messages) {
         </div>`;
     }
 
-    const dateLabel = `<div class="day-label">Today — ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>`;
     const loaderHtml = window._allMsgsLoaded
         ? '<div id="__olderMsgsLoader" style="display:flex;text-align:center;padding:12px;align-items:center;justify-content:center;"><span style="font-size:11px;color:var(--text-secondary);">— Beginning of chat —</span></div>'
         : '<div id="__olderMsgsLoader" style="display:none;text-align:center;padding:12px;align-items:center;justify-content:center;gap:6px;"></div>';
-    c.innerHTML = loaderHtml + dateLabel + topLevel.map(msg => buildMsgHTML(msg)).join('');
+    const htmlParts = [loaderHtml];
+    let lastDateKey = null;
+    const todayMidnight = new Date(); todayMidnight.setHours(0,0,0,0);
+    for (const msg of topLevel) {
+        const dateKey = msg.created_at ? msg.created_at.split('T')[0] : '';
+        if (dateKey !== lastDateKey) {
+            lastDateKey = dateKey;
+            let label = dateKey;
+            if (msg.created_at) {
+                const d = new Date(msg.created_at);
+                const msgDay = new Date(d); msgDay.setHours(0,0,0,0);
+                const diffDays = Math.round((todayMidnight - msgDay) / 86400000);
+                label = diffDays === 0 ? 'Today' : diffDays === 1 ? 'Yesterday'
+                    : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+            }
+            htmlParts.push(`<div class="day-label">${label}</div>`);
+        }
+        htmlParts.push(buildMsgHTML(msg));
+    }
+    const mc2 = document.getElementById('messagesContainer');
+    if (mc2) mc2.classList.add('no-anim');
+    c.innerHTML = htmlParts.join('');
+    if (mc2) requestAnimationFrame(() => mc2.classList.remove('no-anim'));
     if (typeof window.applyRBAC === 'function') window.applyRBAC();
 };
 
@@ -698,7 +719,7 @@ window.applyReactionDOM = function(msgId, value, type, userId) {
         const existing = Array.from(footer.querySelectorAll('.e-chip')).find(c => c.dataset.emoji === value);
         if (existing) { const cnt = existing.querySelector('.e-cnt'); if(cnt) cnt.textContent = parseInt(cnt.textContent||'1')+1; }
         else { footer.querySelector('.group\\/reaction, .relative.inline-block')?.insertAdjacentHTML('beforebegin',
-            `<button class="e-chip active mine" data-emoji="${value}" onclick="window.applyReaction('${msgId}','${value}','emoji')" title="Click to remove your reaction" style="cursor:pointer;">${value} <span class="e-cnt">1</span><span style="font-size:8px;margin-left:2px;opacity:0.6;">✕</span></button>`); }
+            `<button class="e-chip active mine" data-emoji="${value}" onclick="window.applyReaction('${msgId}','${value}','emoji')" title="Click to remove your reaction" style="cursor:pointer;">${value} <span class="e-cnt">1</span><span class="chip-remove">✕</span></button>`); }
     } else {
         if (!footer.querySelector('[data-tag="' + value + '"]')) {
             const cls = colorMap[value] || 'bg-blue-50 text-blue-700 border-blue-200';
@@ -706,7 +727,7 @@ window.applyReactionDOM = function(msgId, value, type, userId) {
                 '<span class="' + cls + (isMineAdd ? ' mine' : '') + ' px-2 py-0.5 rounded text-[11px] font-bold border shadow-sm ml-1" ' +
                 'data-tag="' + value + '" ' +
                 (isMineAdd ? 'title="Click to remove your tag" onclick="window.applyReaction(\'' + msgId + '\',\'' + value + '\',\'tag\')" style="cursor:pointer;"' : 'title="' + value + '" style="cursor:default;"') +
-                '>' + value + (isMineAdd ? ' ✕' : '') + '</span>');
+                '>' + value + (isMineAdd ? '<span class="chip-remove">✕</span>' : '') + '</span>');
         }
     }
     // Keep reactionsCache in sync so re-renders preserve real-time reactions

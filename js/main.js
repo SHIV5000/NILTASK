@@ -204,16 +204,11 @@ window.renderMainApp = function() {
             <!-- LEFT SIDEBAR -->
             <div id="leftSidebar" class="left-sidebar flex-col border-r z-20" style="display:${leftDisplay};width:${leftWidth};background-color:var(--bg-sidebar);border-color:var(--border-color);">
 
-                <!-- A: School Name -->
-                <div style="padding:14px 14px 8px;border-bottom:1px solid var(--border-color);">
-                    <div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:#7f1d1d;letter-spacing:.02em;text-align:center;line-height:1.3;">
-                        ${window.escapeHtml(window.currentSchoolName || 'My School')}
-                    </div>
-                </div>
-
-                <!-- B: App name + actions row -->
-                <div style="padding:8px 10px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:6px;">
-                    <span style="flex:1;font-size:12px;font-weight:800;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Noted For Action</span>
+                <!-- A+B: School branding + actions row -->
+                <div style="padding:10px 12px 0;border-bottom:1px solid var(--border-color);background:var(--bg-sidebar);">
+                    <div style="font-size:9px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-secondary);margin-bottom:2px;">Noted For Action</div>
+                    <div style="font-size:15px;font-weight:800;color:#7f1d1d;letter-spacing:-0.01em;line-height:1.25;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${window.escapeHtml(window.currentSchoolName || 'My School')}">${window.escapeHtml(window.currentSchoolName || 'My School')}</div>
+                    <div style="display:flex;align-items:center;gap:5px;padding-bottom:8px;">
                     ${window.canCreateGroup?.() !== false ? `
                     <button onclick="window.openNewGroupModal()" title="Create Department"
                         style="width:26px;height:26px;border-radius:7px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
@@ -234,6 +229,7 @@ window.renderMainApp = function() {
                         style="width:26px;height:26px;border-radius:7px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:#ef4444;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
                         <i class="fa-solid fa-arrow-right-from-bracket" style="font-size:11px;"></i>
                     </button>
+                    </div>
                 </div>
 
                 <!-- Search (collapsible) -->
@@ -633,9 +629,20 @@ window.renderMainApp = function() {
                     <label class="text-xs font-bold mb-1 block" style="color:var(--text-secondary);">Designation</label>
                     <input type="text" id="settingsDesignation" placeholder="e.g. Physics Teacher, HOD Science" class="w-full p-2.5 rounded-xl border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
                 </div>
-                <div class="mb-5">
+                <div class="mb-3">
                     <label class="text-xs font-bold mb-1 block" style="color:var(--text-secondary);">Email (read-only)</label>
                     <input type="email" id="settingsEmail" disabled class="w-full p-2.5 rounded-xl border outline-none text-sm opacity-60" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+                </div>
+                <div class="mb-5 p-3 rounded-xl border" style="background-color:var(--bg-body);border-color:var(--border-color);">
+                    <div class="text-xs font-bold mb-2" style="color:var(--text-secondary);">Sound Notifications</div>
+                    <label class="flex items-center gap-2 cursor-pointer mb-2">
+                        <input type="checkbox" id="muteIncoming" class="w-4 h-4 accent-[var(--accent)]">
+                        <span class="text-xs" style="color:var(--text-primary);">Mute incoming message sounds</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="muteOutgoing" class="w-4 h-4 accent-[var(--accent)]">
+                        <span class="text-xs" style="color:var(--text-primary);">Mute outgoing alert sounds</span>
+                    </label>
                 </div>
                 <div class="flex gap-3">
                     <button onclick="window.closeSettings()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
@@ -964,6 +971,8 @@ window.getDmRoomId = function(otherUserId) {
 // ─── SOUNDS ────────────────────────────────────────────────────────────────
 window._soundLastPlayed = {};
 window.playSound = function(type) {
+    if (type === 'message' && localStorage.getItem('mpgs_mute_incoming') === '1') return;
+    if (type !== 'message' && localStorage.getItem('mpgs_mute_outgoing') === '1') return;
     const now = Date.now();
     // Debounce: same sound can't fire more than once per 2 seconds
     if (window._soundLastPlayed[type] && now - window._soundLastPlayed[type] < 2000) return;
@@ -1212,25 +1221,27 @@ window.initScrollArrows = function() {
     const btnTop = document.createElement('button');
     btnTop.id = 'scrollTopBtn';
     btnTop.className = 'chat-scroll-btn';
-    btnTop.style.cssText = 'bottom:72px;display:flex;opacity:0.3;background:var(--bg-sidebar);color:var(--text-secondary);transition:opacity .2s;';
-    btnTop.innerHTML = '<i class="fa-solid fa-chevron-up text-xs"></i>';
-    btnTop.title = 'Scroll to top';
-    btnTop.onclick = () => mc.scrollTo({top:0,behavior:'smooth'});
+    // btnTop (near top of viewport) → scrolls DOWN to latest messages
+    btnTop.style.cssText = 'bottom:72px;display:flex;opacity:0.5;background:var(--bg-sidebar);color:var(--text-secondary);transition:opacity .2s;';
+    btnTop.innerHTML = '<i class="fa-solid fa-chevron-down text-xs"></i>';
+    btnTop.title = 'Go to latest messages';
+    btnTop.onclick = () => mc.scrollTo({top:mc.scrollHeight,behavior:'smooth'});
     const btnBot = document.createElement('button');
     btnBot.id = 'scrollBotBtn';
     btnBot.className = 'chat-scroll-btn';
-    btnBot.style.cssText = 'bottom:32px;display:flex;opacity:0.85;background:var(--accent);color:#fff;border-color:var(--accent);transition:opacity .2s;';
-    btnBot.innerHTML = '<i class="fa-solid fa-chevron-down text-xs"></i>';
-    btnBot.title = 'Scroll to bottom';
-    btnBot.onclick = () => mc.scrollTo({top:mc.scrollHeight,behavior:'smooth'});
+    // btnBot (near bottom of viewport) → scrolls UP to oldest messages
+    btnBot.style.cssText = 'bottom:32px;display:flex;opacity:0.5;background:var(--bg-sidebar);color:var(--text-secondary);transition:opacity .2s;';
+    btnBot.innerHTML = '<i class="fa-solid fa-chevron-up text-xs"></i>';
+    btnBot.title = 'Go to oldest messages';
+    btnBot.onclick = () => mc.scrollTo({top:0,behavior:'smooth'});
     mc.appendChild(btnTop);
     mc.appendChild(btnBot);
-    // Always show arrows — dim when at limit, bright when actionable
+    // Always visible — raise opacity when actionable
     const updateArrows = () => {
         const atTop = mc.scrollTop < 10;
         const atBot = mc.scrollHeight - mc.scrollTop - mc.clientHeight < 10;
-        btnTop.style.opacity = atTop ? '0.3' : '0.85';
-        btnBot.style.opacity = atBot ? '0.3' : '0.85';
+        btnTop.style.opacity = atBot ? '0.25' : '0.75';
+        btnBot.style.opacity = atTop ? '0.25' : '0.75';
     };
     mc.addEventListener('scroll', updateArrows, { passive: true });
     setTimeout(updateArrows, 500);

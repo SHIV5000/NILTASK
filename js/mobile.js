@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v20';
+const _MOB_VER = 'v21';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -104,6 +104,23 @@ function _saveRoomCache(roomId, msgs) {
 }
 function _loadRoomCache(roomId) {
     try { return JSON.parse(localStorage.getItem('mob_msgs_'+roomId)||'null'); } catch { return null; }
+}
+function _loadReactionsCache() {
+    try { return JSON.parse(localStorage.getItem('mob_reactions')||'{}'); } catch { return {}; }
+}
+function _saveReactionEntry(msgId, value, type, userId, isDelete) {
+    try {
+        const cache = _loadReactionsCache();
+        if (!cache[msgId]) cache[msgId] = [];
+        if (isDelete) {
+            cache[msgId] = cache[msgId].filter(r => !(r.value===value && r.user_id===userId));
+        } else {
+            if (!cache[msgId].find(r => r.value===value && r.user_id===userId)) {
+                cache[msgId].push({ message_id:msgId, value, type, user_id:userId });
+            }
+        }
+        localStorage.setItem('mob_reactions', JSON.stringify(cache));
+    } catch {}
 }
 
 let _usersLoaded = false;
@@ -459,10 +476,18 @@ async function _runInlineSearch(q) {
 
 async function _fetchReactions(msgIds) {
     if (!msgIds.length) return {};
+    // Start with localStorage cache (includes other users' reactions from broadcast)
+    const cache = _loadReactionsCache();
+    const map = {};
+    msgIds.forEach(id => { if (cache[id]?.length) map[id] = [...cache[id]]; });
+    // Merge DB reactions (authoritative — returns all if RLS policy allows tenant read)
     const { data, error } = await sb.from('reactions').select('*').in('message_id', msgIds).eq('tenant_id', _tid);
     if (error) console.log('[mob-react] _fetchReactions error='+error.message);
-    const map = {};
-    (data||[]).forEach(r => { (map[r.message_id] = map[r.message_id]||[]).push(r); });
+    (data||[]).forEach(r => {
+        if (!map[r.message_id]) map[r.message_id] = [];
+        if (!map[r.message_id].find(x => x.value===r.value && x.user_id===r.user_id)) map[r.message_id].push(r);
+    });
+    console.log('[mob-react] _fetchReactions ids='+msgIds.length+' db='+((data||[]).length)+' total='+Object.values(map).reduce((s,a)=>s+a.length,0));
     return map;
 }
 const TAG_COLORS = { 'Thank You':'#16a34a','Noted':'#2563eb','Copied':'#7c3aed','Yes Sir':'#ea580c','Yes Madam':'#db2777' };
@@ -500,6 +525,8 @@ async function _toggleReaction(msgId, value, type) {
         console.log('[mob-react] inserted reaction error='+error?.message);
     }
     if (error) { _toast('Could not save reaction: '+error.message, 'err'); return; }
+    // Persist to localStorage cache (own reaction)
+    _saveReactionEntry(msgId, value, type, _uid, isDelete);
     // Broadcast to all users in tenant channel (bypasses RLS on postgres_changes)
     _rtChannel?.send({ type:'broadcast', event:'reaction', payload:{ message_id:msgId, value, type, user_id:_uid, isDelete } });
     await _refreshChips(msgId, { value, type, isDelete });
@@ -537,11 +564,18 @@ async function _refreshChips(msgId, optimistic) {
     console.log('[mob-react] DOM patched');
 }
 
-function _bubbleHTML(m, reactionsMap, maxLen=150) {
+function _bubbleHTML(m, reactionsMap, maxLen=150, replyMap={}, roomCtx={}) {
     const me = m.sender_id === _uid;
     const nm = me ? 'You' : _uname(m.sender_id);
     const cl = _renderLinkPills(m.text || '');
     const sender = !me ? _users.find(u=>u.id===m.sender_id) : null;
+    const rc = (replyMap||{})[m.id];
+    const rCtx = roomCtx || {};
+    const threadBtn = rc ? `<button class="m-thread-link" data-action="thread"
+        data-id="${m.id}" data-text="${x((m.text||'').substring(0,120))}"
+        data-sender="${x(nm)}" data-time="${_ago(m.created_at)}"
+        data-room="${rCtx.room||''}" data-rname="${x(rCtx.name||'')}" data-rcol="${rCtx.color||''}">
+        💬 ${rc} repl${rc===1?'y':'ies'} ›</button>` : '';
     return `
       <div class="m-bubble-row ${me?'snt':'rcv'}" id="row-${m.id}" data-time="${m.created_at}">
         ${!me ? _avatarHTML(sender?.avatar_url, nm, 'var(--accent)', 'm-av-tiny') : ''}
@@ -549,6 +583,7 @@ function _bubbleHTML(m, reactionsMap, maxLen=150) {
           <div class="m-bmeta">${x(nm)} · ${_ago(m.created_at)}</div>
           <div class="m-btext">${cl}</div>
           ${_chipsHTML(m.id, reactionsMap)}
+          ${threadBtn}
         </div>
       </div>`;
 }
@@ -628,15 +663,18 @@ async function _groupChat(p) {
                 .order('created_at',{ascending:true}).limit(80);
             if (!msgs) return;
             _saveRoomCache(p.room, msgs);
-            const newIds = msgs.map(m=>m.id).join(',');
-            const oldIds = (cached||[]).map(m=>m.id).join(',');
-            if (newIds === oldIds) return;
-            const reactionsMap = await _fetchReactions(msgs.map(m=>m.id));
+            const msgIds = msgs.map(m=>m.id);
+            const [reactionsMap, replyData] = await Promise.all([
+                _fetchReactions(msgIds),
+                sb.from('messages').select('parent_message_id').in('parent_message_id', msgIds).eq('tenant_id',_tid).is('deleted_at',null)
+            ]);
+            const replyMap = {};
+            (replyData.data||[]).forEach(r => { replyMap[r.parent_message_id] = (replyMap[r.parent_message_id]||0)+1; });
             if (myGen !== _refreshGen) { console.log('[mob-react] pendingRefresh ABORTED gen='+myGen+' current='+_refreshGen); return; }
-            console.log('[mob-react] pendingRefresh REPLACING innerHTML gen='+myGen);
+            console.log('[mob-react] pendingRefresh REPLACING innerHTML gen='+myGen+' replyMap='+JSON.stringify(replyMap));
             const area = document.getElementById('mMsgArea');
             if (area) {
-                area.innerHTML = msgs.map(m=>_bubbleHTML(m,reactionsMap,140)).join('') || '<div class="m-empty">No messages yet. Send the first one!</div>';
+                area.innerHTML = msgs.map(m=>_bubbleHTML(m,reactionsMap,140,replyMap,p)).join('') || '<div class="m-empty">No messages yet. Send the first one!</div>';
                 area.scrollTop = area.scrollHeight;
             }
         } catch {}
@@ -1645,6 +1683,8 @@ async function _onReactionChange(r, eventType) {
     const html = _chipsHTML(r.message_id, map);
     if (existingEl) existingEl.outerHTML = html || '';
     else if (html) row.querySelector('.m-bubble')?.insertAdjacentHTML('beforeend', html);
+    // Persist to localStorage so it survives reload
+    _saveReactionEntry(r.message_id, r.value, r.type, r.user_id, isDelete);
 }
 async function _onTaskAssigneeUpdate(row) {
     if (!row || row.assignee_id !== _uid) return;
@@ -2107,6 +2147,11 @@ function _injectCSS(){
 .m-reply-count{font-size:11.5px;font-weight:700;color:var(--accent,#6366f1);margin-top:6px;cursor:pointer;
   display:inline-block;padding:2px 0;-webkit-tap-highlight-color:transparent;}
 .m-reply-count:active{opacity:.6;}
+.m-thread-link{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;
+  color:var(--accent,#6366f1);cursor:pointer;margin-top:6px;background:color-mix(in srgb,var(--accent) 10%,transparent);
+  border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:12px;
+  padding:3px 10px;-webkit-tap-highlight-color:transparent;}
+.m-thread-link:active{opacity:.6;}
 .m-chip{font-size:13px;font-weight:600;background:var(--bg-sidebar,#f6f8fa);
   border:1px solid var(--border-color,#e5e7eb);border-radius:14px;padding:3px 9px;
   cursor:pointer;color:var(--text-primary,#111);-webkit-tap-highlight-color:transparent;}

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v15';
+const _MOB_VER = 'v16';
 let _stack  = [];
 let _uid    = null;
 let _tid    = null;
@@ -446,26 +446,35 @@ function _chipsHTML(msgId, reactionsMap) {
     }).join('')}</div>`;
 }
 async function _toggleReaction(msgId, value, type) {
-    if (!_uid || !_tid) return;
-    const { data: existing } = await sb.from('reactions').select('id').eq('message_id',msgId).eq('value',value).eq('user_id',_uid);
+    console.log('[mob-react] _toggleReaction msgId='+msgId+' value='+value+' type='+type+' _uid='+_uid+' _tid='+_tid);
+    if (!_uid || !_tid) { console.log('[mob-react] ABORTED: no uid/tid'); return; }
+    const { data: existing, error: selErr } = await sb.from('reactions').select('id').eq('message_id',msgId).eq('value',value).eq('user_id',_uid);
+    console.log('[mob-react] existing='+JSON.stringify(existing)+' selErr='+selErr?.message);
     let error;
     if (existing && existing.length) {
         ({ error } = await sb.from('reactions').delete().eq('message_id',msgId).eq('value',value).eq('user_id',_uid));
+        console.log('[mob-react] deleted reaction error='+error?.message);
     } else {
         ({ error } = await sb.from('reactions').insert({ message_id:msgId, user_id:_uid, tenant_id:_tid, value, type }));
+        console.log('[mob-react] inserted reaction error='+error?.message);
     }
     if (error) { _toast('Could not save reaction: '+error.message, 'err'); return; }
     await _refreshChips(msgId);
 }
 async function _refreshChips(msgId) {
+    console.log('[mob-react] _refreshChips start msgId='+msgId+' _refreshGen='+_refreshGen);
     _refreshGen++;
     const row = document.getElementById('row-'+msgId);
+    console.log('[mob-react] row found='+!!row+' new _refreshGen='+_refreshGen);
     if (!row) return;
     const map = await _fetchReactions([msgId]);
+    console.log('[mob-react] fetchReactions='+JSON.stringify(map));
     const existing = row.querySelector('.m-chips');
     const html = _chipsHTML(msgId, map);
+    console.log('[mob-react] chipsHTML length='+(html?.length||0)+' existing='+!!existing);
     if (existing) existing.outerHTML = html || '';
     else if (html) row.querySelector('.m-bubble')?.insertAdjacentHTML('beforeend', html);
+    console.log('[mob-react] DOM patched');
 }
 
 function _bubbleHTML(m, reactionsMap, maxLen=150) {
@@ -563,7 +572,8 @@ async function _groupChat(p) {
             const oldIds = (cached||[]).map(m=>m.id).join(',');
             if (newIds === oldIds) return;
             const reactionsMap = await _fetchReactions(msgs.map(m=>m.id));
-            if (myGen !== _refreshGen) return;
+            if (myGen !== _refreshGen) { console.log('[mob-react] pendingRefresh ABORTED gen='+myGen+' current='+_refreshGen); return; }
+            console.log('[mob-react] pendingRefresh REPLACING innerHTML gen='+myGen);
             const area = document.getElementById('mMsgArea');
             if (area) {
                 area.innerHTML = msgs.map(m=>_bubbleHTML(m,reactionsMap,140)).join('') || '<div class="m-empty">No messages yet. Send the first one!</div>';
@@ -1800,10 +1810,12 @@ function _sentenceCase(s){ s=(s||'').trim(); return s ? s[0].toUpperCase()+s.sli
 function _fmtIST(ts, withTime=true) {
     if (!ts) return '';
     const d = new Date(ts);
-    if (isNaN(d)) return '';
+    if (isNaN(d)) { console.log('[mob-time] _fmtIST INVALID ts='+ts); return ''; }
     const opts = { day:'2-digit', month:'short', year:'2-digit', timeZone:'Asia/Kolkata' };
     if (withTime) { opts.hour = '2-digit'; opts.minute = '2-digit'; opts.hour12 = true; }
-    return new Intl.DateTimeFormat('en-IN', opts).format(d);
+    const result = new Intl.DateTimeFormat('en-IN', opts).format(d);
+    console.log('[mob-time] _fmtIST ts='+ts+' => '+result);
+    return result;
 }
 function _uname(id){ const u=_users.find(u=>u.id===id); return u?.full_name||u?.email?.split('@')[0]||'Someone'; }
 function _dmRoom(uid){ return ['dm',...[_uid,uid].sort()].join('_'); }
@@ -1813,11 +1825,9 @@ const _istFmtDate = new Intl.DateTimeFormat('en-IN',{day:'2-digit',month:'short'
 function _ago(ts){
     if(!ts) return '';
     const d=(Date.now()-new Date(ts))/1000;
-    if(d<60)    return 'just now';
-    if(d<3600)  return Math.floor(d/60)+'m ago';
-    if(d<86400) return _istFmt12.format(new Date(ts));      // same day → show IST time e.g. "02:30 pm"
-    if(d<604800)return Math.floor(d/86400)+'d ago';
-    return _istFmtDate.format(new Date(ts));                 // older → "12 Jun"
+    const result = d<60 ? 'just now' : d<3600 ? Math.floor(d/60)+'m ago' : d<86400 ? _istFmt12.format(new Date(ts)) : d<604800 ? Math.floor(d/86400)+'d ago' : _istFmtDate.format(new Date(ts));
+    console.log('[mob-time] _ago ts='+ts+' d='+Math.round(d)+'s => '+result);
+    return result;
 }
 function _scrollTop(id){ const el=_el(id); if(el) el.scrollTop=0; }
 function _toast(msg, type='ok'){

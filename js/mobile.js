@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v14';
+const _MOB_VER = 'v15';
 let _stack  = [];
 let _uid    = null;
 let _tid    = null;
@@ -35,6 +35,13 @@ window.addEventListener('online',  () => { _isOffline = false; _showOfflineBanne
 
 window.initMobileApp = async function() {
     if (window.innerWidth > MOB) return;
+    if (!window.__erudaLoaded) {
+        window.__erudaLoaded = true;
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/eruda';
+        s.onload = () => eruda.init();
+        document.head.appendChild(s);
+    }
     _el('root')?.style.setProperty('display', 'none', 'important');
     _injectCSS();
     _buildShell();
@@ -1800,7 +1807,7 @@ function _fmtIST(ts, withTime=true) {
 }
 function _uname(id){ const u=_users.find(u=>u.id===id); return u?.full_name||u?.email?.split('@')[0]||'Someone'; }
 function _dmRoom(uid){ return ['dm',...[_uid,uid].sort()].join('_'); }
-function _snip(h,n){ const t=(h||'').replace(/<[^>]*>/g,'').trim(); return t.length>n?t.substring(0,n)+'…':t; }
+function _snip(h,n){ const t=(h||'').replace(/<[^>]*>/g,'').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&quot;/g,'"').trim(); return t.length>n?t.substring(0,n)+'…':t; }
 const _istFmt12 = new Intl.DateTimeFormat('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'});
 const _istFmtDate = new Intl.DateTimeFormat('en-IN',{day:'2-digit',month:'short',timeZone:'Asia/Kolkata'});
 function _ago(ts){

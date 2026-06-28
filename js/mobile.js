@@ -449,6 +449,7 @@ async function _toggleReaction(msgId, value, type) {
     await _refreshChips(msgId);
 }
 async function _refreshChips(msgId) {
+    _pendingRefresh = null;
     const row = document.getElementById('row-'+msgId);
     if (!row) return;
     const map = await _fetchReactions([msgId]);
@@ -1346,7 +1347,8 @@ async function _handleComposerIcon(caction, targetId) {
                 if (error) { _toast('Upload failed: '+error.message,'err'); return; }
                 const { data: pub } = sb.storage.from('task-proofs').getPublicUrl(filePath);
                 ceEl?.focus();
-                document.execCommand('insertHTML', false, `<a href="${pub.publicUrl}" target="_blank">📎 ${x(file.name)}</a>&nbsp;`);
+                const encoded = encodeURIComponent(file.name + '|||' + pub.publicUrl);
+                document.execCommand('insertHTML', false, `<a href="https://link-pill.local/${encoded}">📎 ${x(file.name)}</a>&nbsp;`);
                 _toast('Attached ✓');
             };
             input.click();
@@ -1783,21 +1785,11 @@ function _avatarHTML(photoUrl, name, bg, cls='m-av') {
 function _sentenceCase(s){ s=(s||'').trim(); return s ? s[0].toUpperCase()+s.slice(1).toLowerCase() : s; }
 function _fmtIST(ts, withTime=true) {
     if (!ts) return '';
-    if (typeof window.getISTDate === 'function') {
-        const datePart = window.getISTDate(ts);
-        if (!withTime) return datePart;
-        const timePart = (typeof window.getISTTime === 'function') ? window.getISTTime(ts) : '';
-        return timePart ? `${datePart} ${timePart}` : datePart;
-    }
     const d = new Date(ts);
-    const parts = new Intl.DateTimeFormat('en-GB', {
-        day:'2-digit', month:'short', year:'2-digit',
-        hour:'2-digit', minute:'2-digit', hour12:false,
-        timeZone:'Asia/Kolkata'
-    }).formatToParts(d);
-    const get = t => parts.find(p=>p.type===t)?.value || '';
-    const datePart = `${get('day')}-${get('month')}-${get('year')}`;
-    return withTime ? `${datePart} ${get('hour')}:${get('minute')}` : datePart;
+    if (isNaN(d)) return '';
+    const opts = { day:'2-digit', month:'short', year:'2-digit', timeZone:'Asia/Kolkata' };
+    if (withTime) { opts.hour = '2-digit'; opts.minute = '2-digit'; opts.hour12 = true; }
+    return new Intl.DateTimeFormat('en-IN', opts).format(d);
 }
 function _uname(id){ const u=_users.find(u=>u.id===id); return u?.full_name||u?.email?.split('@')[0]||'Someone'; }
 function _dmRoom(uid){ return ['dm',...[_uid,uid].sort()].join('_'); }

@@ -64,20 +64,28 @@ async function _ctx() {
     _tid = window.currentTenantId;
     if (!_usersLoaded) _users = window.globalUsersCache || [];
     if (!_uid) {
-        const { data: { user } } = await sb.auth.getUser();
-        _uid = user?.id;
-        window.currentUser = user;
+        try {
+            const { data: { user } } = await sb.auth.getUser();
+            _uid = user?.id;
+            window.currentUser = user;
+        } catch { /* offline and no prior session — stay on login */ }
     }
     if (_uid && (!_tid || (!_usersLoaded && !_users.length))) {
         if (!_tid) {
-            const { data: p } = await sb.from('profiles').select('tenant_id').eq('id',_uid).single();
-            _tid = p?.tenant_id;
-            window.currentTenantId = _tid;
+            try {
+                const { data: p } = await sb.from('profiles').select('tenant_id').eq('id',_uid).single();
+                _tid = p?.tenant_id;
+                window.currentTenantId = _tid;
+            } catch { /* offline — _tid stays null */ }
         }
         if (_tid && !_usersLoaded && !_users.length) {
-            const { data } = await sb.from('profiles').select('*').eq('tenant_id',_tid).is('deleted_at',null);
-            _users = data || [];
-            window.globalUsersCache = _users;
+            try {
+                const { data } = await sb.from('profiles').select('*').eq('tenant_id',_tid).is('deleted_at',null);
+                _users = data || [];
+                window.globalUsersCache = _users;
+            } catch {
+                _users = window.globalUsersCache || [];
+            }
         }
     }
     if (_users.length) _usersLoaded = true;

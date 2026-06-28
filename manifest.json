@@ -16,6 +16,37 @@
     { "src": "/icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
     { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ],
+  "screenshots": [
+    {
+      "src": "/screenshots/mobile-home.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Home — Departments & Messages"
+    },
+    {
+      "src": "/screenshots/mobile-chat.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Group Chat with Reactions"
+    },
+    {
+      "src": "/screenshots/mobile-tasks.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Tasks & Assignments"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Open Chat",
+      "short_name": "Chat",
+      "url": "/",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
   "categories": ["education", "productivity", "business"],
   "lang": "en-IN"
 }

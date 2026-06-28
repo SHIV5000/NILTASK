@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v23';
+const _MOB_VER = 'v24';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -10,7 +10,7 @@ console.log   = (...a) => { _logBuf.push('[L] '+a.join(' ')); if (_logBuf.length
 console.warn  = (...a) => { _logBuf.push('[W] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); };
 console.error = (...a) => { _logBuf.push('[E] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); };
 window._copyLogs = () => {
-    const txt = '[v23 log dump '+new Date().toISOString()+']\n'+_logBuf.join('\n');
+    const txt = '[v24 log dump '+new Date().toISOString()+']\n'+_logBuf.join('\n');
     navigator.clipboard?.writeText(txt)
         .then(() => _toast('Logs copied ✓ — paste anywhere'))
         .catch(() => _toast('Clipboard denied — use eruda','err'));
@@ -576,12 +576,10 @@ function _chipsHTML(msgId, reactionsMap) {
         return `<button class="m-chip ${g.mine?'mine':''}" ${g.mine?'data-mine="1"':''} data-action="toggleReaction" data-id="${msgId}" data-value="${g.value}" data-type="emoji">${g.value} <span class="m-chip-cnt">${g.count}</span></button>`;
     }).join('')}</div>`;
 }
-async function _toggleReaction(msgId, value, type) {
-    console.log('[mob-react] _toggleReaction msgId='+msgId+' value='+value+' type='+type+' _uid='+_uid+' _tid='+_tid);
+async function _toggleReaction(msgId, value, type, isMine=false) {
+    console.log('[mob-react] _toggleReaction msgId='+msgId+' value='+value+' type='+type+' isMine='+isMine+' _uid='+_uid+' _tid='+_tid);
     if (!_uid || !_tid) { console.log('[mob-react] ABORTED: no uid/tid'); return; }
-    const { data: existing, error: selErr } = await sb.from('reactions').select('id').eq('message_id',msgId).eq('value',value).eq('user_id',_uid);
-    console.log('[mob-react] existing='+JSON.stringify(existing)+' selErr='+selErr?.message);
-    const isDelete = !!(existing && existing.length);
+    const isDelete = isMine;
     let error;
     if (isDelete) {
         ({ error } = await sb.from('reactions').delete().eq('message_id',msgId).eq('value',value).eq('user_id',_uid));
@@ -815,9 +813,6 @@ async function _dm(p) {
                 .is('deleted_at',null).order('created_at',{ascending:true}).limit(80);
             if (!msgs) return;
             _saveRoomCache(p.room, msgs);
-            const newIds = msgs.map(m=>m.id).join(',');
-            const oldIds = (cached||[]).map(m=>m.id).join(',');
-            if (newIds === oldIds) return;
             const reactionsMap = await _fetchReactions(msgs.map(m=>m.id));
             if (myGen !== _refreshGen) return;
             const area = document.getElementById('mDMArea');
@@ -1489,7 +1484,7 @@ async function _onShellClick(e) {
             else await _navTo('groupChat',{room:a.room,name:a.rname,color:a.rcol,scrollTo:a.scroll});
             break;
 
-        case 'toggleReaction': await _toggleReaction(a.id, a.value, a.type); break;
+        case 'toggleReaction': await _toggleReaction(a.id, a.value, a.type, a.mine === '1'); break;
 
         case 'sendGroup': await _doSendGroup(a); break;
         case 'sendReply': await _doSendReply(a); break;
@@ -1946,6 +1941,7 @@ async function _doSendDM(a) {
 function _appendOwnMessage(areaId, m, maxLen=150) {
     const area = _el(areaId);
     if (!area) return;
+    _refreshGen++;
     area.insertAdjacentHTML('beforeend', _bubbleHTML(m, {}, maxLen));
     area.scrollTo({ top: area.scrollHeight, behavior:'smooth' });
     // Update room cache
@@ -2084,7 +2080,7 @@ function _ago(ts){
     const utc = (ts.indexOf('Z')===-1 && ts.indexOf('+')===-1) ? ts+'Z' : ts;
     const d=(Date.now()-new Date(utc))/1000;
     const result = d<60 ? 'just now' : d<3600 ? Math.floor(d/60)+'m ago'
-        : d<86400 ? _istFmt12.format(new Date(utc))
+        : d<86400 ? Math.floor(d/3600)+'h ago'
         : d<604800 ? Math.floor(d/86400)+'d ago'
         : _istFmtDate.format(new Date(utc));
     console.log('[mob-time] _ago ts='+ts+' d='+Math.round(d)+'s => '+result);

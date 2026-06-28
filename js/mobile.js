@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v22';
+const _MOB_VER = 'v23';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -10,7 +10,7 @@ console.log   = (...a) => { _logBuf.push('[L] '+a.join(' ')); if (_logBuf.length
 console.warn  = (...a) => { _logBuf.push('[W] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); };
 console.error = (...a) => { _logBuf.push('[E] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); };
 window._copyLogs = () => {
-    const txt = '[v22 log dump '+new Date().toISOString()+']\n'+_logBuf.join('\n');
+    const txt = '[v23 log dump '+new Date().toISOString()+']\n'+_logBuf.join('\n');
     navigator.clipboard?.writeText(txt)
         .then(() => _toast('Logs copied ✓ — paste anywhere'))
         .catch(() => _toast('Clipboard denied — use eruda','err'));
@@ -27,12 +27,16 @@ let _notifPoll = null;
 let _swipeStart = null, _swipeRow = null, _swipeTriggered = false;
 let _searchMode = false;
 
-const DEPTS = [
-    {id:'general',   name:localStorage.getItem('dept_name_general')   ||'General',   col:localStorage.getItem('dept_color_general')   ||'#6366f1', photo:localStorage.getItem('dept_photo_general')||''},
-    {id:'math',      name:localStorage.getItem('dept_name_math')      ||'Mathematics',col:localStorage.getItem('dept_color_math')      ||'#0ea5e9', photo:localStorage.getItem('dept_photo_math')||''},
-    {id:'science',   name:localStorage.getItem('dept_name_science')   ||'Science',   col:localStorage.getItem('dept_color_science')   ||'#10b981', photo:localStorage.getItem('dept_photo_science')||''},
-    {id:'leadership',name:localStorage.getItem('dept_name_leadership')||'Leadership',col:localStorage.getItem('dept_color_leadership')||'#f59e0b', photo:localStorage.getItem('dept_photo_leadership')||''},
-];
+function _buildDepts() {
+    return [
+        {id:'general',   name:localStorage.getItem('dept_name_general')   ||'General',   col:localStorage.getItem('dept_color_general')   ||'#6366f1', photo:localStorage.getItem('dept_photo_general')||''},
+        {id:'math',      name:localStorage.getItem('dept_name_math')      ||'Mathematics',col:localStorage.getItem('dept_color_math')      ||'#0ea5e9', photo:localStorage.getItem('dept_photo_math')||''},
+        {id:'science',   name:localStorage.getItem('dept_name_science')   ||'Science',   col:localStorage.getItem('dept_color_science')   ||'#10b981', photo:localStorage.getItem('dept_photo_science')||''},
+        {id:'leadership',name:localStorage.getItem('dept_name_leadership')||'Leadership',col:localStorage.getItem('dept_color_leadership')||'#f59e0b', photo:localStorage.getItem('dept_photo_leadership')||''},
+    ];
+}
+let DEPTS = _buildDepts();
+function _refreshDeptNames() { DEPTS = _buildDepts(); }
 
 function _showOfflineBanner(show) {
     let el = document.getElementById('mOfflineBanner');
@@ -91,6 +95,12 @@ window.initMobileApp = async function() {
     await _navTo('home');
     _initRealtime();
     _showOfflineBanner(_isOffline);
+    // Auto-refresh displayed timestamps every 60s
+    setInterval(() => {
+        document.querySelectorAll('.m-bmeta[data-ts]').forEach(el => {
+            el.textContent = el.dataset.label + ' · ' + _ago(el.dataset.ts);
+        });
+    }, 60000);
     window.addEventListener('resize', () => {
         const m = window.innerWidth <= MOB;
         _el('mobileApp')?.style.setProperty('display', m ? 'flex' : 'none', 'important');
@@ -157,6 +167,15 @@ async function _ctx() {
         }
     }
     if (_users.length) _usersLoaded = true;
+    // Load RBAC role if not already set by web auth flow
+    if (_tid && _uid && !window.currentRole) {
+        try {
+            const { data: ur } = await sb.from('user_roles')
+                .select('*, role:roles(name)')
+                .eq('user_id', _uid).eq('tenant_id', _tid).single();
+            if (ur?.role?.name) window.currentRole = ur.role.name;
+        } catch {}
+    }
 }
 
 function _buildShell() {
@@ -310,6 +329,17 @@ window.addEventListener('popstate', () => {
         const prev = _stack[_stack.length-1];
         _render(prev.screen, prev.params, 'back');
         _setTab(prev.screen);
+    } else {
+        // Hardware back at root — re-push state to prevent browser exit, then show toast
+        history.pushState({ mobDepth: 1 }, '', location.href);
+        const now = Date.now();
+        if (now - _lastBackAt < 2000) {
+            window.close();
+            setTimeout(() => { window.location.href = 'about:blank'; }, 100);
+        } else {
+            _lastBackAt = now;
+            _toast('Press back again to exit');
+        }
     }
 });
 async function _render(screen, params, dir='forward') {
@@ -617,7 +647,7 @@ function _bubbleHTML(m, reactionsMap, maxLen=150, replyMap={}, roomCtx={}) {
       <div class="m-bubble-row ${me?'snt':'rcv'}" id="row-${m.id}" data-time="${m.created_at}">
         ${!me ? _avatarHTML(sender?.avatar_url, nm, 'var(--accent)', 'm-av-tiny') : ''}
         <div class="m-bubble ${me?'snt':'rcv'}">
-          <div class="m-bmeta">${x(nm)} · ${_ago(m.created_at)}</div>
+          <div class="m-bmeta" data-ts="${m.created_at}" data-label="${x(nm)}">${x(nm)} · ${_ago(m.created_at)}</div>
           <div class="m-btext">${cl}</div>
           ${_chipsHTML(m.id, reactionsMap)}
           ${threadBtn}
@@ -640,7 +670,7 @@ function _renderLinkPills(html) {
                 const icon   = isFile ? 'fa-download' : 'fa-arrow-up-right-from-square';
                 const fixedUrl = url.replace('/object/public/chat-attachments/', '/object/public/task-proofs/');
                 const safeUrl = fixedUrl.replace(/'/g, '%27');
-                return `<a href="javascript:void(0);" onclick="window.open('${safeUrl}','_blank')" title="${x(fixedUrl)}"
+                return `<a href="javascript:void(0);" onclick="window._mobOpenFile('${safeUrl}')" title="${x(fixedUrl)}"
                     style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;text-decoration:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,.35);white-space:nowrap;vertical-align:middle;">
                     <i class="fa-solid ${icon}" style="font-size:9px;"></i><span>${x(name)}</span>
                     <span style="font-size:9px;opacity:.75;border-left:1px solid rgba(255,255,255,.35);padding-left:7px;margin-left:3px;">${label}</span>
@@ -649,6 +679,10 @@ function _renderLinkPills(html) {
         }
     );
 }
+window._mobOpenFile = function(url) {
+    if (!url) { _toast('File URL missing', 'err'); return; }
+    window.open(url, '_blank');
+};
 
 function _composerHTML(ceId, placeholder, sendAction, sendData) {
     const showSchedule = window.canSchedule?.() ?? false;
@@ -687,6 +721,7 @@ function _ceInsertText(targetId, value) {
 }
 
 async function _groupChat(p) {
+    if (!_users.length) await _ctx();
     const cached = _loadRoomCache(p.room);
 
     _pendingRefresh = async () => {
@@ -711,7 +746,13 @@ async function _groupChat(p) {
             console.log('[mob-react] pendingRefresh REPLACING innerHTML gen='+myGen+' replyMap='+JSON.stringify(replyMap));
             const area = document.getElementById('mMsgArea');
             if (area) {
+                // Preserve any live-appended rows (realtime/optimistic) not in DB result
+                const dbIds = new Set(msgs.map(m=>m.id));
+                const liveRows = [...area.querySelectorAll('[id^="row-"]')]
+                    .filter(el => !dbIds.has(el.id.replace('row-','')))
+                    .map(el => el.outerHTML);
                 area.innerHTML = msgs.map(m=>_bubbleHTML(m,reactionsMap,140,replyMap,p)).join('') || '<div class="m-empty">No messages yet. Send the first one!</div>';
+                liveRows.forEach(html => area.insertAdjacentHTML('beforeend', html));
                 area.scrollTop = area.scrollHeight;
             }
         } catch {}
@@ -781,7 +822,12 @@ async function _dm(p) {
             if (myGen !== _refreshGen) return;
             const area = document.getElementById('mDMArea');
             if (area) {
+                const dbIds2 = new Set(msgs.map(m=>m.id));
+                const liveRows2 = [...area.querySelectorAll('[id^="row-"]')]
+                    .filter(el => !dbIds2.has(el.id.replace('row-','')))
+                    .map(el => el.outerHTML);
                 area.innerHTML = msgs.map(m=>_bubbleHTML(m,reactionsMap,160)).join('') || `<div class="m-empty">Start a conversation with ${x(p.name)}</div>`;
+                liveRows2.forEach(html => area.insertAdjacentHTML('beforeend', html));
                 area.scrollTop = area.scrollHeight;
             }
         } catch {}
@@ -1620,6 +1666,13 @@ function _initRealtime() {
         .subscribe(status => console.log('[mob-rt] channel status='+status));
     _bcChannel = sb.channel('mobile-bc-'+_tid, { config: { broadcast: { self: false } } })
         .on('broadcast', { event:'reaction' }, p => { console.log('[mob-rt] broadcast reaction received'); _onReactionChange(p.payload, p.payload?.isDelete ? 'DELETE' : 'INSERT'); })
+        .on('broadcast', { event:'group_photo' }, p => {
+            if (p.payload?.room_id && p.payload?.name) localStorage.setItem('dept_name_'+p.payload.room_id, p.payload.name);
+            if (p.payload?.room_id && p.payload?.color) localStorage.setItem('dept_color_'+p.payload.room_id, p.payload.color);
+            _refreshDeptNames();
+            const top = _stack[_stack.length-1];
+            if (top?.screen === 'home') _render('home', null, 'forward');
+        })
         .subscribe(status => console.log('[mob-rt] bc channel status='+status));
     _refreshNotifBadge();
     clearInterval(_notifPoll);
@@ -2021,7 +2074,7 @@ function _fmtIST(ts, withTime=true) {
     console.log('[mob-time] _fmtIST ts='+ts+' => '+result);
     return result;
 }
-function _uname(id){ const u=_users.find(u=>u.id===id); return u?.full_name||u?.email?.split('@')[0]||'Someone'; }
+function _uname(id){ const u=_users.find(u=>u.id===id); return u ? (u.full_name||u.email?.split('@')[0]||'User') : 'User'; }
 function _dmRoom(uid){ return ['dm',...[_uid,uid].sort()].join('_'); }
 function _snip(h,n){ const t=(h||'').replace(/<[^>]*>/g,'').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&quot;/g,'"').trim(); return t.length>n?t.substring(0,n)+'…':t; }
 const _istFmt12 = new Intl.DateTimeFormat('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'});

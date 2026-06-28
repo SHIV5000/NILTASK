@@ -20,9 +20,9 @@ const DEPTS = [
 window.initMobileApp = async function() {
     if (window.innerWidth > MOB) return;
     _el('root')?.style.setProperty('display', 'none', 'important');
-    await _ctx();
     _injectCSS();
     _buildShell();
+    await _ctx();
     await _navTo('home');
     _initRealtime();
     window.addEventListener('resize', () => {
@@ -42,15 +42,17 @@ async function _ctx() {
         _uid = user?.id;
         window.currentUser = user;
     }
-    if (!_tid && _uid) {
-        const { data: p } = await sb.from('profiles').select('tenant_id').eq('id',_uid).single();
-        _tid = p?.tenant_id;
-        window.currentTenantId = _tid;
-    }
-    if (!_users.length && _tid) {
-        const { data } = await sb.from('profiles').select('*').eq('tenant_id',_tid).is('deleted_at',null);
-        _users = data || [];
-        window.globalUsersCache = _users;
+    if (_uid && (!_tid || (!_usersLoaded && !_users.length))) {
+        if (!_tid) {
+            const { data: p } = await sb.from('profiles').select('tenant_id').eq('id',_uid).single();
+            _tid = p?.tenant_id;
+            window.currentTenantId = _tid;
+        }
+        if (_tid && !_usersLoaded && !_users.length) {
+            const { data } = await sb.from('profiles').select('*').eq('tenant_id',_tid).is('deleted_at',null);
+            _users = data || [];
+            window.globalUsersCache = _users;
+        }
     }
     if (_users.length) _usersLoaded = true;
 }
@@ -155,9 +157,17 @@ window._navTo = async function(screen, params, replace = false) {
     await _render(screen, params, 'forward');
     _setTab(screen);
 };
+let _lastBackAt = 0;
 window._back = function() {
-    if (_stack.length < 2) return;
-    history.back();
+    if (_stack.length > 1) { history.back(); return; }
+    const now = Date.now();
+    if (now - _lastBackAt < 2000) {
+        window.close();
+        setTimeout(() => { window.location.href = 'about:blank'; }, 100);
+    } else {
+        _lastBackAt = now;
+        _toast('Press back again to exit');
+    }
 };
 window.addEventListener('popstate', () => {
     if (_stack.length > 1) {
@@ -376,12 +386,13 @@ function _chipsHTML(msgId, reactionsMap) {
     }).join('')}</div>`;
 }
 async function _toggleReaction(msgId, value, type) {
+    if (!_uid || !_tid) return;
     const { data: existing } = await sb.from('reactions').select('id').eq('message_id',msgId).eq('value',value).eq('user_id',_uid);
     let error;
     if (existing && existing.length) {
         ({ error } = await sb.from('reactions').delete().eq('message_id',msgId).eq('value',value).eq('user_id',_uid));
     } else {
-        ({ error } = await sb.from('reactions').insert({ message_id:msgId, user_id:_uid, tenant_id:_tid, value, type, count:1 }));
+        ({ error } = await sb.from('reactions').insert({ message_id:msgId, user_id:_uid, tenant_id:_tid, value, type }));
     }
     if (error) { _toast('Could not save reaction: '+error.message, 'err'); return; }
     await _refreshChips(msgId);
@@ -1196,9 +1207,9 @@ async function _handleComposerIcon(caction, targetId) {
                 _toast('Uploading…');
                 const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g,'_');
                 const filePath = `chat/${_tid}/${Date.now()}_${safeName}`;
-                const { error } = await sb.storage.from('chat-attachments').upload(filePath, file);
+                const { error } = await sb.storage.from('task-proofs').upload(filePath, file);
                 if (error) { _toast('Upload failed: '+error.message,'err'); return; }
-                const { data: pub } = sb.storage.from('chat-attachments').getPublicUrl(filePath);
+                const { data: pub } = sb.storage.from('task-proofs').getPublicUrl(filePath);
                 ceEl?.focus();
                 document.execCommand('insertHTML', false, `<a href="${pub.publicUrl}" target="_blank">📎 ${x(file.name)}</a>&nbsp;`);
                 _toast('Attached ✓');
@@ -1770,7 +1781,7 @@ function _injectCSS(){
 .m-bubble-row.snt{justify-content:flex-end;}
 .m-bubble-row.rcv{justify-content:flex-start;}
 .m-bubble{max-width:98%;padding:11px 14px;border-radius:12px;position:relative;
-  font-size:16px;line-height:1.5;
+  font-size:16px;line-height:1.5;overflow:hidden;word-break:break-word;
   background:var(--card-bg,#fff);box-shadow:var(--card-shadow,0 2px 8px rgba(0,0,0,.07));
   border:1px solid var(--border-color,#e5e7eb);
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
@@ -1784,6 +1795,7 @@ function _injectCSS(){
   100% { background:var(--card-bg); box-shadow:none; }
 }
 .m-btext{font-size:18px;line-height:1.55;color:var(--text-primary,#111);
+  word-break:break-word;overflow-wrap:break-word;
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
 .m-divider{text-align:center;font-size:11px;color:var(--text-secondary);padding:8px 0;}
 

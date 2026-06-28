@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v21';
+const _MOB_VER = 'v22';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -10,7 +10,7 @@ console.log   = (...a) => { _logBuf.push('[L] '+a.join(' ')); if (_logBuf.length
 console.warn  = (...a) => { _logBuf.push('[W] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); };
 console.error = (...a) => { _logBuf.push('[E] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); };
 window._copyLogs = () => {
-    const txt = '[v20 log dump '+new Date().toISOString()+']\n'+_logBuf.join('\n');
+    const txt = '[v22 log dump '+new Date().toISOString()+']\n'+_logBuf.join('\n');
     navigator.clipboard?.writeText(txt)
         .then(() => _toast('Logs copied ✓ — paste anywhere'))
         .catch(() => _toast('Clipboard denied — use eruda','err'));
@@ -22,6 +22,9 @@ let _users  = [];
 let _pendingUploadTaskId = null;
 let _pendingDeptPhoto = null;
 let _rtChannel = null;
+let _bcChannel = null;
+let _notifPoll = null;
+let _swipeStart = null, _swipeRow = null, _swipeTriggered = false;
 let _searchMode = false;
 
 const DEPTS = [
@@ -227,6 +230,39 @@ function _buildShell() {
     app.addEventListener('touchmove', _onPressEnd, { passive:true });
     app.addEventListener('scroll', _onPressEnd, { passive:true, capture:true });
     document.addEventListener('selectionchange', _onSelectionChange);
+
+    // Swipe-right-to-reply gesture
+    app.addEventListener('touchstart', e => {
+        const row = e.target.closest('.m-bubble-row');
+        if (!row || !row.id.startsWith('row-')) return;
+        _swipeStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        _swipeRow = row; _swipeTriggered = false;
+    }, { passive: true });
+    app.addEventListener('touchmove', e => {
+        if (!_swipeStart || !_swipeRow) return;
+        const dx = e.touches[0].clientX - _swipeStart.x;
+        const dy = Math.abs(e.touches[0].clientY - _swipeStart.y);
+        if (dy > 15) { _swipeRow.style.transform = ''; _swipeRow = null; return; }
+        if (dx > 5 && dx <= 80) {
+            _swipeRow.style.transform = `translateX(${Math.min(dx, 70)}px)`;
+            _swipeRow.style.transition = 'none';
+            _swipeTriggered = dx > 55;
+        }
+    }, { passive: true });
+    app.addEventListener('touchend', () => {
+        if (!_swipeRow) return;
+        _swipeRow.style.transition = 'transform .2s ease';
+        _swipeRow.style.transform = '';
+        if (_swipeTriggered) {
+            const msgId = _swipeRow.id.replace('row-','');
+            const btext = _swipeRow.querySelector('.m-btext')?.textContent?.substring(0,120)||'';
+            const bmeta = _swipeRow.querySelector('.m-bmeta')?.textContent||'';
+            const top = _stack[_stack.length-1];
+            const room = top?.params?.room||''; const rname = top?.params?.name||''; const rcol = top?.params?.color||'';
+            _navTo('thread',{id:msgId,text:btext,sender:bmeta,time:'',room,rname,rcol});
+        }
+        _swipeRow = null; _swipeStart = null; _swipeTriggered = false;
+    });
 
     const lensInp = _el('mSBSearchInp');
     let st;
@@ -504,10 +540,10 @@ function _chipsHTML(msgId, reactionsMap) {
     return `<div class="m-chips">${Object.values(grouped).map(g => {
         if (g.type === 'tag') {
             const c = TAG_COLORS[g.value] || 'var(--accent)';
-            return `<button class="m-chip m-chip-tag ${g.mine?'mine':''}" style="color:${c};border-color:${c};"
+            return `<button class="m-chip m-chip-tag ${g.mine?'mine':''}" ${g.mine?'data-mine="1"':''} style="color:${c};border-color:${c};"
                 data-action="toggleReaction" data-id="${msgId}" data-value="${x(g.value)}" data-type="tag">${x(g.value)}</button>`;
         }
-        return `<button class="m-chip ${g.mine?'mine':''}" data-action="toggleReaction" data-id="${msgId}" data-value="${g.value}" data-type="emoji">${g.value} <span class="m-chip-cnt">${g.count}</span></button>`;
+        return `<button class="m-chip ${g.mine?'mine':''}" ${g.mine?'data-mine="1"':''} data-action="toggleReaction" data-id="${msgId}" data-value="${g.value}" data-type="emoji">${g.value} <span class="m-chip-cnt">${g.count}</span></button>`;
     }).join('')}</div>`;
 }
 async function _toggleReaction(msgId, value, type) {
@@ -527,8 +563,9 @@ async function _toggleReaction(msgId, value, type) {
     if (error) { _toast('Could not save reaction: '+error.message, 'err'); return; }
     // Persist to localStorage cache (own reaction)
     _saveReactionEntry(msgId, value, type, _uid, isDelete);
-    // Broadcast to all users in tenant channel (bypasses RLS on postgres_changes)
-    _rtChannel?.send({ type:'broadcast', event:'reaction', payload:{ message_id:msgId, value, type, user_id:_uid, isDelete } });
+    // Broadcast to all users via dedicated broadcast channel (bypasses RLS on postgres_changes)
+    _bcChannel?.send({ type:'broadcast', event:'reaction', payload:{ message_id:msgId, value, type, user_id:_uid, isDelete } })
+        .then(s => console.log('[mob-rt] broadcast send status='+s));
     await _refreshChips(msgId, { value, type, isDelete });
 }
 async function _refreshChips(msgId, optimistic) {
@@ -544,7 +581,7 @@ async function _refreshChips(msgId, optimistic) {
         console.log('[mob-react] using optimistic update isDelete='+optimistic.isDelete);
         const domReactions = [];
         row.querySelectorAll('.m-chip').forEach(btn => {
-            domReactions.push({ message_id:msgId, value:btn.dataset.value, type:btn.dataset.type, user_id: btn.classList.contains('mine') ? _uid : 'other' });
+            domReactions.push({ message_id:msgId, value:btn.dataset.value, type:btn.dataset.type, user_id: (btn.dataset.mine === '1' || btn.classList.contains('mine')) ? _uid : 'other' });
         });
         if (!optimistic.isDelete) {
             domReactions.push({ message_id:msgId, value:optimistic.value, type:optimistic.type, user_id:_uid });
@@ -688,7 +725,7 @@ async function _groupChat(p) {
         <div class="m-htitle">${x(p.name)}</div>
       </div>
       <div class="m-msgs" id="mMsgArea">
-        ${shellMsgs.length ? shellMsgs.map(m=>_bubbleHTML(m,{},140)).join('') : '<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">' + (cached ? 'No messages yet.' : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…') + '</div>'}
+        ${shellMsgs.length ? (()=>{ const sr=_loadReactionsCache(); return shellMsgs.map(m=>_bubbleHTML(m,sr,140,{},p)).join(''); })() : '<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">' + (cached ? 'No messages yet.' : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…') + '</div>'}
       </div>
       <button class="m-scrollfab" id="mScrollFab" style="display:none;" onclick="document.getElementById('mMsgArea').scrollTo({top:9e9,behavior:'smooth'})"><i class="fa-solid fa-chevron-down"></i></button>
       ${_composerHTML('mGCE', `Message ${p.name||''}…`, 'sendGroup', `data-room="${p.room}" data-name="${x(p.name)}" data-color="${p.color||''}"`)}
@@ -706,16 +743,17 @@ async function _thread(p) {
     return `<div class="mFlex">
       <div class="m-hdr">
         <button class="m-back" onclick="window._back()"><i class="fa-solid fa-arrow-left"></i></button>
-        <div class="m-htitle">Thread</div>
+        <div style="display:flex;flex-direction:column;gap:1px;">
+          <div class="m-htitle">Thread</div>
+          ${p.rname ? `<div style="font-size:11px;color:var(--text-secondary);font-weight:600;">#${x(p.rname)}</div>` : ''}
+        </div>
       </div>
       <div class="m-msgs" id="mThreadArea">
-        <div class="m-bubble-row rcv">
-          <div class="m-bubble rcv">
-            <div class="m-bmeta">${x(p.sender||'')} · ${p.time||''}</div>
-            <div class="m-btext">${_renderLinkPills(p.text||'')}</div>
-          </div>
+        <div class="m-thread-parent">
+          <div class="m-bmeta">${x(p.sender||'')} · ${p.time||''}</div>
+          <div class="m-btext">${_renderLinkPills(p.text||'')}</div>
         </div>
-        ${replies?.length ? `<div class="m-divider">── ${replies.length} ${replies.length===1?'Reply':'Replies'} ──</div>` : ''}
+        ${replies?.length ? `<div class="m-thread-sep">${replies.length} ${replies.length===1?'Reply':'Replies'}</div>` : ''}
         ${(replies||[]).map(m=>_bubbleHTML(m,reactionsMap,160)).join('')}
       </div>
       ${_composerHTML('mRCE', 'Write a reply…', 'sendReply', `data-pid="${p.id}" data-room="${p.room}" data-rname="${x(p.rname||'')}" data-rcol="${p.rcol||''}" data-text="${x(p.text||'')}" data-sender="${x(p.sender||'')}" data-time="${p.time||''}"`)}
@@ -757,7 +795,7 @@ async function _dm(p) {
         <div class="m-htitle">${x(p.name)}</div>
       </div>
       <div class="m-msgs" id="mDMArea">
-        ${shellMsgs.length ? shellMsgs.map(m=>_bubbleHTML(m,{},160)).join('') : `<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">${cached ? `Start a conversation with ${x(p.name)}` : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…'}</div>`}
+        ${shellMsgs.length ? (()=>{ const sr=_loadReactionsCache(); return shellMsgs.map(m=>_bubbleHTML(m,sr,160)).join(''); })() : `<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">${cached ? `Start a conversation with ${x(p.name)}` : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…'}</div>`}
       </div>
       <button class="m-scrollfab" id="mScrollFab" style="display:none;" onclick="document.getElementById('mDMArea').scrollTo({top:9e9,behavior:'smooth'})"><i class="fa-solid fa-chevron-down"></i></button>
       ${_composerHTML('mDCE', `Message ${p.name||''}…`, 'sendDM', `data-room="${p.room}" data-uid="${p.uid||''}" data-name="${x(p.name)}"`)}
@@ -1577,11 +1615,15 @@ function _initRealtime() {
     if (_rtChannel || !_tid) return;
     _rtChannel = sb.channel('mobile-rt-'+_tid)
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => _onNewMessage(p.new))
-        .on('broadcast', { event:'reaction' }, p => _onReactionChange(p.payload, p.payload?.isDelete ? 'DELETE' : 'INSERT'))
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'task_assignees', filter:`tenant_id=eq.${_tid}` }, p => _onTaskAssigneeUpdate(p.new))
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`user_id=eq.${_uid}` }, () => _refreshNotifBadge())
-        .subscribe();
+        .subscribe(status => console.log('[mob-rt] channel status='+status));
+    _bcChannel = sb.channel('mobile-bc-'+_tid, { config: { broadcast: { self: false } } })
+        .on('broadcast', { event:'reaction' }, p => { console.log('[mob-rt] broadcast reaction received'); _onReactionChange(p.payload, p.payload?.isDelete ? 'DELETE' : 'INSERT'); })
+        .subscribe(status => console.log('[mob-rt] bc channel status='+status));
     _refreshNotifBadge();
+    clearInterval(_notifPoll);
+    _notifPoll = setInterval(_refreshNotifBadge, 30000);
 }
 async function _refreshNotifBadge() {
     const { count } = await sb.from('notifications').select('*',{count:'exact',head:true}).eq('user_id',_uid).eq('is_read',false);
@@ -1669,7 +1711,7 @@ async function _onReactionChange(r, eventType) {
     const domReactions = [];
     row.querySelectorAll('.m-chip').forEach(btn => {
         domReactions.push({ message_id:r.message_id, value:btn.dataset.value, type:btn.dataset.type,
-            user_id: btn.classList.contains('mine') ? _uid : (btn.dataset.otherId || 'other') });
+            user_id: (btn.dataset.mine === '1' || btn.classList.contains('mine')) ? _uid : (btn.dataset.otherId || 'other') });
     });
     if (isDelete) {
         const idx = domReactions.findIndex(d => d.value === r.value && d.user_id === r.user_id);
@@ -2109,7 +2151,7 @@ function _injectCSS(){
 .m-chv{color:var(--text-secondary,#9ca3af);font-size:13px;}
 
 .m-msgs{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 0;position:relative;}
-.m-bubble-row{display:flex;margin:8px 12px;gap:6px;align-items:flex-end;}
+.m-bubble-row{display:flex;margin:8px 12px;gap:6px;align-items:flex-end;transition:transform .1s ease;}
 .m-av-tiny{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
   color:#fff;font-weight:700;font-size:10.5px;flex-shrink:0;}
 .m-bubble-row.snt{justify-content:flex-end;}
@@ -2147,11 +2189,15 @@ function _injectCSS(){
 .m-reply-count{font-size:11.5px;font-weight:700;color:var(--accent,#6366f1);margin-top:6px;cursor:pointer;
   display:inline-block;padding:2px 0;-webkit-tap-highlight-color:transparent;}
 .m-reply-count:active{opacity:.6;}
-.m-thread-link{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;
+.m-thread-link{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:700;
   color:var(--accent,#6366f1);cursor:pointer;margin-top:6px;background:color-mix(in srgb,var(--accent) 10%,transparent);
   border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:12px;
-  padding:3px 10px;-webkit-tap-highlight-color:transparent;}
+  padding:4px 12px;-webkit-tap-highlight-color:transparent;}
 .m-thread-link:active{opacity:.6;}
+.m-thread-parent{background:color-mix(in srgb,var(--accent) 6%,var(--bg-body,#f9fafb));
+  border-left:3px solid var(--accent,#6366f1);border-radius:8px;padding:10px 14px;margin:10px 12px 0;}
+.m-thread-sep{font-size:12px;font-weight:700;color:var(--text-secondary,#6b7280);
+  padding:10px 16px 4px;letter-spacing:.04em;text-transform:uppercase;}
 .m-chip{font-size:13px;font-weight:600;background:var(--bg-sidebar,#f6f8fa);
   border:1px solid var(--border-color,#e5e7eb);border-radius:14px;padding:3px 9px;
   cursor:pointer;color:var(--text-primary,#111);-webkit-tap-highlight-color:transparent;}

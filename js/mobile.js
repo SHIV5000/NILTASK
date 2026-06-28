@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v16';
+const _MOB_VER = 'v17';
 let _stack  = [];
 let _uid    = null;
 let _tid    = null;
@@ -420,7 +420,8 @@ async function _runInlineSearch(q) {
 
 async function _fetchReactions(msgIds) {
     if (!msgIds.length) return {};
-    const { data } = await sb.from('reactions').select('*').in('message_id', msgIds);
+    const { data, error } = await sb.from('reactions').select('*').in('message_id', msgIds).eq('tenant_id', _tid);
+    if (error) console.log('[mob-react] _fetchReactions error='+error.message);
     const map = {};
     (data||[]).forEach(r => { (map[r.message_id] = map[r.message_id]||[]).push(r); });
     return map;

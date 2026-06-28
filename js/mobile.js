@@ -1,6 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
+const _MOB_VER = 'v14';
 let _stack  = [];
 let _uid    = null;
 let _tid    = null;
@@ -107,7 +108,7 @@ function _buildShell() {
       <div id="mSB">
         <div id="mSBInfo" class="m-sb-info" onclick="window._navTo('home')">
           <div class="m-sb-user">${x(_sentenceCase(window.currentUser?.full_name || window.currentUser?.email?.split('@')[0] || 'User'))}</div>
-          <div class="m-sb-school-card">${x(window.currentSchoolName || 'School')}</div>
+          <div class="m-sb-school-card">${x(window.currentSchoolName || 'School')} <span style="font-size:9px;opacity:.5;font-weight:700;letter-spacing:.5px;">${_MOB_VER}</span></div>
         </div>
         <div id="mSBSearch" class="m-sb-search" style="display:none;">
           <input id="mSBSearchInp" placeholder="Search messages, staff…">

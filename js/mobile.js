@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v17';
+const _MOB_VER = 'v18';
 let _stack  = [];
 let _uid    = null;
 let _tid    = null;
@@ -451,8 +451,9 @@ async function _toggleReaction(msgId, value, type) {
     if (!_uid || !_tid) { console.log('[mob-react] ABORTED: no uid/tid'); return; }
     const { data: existing, error: selErr } = await sb.from('reactions').select('id').eq('message_id',msgId).eq('value',value).eq('user_id',_uid);
     console.log('[mob-react] existing='+JSON.stringify(existing)+' selErr='+selErr?.message);
+    const isDelete = !!(existing && existing.length);
     let error;
-    if (existing && existing.length) {
+    if (isDelete) {
         ({ error } = await sb.from('reactions').delete().eq('message_id',msgId).eq('value',value).eq('user_id',_uid));
         console.log('[mob-react] deleted reaction error='+error?.message);
     } else {
@@ -460,20 +461,37 @@ async function _toggleReaction(msgId, value, type) {
         console.log('[mob-react] inserted reaction error='+error?.message);
     }
     if (error) { _toast('Could not save reaction: '+error.message, 'err'); return; }
-    await _refreshChips(msgId);
+    await _refreshChips(msgId, { value, type, isDelete });
 }
-async function _refreshChips(msgId) {
+async function _refreshChips(msgId, optimistic) {
     console.log('[mob-react] _refreshChips start msgId='+msgId+' _refreshGen='+_refreshGen);
     _refreshGen++;
     const row = document.getElementById('row-'+msgId);
     console.log('[mob-react] row found='+!!row+' new _refreshGen='+_refreshGen);
     if (!row) return;
-    const map = await _fetchReactions([msgId]);
+    let map = await _fetchReactions([msgId]);
     console.log('[mob-react] fetchReactions='+JSON.stringify(map));
-    const existing = row.querySelector('.m-chips');
+    // If DB returned nothing and we have an optimistic hint, build state from DOM + toggle
+    if (!map[msgId]?.length && optimistic) {
+        console.log('[mob-react] using optimistic update isDelete='+optimistic.isDelete);
+        const domReactions = [];
+        row.querySelectorAll('.m-chip').forEach(btn => {
+            domReactions.push({ message_id:msgId, value:btn.dataset.value, type:btn.dataset.type, user_id: btn.classList.contains('mine') ? _uid : 'other' });
+        });
+        if (!optimistic.isDelete) {
+            domReactions.push({ message_id:msgId, value:optimistic.value, type:optimistic.type, user_id:_uid });
+        } else {
+            let found = false;
+            for (let i = domReactions.length-1; i >= 0; i--) {
+                if (!found && domReactions[i].value === optimistic.value && domReactions[i].user_id === _uid) { domReactions.splice(i,1); found = true; }
+            }
+        }
+        if (domReactions.length) map = { [msgId]: domReactions };
+    }
+    const existingEl = row.querySelector('.m-chips');
     const html = _chipsHTML(msgId, map);
-    console.log('[mob-react] chipsHTML length='+(html?.length||0)+' existing='+!!existing);
-    if (existing) existing.outerHTML = html || '';
+    console.log('[mob-react] chipsHTML length='+(html?.length||0));
+    if (existingEl) existingEl.outerHTML = html || '';
     else if (html) row.querySelector('.m-bubble')?.insertAdjacentHTML('beforeend', html);
     console.log('[mob-react] DOM patched');
 }
@@ -1810,7 +1828,8 @@ function _avatarHTML(photoUrl, name, bg, cls='m-av') {
 function _sentenceCase(s){ s=(s||'').trim(); return s ? s[0].toUpperCase()+s.slice(1).toLowerCase() : s; }
 function _fmtIST(ts, withTime=true) {
     if (!ts) return '';
-    const d = new Date(ts);
+    const utc = (ts.indexOf('Z')===-1 && ts.indexOf('+')===-1) ? ts+'Z' : ts;
+    const d = new Date(utc);
     if (isNaN(d)) { console.log('[mob-time] _fmtIST INVALID ts='+ts); return ''; }
     const opts = { day:'2-digit', month:'short', year:'2-digit', timeZone:'Asia/Kolkata' };
     if (withTime) { opts.hour = '2-digit'; opts.minute = '2-digit'; opts.hour12 = true; }
@@ -1825,8 +1844,12 @@ const _istFmt12 = new Intl.DateTimeFormat('en-IN',{hour:'2-digit',minute:'2-digi
 const _istFmtDate = new Intl.DateTimeFormat('en-IN',{day:'2-digit',month:'short',timeZone:'Asia/Kolkata'});
 function _ago(ts){
     if(!ts) return '';
-    const d=(Date.now()-new Date(ts))/1000;
-    const result = d<60 ? 'just now' : d<3600 ? Math.floor(d/60)+'m ago' : d<86400 ? _istFmt12.format(new Date(ts)) : d<604800 ? Math.floor(d/86400)+'d ago' : _istFmtDate.format(new Date(ts));
+    const utc = (ts.indexOf('Z')===-1 && ts.indexOf('+')===-1) ? ts+'Z' : ts;
+    const d=(Date.now()-new Date(utc))/1000;
+    const result = d<60 ? 'just now' : d<3600 ? Math.floor(d/60)+'m ago'
+        : d<86400 ? _istFmt12.format(new Date(utc))
+        : d<604800 ? Math.floor(d/86400)+'d ago'
+        : _istFmtDate.format(new Date(utc));
     console.log('[mob-time] _ago ts='+ts+' d='+Math.round(d)+'s => '+result);
     return result;
 }

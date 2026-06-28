@@ -1,7 +1,20 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v19';
+const _MOB_VER = 'v20';
+
+// Console log buffer — tap version badge to copy all logs
+const _logBuf = [];
+const _origConsoleLog = console.log.bind(console);
+console.log   = (...a) => { _logBuf.push('[L] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); _origConsoleLog(...a); };
+console.warn  = (...a) => { _logBuf.push('[W] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); };
+console.error = (...a) => { _logBuf.push('[E] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); };
+window._copyLogs = () => {
+    const txt = '[v20 log dump '+new Date().toISOString()+']\n'+_logBuf.join('\n');
+    navigator.clipboard?.writeText(txt)
+        .then(() => _toast('Logs copied ✓ — paste anywhere'))
+        .catch(() => _toast('Clipboard denied — use eruda','err'));
+};
 let _stack  = [];
 let _uid    = null;
 let _tid    = null;
@@ -141,7 +154,7 @@ function _buildShell() {
       <div id="mSB">
         <div id="mSBInfo" class="m-sb-info" onclick="window._navTo('home')">
           <div class="m-sb-user">${x(_sentenceCase(window.currentUser?.full_name || window.currentUser?.email?.split('@')[0] || 'User'))}</div>
-          <div class="m-sb-school-card">${x(window.currentSchoolName || 'School')} <span style="font-size:9px;opacity:.5;font-weight:700;letter-spacing:.5px;">${_MOB_VER}</span></div>
+          <div class="m-sb-school-card">${x(window.currentSchoolName || 'School')} <span onclick="window._copyLogs()" title="Tap to copy console logs" style="font-size:9px;opacity:.5;font-weight:700;letter-spacing:.5px;cursor:pointer;">${_MOB_VER}</span></div>
         </div>
         <div id="mSBSearch" class="m-sb-search" style="display:none;">
           <input id="mSBSearchInp" placeholder="Search messages, staff…">
@@ -487,6 +500,8 @@ async function _toggleReaction(msgId, value, type) {
         console.log('[mob-react] inserted reaction error='+error?.message);
     }
     if (error) { _toast('Could not save reaction: '+error.message, 'err'); return; }
+    // Broadcast to all users in tenant channel (bypasses RLS on postgres_changes)
+    _rtChannel?.send({ type:'broadcast', event:'reaction', payload:{ message_id:msgId, value, type, user_id:_uid, isDelete } });
     await _refreshChips(msgId, { value, type, isDelete });
 }
 async function _refreshChips(msgId, optimistic) {
@@ -1524,7 +1539,7 @@ function _initRealtime() {
     if (_rtChannel || !_tid) return;
     _rtChannel = sb.channel('mobile-rt-'+_tid)
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => _onNewMessage(p.new))
-        .on('postgres_changes', { event:'*', schema:'public', table:'reactions', filter:`tenant_id=eq.${_tid}` }, p => _onReactionChange(p.new||p.old, p.eventType))
+        .on('broadcast', { event:'reaction' }, p => _onReactionChange(p.payload, p.payload?.isDelete ? 'DELETE' : 'INSERT'))
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'task_assignees', filter:`tenant_id=eq.${_tid}` }, p => _onTaskAssigneeUpdate(p.new))
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`user_id=eq.${_uid}` }, () => _refreshNotifBadge())
         .subscribe();
@@ -1568,7 +1583,22 @@ async function _onNewMessage(m) {
     const inGroup  = top.screen==='groupChat' && m.room_id===top.params?.room && !m.parent_message_id;
     const inDM     = top.screen==='dm'        && m.room_id===top.params?.room;
     const inThread = top.screen==='thread'    && m.parent_message_id===top.params?.id;
+    console.log('[mob-rt] msg id='+m.id+' parent='+m.parent_message_id+' room='+m.room_id+' screen='+top.screen+' params='+JSON.stringify(top.params)+' inGroup='+inGroup+' inThread='+inThread);
     if (!inGroup && !inDM && !inThread) {
+        // Update reply count badge on parent bubble if visible in current chat
+        if (m.parent_message_id) {
+            const parentRow = document.getElementById('row-'+m.parent_message_id);
+            if (parentRow) {
+                let rc = parentRow.querySelector('.m-reply-count');
+                if (!rc) {
+                    parentRow.querySelector('.m-bubble')?.insertAdjacentHTML('beforeend',
+                        `<div class="m-reply-count" data-n="1" data-pid="${m.parent_message_id}">1 reply ›</div>`);
+                } else {
+                    const n = (parseInt(rc.dataset.n||'1')+1);
+                    rc.dataset.n = n; rc.textContent = n+' repl'+(n===1?'y':'ies')+' ›';
+                }
+            }
+        }
         if (!m.parent_message_id) {
             const sender = _users.find(u=>u.id===m.sender_id);
             const name = sender ? (sender.full_name||sender.email?.split('@')[0]) : 'Someone';
@@ -2074,6 +2104,9 @@ function _injectCSS(){
 .m-scrollfab:active{opacity:.8;}
 
 .m-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.m-reply-count{font-size:11.5px;font-weight:700;color:var(--accent,#6366f1);margin-top:6px;cursor:pointer;
+  display:inline-block;padding:2px 0;-webkit-tap-highlight-color:transparent;}
+.m-reply-count:active{opacity:.6;}
 .m-chip{font-size:13px;font-weight:600;background:var(--bg-sidebar,#f6f8fa);
   border:1px solid var(--border-color,#e5e7eb);border-radius:14px;padding:3px 9px;
   cursor:pointer;color:var(--text-primary,#111);-webkit-tap-highlight-color:transparent;}

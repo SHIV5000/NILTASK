@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v25';
+const _MOB_VER = 'v26';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -10,7 +10,7 @@ console.log   = (...a) => { _logBuf.push('[L] '+a.join(' ')); if (_logBuf.length
 console.warn  = (...a) => { _logBuf.push('[W] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); };
 console.error = (...a) => { _logBuf.push('[E] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); };
 window._copyLogs = () => {
-    const txt = '[v25 log dump '+new Date().toISOString()+']\n'+_logBuf.join('\n');
+    const txt = '[v26 log dump '+new Date().toISOString()+']\n'+_logBuf.join('\n');
     navigator.clipboard?.writeText(txt)
         .then(() => _toast('Logs copied ✓ — paste anywhere'))
         .catch(() => _toast('Clipboard denied — use eruda','err'));
@@ -26,6 +26,7 @@ let _bcChannel = null;
 let _notifPoll = null;
 let _swipeStart = null, _swipeRow = null, _swipeTriggered = false;
 let _searchMode = false;
+let _customGroups = [];
 
 function _buildDepts() {
     return [
@@ -176,17 +177,21 @@ async function _ctx() {
             if (ur?.role?.name) window.currentRole = ur.role.name;
         } catch {}
     }
-    // Sync room names from DB → localStorage → DEPTS (populated by any online user who received a group_photo broadcast)
+    // Sync room names from DB → localStorage → DEPTS; also collect custom groups
     if (_tid) {
         try {
             const { data: rs } = await sb.from('room_settings')
-                .select('room_id,name,color').eq('tenant_id', _tid);
+                .select('room_id,name,color,archived').eq('tenant_id', _tid);
             if (rs?.length) {
                 rs.forEach(r => {
                     if (r.name)  localStorage.setItem('dept_name_'+r.room_id, r.name);
                     if (r.color) localStorage.setItem('dept_color_'+r.room_id, r.color);
                 });
                 _refreshDeptNames();
+                const fixedIds = new Set(DEPTS.map(d=>d.id));
+                _customGroups = rs
+                    .filter(r => r.room_id.startsWith('grp_') && !r.archived && !fixedIds.has(r.room_id))
+                    .map(r => ({ id:r.room_id, name:r.name||r.room_id, col:r.color||'#8b5cf6', photo:localStorage.getItem('dept_photo_'+r.room_id)||'' }));
             }
         } catch {}
     }
@@ -263,6 +268,8 @@ function _buildShell() {
     app.addEventListener('touchmove', _onPressEnd, { passive:true });
     app.addEventListener('scroll', _onPressEnd, { passive:true, capture:true });
     document.addEventListener('selectionchange', _onSelectionChange);
+    // Suppress native copy/cut/paste toolbar when our format bar is active
+    document.addEventListener('contextmenu', e => { if (e.target.closest('.m-ce')) e.preventDefault(); }, true);
 
     // Swipe-right-to-reply gesture
     app.addEventListener('touchstart', e => {
@@ -362,7 +369,7 @@ async function _render(screen, params, dir='forward') {
     const fns = {
         home: _home, activity: _activity, tasks: _tasks, remind: _reminders,
         marks: _bookmarks, scheduled: _scheduled,
-        settings: _settings, dashboard: _dashboard,
+        settings: _settings, dashboard: _dashboard, groupMgmt: _groupMgmt,
         groupChat: _groupChat, thread: _thread,
         dm: _dm, taskDetail: _taskDetail, remindEdit: _remindEdit, scheduledEdit: _scheduledEdit, notifications: _notifications,
     };
@@ -446,8 +453,8 @@ async function _home() {
     };
 
     return `<div class="mScr-inner">
-      <div class="m-sl">DEPARTMENTS</div>
-      ${DEPTS.map(d => { const lm=last[d.id]; return `
+      <div class="m-sl">DEPARTMENTS &amp; GROUPS</div>
+      ${[...DEPTS, ..._customGroups].map(d => { const lm=last[d.id]; return `
         <div class="m-row">
           ${canGear ? `
           <div class="m-av-wrap" data-action="setDeptPhoto" data-dept="${d.id}">
@@ -618,22 +625,20 @@ async function _refreshChips(msgId, optimistic) {
     if (!row) return;
     let map = await _fetchReactions([msgId]);
     console.log('[mob-react] fetchReactions='+JSON.stringify(map));
-    // If DB returned nothing and we have an optimistic hint, build state from DOM + toggle
-    if (!map[msgId]?.length && optimistic) {
-        console.log('[mob-react] using optimistic update isDelete='+optimistic.isDelete);
-        const domReactions = [];
-        row.querySelectorAll('.m-chip').forEach(btn => {
-            domReactions.push({ message_id:msgId, value:btn.dataset.value, type:btn.dataset.type, user_id: (btn.dataset.mine === '1' || btn.classList.contains('mine')) ? _uid : 'other' });
-        });
+    // Always merge optimistic delta on top of DB result (handles timing race where DB hasn't committed yet)
+    if (optimistic) {
+        console.log('[mob-react] merging optimistic isDelete='+optimistic.isDelete+' onto db result len='+(map[msgId]?.length||0));
+        const list = [...(map[msgId] || [])];
         if (!optimistic.isDelete) {
-            domReactions.push({ message_id:msgId, value:optimistic.value, type:optimistic.type, user_id:_uid });
+            if (!list.some(r => r.value === optimistic.value && r.user_id === _uid))
+                list.push({ message_id:msgId, value:optimistic.value, type:optimistic.type, user_id:_uid });
         } else {
-            let found = false;
-            for (let i = domReactions.length-1; i >= 0; i--) {
-                if (!found && domReactions[i].value === optimistic.value && domReactions[i].user_id === _uid) { domReactions.splice(i,1); found = true; }
+            for (let i = list.length-1; i >= 0; i--) {
+                if (list[i].value === optimistic.value && list[i].user_id === _uid) { list.splice(i,1); break; }
             }
         }
-        if (domReactions.length) map = { [msgId]: domReactions };
+        if (list.length) map = { [msgId]: list };
+        else map = {};
     }
     const existingEl = row.querySelector('.m-chips');
     const html = _chipsHTML(msgId, map);
@@ -1126,6 +1131,18 @@ async function _settings() {
         <input type="file" id="mMyPhotoInput" style="display:none;" accept="image/*">
       </div>
 
+      ${window.canSeeGroupGear?.() ? `
+      <div class="m-sl">ADMINISTRATION</div>
+      <div style="padding:0 16px 8px;">
+        <div class="m-row" data-action="navGroupMgmt" style="cursor:pointer;padding:12px 0;">
+          <div style="width:36px;height:36px;border-radius:10px;background:#7c3aed18;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fa-solid fa-people-group" style="color:#7c3aed;font-size:16px;"></i>
+          </div>
+          <div class="m-ri"><div class="m-rn">Group Management</div><div class="m-rs">Create, edit, archive groups &amp; members</div></div>
+          <i class="fa-solid fa-chevron-right" style="color:var(--text-secondary);font-size:12px;"></i>
+        </div>
+      </div>` : ''}
+
       <div class="m-sl">APPEARANCE</div>
       <div style="padding:0 16px 8px;">
         <div class="m-theme-grid">
@@ -1165,76 +1182,126 @@ async function _settings() {
     </div>`;
 }
 
-async function _dashboard() {
-    const today  = new Date();
-    const p_from = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0,10);
-    const p_to   = today.toISOString().slice(0,10);
+async function _dashboard(p={}) {
+    const filter = p?.filter || 'this_month';
+    const now = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    const ymd = d => d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+    let p_from, p_to = ymd(now), periodLabel;
 
-    const [scoreRes, { count: msgCount }, { count: taskTotal }, { count: taskDone }, { data: recent }] = await Promise.all([
+    if (filter === 'this_month') {
+        p_from = ymd(new Date(now.getFullYear(), now.getMonth(), 1));
+        periodLabel = now.toLocaleString('en-IN', {month:'long', year:'numeric'});
+    } else if (filter === 'last_month') {
+        const lm = new Date(now.getFullYear(), now.getMonth()-1, 1);
+        p_from = ymd(lm);
+        p_to   = ymd(new Date(now.getFullYear(), now.getMonth(), 0));
+        periodLabel = lm.toLocaleString('en-IN', {month:'long', year:'numeric'});
+    } else if (filter === 'this_quarter') {
+        const q = Math.floor(now.getMonth()/3);
+        p_from = ymd(new Date(now.getFullYear(), q*3, 1));
+        periodLabel = 'Q' + (q+1) + ' ' + now.getFullYear();
+    } else {
+        p_from = ymd(new Date(now.getFullYear(), 0, 1));
+        periodLabel = 'Year ' + now.getFullYear();
+    }
+
+    const [scoreRes, { data: recent }] = await Promise.all([
         sb.rpc('get_staff_scorecard', { p_tenant_id: _tid, p_from, p_to }),
-        sb.from('messages').select('*',{count:'exact',head:true}).eq('tenant_id',_tid).is('deleted_at',null),
-        sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',_tid),
-        sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',_tid).eq('status','done'),
         sb.from('profiles').select('id,full_name,avatar_url,last_login').eq('tenant_id',_tid).is('deleted_at',null).order('last_login',{ascending:false}).limit(5),
     ]);
 
-    const myScore = (scoreRes?.data||[]).find(s => s.user_id === _uid) || null;
-    const grade   = myScore?.grade || 'N/A';
+    const s = (scoreRes?.data||[]).find(r => r.user_id === _uid) || null;
+    const grade  = s?.grade || 'N/A';
     const gColors = {'A+':'#16a34a','A':'#1d4ed8','B':'#854d0e','C':'#c2410c','D':'#b91c1c','N/A':'#64748b'};
-    const gColor  = gColors[grade] || '#64748b';
-    const score   = Math.round(myScore?.score || 0);
-    const sTask   = Math.round(myScore?.score_task || 0);
-    const sComm   = Math.round(myScore?.score_comm || 0);
-    const sResp   = Math.round(myScore?.score_resp || 0);
-    const sPres   = Math.round(myScore?.score_presence || 0);
-    const pct     = taskTotal ? Math.round(((taskDone||0)/taskTotal)*100) : 0;
+    const gc     = gColors[grade] || '#64748b';
+    const score  = s?.score != null ? s.score : 0;
+    const barC   = score >= 90 ? '#16a34a' : score >= 65 ? '#f59e0b' : '#ef4444';
+    const ackR   = s && s.msgs_received > 0 ? Math.round(s.acknowledged / s.msgs_received * 100) + '%' : '—';
 
-    const scoreBar = (label, val, col, weight) =>
-        `<div style="margin-bottom:12px;">
-          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:4px;">
-            <span>${label} <span style="color:var(--text-secondary);font-size:10px;">(${weight}%)</span></span>
-            <span style="font-weight:700;color:${col};">${val}%</span>
+    const filters = [
+        {id:'this_month',label:'This Month'},
+        {id:'last_month',label:'Last Month'},
+        {id:'this_quarter',label:'Quarter'},
+        {id:'this_year',label:'Year'},
+    ];
+
+    const sBox = (label, val, color) =>
+        `<div style="background:var(--bg-body,#f8fafc);border:1px solid var(--border-color);border-radius:10px;padding:10px 6px;text-align:center;">
+          <div style="font-size:18px;font-weight:800;color:${color};">${val}</div>
+          <div style="font-size:9px;color:var(--text-secondary);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-top:2px;">${label}</div>
+        </div>`;
+
+    const dimBar = (label, val, weight) => {
+        const v = val != null ? Math.round(val) : 0;
+        const c = v >= 80 ? '#16a34a' : v >= 50 ? '#f59e0b' : '#ef4444';
+        return `<div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+            <span style="font-size:12px;font-weight:600;color:var(--text-primary);">${label}</span>
+            <span style="font-size:12px;font-weight:700;color:${c};">${val!=null?v+'%':'N/A'} <span style="font-size:10px;color:var(--text-secondary);">×${weight}</span></span>
           </div>
-          <div style="height:8px;background:var(--border-color);border-radius:4px;overflow:hidden;">
-            <div style="height:100%;width:${val}%;background:${col};border-radius:4px;transition:width .8s ease;"></div>
+          <div style="height:6px;background:var(--border-color);border-radius:6px;overflow:hidden;">
+            <div style="width:${Math.min(100,v)}%;height:100%;background:${c};border-radius:6px;transition:width .8s;"></div>
           </div>
         </div>`;
+    };
+
+    const gradeLegend = [['A+','#16a34a'],['A','#1d4ed8'],['B','#854d0e'],['C','#c2410c'],['D','#b91c1c']]
+        .map(([g,c]) => `<span style="font-size:10px;padding:1px 8px;border-radius:20px;font-weight:700;background:${c}18;color:${c};">${g}</span>`).join('');
 
     return `<div class="mScr-inner">
       <div class="m-hdr m-hdr-plain"><div class="m-htitle">Dashboard</div></div>
       <div style="padding:16px;">
 
-        <div class="m-sl">MY SCORECARD — ${new Date().toLocaleString('en-IN',{month:'long',timeZone:'Asia/Kolkata'})}</div>
-        <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color);border-radius:14px;padding:16px;margin-bottom:16px;">
-          <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
-            <div style="width:56px;height:56px;border-radius:14px;background:${gColor};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:#fff;flex-shrink:0;">${grade}</div>
-            <div>
-              <div style="font-size:28px;font-weight:800;color:var(--text-primary);">${score}<span style="font-size:14px;font-weight:500;color:var(--text-secondary);">%</span></div>
-              <div style="font-size:12px;color:var(--text-secondary);">Overall Score</div>
-            </div>
-            <div style="flex:1;height:8px;background:var(--border-color);border-radius:4px;overflow:hidden;margin-left:8px;">
-              <div style="height:100%;width:${score}%;background:linear-gradient(90deg,#6366f1,#10b981);border-radius:4px;transition:width .8s;"></div>
-            </div>
-          </div>
-          ${scoreBar('Task Delivery', sTask, '#6366f1', 40)}
-          ${scoreBar('Communication', sComm, '#0ea5e9', 25)}
-          ${scoreBar('Responsiveness', sResp, '#10b981', 20)}
-          ${scoreBar('Presence', sPres, '#f59e0b', 15)}
-          ${myScore ? `
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px;font-size:11px;color:var(--text-secondary);text-align:center;">
-            <div><div style="font-weight:700;color:var(--text-primary);font-size:15px;">${myScore.msgs_sent||0}</div>Sent</div>
-            <div><div style="font-weight:700;color:var(--text-primary);font-size:15px;">${myScore.tasks_total||0}</div>Tasks</div>
-            <div><div style="font-weight:700;color:var(--text-primary);font-size:15px;">${myScore.active_days||0}</div>Active Days</div>
-          </div>` : '<div style="text-align:center;color:var(--text-secondary);font-size:13px;padding:8px 0;">No activity this month yet</div>'}
+        <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:16px;scrollbar-width:none;">
+          ${filters.map(f=>`<button onclick="window._mobDash('${f.id}')" style="flex-shrink:0;padding:6px 14px;border-radius:20px;border:1px solid ${filter===f.id?'#6366f1':'var(--border-color)'};background:${filter===f.id?'#6366f1':'transparent'};color:${filter===f.id?'#fff':'var(--text-secondary)'};font-size:12px;font-weight:600;cursor:pointer;">${f.label}</button>`).join('')}
         </div>
 
-        <div class="m-sl">SCHOOL OVERVIEW</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
-          <div class="m-stat-card" style="background:#EEF2FF;"><div class="m-stat-num" style="color:#6366f1;">${msgCount||0}</div><div class="m-stat-lbl">Total Messages</div></div>
-          <div class="m-stat-card" style="background:#F0FDF4;"><div class="m-stat-num" style="color:#16a34a;">${taskDone||0}/${taskTotal||0}</div><div class="m-stat-lbl">Tasks Done</div></div>
-          <div class="m-stat-card" style="background:#FFFBEB;"><div class="m-stat-num" style="color:#f59e0b;">${pct}%</div><div class="m-stat-lbl">Completion</div></div>
-          <div class="m-stat-card" style="background:#FDF2F8;"><div class="m-stat-num" style="color:#be185d;">${_users.length}</div><div class="m-stat-lbl">Staff</div></div>
-        </div>
+        <div class="m-sl">MY SCORECARD — ${periodLabel}</div>
+        ${!s ? `<div style="text-align:center;color:var(--text-secondary);font-size:13px;padding:24px 0;">No scorecard data for ${periodLabel}.</div>` : `
+        <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color);border-radius:14px;padding:16px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div style="width:56px;height:56px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:${gc}15;border:3px solid ${gc}40;flex-shrink:0;">
+              <div style="font-size:22px;font-weight:900;color:${gc};line-height:1;">${grade}</div>
+              <div style="font-size:8px;font-weight:700;color:${gc};letter-spacing:1px;text-transform:uppercase;">Grade</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:36px;font-weight:900;color:${barC};line-height:1;">${score}%</div>
+              <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">Overall Score</div>
+              <div style="height:6px;background:var(--border-color);border-radius:6px;overflow:hidden;width:120px;margin:6px 0 0 auto;">
+                <div style="width:${Math.min(100,score)}%;height:100%;background:${barC};border-radius:6px;"></div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+            ${gradeLegend}
+            <span style="font-size:10px;color:var(--text-secondary);">A+≥90 A≥80 B≥65 C≥50 D&lt;50</span>
+          </div>
+
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);margin-bottom:8px;">Task Performance (40%)</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px;">
+            ${sBox('Total', s.tasks_total||0, '#6366f1')}
+            ${sBox('On Time', s.tasks_on_time||0, '#16a34a')}
+            ${sBox('Delayed', s.tasks_delayed||0, '#f59e0b')}
+            ${sBox('Pending', s.tasks_pending||0, '#ef4444')}
+            ${sBox('Transferred', s.tasks_transferred||0, '#8b5cf6')}
+          </div>
+
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);margin-bottom:8px;">Communication · Responsiveness · Presence</div>
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:14px;">
+            ${sBox('Msgs Sent', s.msgs_sent||0, '#0ea5e9')}
+            ${sBox('Msgs Rcvd', s.msgs_received||0, '#64748b')}
+            ${sBox('Ack Rate', ackR, '#10b981')}
+            ${sBox('Active Days', s.active_days||0, '#f59e0b')}
+          </div>
+
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);margin-bottom:10px;">Score Breakdown</div>
+          ${dimBar('Task Delivery', s.score_task, '40%')}
+          ${dimBar('Communication', s.score_comm, '25%')}
+          ${dimBar('Responsiveness', s.score_resp, '20%')}
+          ${dimBar('Presence', s.score_presence, '15%')}
+        </div>`}
 
         <div class="m-sl">RECENTLY ACTIVE</div>
         ${(recent||[]).map(u=>`
@@ -1242,6 +1309,175 @@ async function _dashboard() {
             ${_avatarHTML(u.avatar_url, u.full_name, 'var(--accent)', 'm-av-sm')}
             <div class="m-ri"><div class="m-rn">${x(u.full_name||'Staff')}</div><div class="m-rs">${u.last_login?_ago(u.last_login):'Never logged in'}</div></div>
           </div>`).join('')}
+      </div>
+    </div>`;
+}
+window._mobDash = async (f) => { await window._navTo('dashboard', {filter:f}, true); };
+
+async function _groupMgmt() {
+    const allGroups = [...DEPTS, ..._customGroups];
+    const fixedIds  = new Set(DEPTS.map(d=>d.id));
+    const PRESET_COLORS = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6'];
+
+    window._openGroupCreateSheet = function() {
+        const sheet = _el('mSheetInner');
+        sheet.innerHTML = `
+          <div class="m-sheet-handle"></div>
+          <div class="m-sheet-title">Create Group</div>
+          <div style="padding:0 16px 20px;display:flex;flex-direction:column;gap:12px;">
+            <div class="m-field"><label class="m-label">Group Name</label>
+              <input class="m-inp" id="gmCreateName" placeholder="e.g. Science Department"></div>
+            <div class="m-field"><label class="m-label">Color</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;" id="gmColorRow">
+                ${PRESET_COLORS.map(c=>`<div onclick="window._gmPickColor('${c}')" data-col="${c}"
+                  style="width:32px;height:32px;border-radius:50%;background:${c};cursor:pointer;border:3px solid transparent;"></div>`).join('')}
+              </div>
+              <input type="hidden" id="gmCreateColor" value="${PRESET_COLORS[0]}">
+            </div>
+            <div class="m-field"><label class="m-label">Members</label>
+              <div style="max-height:180px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px;padding:4px 0;" id="gmMemberList">
+                ${_users.map(u=>`<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;">
+                  <input type="checkbox" value="${u.id}" style="accent-color:#6366f1;">
+                  <span style="font-size:13px;">${x(u.full_name||u.email||'')}</span>
+                </label>`).join('')}
+              </div>
+            </div>
+            <button class="m-action-btn" style="background:#6366f1;" onclick="window._doCreateGroup()">
+              <i class="fa-solid fa-plus"></i> Create Group
+            </button>
+          </div>`;
+        _openSheet();
+        window._gmPickColor(PRESET_COLORS[0]);
+    };
+
+    window._gmPickColor = function(col) {
+        document.querySelectorAll('#gmColorRow [data-col]').forEach(el => {
+            el.style.border = el.dataset.col === col ? '3px solid #fff' : '3px solid transparent';
+            el.style.boxShadow = el.dataset.col === col ? `0 0 0 2px ${el.dataset.col}` : 'none';
+        });
+        const inp = _el('gmCreateColor') || _el('gmEditColor');
+        if (inp) inp.value = col;
+    };
+
+    window._doCreateGroup = async function() {
+        const name  = (_el('gmCreateName')?.value||'').trim();
+        const color = _el('gmCreateColor')?.value || '#6366f1';
+        if (!name) { _toast('Enter a group name','err'); return; }
+        const slug  = name.toLowerCase().replace(/[^a-z0-9]/g,'_').substring(0,20);
+        const roomId = 'grp_'+slug+'_'+Date.now().toString(36);
+        const selectedIds = [...document.querySelectorAll('#gmMemberList input:checked')].map(el=>el.value);
+        localStorage.setItem('dept_name_'+roomId, name);
+        localStorage.setItem('dept_color_'+roomId, color);
+        if (selectedIds.length) localStorage.setItem('dept_members_'+roomId, JSON.stringify(selectedIds));
+        try {
+            await sb.from('room_settings').upsert({ room_id:roomId, tenant_id:_tid, name, color, updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' });
+            await sb.from('messages').insert({ room_id:roomId, tenant_id:_tid, sender_id:_uid, text:`<p>📢 <strong>${x(name)}</strong> group created.</p>`, created_at:new Date().toISOString() });
+            _bcChannel?.send({ type:'broadcast', event:'group_photo', payload:{ room_id:roomId, name, color } });
+        } catch(e) { _toast('DB error: '+e.message, 'err'); }
+        _customGroups.push({ id:roomId, name, col:color, photo:'' });
+        _refreshDeptNames();
+        window._closeSheet();
+        _toast('Group "'+name+'" created!');
+        await _render('groupMgmt', null, 'forward');
+    };
+
+    window._openGroupEditSheet = function(gid, gname, gcol) {
+        const sheet = _el('mSheetInner');
+        const currentMembers = JSON.parse(localStorage.getItem('dept_members_'+gid)||'[]');
+        sheet.innerHTML = `
+          <div class="m-sheet-handle"></div>
+          <div class="m-sheet-title">Edit Group</div>
+          <input type="hidden" id="gmEditId" value="${gid}">
+          <div style="padding:0 16px 20px;display:flex;flex-direction:column;gap:12px;">
+            <div class="m-field"><label class="m-label">Group Name</label>
+              <input class="m-inp" id="gmEditName" value="${x(gname)}" placeholder="Group name"></div>
+            <div class="m-field"><label class="m-label">Color</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;" id="gmColorRow">
+                ${PRESET_COLORS.map(c=>`<div onclick="window._gmPickColor('${c}')" data-col="${c}"
+                  style="width:32px;height:32px;border-radius:50%;background:${c};cursor:pointer;border:3px solid transparent;"></div>`).join('')}
+              </div>
+              <input type="hidden" id="gmEditColor" value="${gcol||'#6366f1'}">
+            </div>
+            <div class="m-field"><label class="m-label">Members</label>
+              <div style="max-height:180px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px;padding:4px 0;" id="gmMemberList">
+                ${_users.map(u=>`<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;">
+                  <input type="checkbox" value="${u.id}" ${currentMembers.includes(u.id)?'checked':''} style="accent-color:#6366f1;">
+                  <span style="font-size:13px;">${x(u.full_name||u.email||'')}</span>
+                </label>`).join('')}
+              </div>
+            </div>
+            <button class="m-action-btn" style="background:#6366f1;" onclick="window._doSaveGroup()">
+              <i class="fa-solid fa-save"></i> Save Changes
+            </button>
+          </div>`;
+        _openSheet();
+        window._gmPickColor(gcol||'#6366f1');
+    };
+
+    window._doSaveGroup = async function() {
+        const gid   = _el('gmEditId')?.value;
+        const name  = (_el('gmEditName')?.value||'').trim();
+        const color = _el('gmEditColor')?.value || '#6366f1';
+        if (!gid || !name) { _toast('Invalid','err'); return; }
+        const selectedIds = [...document.querySelectorAll('#gmMemberList input:checked')].map(el=>el.value);
+        localStorage.setItem('dept_name_'+gid, name);
+        localStorage.setItem('dept_color_'+gid, color);
+        localStorage.setItem('dept_members_'+gid, JSON.stringify(selectedIds));
+        try {
+            await sb.from('room_settings').upsert({ room_id:gid, tenant_id:_tid, name, color, updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' });
+            _bcChannel?.send({ type:'broadcast', event:'group_photo', payload:{ room_id:gid, name, color } });
+        } catch(e) { _toast('DB error: '+e.message, 'err'); }
+        const cg = _customGroups.find(g=>g.id===gid);
+        if (cg) { cg.name = name; cg.col = color; }
+        _refreshDeptNames();
+        window._closeSheet();
+        _toast('Group updated!');
+        await _render('groupMgmt', null, 'forward');
+    };
+
+    window._archiveGroup = async function(gid) {
+        if (!confirm('Archive this group? It will be hidden from all users.')) return;
+        try {
+            await sb.from('room_settings').upsert({ room_id:gid, tenant_id:_tid, archived:true, updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' });
+        } catch(e) { _toast('DB error: '+e.message,'err'); return; }
+        const idx = _customGroups.findIndex(g=>g.id===gid);
+        if (idx>=0) _customGroups.splice(idx,1);
+        _toast('Group archived');
+        await _render('groupMgmt', null, 'forward');
+    };
+
+    return `<div class="mScr-inner">
+      <div class="m-hdr">
+        <button class="m-hdr-back" data-action="back"><i class="fa-solid fa-arrow-left"></i></button>
+        <div class="m-htitle">Group Management</div>
+      </div>
+      <div style="padding:16px;">
+        <button class="m-action-btn" style="background:#7c3aed;margin-bottom:16px;" onclick="window._openGroupCreateSheet()">
+          <i class="fa-solid fa-plus"></i> Create New Group
+        </button>
+
+        <div class="m-sl">FIXED GROUPS (read-only)</div>
+        ${DEPTS.map(d=>`
+          <div class="m-row" style="padding:10px 0;">
+            <div style="width:40px;height:40px;border-radius:12px;background:${d.col};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;">${d.photo?`<img src="${d.photo}" style="width:100%;height:100%;border-radius:12px;object-fit:cover;">`:'🏫'}</div>
+            <div class="m-ri"><div class="m-rn">${x(d.name)}</div><div class="m-rs" style="color:${d.col};">Fixed group · cannot archive</div></div>
+            <button onclick="window._openGroupEditSheet('${d.id}','${x(d.name)}','${d.col}')"
+              style="padding:6px 12px;border-radius:8px;background:#6366f120;color:#6366f1;border:none;font-size:12px;font-weight:600;cursor:pointer;">Edit</button>
+          </div>`).join('')}
+
+        ${_customGroups.length ? `
+        <div class="m-sl">CUSTOM GROUPS</div>
+        ${_customGroups.map(d=>`
+          <div class="m-row" style="padding:10px 0;">
+            <div style="width:40px;height:40px;border-radius:12px;background:${d.col};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;">👥</div>
+            <div class="m-ri"><div class="m-rn">${x(d.name)}</div><div class="m-rs" style="color:${d.col};">Custom group</div></div>
+            <div style="display:flex;gap:6px;">
+              <button onclick="window._openGroupEditSheet('${d.id}','${x(d.name)}','${d.col}')"
+                style="padding:6px 12px;border-radius:8px;background:#6366f120;color:#6366f1;border:none;font-size:12px;font-weight:600;cursor:pointer;">Edit</button>
+              <button onclick="window._archiveGroup('${d.id}')"
+                style="padding:6px 12px;border-radius:8px;background:#ef444420;color:#ef4444;border:none;font-size:12px;font-weight:600;cursor:pointer;">Archive</button>
+            </div>
+          </div>`).join('')}` : ''}
       </div>
     </div>`;
 }
@@ -1519,6 +1755,7 @@ async function _onShellClick(e) {
         case 'openNotifs': await _navTo('notifications'); break;
         case 'goToMsgNotif': await _goToMessage(a.mid); break;
         case 'goToTaskNotif': await _goToTask(a.tid); break;
+        case 'navGroupMgmt':   _navTo('groupMgmt'); break;
         case 'saveProfile':    await _saveProfile(); break;
         case 'setMyPhoto':   _el('mMyPhotoInput')?.click(); break;
         case 'setDeptPhoto': _pendingDeptPhoto = a.dept; _el('mDeptPhotoInput')?.click(); break;

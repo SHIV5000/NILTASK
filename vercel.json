@@ -3,7 +3,7 @@
   "trailingSlash": false,
   "rewrites": [
     {
-      "source": "/((?!signup|admin|developer|index|css|js|sounds|favicon).*)",
+      "source": "/((?!signup|admin|developer|index|css|js|sounds|favicon|\\.well-known).*)",
       "destination": "/index.html"
     }
   ],
@@ -14,6 +14,13 @@
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "X-Frame-Options",         "value": "DENY"    },
         { "key": "Referrer-Policy",          "value": "strict-origin-when-cross-origin" }
+      ]
+    },
+    {
+      "source": "/.well-known/assetlinks.json",
+      "headers": [
+        { "key": "Content-Type", "value": "application/json" },
+        { "key": "Cache-Control", "value": "public, max-age=3600" }
       ]
     }
   ]

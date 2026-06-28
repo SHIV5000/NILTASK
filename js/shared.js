@@ -29,7 +29,7 @@ window.getISTTime = function(dateStr) {
     if(!dateStr) return '';
     let d = new Date(dateStr);
     if(dateStr.indexOf('Z') === -1 && dateStr.indexOf('+') === -1) d = new Date(dateStr + 'Z'); 
-    return d.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
 window.getISTDate = function(dateStr) {

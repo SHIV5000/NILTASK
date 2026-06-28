@@ -50,6 +50,7 @@ window.initMobileApp = async function() {
 
 let _isOffline = !navigator.onLine;
 let _pendingRefresh = null;
+let _refreshGen = 0;
 
 function _saveRoomCache(roomId, msgs) {
     try { localStorage.setItem('mob_msgs_'+roomId, JSON.stringify(msgs.slice(-50))); } catch {}
@@ -449,7 +450,7 @@ async function _toggleReaction(msgId, value, type) {
     await _refreshChips(msgId);
 }
 async function _refreshChips(msgId) {
-    _pendingRefresh = null;
+    _refreshGen++;
     const row = document.getElementById('row-'+msgId);
     if (!row) return;
     const map = await _fetchReactions([msgId]);
@@ -488,8 +489,9 @@ function _renderLinkPills(html) {
                 const isFile = fileExts.test(url.split('?')[0]);
                 const label  = isFile ? 'Download' : 'Visit';
                 const icon   = isFile ? 'fa-download' : 'fa-arrow-up-right-from-square';
-                const safeUrl = url.replace(/'/g, '%27');
-                return `<a href="javascript:void(0);" onclick="window.open('${safeUrl}','_blank')" title="${x(url)}"
+                const fixedUrl = url.replace('/object/public/chat-attachments/', '/object/public/task-proofs/');
+                const safeUrl = fixedUrl.replace(/'/g, '%27');
+                return `<a href="javascript:void(0);" onclick="window.open('${safeUrl}','_blank')" title="${x(fixedUrl)}"
                     style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;text-decoration:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,.35);white-space:nowrap;vertical-align:middle;">
                     <i class="fa-solid ${icon}" style="font-size:9px;"></i><span>${x(name)}</span>
                     <span style="font-size:9px;opacity:.75;border-left:1px solid rgba(255,255,255,.35);padding-left:7px;margin-left:3px;">${label}</span>
@@ -539,6 +541,7 @@ async function _groupChat(p) {
     const cached = _loadRoomCache(p.room);
 
     _pendingRefresh = async () => {
+        const myGen = ++_refreshGen;
         if (_isOffline) return;
         try {
             const { data: msgs } = await sb.from('messages')
@@ -552,6 +555,7 @@ async function _groupChat(p) {
             const oldIds = (cached||[]).map(m=>m.id).join(',');
             if (newIds === oldIds) return;
             const reactionsMap = await _fetchReactions(msgs.map(m=>m.id));
+            if (myGen !== _refreshGen) return;
             const area = document.getElementById('mMsgArea');
             if (area) {
                 area.innerHTML = msgs.map(m=>_bubbleHTML(m,reactionsMap,140)).join('') || '<div class="m-empty">No messages yet. Send the first one!</div>';
@@ -607,6 +611,7 @@ async function _dm(p) {
     const otherUser = _users.find(u=>u.id===p.uid);
 
     _pendingRefresh = async () => {
+        const myGen = ++_refreshGen;
         if (_isOffline) return;
         try {
             const { data: msgs } = await sb.from('messages')
@@ -619,6 +624,7 @@ async function _dm(p) {
             const oldIds = (cached||[]).map(m=>m.id).join(',');
             if (newIds === oldIds) return;
             const reactionsMap = await _fetchReactions(msgs.map(m=>m.id));
+            if (myGen !== _refreshGen) return;
             const area = document.getElementById('mDMArea');
             if (area) {
                 area.innerHTML = msgs.map(m=>_bubbleHTML(m,reactionsMap,160)).join('') || `<div class="m-empty">Start a conversation with ${x(p.name)}</div>`;

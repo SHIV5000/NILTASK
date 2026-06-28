@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v24';
+const _MOB_VER = 'v25';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -10,7 +10,7 @@ console.log   = (...a) => { _logBuf.push('[L] '+a.join(' ')); if (_logBuf.length
 console.warn  = (...a) => { _logBuf.push('[W] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); };
 console.error = (...a) => { _logBuf.push('[E] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); };
 window._copyLogs = () => {
-    const txt = '[v24 log dump '+new Date().toISOString()+']\n'+_logBuf.join('\n');
+    const txt = '[v25 log dump '+new Date().toISOString()+']\n'+_logBuf.join('\n');
     navigator.clipboard?.writeText(txt)
         .then(() => _toast('Logs copied ✓ — paste anywhere'))
         .catch(() => _toast('Clipboard denied — use eruda','err'));
@@ -174,6 +174,20 @@ async function _ctx() {
                 .select('*, role:roles(name)')
                 .eq('user_id', _uid).eq('tenant_id', _tid).single();
             if (ur?.role?.name) window.currentRole = ur.role.name;
+        } catch {}
+    }
+    // Sync room names from DB → localStorage → DEPTS (populated by any online user who received a group_photo broadcast)
+    if (_tid) {
+        try {
+            const { data: rs } = await sb.from('room_settings')
+                .select('room_id,name,color').eq('tenant_id', _tid);
+            if (rs?.length) {
+                rs.forEach(r => {
+                    if (r.name)  localStorage.setItem('dept_name_'+r.room_id, r.name);
+                    if (r.color) localStorage.setItem('dept_color_'+r.room_id, r.color);
+                });
+                _refreshDeptNames();
+            }
         } catch {}
     }
 }
@@ -1662,7 +1676,15 @@ function _initRealtime() {
     _bcChannel = sb.channel('mobile-bc-'+_tid, { config: { broadcast: { self: false } } })
         .on('broadcast', { event:'reaction' }, p => { console.log('[mob-rt] broadcast reaction received'); _onReactionChange(p.payload, p.payload?.isDelete ? 'DELETE' : 'INSERT'); })
         .on('broadcast', { event:'group_photo' }, p => {
-            if (p.payload?.room_id && p.payload?.name) localStorage.setItem('dept_name_'+p.payload.room_id, p.payload.name);
+            if (p.payload?.room_id && p.payload?.name) {
+                localStorage.setItem('dept_name_'+p.payload.room_id, p.payload.name);
+                // Persist to DB so cold-start mobile users also get the correct name
+                if (_tid) {
+                    const upsertData = { room_id:p.payload.room_id, tenant_id:_tid, name:p.payload.name, updated_at:new Date().toISOString() };
+                    if (p.payload.color) upsertData.color = p.payload.color;
+                    sb.from('room_settings').upsert(upsertData, { onConflict:'room_id,tenant_id' }).then(() => {});
+                }
+            }
             if (p.payload?.room_id && p.payload?.color) localStorage.setItem('dept_color_'+p.payload.room_id, p.payload.color);
             _refreshDeptNames();
             const top = _stack[_stack.length-1];
@@ -1941,7 +1963,6 @@ async function _doSendDM(a) {
 function _appendOwnMessage(areaId, m, maxLen=150) {
     const area = _el(areaId);
     if (!area) return;
-    _refreshGen++;
     area.insertAdjacentHTML('beforeend', _bubbleHTML(m, {}, maxLen));
     area.scrollTo({ top: area.scrollHeight, behavior:'smooth' });
     // Update room cache

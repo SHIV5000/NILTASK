@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v18';
+const _MOB_VER = 'v19';
 let _stack  = [];
 let _uid    = null;
 let _tid    = null;
@@ -31,7 +31,33 @@ function _showOfflineBanner(show) {
     if (el) el.style.display = show ? 'flex' : 'none';
 }
 window.addEventListener('offline', () => { _isOffline = true;  _showOfflineBanner(true);  });
-window.addEventListener('online',  () => { _isOffline = false; _showOfflineBanner(false); });
+window.addEventListener('online',  () => { _isOffline = false; _showOfflineBanner(false); _flushOfflineQueue(); });
+
+function _getOfflineQueue() { try { return JSON.parse(localStorage.getItem('mob_send_queue')||'[]'); } catch { return []; } }
+function _saveOfflineQueue(q) { try { localStorage.setItem('mob_send_queue', JSON.stringify(q)); } catch {} }
+
+async function _flushOfflineQueue() {
+    const q = _getOfflineQueue();
+    if (!q.length) return;
+    const failed = [];
+    for (const item of q) {
+        const { data: m, error } = await sb.from('messages').insert(item.payload).select().single();
+        if (error) { failed.push(item); continue; }
+        // Replace pending bubble with real one
+        const pending = document.getElementById('pending-'+item.pendingId);
+        if (pending) {
+            const realHtml = _bubbleHTML(m, {});
+            pending.outerHTML = realHtml;
+        }
+        // Update room cache
+        const cached = _loadRoomCache(item.payload.room_id) || [];
+        cached.push(m);
+        _saveRoomCache(item.payload.room_id, cached);
+    }
+    _saveOfflineQueue(failed);
+    if (!failed.length) console.log('[mob-offline] queue flushed OK');
+    else console.log('[mob-offline] '+failed.length+' items still pending');
+}
 
 window.initMobileApp = async function() {
     if (window.innerWidth > MOB) return;
@@ -1498,7 +1524,7 @@ function _initRealtime() {
     if (_rtChannel || !_tid) return;
     _rtChannel = sb.channel('mobile-rt-'+_tid)
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => _onNewMessage(p.new))
-        .on('postgres_changes', { event:'*', schema:'public', table:'reactions', filter:`tenant_id=eq.${_tid}` }, p => _onReactionChange(p.new||p.old))
+        .on('postgres_changes', { event:'*', schema:'public', table:'reactions', filter:`tenant_id=eq.${_tid}` }, p => _onReactionChange(p.new||p.old, p.eventType))
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'task_assignees', filter:`tenant_id=eq.${_tid}` }, p => _onTaskAssigneeUpdate(p.new))
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`user_id=eq.${_uid}` }, () => _refreshNotifBadge())
         .subscribe();
@@ -1565,9 +1591,30 @@ async function _onNewMessage(m) {
         _saveRoomCache(m.room_id, cached);
     }
 }
-async function _onReactionChange(r) {
-    if (!r) return;
-    await _refreshChips(r.message_id);
+async function _onReactionChange(r, eventType) {
+    if (!r || !r.message_id) return;
+    // RLS prevents SELECT of other users' reactions — use payload directly for DOM patch
+    const row = document.getElementById('row-'+r.message_id);
+    if (!row) return;
+    const isDelete = eventType === 'DELETE';
+    // Collect current DOM chip state
+    const domReactions = [];
+    row.querySelectorAll('.m-chip').forEach(btn => {
+        domReactions.push({ message_id:r.message_id, value:btn.dataset.value, type:btn.dataset.type,
+            user_id: btn.classList.contains('mine') ? _uid : (btn.dataset.otherId || 'other') });
+    });
+    if (isDelete) {
+        const idx = domReactions.findIndex(d => d.value === r.value && d.user_id === r.user_id);
+        if (idx > -1) domReactions.splice(idx, 1);
+    } else {
+        const alreadyThere = domReactions.find(d => d.value === r.value && d.user_id === r.user_id);
+        if (!alreadyThere) domReactions.push({ message_id:r.message_id, value:r.value, type:r.type, user_id:r.user_id });
+    }
+    const map = domReactions.length ? { [r.message_id]: domReactions } : {};
+    const existingEl = row.querySelector('.m-chips');
+    const html = _chipsHTML(r.message_id, map);
+    if (existingEl) existingEl.outerHTML = html || '';
+    else if (html) row.querySelector('.m-bubble')?.insertAdjacentHTML('beforeend', html);
 }
 async function _onTaskAssigneeUpdate(row) {
     if (!row || row.assignee_id !== _uid) return;
@@ -1673,13 +1720,30 @@ function _compressImageToDataURL(file, maxSize=240, quality=0.72) {
     });
 }
 
+function _pendingBubbleHTML(pendingId, text) {
+    const cl = _renderLinkPills(text || '');
+    return `<div class="m-bubble-row snt" id="pending-${pendingId}">
+      <div class="m-bubble snt m-bubble-pending">
+        <div class="m-bmeta">You · just now</div>
+        <div class="m-btext">${cl}</div>
+        <div class="m-pending-indicator"><i class="fa-regular fa-hourglass" style="font-size:10px;opacity:.6;"></i></div>
+      </div>
+    </div>`;
+}
 async function _doSendGroup(a) {
     if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }
     const val = _ceHTML(a.target); if (!val) return;
     _ceClear(a.target);
-    const { data: m, error } = await sb.from('messages').insert({
-        room_id:a.room, sender_id:_uid, tenant_id:_tid, text:val, created_at:new Date().toISOString()
-    }).select().single();
+    const payload = { room_id:a.room, sender_id:_uid, tenant_id:_tid, text:val, created_at:new Date().toISOString() };
+    if (_isOffline) {
+        const pid = Date.now();
+        const area = _el('mMsgArea'); if (!area) return;
+        area.insertAdjacentHTML('beforeend', _pendingBubbleHTML(pid, val));
+        area.scrollTo({ top:area.scrollHeight, behavior:'smooth' });
+        const q = _getOfflineQueue(); q.push({ pendingId:pid, payload }); _saveOfflineQueue(q);
+        return;
+    }
+    const { data: m, error } = await sb.from('messages').insert(payload).select().single();
     if (error) { _toast('Send failed: '+error.message,'err'); return; }
     window.playSound?.('message');
     _appendOwnMessage('mMsgArea', m);
@@ -1688,6 +1752,7 @@ async function _doSendReply(a) {
     if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }
     const val = _ceHTML(a.target); if (!val) return;
     _ceClear(a.target);
+    if (_isOffline) { _toast('No connection — reply will send when online','err'); return; }
     const { data: m, error } = await sb.from('messages').insert({
         room_id:a.room, parent_message_id:a.pid, sender_id:_uid, tenant_id:_tid, text:val, created_at:new Date().toISOString()
     }).select().single();
@@ -1699,9 +1764,16 @@ async function _doSendDM(a) {
     if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }
     const val = _ceHTML(a.target); if (!val) return;
     _ceClear(a.target);
-    const { data: m, error } = await sb.from('messages').insert({
-        room_id:a.room, sender_id:_uid, tenant_id:_tid, text:val, created_at:new Date().toISOString()
-    }).select().single();
+    const payload = { room_id:a.room, sender_id:_uid, tenant_id:_tid, text:val, created_at:new Date().toISOString() };
+    if (_isOffline) {
+        const pid = Date.now();
+        const area = _el('mDMArea'); if (!area) return;
+        area.insertAdjacentHTML('beforeend', _pendingBubbleHTML(pid, val));
+        area.scrollTo({ top:area.scrollHeight, behavior:'smooth' });
+        const q = _getOfflineQueue(); q.push({ pendingId:pid, payload }); _saveOfflineQueue(q);
+        return;
+    }
+    const { data: m, error } = await sb.from('messages').insert(payload).select().single();
     if (error) { _toast('Send failed: '+error.message,'err'); return; }
     window.playSound?.('message');
     _appendOwnMessage('mDMArea', m);
@@ -1990,6 +2062,8 @@ function _injectCSS(){
   word-break:break-word;overflow-wrap:break-word;
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
 .m-divider{text-align:center;font-size:11px;color:var(--text-secondary);padding:8px 0;}
+.m-bubble-pending{opacity:.75;}
+.m-pending-indicator{display:flex;justify-content:flex-end;margin-top:4px;color:var(--text-secondary,#9ca3af);}
 @keyframes spin{to{transform:rotate(360deg);}}
 
 .m-scrollfab{position:absolute;right:14px;bottom:78px;width:38px;height:38px;border-radius:50%;

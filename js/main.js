@@ -1067,8 +1067,10 @@ window.startSubscriptions = function() {
                         window.triggerMessageNotification(p.new);
 
                     // ── Insert into notifications table (powers the bell badge) ──
+                    // Skip DM notifications for rooms the current user is not part of
+                    const isDmForMe = !incomingRoom.startsWith('dm_') || incomingRoom.includes(window.currentUser.id);
                     // Deduplicate by message_id to prevent double entries
-                    try {
+                    if (isDmForMe) try {
                         const { count } = await sb.from('notifications')
                             .select('id', { count: 'exact', head: true })
                             .eq('user_id', window.currentUser.id)
@@ -1092,7 +1094,7 @@ window.startSubscriptions = function() {
                         }
                     } catch(e) { /* notification insert failed — non-fatal */ }
                     // Increment badge instantly — no DB read needed
-                    window._incrementBellBadge?.();
+                    if (isDmForMe) window._incrementBellBadge?.();
                 }
                 if (typeof window.loadChatsList === 'function') window.loadChatsList();
                 if (incomingRoom.startsWith('dm_') && incomingRoom.includes(window.currentUser.id) && !isMine)

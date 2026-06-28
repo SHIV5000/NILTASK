@@ -17,6 +17,21 @@ const DEPTS = [
     {id:'leadership',name:localStorage.getItem('dept_name_leadership')||'Leadership',col:localStorage.getItem('dept_color_leadership')||'#f59e0b', photo:localStorage.getItem('dept_photo_leadership')||''},
 ];
 
+function _showOfflineBanner(show) {
+    let el = document.getElementById('mOfflineBanner');
+    if (!el && show) {
+        el = document.createElement('div');
+        el.id = 'mOfflineBanner';
+        el.style.cssText = 'background:#f59e0b;color:#fff;font-size:11px;font-weight:700;' +
+            'text-align:center;padding:3px 10px;border-radius:8px;white-space:nowrap;flex-shrink:0;';
+        el.textContent = '⚡ Offline';
+        document.getElementById('mSB')?.appendChild(el);
+    }
+    if (el) el.style.display = show ? 'flex' : 'none';
+}
+window.addEventListener('offline', () => { _isOffline = true;  _showOfflineBanner(true);  });
+window.addEventListener('online',  () => { _isOffline = false; _showOfflineBanner(false); });
+
 window.initMobileApp = async function() {
     if (window.innerWidth > MOB) return;
     _el('root')?.style.setProperty('display', 'none', 'important');
@@ -25,12 +40,23 @@ window.initMobileApp = async function() {
     await _ctx();
     await _navTo('home');
     _initRealtime();
+    _showOfflineBanner(_isOffline);
     window.addEventListener('resize', () => {
         const m = window.innerWidth <= MOB;
         _el('mobileApp')?.style.setProperty('display', m ? 'flex' : 'none', 'important');
         if (m) _el('root')?.style.setProperty('display', 'none', 'important');
     }, { passive: true });
 };
+
+let _isOffline = !navigator.onLine;
+let _pendingRefresh = null;
+
+function _saveRoomCache(roomId, msgs) {
+    try { localStorage.setItem('mob_msgs_'+roomId, JSON.stringify(msgs.slice(-50))); } catch {}
+}
+function _loadRoomCache(roomId) {
+    try { return JSON.parse(localStorage.getItem('mob_msgs_'+roomId)||'null'); } catch { return null; }
+}
 
 let _usersLoaded = false;
 async function _ctx() {
@@ -206,6 +232,8 @@ async function _render(screen, params, dir='forward') {
     _scrollTop('mStage');
 
     if (params?.scrollTo) _scrollAndGlow(params.scrollTo);
+
+    if (_pendingRefresh) { const fn = _pendingRefresh; _pendingRefresh = null; fn(); }
 }
 function _scrollAndGlow(msgId, attempt=0) {
     const row = document.getElementById('row-'+msgId);
@@ -238,17 +266,32 @@ window._openMoreSheet = function() {
 };
 
 async function _home() {
-    await _ctx();
-    const { data: lastMsgs } = await sb.from('messages')
-        .select('room_id,text,created_at,sender_id')
-        .eq('tenant_id',_tid).is('deleted_at',null)
-        .order('created_at',{ascending:false}).limit(200);
-
-    const last = {};
-    (lastMsgs||[]).forEach(m => { if(!last[m.room_id]) last[m.room_id]=m; });
-    const others = _users.filter(u=>u.id!==_uid);
-
+    const others  = _users.filter(u=>u.id!==_uid);
     const canGear = window.canSeeGroupGear?.() ?? true;
+
+    // Try cached last-messages
+    const cachedLast = (() => { try { return JSON.parse(localStorage.getItem('mob_home_last')||'null'); } catch { return null; } })();
+    const last = cachedLast || {};
+
+    // Schedule background refresh of last-message previews
+    _pendingRefresh = async () => {
+        if (_isOffline) return;
+        try {
+            const { data: lastMsgs } = await sb.from('messages')
+                .select('room_id,text,created_at,sender_id')
+                .eq('tenant_id',_tid).is('deleted_at',null)
+                .order('created_at',{ascending:false}).limit(200);
+            const fresh = {};
+            (lastMsgs||[]).forEach(m => { if(!fresh[m.room_id]) fresh[m.room_id]=m; });
+            try { localStorage.setItem('mob_home_last', JSON.stringify(fresh)); } catch {}
+            // Patch subtitle rows in place
+            Object.entries(fresh).forEach(([roomId, lm]) => {
+                const el = document.getElementById('home-sub-'+roomId);
+                if (el) el.textContent = _snip(lm.text,38)+' · '+_ago(lm.created_at);
+            });
+        } catch {}
+    };
+
     return `<div class="mScr-inner">
       <div class="m-sl">DEPARTMENTS</div>
       ${DEPTS.map(d => { const lm=last[d.id]; return `
@@ -260,7 +303,7 @@ async function _home() {
           </div>` : _avatarHTML(d.photo, d.name, d.col, 'm-av sq')}
           <div class="m-ri" data-action="groupChat" data-room="${d.id}" data-name="${x(d.name)}" data-color="${d.col}">
             <div class="m-rn">${x(d.name)}</div>
-            <div class="m-rs">${lm ? _snip(lm.text,38)+' · '+_ago(lm.created_at) : 'No messages yet'}</div>
+            <div class="m-rs" id="home-sub-${d.id}">${lm ? _snip(lm.text,38)+' · '+_ago(lm.created_at) : 'No messages yet'}</div>
           </div>
           <i class="fa-solid fa-chevron-right m-chv" data-action="groupChat" data-room="${d.id}" data-name="${x(d.name)}" data-color="${d.col}"></i>
         </div>`; }).join('')}
@@ -276,7 +319,7 @@ async function _home() {
           ${_avatarHTML(u.avatar_url, nm, 'var(--accent)')}
           <div class="m-ri">
             <div class="m-rn">${x(nm)}</div>
-            <div class="m-rs">${lm ? _snip(lm.text,38)+' · '+_ago(lm.created_at) : x(u.designation||'Staff')}</div>
+            <div class="m-rs" id="home-sub-${dm}">${lm ? _snip(lm.text,38)+' · '+_ago(lm.created_at) : x(u.designation||'Staff')}</div>
           </div>
           <i class="fa-solid fa-chevron-right m-chv"></i>
         </div>`; }).join('') : '<div class="m-empty">No staff added yet</div>'}
@@ -484,14 +527,31 @@ function _ceInsertText(targetId, value) {
 }
 
 async function _groupChat(p) {
-    const { data: msgs } = await sb.from('messages')
-        .select('id,text,sender_id,created_at,parent_message_id')
-        .eq('room_id',p.room).eq('tenant_id',_tid)
-        .is('deleted_at',null).is('parent_message_id',null)
-        .order('created_at',{ascending:true}).limit(80);
+    const cached = _loadRoomCache(p.room);
 
-    const reactionsMap = await _fetchReactions((msgs||[]).map(m=>m.id));
+    _pendingRefresh = async () => {
+        if (_isOffline) return;
+        try {
+            const { data: msgs } = await sb.from('messages')
+                .select('id,text,sender_id,created_at,parent_message_id')
+                .eq('room_id',p.room).eq('tenant_id',_tid)
+                .is('deleted_at',null).is('parent_message_id',null)
+                .order('created_at',{ascending:true}).limit(80);
+            if (!msgs) return;
+            _saveRoomCache(p.room, msgs);
+            const newIds = msgs.map(m=>m.id).join(',');
+            const oldIds = (cached||[]).map(m=>m.id).join(',');
+            if (newIds === oldIds) return;
+            const reactionsMap = await _fetchReactions(msgs.map(m=>m.id));
+            const area = document.getElementById('mMsgArea');
+            if (area) {
+                area.innerHTML = msgs.map(m=>_bubbleHTML(m,reactionsMap,140)).join('') || '<div class="m-empty">No messages yet. Send the first one!</div>';
+                area.scrollTop = area.scrollHeight;
+            }
+        } catch {}
+    };
 
+    const shellMsgs = cached || [];
     return `<div class="mFlex">
       <div class="m-hdr">
         <button class="m-back" onclick="window._back()"><i class="fa-solid fa-arrow-left"></i></button>
@@ -499,7 +559,7 @@ async function _groupChat(p) {
         <div class="m-htitle">${x(p.name)}</div>
       </div>
       <div class="m-msgs" id="mMsgArea">
-        ${(msgs||[]).map(m=>_bubbleHTML(m,reactionsMap,140)).join('') || '<div class="m-empty">No messages yet. Send the first one!</div>'}
+        ${shellMsgs.length ? shellMsgs.map(m=>_bubbleHTML(m,{},140)).join('') : '<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">' + (cached ? 'No messages yet.' : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…') + '</div>'}
       </div>
       <button class="m-scrollfab" id="mScrollFab" style="display:none;" onclick="document.getElementById('mMsgArea').scrollTo({top:9e9,behavior:'smooth'})"><i class="fa-solid fa-chevron-down"></i></button>
       ${_composerHTML('mGCE', `Message ${p.name||''}…`, 'sendGroup', `data-room="${p.room}" data-name="${x(p.name)}" data-color="${p.color||''}"`)}
@@ -534,13 +594,31 @@ async function _thread(p) {
 }
 
 async function _dm(p) {
-    const { data: msgs } = await sb.from('messages')
-        .select('id,text,sender_id,created_at')
-        .eq('room_id',p.room).eq('tenant_id',_tid)
-        .is('deleted_at',null).order('created_at',{ascending:true}).limit(80);
-
-    const reactionsMap = await _fetchReactions((msgs||[]).map(m=>m.id));
+    const cached    = _loadRoomCache(p.room);
     const otherUser = _users.find(u=>u.id===p.uid);
+
+    _pendingRefresh = async () => {
+        if (_isOffline) return;
+        try {
+            const { data: msgs } = await sb.from('messages')
+                .select('id,text,sender_id,created_at')
+                .eq('room_id',p.room).eq('tenant_id',_tid)
+                .is('deleted_at',null).order('created_at',{ascending:true}).limit(80);
+            if (!msgs) return;
+            _saveRoomCache(p.room, msgs);
+            const newIds = msgs.map(m=>m.id).join(',');
+            const oldIds = (cached||[]).map(m=>m.id).join(',');
+            if (newIds === oldIds) return;
+            const reactionsMap = await _fetchReactions(msgs.map(m=>m.id));
+            const area = document.getElementById('mDMArea');
+            if (area) {
+                area.innerHTML = msgs.map(m=>_bubbleHTML(m,reactionsMap,160)).join('') || `<div class="m-empty">Start a conversation with ${x(p.name)}</div>`;
+                area.scrollTop = area.scrollHeight;
+            }
+        } catch {}
+    };
+
+    const shellMsgs = cached || [];
     return `<div class="mFlex">
       <div class="m-hdr">
         <button class="m-back" onclick="window._back()"><i class="fa-solid fa-arrow-left"></i></button>
@@ -548,7 +626,7 @@ async function _dm(p) {
         <div class="m-htitle">${x(p.name)}</div>
       </div>
       <div class="m-msgs" id="mDMArea">
-        ${(msgs||[]).map(m=>_bubbleHTML(m,reactionsMap,160)).join('') || `<div class="m-empty">Start a conversation with ${x(p.name)}</div>`}
+        ${shellMsgs.length ? shellMsgs.map(m=>_bubbleHTML(m,{},160)).join('') : `<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">${cached ? `Start a conversation with ${x(p.name)}` : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…'}</div>`}
       </div>
       <button class="m-scrollfab" id="mScrollFab" style="display:none;" onclick="document.getElementById('mDMArea').scrollTo({top:9e9,behavior:'smooth'})"><i class="fa-solid fa-chevron-down"></i></button>
       ${_composerHTML('mDCE', `Message ${p.name||''}…`, 'sendDM', `data-room="${p.room}" data-uid="${p.uid||''}" data-name="${x(p.name)}"`)}
@@ -864,27 +942,76 @@ async function _settings() {
 }
 
 async function _dashboard() {
-    const [{ count: msgCount }, { count: taskCount },
-           { count: doneCount }, { data: recent }] = await Promise.all([
+    const today  = new Date();
+    const p_from = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0,10);
+    const p_to   = today.toISOString().slice(0,10);
+
+    const [scoreRes, { count: msgCount }, { count: taskTotal }, { count: taskDone }, { data: recent }] = await Promise.all([
+        sb.rpc('get_staff_scorecard', { p_tenant_id: _tid, p_from, p_to }),
         sb.from('messages').select('*',{count:'exact',head:true}).eq('tenant_id',_tid).is('deleted_at',null),
-        sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('tenant_id',_tid),
-        sb.from('task_assignees').select('*',{count:'exact',head:true}).eq('tenant_id',_tid).eq('status','accepted'),
-        sb.from('profiles').select('*').eq('tenant_id',_tid).is('deleted_at',null).order('last_login',{ascending:false}).limit(5),
+        sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',_tid),
+        sb.from('tasks').select('*',{count:'exact',head:true}).eq('tenant_id',_tid).eq('status','done'),
+        sb.from('profiles').select('id,full_name,avatar_url,last_login').eq('tenant_id',_tid).is('deleted_at',null).order('last_login',{ascending:false}).limit(5),
     ]);
-    const pct = taskCount ? Math.round((doneCount/taskCount)*100) : 0;
+
+    const myScore = (scoreRes?.data||[]).find(s => s.user_id === _uid) || null;
+    const grade   = myScore?.grade || 'N/A';
+    const gColors = {'A+':'#16a34a','A':'#1d4ed8','B':'#854d0e','C':'#c2410c','D':'#b91c1c','N/A':'#64748b'};
+    const gColor  = gColors[grade] || '#64748b';
+    const score   = Math.round(myScore?.score || 0);
+    const sTask   = Math.round(myScore?.score_task || 0);
+    const sComm   = Math.round(myScore?.score_comm || 0);
+    const sResp   = Math.round(myScore?.score_resp || 0);
+    const sPres   = Math.round(myScore?.score_presence || 0);
+    const pct     = taskTotal ? Math.round(((taskDone||0)/taskTotal)*100) : 0;
+
+    const scoreBar = (label, val, col, weight) =>
+        `<div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:4px;">
+            <span>${label} <span style="color:var(--text-secondary);font-size:10px;">(${weight}%)</span></span>
+            <span style="font-weight:700;color:${col};">${val}%</span>
+          </div>
+          <div style="height:8px;background:var(--border-color);border-radius:4px;overflow:hidden;">
+            <div style="height:100%;width:${val}%;background:${col};border-radius:4px;transition:width .8s ease;"></div>
+          </div>
+        </div>`;
+
     return `<div class="mScr-inner">
       <div class="m-hdr m-hdr-plain"><div class="m-htitle">Dashboard</div></div>
-      <div style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div class="m-stat-card" style="background:#EEF2FF;"><div class="m-stat-num" style="color:#6366f1;">${msgCount||0}</div><div class="m-stat-lbl">Total Messages</div></div>
-        <div class="m-stat-card" style="background:#F0FDF4;"><div class="m-stat-num" style="color:#16a34a;">${doneCount||0}/${taskCount||0}</div><div class="m-stat-lbl">Tasks Done</div></div>
-        <div class="m-stat-card" style="background:#FFFBEB;"><div class="m-stat-num" style="color:#f59e0b;">${pct}%</div><div class="m-stat-lbl">Completion Rate</div></div>
-        <div class="m-stat-card" style="background:#FDF2F8;"><div class="m-stat-num" style="color:#be185d;">${_users.length}</div><div class="m-stat-lbl">Staff Members</div></div>
-      </div>
-      <div style="padding:0 16px;">
-        <div class="m-sl">TASK COMPLETION</div>
-        <div style="height:12px;background:var(--border-color);border-radius:6px;overflow:hidden;margin-bottom:20px;">
-          <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#6366f1,#10b981);border-radius:6px;transition:width .8s ease;"></div>
+      <div style="padding:16px;">
+
+        <div class="m-sl">MY SCORECARD — ${new Date().toLocaleString('en-IN',{month:'long',timeZone:'Asia/Kolkata'})}</div>
+        <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color);border-radius:14px;padding:16px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
+            <div style="width:56px;height:56px;border-radius:14px;background:${gColor};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:#fff;flex-shrink:0;">${grade}</div>
+            <div>
+              <div style="font-size:28px;font-weight:800;color:var(--text-primary);">${score}<span style="font-size:14px;font-weight:500;color:var(--text-secondary);">%</span></div>
+              <div style="font-size:12px;color:var(--text-secondary);">Overall Score</div>
+            </div>
+            <div style="flex:1;height:8px;background:var(--border-color);border-radius:4px;overflow:hidden;margin-left:8px;">
+              <div style="height:100%;width:${score}%;background:linear-gradient(90deg,#6366f1,#10b981);border-radius:4px;transition:width .8s;"></div>
+            </div>
+          </div>
+          ${scoreBar('Task Delivery', sTask, '#6366f1', 40)}
+          ${scoreBar('Communication', sComm, '#0ea5e9', 25)}
+          ${scoreBar('Responsiveness', sResp, '#10b981', 20)}
+          ${scoreBar('Presence', sPres, '#f59e0b', 15)}
+          ${myScore ? `
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px;font-size:11px;color:var(--text-secondary);text-align:center;">
+            <div><div style="font-weight:700;color:var(--text-primary);font-size:15px;">${myScore.msgs_sent||0}</div>Sent</div>
+            <div><div style="font-weight:700;color:var(--text-primary);font-size:15px;">${myScore.tasks_total||0}</div>Tasks</div>
+            <div><div style="font-weight:700;color:var(--text-primary);font-size:15px;">${myScore.active_days||0}</div>Active Days</div>
+          </div>` : '<div style="text-align:center;color:var(--text-secondary);font-size:13px;padding:8px 0;">No activity this month yet</div>'}
         </div>
+
+        <div class="m-sl">SCHOOL OVERVIEW</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+          <div class="m-stat-card" style="background:#EEF2FF;"><div class="m-stat-num" style="color:#6366f1;">${msgCount||0}</div><div class="m-stat-lbl">Total Messages</div></div>
+          <div class="m-stat-card" style="background:#F0FDF4;"><div class="m-stat-num" style="color:#16a34a;">${taskDone||0}/${taskTotal||0}</div><div class="m-stat-lbl">Tasks Done</div></div>
+          <div class="m-stat-card" style="background:#FFFBEB;"><div class="m-stat-num" style="color:#f59e0b;">${pct}%</div><div class="m-stat-lbl">Completion</div></div>
+          <div class="m-stat-card" style="background:#FDF2F8;"><div class="m-stat-num" style="color:#be185d;">${_users.length}</div><div class="m-stat-lbl">Staff</div></div>
+        </div>
+
         <div class="m-sl">RECENTLY ACTIVE</div>
         ${(recent||[]).map(u=>`
           <div class="m-row" style="padding:10px 0;">
@@ -1378,6 +1505,12 @@ async function _onNewMessage(m) {
     area.insertAdjacentHTML('beforeend', _bubbleHTML(m, {}, inThread?160:140));
     if (wasNearBottom) area.scrollTop = area.scrollHeight;
     else _el('mScrollFab')?.style.setProperty('display','flex');
+    // Keep room cache in sync
+    if (!inThread) {
+        const cached = _loadRoomCache(m.room_id) || [];
+        cached.push(m);
+        _saveRoomCache(m.room_id, cached);
+    }
 }
 async function _onReactionChange(r) {
     if (!r) return;
@@ -1525,6 +1658,10 @@ function _appendOwnMessage(areaId, m, maxLen=150) {
     if (!area) return;
     area.insertAdjacentHTML('beforeend', _bubbleHTML(m, {}, maxLen));
     area.scrollTo({ top: area.scrollHeight, behavior:'smooth' });
+    // Update room cache
+    const cached = _loadRoomCache(m.room_id) || [];
+    cached.push(m);
+    _saveRoomCache(m.room_id, cached);
 }
 async function _doForward(room, text) {
     window._closeSheet();
@@ -1627,8 +1764,13 @@ function _el(id) { return document.getElementById(id); }
 function x(s)    { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function _init(n){ return (n||'?').split(' ').map(w=>w[0]).join('').toUpperCase().substring(0,2)||'?'; }
 function _avatarHTML(photoUrl, name, bg, cls='m-av') {
-    if (photoUrl) return `<div class="${cls} m-av-photo" style="background-image:url('${x(photoUrl)}');"></div>`;
-    return `<div class="${cls}" style="background:${bg||'var(--accent)'};">${_init(name)}</div>`;
+    const initials = _init(name);
+    const bgStyle  = `background:${bg||'var(--accent)'};`;
+    if (!photoUrl) return `<div class="${cls}" style="${bgStyle}">${initials}</div>`;
+    const esc = photoUrl.replace(/'/g,"%27");
+    return `<div class="${cls}" style="${bgStyle}overflow:hidden;">` +
+        `<img src="${esc}" style="width:100%;height:100%;object-fit:cover;display:block;" ` +
+        `onerror="this.parentElement.innerHTML='${initials.replace(/'/g,"&#39;")}';this.parentElement.style.overflow='';"></div>`;
 }
 function _sentenceCase(s){ s=(s||'').trim(); return s ? s[0].toUpperCase()+s.slice(1).toLowerCase() : s; }
 function _fmtIST(ts, withTime=true) {
@@ -1652,14 +1794,16 @@ function _fmtIST(ts, withTime=true) {
 function _uname(id){ const u=_users.find(u=>u.id===id); return u?.full_name||u?.email?.split('@')[0]||'Someone'; }
 function _dmRoom(uid){ return ['dm',...[_uid,uid].sort()].join('_'); }
 function _snip(h,n){ const t=(h||'').replace(/<[^>]*>/g,'').trim(); return t.length>n?t.substring(0,n)+'…':t; }
+const _istFmt12 = new Intl.DateTimeFormat('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'});
+const _istFmtDate = new Intl.DateTimeFormat('en-IN',{day:'2-digit',month:'short',timeZone:'Asia/Kolkata'});
 function _ago(ts){
     if(!ts) return '';
     const d=(Date.now()-new Date(ts))/1000;
     if(d<60)    return 'just now';
     if(d<3600)  return Math.floor(d/60)+'m ago';
-    if(d<86400) return Math.floor(d/3600)+'h ago';
+    if(d<86400) return _istFmt12.format(new Date(ts));      // same day → show IST time e.g. "02:30 pm"
     if(d<604800)return Math.floor(d/86400)+'d ago';
-    return _fmtIST(ts, false);
+    return _istFmtDate.format(new Date(ts));                 // older → "12 Jun"
 }
 function _scrollTop(id){ const el=_el(id); if(el) el.scrollTop=0; }
 function _toast(msg, type='ok'){
@@ -1781,7 +1925,7 @@ function _injectCSS(){
 .m-bubble-row.snt{justify-content:flex-end;}
 .m-bubble-row.rcv{justify-content:flex-start;}
 .m-bubble{max-width:98%;padding:11px 14px;border-radius:12px;position:relative;
-  font-size:16px;line-height:1.5;overflow:hidden;word-break:break-word;
+  font-size:16px;line-height:1.5;word-break:break-word;
   background:var(--card-bg,#fff);box-shadow:var(--card-shadow,0 2px 8px rgba(0,0,0,.07));
   border:1px solid var(--border-color,#e5e7eb);
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
@@ -1798,6 +1942,7 @@ function _injectCSS(){
   word-break:break-word;overflow-wrap:break-word;
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
 .m-divider{text-align:center;font-size:11px;color:var(--text-secondary);padding:8px 0;}
+@keyframes spin{to{transform:rotate(360deg);}}
 
 .m-scrollfab{position:absolute;right:14px;bottom:78px;width:38px;height:38px;border-radius:50%;
   background:var(--bg-body,#fff);border:1px solid var(--border-color,#e5e7eb);

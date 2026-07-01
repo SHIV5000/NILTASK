@@ -172,17 +172,32 @@ window.saveNewGroup = async function() {
     if (_ngSelectedMembers.size===0) { err.textContent='Add at least one member.'; err.style.display='block'; return; }
     btn.disabled=true; btn.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Creating...';
     const roomId = 'grp_'+name.toLowerCase().replace(/[^a-z0-9]/g,'_').replace(/_+/g,'_').substring(0,30)+'_'+Date.now().toString(36);
+    const memberIds = [window.currentUser.id, ..._ngSelectedMembers];
     _webLsSet('dept_name_'+roomId, name);
     _webLsSet('dept_color_'+roomId, _ngColor);
     if (_ngPhotoDataUrl) _webLsSet('dept_photo_'+roomId, _ngPhotoDataUrl);
-    _webLsSet('dept_members_'+roomId, JSON.stringify([window.currentUser.id,..._ngSelectedMembers]));
+    _webLsSet('dept_members_'+roomId, JSON.stringify(memberIds));
+
+    // Persist to DB so all users see the group in their sidebar
+    const rsPayload = { room_id: roomId, tenant_id: window.currentTenantId, name, color: _ngColor, archived: false, updated_at: new Date().toISOString() };
+    // Try with members column first; fall back without it if column doesn't exist
+    let { error: rsErr } = await sb.from('room_settings').upsert({ ...rsPayload, members: memberIds }, { onConflict: 'room_id,tenant_id' });
+    if (rsErr?.message?.includes('members')) {
+        ({ error: rsErr } = await sb.from('room_settings').upsert(rsPayload, { onConflict: 'room_id,tenant_id' }));
+    }
+
     const { error } = await sb.from('messages').insert({
         room_id:roomId, sender_id:window.currentUser.id, tenant_id:window.currentTenantId,
         text:`<p>📢 <strong>${window.escapeHtml(name)}</strong> group created.</p>`,
         created_at:new Date().toISOString()
     });
     btn.disabled=false; btn.innerHTML='<i class="fa-solid fa-plus"></i> Create Department';
-    if (error) { err.textContent='Could not create: '+error.message; err.style.display='block'; return; }
+    if (rsErr) { err.textContent='Could not create group: '+rsErr.message; err.style.display='block'; return; }
+    if (error) { err.textContent='Could not post system message: '+error.message; err.style.display='block'; return; }
+
+    // Broadcast so other online users refresh their sidebar immediately
+    window._reactionsBroadcast?.send({ type:'broadcast', event:'group_photo', payload:{ room_id:roomId, name, color:_ngColor } });
+
     window.closeNewGroupModal();
     window.showCenterToast(`"${name}" created ✓`,'fa-solid fa-users');
     if (typeof window.loadChatsList==='function') window.loadChatsList();
@@ -909,16 +924,22 @@ window._clearGroupPhoto = function(g) {
 window.loadChatsList = async function() {
     const departments = ['general', 'math', 'science', 'leadership'];
 
-    // Sync custom dept names/colors from DB
+    // Sync custom dept names/colors/groups from DB
+    let _customGroups = [];
     if (window.currentTenantId) {
         try {
             const { data: rs } = await sb.from('room_settings')
                 .select('room_id,name,color,archived')
                 .eq('tenant_id', window.currentTenantId);
             if (rs?.length) {
+                const fixedIds = new Set(['general','math','science','leadership']);
                 rs.forEach(r => {
                     if (r.name)  _webLsSet('dept_name_'+r.room_id, r.name);
                     if (r.color) _webLsSet('dept_color_'+r.room_id, r.color);
+                    // Collect custom groups not in the 4 fixed rooms
+                    if (!fixedIds.has(r.room_id) && !r.archived) {
+                        _customGroups.push(r);
+                    }
                 });
             }
         } catch {}
@@ -981,6 +1002,33 @@ window.loadChatsList = async function() {
                 <i class="fa-solid fa-gear text-[10px]"></i>
             </button>
         </div>`;
+    }
+
+    // Render custom groups from room_settings (grp_* rooms)
+    if (_customGroups.length > 0) {
+        for (const g of _customGroups) {
+            const isCurrent = window.currentRoom === g.room_id;
+            const unread = window.unreadCounts?.[g.room_id] || 0;
+            const storedName = _webLsGet('dept_name_'+g.room_id) || g.name || g.room_id;
+            const storedColor = _webLsGet('dept_color_'+g.room_id) || g.color || '#8b5cf6';
+            const storedPhoto = _webLsGet('dept_photo_'+g.room_id) || '';
+            const initials = storedName.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase() || 'GR';
+            html += `<div class="channel-item group/dept p-2.5 mx-2 mb-1 rounded-xl cursor-pointer flex items-center gap-3 transition-colors border"
+                style="background-color:${isCurrent?'var(--bg-body)':'transparent'};border-color:${isCurrent?'var(--border-color)':'transparent'};font-weight:${isCurrent?'bold':'normal'};"
+                data-room="${g.room_id}" data-name="${window.escapeHtml(storedName)}">
+                <div class="relative flex-shrink-0">
+                    <div class="w-9 h-9 rounded-lg flex items-center justify-center text-white text-[11px] font-bold shadow-sm overflow-hidden"
+                        style="background:${storedColor};">${storedPhoto?`<img src="${storedPhoto}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`:initials}</div>
+                    ${unread > 0 ? `<span class="absolute -top-1 -right-1 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center" style="background:#22c55e;">${unread > 9 ? '9+' : unread}</span>` : ''}
+                </div>
+                <span class="flex-1 truncate tracking-wide text-sm" style="color:var(--text-primary);">${window.escapeHtml(storedName)}</span>
+                <button onclick="event.stopPropagation();window.openGroupSettings('${g.room_id}')"
+                    class="opacity-0 group-hover/dept:opacity-100 transition-opacity p-1 rounded hover:bg-gray-100 flex-shrink-0"
+                    style="color:var(--text-secondary);" title="Group Settings">
+                    <i class="fa-solid fa-gear text-[10px]"></i>
+                </button>
+            </div>`;
+        }
     }
 
     html += `<div class="sidebar-section-label px-4 py-2 mt-4 text-[10px] font-black tracking-widest uppercase" style="color:var(--text-secondary);">Staff Members</div>`;

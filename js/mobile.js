@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v28';
+const _MOB_VER = 'v29';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -28,6 +28,9 @@ let _notifPoll = null;
 let _swipeStart = null, _swipeRow = null, _swipeTriggered = false;
 let _searchMode = false;
 let _customGroups = [];
+let _userRoles = {};
+let _typingUsers = {};
+let _typingTimers = {};
 
 function _lsKey(k) { return (_tid ? _tid+'_' : '')+k; }
 function _lsSet(k,v) { try { localStorage.setItem(_lsKey(k),v); } catch{} }
@@ -42,6 +45,48 @@ function _lsGet(k,def='') {
     return def;
 }
 function _lsRm(k) { localStorage.removeItem(_lsKey(k)); }
+
+function _roleChip(userId) {
+    const r = (_userRoles[userId] || '').toLowerCase();
+    if (!r) return '';
+    const cfg = {
+        principal: { bg:'#dc2626', label:'Principal' },
+        hod:       { bg:'#ea580c', label:'HOD' },
+        teacher:   { bg:'#2563eb', label:'Teacher' },
+        student:   { bg:'#6b7280', label:'Student' },
+    };
+    const c = cfg[r] || { bg:'#6b7280', label:r };
+    return `<span class="m-role-chip" style="background:${c.bg};">${x(c.label)}</span>`;
+}
+
+function _onlineStatus(uid) {
+    const u = _users.find(u => u.id === uid);
+    if (!u?.last_seen) return '';
+    const diffMin = (Date.now() - new Date(u.last_seen).getTime()) / 60000;
+    if (diffMin < 3)    return '<span style="color:#22c55e;font-weight:700;">● Online</span>';
+    if (diffMin < 60)   return `Last seen ${Math.round(diffMin)}m ago`;
+    if (diffMin < 1440) return `Last seen ${Math.round(diffMin/60)}h ago`;
+    return '';
+}
+
+function _onlineDot(uid) {
+    const u = _users.find(u => u.id === uid);
+    if (!u?.last_seen) return '';
+    const diffMin = (Date.now() - new Date(u.last_seen).getTime()) / 60000;
+    if (diffMin < 3)  return '<span class="m-online-dot" style="background:#22c55e;"></span>';
+    if (diffMin < 30) return '<span class="m-online-dot" style="background:#fbbf24;"></span>';
+    return '';
+}
+
+function _updateTypingUI(room) {
+    const el = _el('mTypingArea');
+    if (!el) return;
+    const users = Object.values(_typingUsers[room] || {});
+    if (!users.length) { el.innerHTML = ''; return; }
+    const names = users.map(u => u.name.split(' ')[0]).join(', ');
+    const label = users.length === 1 ? `${x(names)} is typing` : `${x(names)} are typing`;
+    el.innerHTML = `<div class="m-typing"><span class="m-typing-dots"><span></span><span></span><span></span></span><span class="m-typing-text">${label}</span></div>`;
+}
 
 function _buildDepts() {
     return [
@@ -111,11 +156,12 @@ window.initMobileApp = async function() {
     await _navTo('home');
     _initRealtime();
     _showOfflineBanner(_isOffline);
-    // Auto-refresh displayed timestamps every 60s
+    // Auto-refresh displayed timestamps every 60s + update last_seen heartbeat
     _tsInterval = setInterval(() => {
         document.querySelectorAll('.m-bmeta[data-ts]').forEach(el => {
             el.textContent = el.dataset.label + ' · ' + _ago(el.dataset.ts);
         });
+        if (_uid) sb.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', _uid).then(() => {});
     }, 60000);
     window.addEventListener('resize', () => {
         const m = window.innerWidth <= MOB;
@@ -197,6 +243,15 @@ async function _ctx() {
             if (ur?.role?.name) window.currentRole = ur.role.name;
         } catch {}
     }
+    // Load all user roles for role badge display
+    if (_tid) {
+        try {
+            const { data: allRoles } = await sb.from('user_roles')
+                .select('user_id, role:roles(name)').eq('tenant_id', _tid);
+            _userRoles = {};
+            (allRoles||[]).forEach(r => { if (r.role?.name) _userRoles[r.user_id] = r.role.name; });
+        } catch {}
+    }
     // Sync room names from DB → localStorage → DEPTS; also collect custom groups
     if (_tid) {
         try {
@@ -220,11 +275,11 @@ async function _ctx() {
 function _buildShell() {
     if (_el('mobileApp')) return;
     const tabs = [
-        { id:'home',      icon:'fa-house',      lbl:'Home',     action:"window._navTo('home')" },
-        { id:'activity',  icon:'fa-bolt',        lbl:'Activity', action:"window._navTo('activity')" },
+        { id:'home',      icon:'fa-comments',      lbl:'Chats',      action:"window._navTo('home')" },
+        { id:'activity',  icon:'fa-bolt',          lbl:'Activity',   action:"window._navTo('activity')" },
         ...(window.canSeeTaskHub?.() ?? true ? [{ id:'tasks', icon:'fa-list-check', lbl:'Tasks', action:"window._navTo('tasks')" }] : []),
-        { id:'remind',    icon:'fa-bell',        lbl:'Remind',   action:"window._navTo('remind')" },
-        { id:'more',      icon:'fa-ellipsis',    lbl:'More',     action:"window._openMoreSheet()" },
+        { id:'remind',    icon:'fa-bell',          lbl:'Reminders',  action:"window._navTo('remind')" },
+        { id:'more',      icon:'fa-circle-user',   lbl:'Profile',    action:"window._navTo('settings')" },
     ];
     const app = document.createElement('div');
     app.id = 'mobileApp';
@@ -290,6 +345,15 @@ function _buildShell() {
     document.addEventListener('selectionchange', _onSelectionChange);
     // Suppress native copy/cut/paste toolbar when our format bar is active
     document.addEventListener('contextmenu', e => { if (e.target.closest('.m-ce')) e.preventDefault(); }, true);
+
+    // Broadcast typing indicator on input in any chat composer
+    app.addEventListener('input', e => {
+        if (!e.target.closest('.m-ce')) return;
+        const top = _stack[_stack.length-1];
+        const room = top?.params?.room;
+        if (!room || !_bcChannel) return;
+        _bcChannel.send({ type:'broadcast', event:'typing', payload:{ room, uid:_uid, name:_uname(_uid) } });
+    });
 
     // Swipe-right-to-reply gesture
     app.addEventListener('touchstart', e => {
@@ -437,6 +501,31 @@ function _setTab(screen) {
     const active = map[screen] || null; // marks/scheduled/settings/dashboard live in More — no tab to highlight
     document.querySelectorAll('.mn-btn').forEach(b => b.classList.toggle('active', active && b.id === 'mnt-'+active));
 }
+window._showRoomMenu = function(roomId, roomName) {
+    const sheet = _el('mSheetInner');
+    const canGear = window.canSeeGroupGear?.() ?? false;
+    const members = (() => { try { return JSON.parse(_lsGet('dept_members_'+roomId)||'[]'); } catch { return []; } })();
+    const isMuted = _lsGet('muted_'+roomId) === '1';
+    sheet.innerHTML = `
+      <div class="m-sheet-handle"></div>
+      <div class="m-sheet-title">${x(roomName)}</div>
+      <div style="display:flex;flex-direction:column;gap:2px;padding:0 8px 20px;">
+        <div class="m-sheet-row" data-action="toggleMute" data-room="${roomId}">
+          <i class="fa-solid ${isMuted?'fa-bell':'fa-bell-slash'}" style="color:#6366f1;"></i>
+          ${isMuted ? 'Unmute notifications' : 'Mute notifications'}
+        </div>
+        ${members.length ? `<div class="m-sheet-row" data-action="viewMembersSheet" data-room="${roomId}">
+          <i class="fa-solid fa-users" style="color:#0ea5e9;"></i> Members (${members.length})
+        </div>` : ''}
+        ${canGear ? `<div class="m-sheet-row" data-action="setDeptPhoto" data-dept="${roomId}">
+          <i class="fa-solid fa-camera" style="color:#10b981;"></i> Change group photo
+        </div>` : ''}
+        ${canGear ? `<div class="m-sheet-row" data-action="navMore" data-screen="groupMgmt">
+          <i class="fa-solid fa-pen" style="color:#f59e0b;"></i> Manage group
+        </div>` : ''}
+      </div>`;
+    _openSheet();
+};
 window._openMoreSheet = function() {
     const sheet = _el('mSheetInner');
     sheet.innerHTML = `
@@ -473,41 +562,56 @@ async function _home() {
             // Patch subtitle rows in place
             Object.entries(fresh).forEach(([roomId, lm]) => {
                 const el = document.getElementById('home-sub-'+roomId);
-                if (el) el.textContent = _snip(lm.text,38)+' · '+_ago(lm.created_at);
+                if (el) {
+                    const sn = lm.sender_id === _uid ? 'You' : (_uname(lm.sender_id)||'').split(' ')[0];
+                    el.textContent = (sn ? sn+': ' : '')+_snip(lm.text,32)+' · '+_ago(lm.created_at);
+                }
             });
         } catch {}
     };
 
     return `<div class="mScr-inner">
-      <div class="m-sl">DEPARTMENTS &amp; GROUPS</div>
-      ${[...DEPTS, ..._customGroups].map(d => { const lm=last[d.id]; return `
+      <div class="m-sl">CHANNELS</div>
+      ${[...DEPTS, ..._customGroups].map(d => {
+        const lm = last[d.id];
+        const unread = window.unreadCounts?.[d.id] || 0;
+        const isMuted = _lsGet('muted_'+d.id) === '1';
+        const sn = lm ? (lm.sender_id === _uid ? 'You' : (_uname(lm.sender_id)||'').split(' ')[0]) : '';
+        const subtext = lm ? (sn ? sn+': ' : '')+_snip(lm.text,32)+' · '+_ago(lm.created_at) : 'No messages yet';
+        return `
         <div class="m-row">
-          ${canGear ? `
-          <div class="m-av-wrap" data-action="setDeptPhoto" data-dept="${d.id}">
-            ${_avatarHTML(d.photo, d.name, d.col, 'm-av sq')}
-            <span class="m-av-cam"><i class="fa-solid fa-camera"></i></span>
-          </div>` : _avatarHTML(d.photo, d.name, d.col, 'm-av sq')}
+          ${_avatarHTML(d.photo, d.name, d.col, 'm-av sq')}
           <div class="m-ri" data-action="groupChat" data-room="${d.id}" data-name="${x(d.name)}" data-color="${d.col}">
-            <div class="m-rn">${x(d.name)}</div>
-            <div class="m-rs" id="home-sub-${d.id}">${lm ? _snip(lm.text,38)+' · '+_ago(lm.created_at) : 'No messages yet'}</div>
+            <div class="m-rn">${x(d.name)}${isMuted ? ' <span style="font-size:12px;opacity:.6;">🔕</span>' : ''}</div>
+            <div class="m-rs" id="home-sub-${d.id}">${subtext}</div>
           </div>
-          <i class="fa-solid fa-chevron-right m-chv" data-action="groupChat" data-room="${d.id}" data-name="${x(d.name)}" data-color="${d.col}"></i>
+          <div style="display:flex;align-items:center;gap:6px;">
+            ${unread > 0 ? `<span class="m-unread-badge">${unread > 99 ? '99+' : unread}</span>` : '<i class="fa-solid fa-chevron-right m-chv"></i>'}
+          </div>
         </div>`; }).join('')}
 
-      <div class="m-sl" style="margin-top:4px;">STAFF MEMBERS</div>
+      <div class="m-sl" style="margin-top:4px;">DIRECT MESSAGES</div>
       ${others.length ? others.map(u => {
         const dm = _dmRoom(u.id);
         const lm = last[dm];
         const nm = u.full_name||u.email.split('@')[0];
+        const unread = window.unreadCounts?.[dm] || 0;
+        const sn = lm ? (lm.sender_id === _uid ? 'You' : nm.split(' ')[0]) : '';
+        const subtext = lm ? (sn ? sn+': ' : '')+_snip(lm.text,32)+' · '+_ago(lm.created_at) : x(u.designation||'Staff');
         return `
         <div class="m-row" data-action="dm"
              data-uid="${u.id}" data-name="${x(nm)}" data-room="${dm}">
-          ${_avatarHTML(u.avatar_url, nm, 'var(--accent)')}
-          <div class="m-ri">
-            <div class="m-rn">${x(nm)}</div>
-            <div class="m-rs" id="home-sub-${dm}">${lm ? _snip(lm.text,38)+' · '+_ago(lm.created_at) : x(u.designation||'Staff')}</div>
+          <div style="position:relative;flex-shrink:0;">
+            ${_avatarHTML(u.avatar_url, nm, 'var(--accent)')}
+            ${_onlineDot(u.id)}
           </div>
-          <i class="fa-solid fa-chevron-right m-chv"></i>
+          <div class="m-ri">
+            <div class="m-rn">${x(nm)} ${_roleChip(u.id)}</div>
+            <div class="m-rs" id="home-sub-${dm}">${subtext}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            ${unread > 0 ? `<span class="m-unread-badge">${unread > 99 ? '99+' : unread}</span>` : '<i class="fa-solid fa-chevron-right m-chv"></i>'}
+          </div>
         </div>`; }).join('') : '<div class="m-empty">No staff added yet</div>'}
       <input type="file" id="mDeptPhotoInput" style="display:none;" accept="image/*">
     </div>`;
@@ -686,14 +790,27 @@ function _bubbleHTML(m, reactionsMap, maxLen=150, replyMap={}, roomCtx={}) {
         data-sender="${x(nm)}" data-time="${_ago(m.created_at)}"
         data-room="${rCtx.room||''}" data-rname="${x(rCtx.name||'')}" data-rcol="${rCtx.color||''}">
         💬 ${rc} repl${rc===1?'y':'ies'} ›</button>` : '';
+    // Message status ticks for own messages
+    let statusTick = '';
+    if (me && rCtx.room) {
+        const isPending = (m.id||'').startsWith('pending-');
+        const otherRead = _lsGet('last_read_other_'+rCtx.room);
+        const isRead = !isPending && otherRead && otherRead > (m.created_at||'');
+        if (isPending) statusTick = '<span class="m-tick pending">⏳</span>';
+        else if (isRead) statusTick = '<span class="m-tick read">✓✓</span>';
+        else statusTick = '<span class="m-tick sent">✓✓</span>';
+    }
+    const roleChip = (!me && rCtx.room) ? _roleChip(m.sender_id) : '';
     return `
       <div class="m-bubble-row ${me?'snt':'rcv'}" id="row-${m.id}" data-time="${m.created_at}">
         ${!me ? _avatarHTML(sender?.avatar_url, nm, 'var(--accent)', 'm-av-tiny') : ''}
         <div class="m-bubble ${me?'snt':'rcv'}">
           <div class="m-bmeta" data-ts="${m.created_at}" data-label="${x(nm)}">${x(nm)} · ${_ago(m.created_at)}</div>
+          ${roleChip ? `<div style="margin:-2px 0 4px;">${roleChip}</div>` : ''}
           <div class="m-btext">${cl}</div>
           ${_chipsHTML(m.id, reactionsMap)}
           ${threadBtn}
+          ${statusTick ? `<div class="m-status-row">${statusTick}</div>` : ''}
         </div>
       </div>`;
 }
@@ -802,16 +919,27 @@ async function _groupChat(p) {
     };
 
     const shellMsgs = cached || [];
+    const memberCount = (() => { try { const m=JSON.parse(_lsGet('dept_members_'+p.room)||'[]'); return m.length || ''; } catch { return ''; } })();
+    // Broadcast room_read and record our own read timestamp
+    setTimeout(() => {
+        _bcChannel?.send({ type:'broadcast', event:'room_read', payload:{ room:p.room, uid:_uid, ts:new Date().toISOString() } });
+        _lsSet('last_read_'+p.room, new Date().toISOString());
+    }, 500);
     return `<div class="mFlex">
       <div class="m-hdr">
         <button class="m-back" onclick="window._back()"><i class="fa-solid fa-arrow-left"></i></button>
-        ${_avatarHTML(DEPTS.find(d=>d.id===p.room)?.photo, p.name, p.color, 'm-av-sm sq')}
-        <div class="m-htitle">${x(p.name)}</div>
+        ${_avatarHTML(DEPTS.find(d=>d.id===p.room)?.photo || _customGroups.find(g=>g.id===p.room)?.photo, p.name, p.color, 'm-av-sm sq')}
+        <div class="m-htitle-wrap">
+          <div class="m-htitle">${x(p.name)}</div>
+          ${memberCount ? `<div class="m-hsubtitle">${memberCount} members</div>` : ''}
+        </div>
+        <button class="m-hdr-menu" onclick="window._showRoomMenu('${p.room}','${x(p.name)}')"><i class="fa-solid fa-ellipsis-vertical"></i></button>
       </div>
       <div class="m-msgs" id="mMsgArea">
         ${shellMsgs.length ? (()=>{ const sr=_loadReactionsCache(); return shellMsgs.map(m=>_bubbleHTML(m,sr,140,{},p)).join(''); })() : '<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">' + (cached ? 'No messages yet.' : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…') + '</div>'}
       </div>
       <button class="m-scrollfab" id="mScrollFab" style="display:none;" onclick="document.getElementById('mMsgArea').scrollTo({top:9e9,behavior:'smooth'})"><i class="fa-solid fa-chevron-down"></i></button>
+      <div class="m-typing-area" id="mTypingArea"></div>
       ${_composerHTML('mGCE', `Message ${p.name||''}…`, 'sendGroup', `data-room="${p.room}" data-name="${x(p.name)}" data-color="${p.color||''}"`)}
     </div>`;
 }
@@ -874,16 +1002,28 @@ async function _dm(p) {
     };
 
     const shellMsgs = cached || [];
+    const onlineStat = _onlineStatus(p.uid);
+    const roleTag = _roleChip(p.uid);
+    // Broadcast room_read and record our own read timestamp
+    setTimeout(() => {
+        _bcChannel?.send({ type:'broadcast', event:'room_read', payload:{ room:p.room, uid:_uid, ts:new Date().toISOString() } });
+        _lsSet('last_read_'+p.room, new Date().toISOString());
+    }, 500);
     return `<div class="mFlex">
       <div class="m-hdr">
         <button class="m-back" onclick="window._back()"><i class="fa-solid fa-arrow-left"></i></button>
-        ${_avatarHTML(otherUser?.avatar_url, p.name, 'var(--accent)', 'm-av-sm')}
-        <div class="m-htitle">${x(p.name)}</div>
+        <div style="position:relative;flex-shrink:0;">${_avatarHTML(otherUser?.avatar_url, p.name, 'var(--accent)', 'm-av-sm')}${_onlineDot(p.uid)}</div>
+        <div class="m-htitle-wrap">
+          <div class="m-htitle">${x(p.name)} ${roleTag}</div>
+          ${onlineStat ? `<div class="m-hsubtitle">${onlineStat}</div>` : ''}
+        </div>
+        <button class="m-hdr-menu" onclick="window._showRoomMenu('${p.room}','${x(p.name)}')"><i class="fa-solid fa-ellipsis-vertical"></i></button>
       </div>
       <div class="m-msgs" id="mDMArea">
-        ${shellMsgs.length ? (()=>{ const sr=_loadReactionsCache(); return shellMsgs.map(m=>_bubbleHTML(m,sr,160)).join(''); })() : `<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">${cached ? `Start a conversation with ${x(p.name)}` : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…'}</div>`}
+        ${shellMsgs.length ? (()=>{ const sr=_loadReactionsCache(); return shellMsgs.map(m=>_bubbleHTML(m,sr,160,{},p)).join(''); })() : `<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">${cached ? `Start a conversation with ${x(p.name)}` : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…'}</div>`}
       </div>
       <button class="m-scrollfab" id="mScrollFab" style="display:none;" onclick="document.getElementById('mDMArea').scrollTo({top:9e9,behavior:'smooth'})"><i class="fa-solid fa-chevron-down"></i></button>
+      <div class="m-typing-area" id="mTypingArea"></div>
       ${_composerHTML('mDCE', `Message ${p.name||''}…`, 'sendDM', `data-room="${p.room}" data-uid="${p.uid||''}" data-name="${x(p.name)}"`)}
     </div>`;
 }
@@ -1045,33 +1185,65 @@ async function _remindEdit(p) {
 }
 
 async function _notifications() {
-    const { data } = await sb.from('notifications').select('*').eq('user_id',_uid).eq('tenant_id',_tid).order('created_at',{ascending:false}).limit(30);
+    const { data } = await sb.from('notifications').select('*').eq('user_id',_uid).eq('tenant_id',_tid).order('created_at',{ascending:false}).limit(50);
     const iconMap = {reminder:'fa-stopwatch',task:'fa-clipboard-check',message:'fa-comment',general:'fa-bell'};
     const colorMap = {reminder:'#a855f7',task:'#3b82f6',message:'#22c55e',general:'#f59e0b'};
 
+    const hasUnread = (data||[]).some(d=>!d.is_read);
+    // Mark all as read silently
     const unreadIds = (data||[]).filter(d=>!d.is_read).map(d=>d.id);
     if (unreadIds.length) {
         sb.from('notifications').update({is_read:true}).in('id',unreadIds).then(()=>_refreshNotifBadge());
     }
 
-    return `<div class="mScr-inner">
-      <div class="m-hdr m-hdr-plain"><div class="m-htitle">Notifications</div></div>
-      ${(data||[]).length ? (data||[]).map(d => {
+    // Group by date (IST)
+    const nowIST = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Kolkata'}));
+    const todayStr = nowIST.toDateString();
+    const yestDate = new Date(nowIST); yestDate.setDate(yestDate.getDate()-1);
+    const yestStr  = yestDate.toDateString();
+    const groups = { Today:[], Yesterday:[], Earlier:[] };
+    (data||[]).forEach(d => {
+        const dt = new Date(new Date(d.created_at).toLocaleString('en-US',{timeZone:'Asia/Kolkata'}));
+        if (dt.toDateString() === todayStr)       groups.Today.push(d);
+        else if (dt.toDateString() === yestStr)   groups.Yesterday.push(d);
+        else                                       groups.Earlier.push(d);
+    });
+
+    const renderItems = items => items.map(d => {
         const tp = d.type || 'general';
         const ic = iconMap[tp] || 'fa-bell', co = colorMap[tp] || '#f59e0b';
         const action = tp === 'task' ? 'goToTaskNotif' : 'goToMsgNotif';
         return `
-        <div class="m-row" data-action="${action}" data-mid="${d.message_id||''}" data-tid="${d.task_id||''}" style="${d.is_read?'opacity:.6;':''}">
-          <div class="m-av" style="background:${co};border-radius:12px;">
+        <div class="m-row" data-action="${action}" data-mid="${d.message_id||''}" data-tid="${d.task_id||''}" style="${d.is_read?'opacity:.65;':''}">
+          <div class="m-av" style="background:${co};border-radius:12px;position:relative;">
             <i class="fa-solid ${ic}" style="font-size:16px;color:#fff;"></i>
+            ${!d.is_read ? '<span class="m-notif-dot"></span>' : ''}
           </div>
           <div class="m-ri">
-            <div class="m-rn">${x(_snip(d.message,70))}</div>
-            <div class="m-rs">${_fmtIST(d.created_at)}${!d.is_read?' · <span style="color:#16a34a;font-weight:700;">NEW</span>':''}</div>
+            <div class="m-rn" style="${!d.is_read?'font-weight:700;':''}">${x(_snip(d.message,70))}</div>
+            <div class="m-rs">${_fmtIST(d.created_at)}</div>
           </div>
-        </div>`; }).join('') : '<div class="m-empty">All caught up! 🎉</div>'}
+        </div>`; }).join('');
+
+    const renderGroup = (label, items) => !items.length ? '' :
+        `<div class="m-notif-day">${label}</div>${renderItems(items)}`;
+
+    const hasAny = groups.Today.length || groups.Yesterday.length || groups.Earlier.length;
+    return `<div class="mScr-inner">
+      <div class="m-hdr m-hdr-plain">
+        <div class="m-htitle">Notifications</div>
+        ${hasUnread ? `<button class="m-hdr-action" onclick="window._markAllNotifsRead()">Mark all read</button>` : ''}
+      </div>
+      ${hasAny
+          ? renderGroup('Today',groups.Today)+renderGroup('Yesterday',groups.Yesterday)+renderGroup('Earlier',groups.Earlier)
+          : '<div class="m-empty">All caught up! 🎉</div>'}
     </div>`;
 }
+window._markAllNotifsRead = async () => {
+    await sb.from('notifications').update({is_read:true}).eq('user_id',_uid).eq('tenant_id',_tid).eq('is_read',false);
+    _refreshNotifBadge();
+    _render('notifications');
+};
 async function _bookmarks() {
     const bms = JSON.parse(_lsGet('tf_bookmarks_'+_uid)||'[]');
     return `<div class="mScr-inner">
@@ -1865,6 +2037,25 @@ async function _onSheetClick(e) {
     const a = el.dataset;
     switch (a.action) {
         case 'navMore': window._closeSheet(); await _navTo(a.screen); break;
+        case 'toggleMute': {
+            const wasMuted = _lsGet('muted_'+a.room) === '1';
+            _lsSet('muted_'+a.room, wasMuted ? '0' : '1');
+            window._closeSheet();
+            _toast(wasMuted ? 'Notifications unmuted' : '🔕 Notifications muted');
+            break;
+        }
+        case 'viewMembersSheet': {
+            const mems = (() => { try { return JSON.parse(_lsGet('dept_members_'+a.room)||'[]'); } catch { return []; } })();
+            const sheet = _el('mSheetInner');
+            sheet.innerHTML = `<div class="m-sheet-handle"></div><div class="m-sheet-title">Members</div>
+              <div style="padding:0 8px 20px;">${mems.map(uid => {
+                const u = _users.find(u=>u.id===uid);
+                if (!u) return '';
+                const nm = u.full_name||u.email?.split('@')[0]||'User';
+                return `<div class="m-sheet-row">${_avatarHTML(u.avatar_url,nm,'var(--accent)','m-av-tiny')} <span style="flex:1;">${x(nm)}</span>${_roleChip(uid)}</div>`;
+              }).join('')}</div>`;
+            break;
+        }
         case 'addEmoji':    _showReactionEmojiPicker(a.id); break;
         case 'addTag':      _showReactionTagPicker(a.id); break;
         case 'reactEmoji':  await _toggleReaction(a.id, a.value, 'emoji'); window._closeSheet(); break;
@@ -1978,10 +2169,30 @@ function _initRealtime() {
             const top = _stack[_stack.length-1];
             if (top?.screen === 'home') _render('home', null, 'forward');
         })
+        .on('broadcast', { event:'typing' }, p => {
+            if (!p.payload || p.payload.uid === _uid) return;
+            const r = p.payload.room;
+            if (!_typingUsers[r]) _typingUsers[r] = {};
+            _typingUsers[r][p.payload.uid] = { name: p.payload.name, ts: Date.now() };
+            clearTimeout(_typingTimers[p.payload.uid]);
+            _typingTimers[p.payload.uid] = setTimeout(() => {
+                if (_typingUsers[r]) delete _typingUsers[r][p.payload.uid];
+                _updateTypingUI(r);
+            }, 3000);
+            _updateTypingUI(r);
+        })
+        .on('broadcast', { event:'room_read' }, p => {
+            if (!p.payload || p.payload.uid === _uid) return;
+            _lsSet('last_read_other_'+p.payload.room, p.payload.ts);
+            // Upgrade tick marks to blue (read) for visible sent messages in this room
+            const top = _stack[_stack.length-1];
+            if (top?.params?.room === p.payload.room) {
+                document.querySelectorAll('.m-tick.sent').forEach(el => { el.className = 'm-tick read'; el.textContent = '✓✓'; });
+            }
+        })
         .subscribe(status => console.log('[mob-rt] bc channel status='+status));
     _refreshNotifBadge();
-    clearInterval(_notifPoll);
-    _notifPoll = setInterval(_refreshNotifBadge, 30000);
+    // Realtime badge update already wired via postgres_changes INSERT on notifications — no polling needed
 }
 async function _refreshNotifBadge() {
     const { count } = await sb.from('notifications').select('*',{count:'exact',head:true}).eq('user_id',_uid).eq('is_read',false);
@@ -2671,6 +2882,61 @@ function _injectCSS(){
 
 .m-empty{padding:40px 20px;text-align:center;color:var(--text-secondary,#6b7280);
   font-size:14.5px;line-height:1.7;}
+
+/* ── v29 UX additions ─────────────────────────────────────────────── */
+
+/* Role chips */
+.m-role-chip{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.4px;
+  color:#fff;border-radius:6px;padding:1px 5px;text-transform:uppercase;vertical-align:middle;
+  margin-left:4px;line-height:1.5;}
+
+/* Online dot */
+.m-online-dot{position:absolute;bottom:0;right:0;width:10px;height:10px;border-radius:50%;
+  border:2px solid var(--bg-sidebar,#f6f8fa);z-index:2;}
+
+/* Unread badge on home tiles */
+.m-unread-badge{background:#ef4444;color:#fff;font-size:11px;font-weight:800;
+  border-radius:12px;padding:2px 7px;min-width:20px;text-align:center;flex-shrink:0;
+  line-height:1.6;}
+
+/* Chat header enhancements */
+.m-htitle-wrap{display:flex;flex-direction:column;gap:1px;flex:1;min-width:0;}
+.m-hsubtitle{font-size:11px;color:var(--text-secondary,#6b7280);font-weight:500;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.m-hdr-menu{background:none;border:none;font-size:18px;color:var(--text-secondary,#6b7280);
+  cursor:pointer;padding:8px;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
+.m-hdr-menu:active{opacity:.6;}
+.m-hdr-action{background:none;border:none;font-size:13px;font-weight:700;
+  color:var(--accent,#6366f1);cursor:pointer;padding:6px 10px;border-radius:8px;
+  -webkit-tap-highlight-color:transparent;}
+.m-hdr-action:active{opacity:.6;}
+
+/* Message status ticks */
+.m-status-row{display:flex;justify-content:flex-end;margin-top:3px;}
+.m-tick{font-size:11px;font-weight:700;}
+.m-tick.sent{color:var(--text-secondary,#9ca3af);}
+.m-tick.read{color:var(--accent,#6366f1);}
+.m-tick.pending{font-size:12px;}
+
+/* Typing indicator */
+.m-typing-area{min-height:0;padding:0 14px;transition:min-height .2s;}
+.m-typing-area:not(:empty){min-height:28px;padding:4px 14px;}
+.m-typing{display:flex;align-items:center;gap:8px;}
+.m-typing-text{font-size:12px;color:var(--text-secondary,#6b7280);font-style:italic;}
+.m-typing-dots{display:flex;gap:3px;align-items:center;}
+.m-typing-dots span{width:5px;height:5px;border-radius:50%;background:var(--text-secondary,#9ca3af);
+  animation:typingBounce 1.2s ease-in-out infinite;}
+.m-typing-dots span:nth-child(2){animation-delay:.2s;}
+.m-typing-dots span:nth-child(3){animation-delay:.4s;}
+@keyframes typingBounce{0%,60%,100%{transform:translateY(0);}30%{transform:translateY(-5px);}}
+
+/* Notification date group label */
+.m-notif-day{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--text-secondary,#6b7280);padding:12px 16px 4px;}
+
+/* Notification unread dot */
+.m-notif-dot{position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;
+  background:#ef4444;border:2px solid var(--bg-sidebar,#f6f8fa);}
 `;
     document.head.appendChild(s);
 }

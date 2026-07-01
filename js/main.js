@@ -295,6 +295,7 @@ window.renderMainApp = async function() {
                         </button>
                         <i class="ti ti-layout-sidebar-left cursor-pointer pr-3 border-r" onclick="window.toggleLeftSidebar()" title="Toggle Sidebar" style="color:var(--text-secondary);border-color:var(--border-color);"></i>
                         <span id="roomTitleDisplay" class="text-lg font-bold tracking-tight" style="color:var(--text-primary);">Loading...</span>
+                        <span id="memberCountChip" style="display:none;font-size:10px;font-weight:600;padding:1px 7px;border-radius:20px;background:var(--accent-muted,rgba(99,102,241,0.1));color:var(--accent);margin-left:4px;"></span>
                         <button id="groupSettingsBtn" onclick="window.openGroupSettings()" title="Department Settings"
                             class="ml-1 w-6 h-6 rounded flex items-center justify-center hover:bg-gray-100 transition-colors hidden"
                             style="color:var(--text-secondary);">
@@ -329,6 +330,8 @@ window.renderMainApp = async function() {
                 <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 flex flex-col items-center min-w-0">
                     <div class="chat-shell w-full max-w-full bg-transparent border-none" id="chatShellContainer"></div>
                 </div>
+
+                <div id="webTypingBar" style="display:none;padding:2px 20px 0;font-size:11px;color:var(--text-secondary);font-style:italic;"></div>
 
                 <div class="flex flex-col relative border-t p-3 px-5 z-20" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
                     <div id="replyBanner" class="hidden mx-0 mt-0 mb-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl flex justify-between items-center z-0 relative shadow-sm text-xs">
@@ -726,6 +729,25 @@ window.renderMainApp = async function() {
     window.quillEditor.root.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (typeof window.sendMessage === 'function') window.sendMessage(); }
     });
+
+    // Typing indicator — broadcast to mobile users via the reactions broadcast channel (same bcChannel pattern)
+    let _webTypingThrottle = 0;
+    window.quillEditor.root.addEventListener('input', () => {
+        const now = Date.now();
+        if (now - _webTypingThrottle < 2000) return;
+        _webTypingThrottle = now;
+        if (!window._reactionsBroadcast || !window.currentRoom || !window.currentUser) return;
+        const name = window.currentUser.user_metadata?.full_name || window.currentUser.email?.split('@')[0] || 'Someone';
+        window._reactionsBroadcast.send({ type: 'broadcast', event: 'typing', payload: { room: window.currentRoom, uid: window.currentUser.id, name } });
+    });
+
+    // Offline indicator
+    window.addEventListener('offline', () => {
+        window.showCenterToast('You\'re offline — messages will send when connected', 'fa-solid fa-wifi', 'text-yellow-400');
+    });
+    window.addEventListener('online', () => {
+        window.showCenterToast('Back online ✓', 'fa-solid fa-wifi', 'text-green-400');
+    });
     document.getElementById('sendBtn').onclick = () => { if (typeof window.sendMessage === 'function') window.sendMessage(); };
 
     // File attachment — direct upload, no rename modal
@@ -1014,6 +1036,24 @@ window.loadChatsList = async function() {
                 const titleSpan = document.getElementById('roomTitleDisplay');
                 if (titleSpan) titleSpan.innerText = el.dataset.name;
 
+                // Update member count chip
+                const chip = document.getElementById('memberCountChip');
+                if (chip) {
+                    const roomId = el.dataset.room;
+                    if (!roomId.startsWith('dm_')) {
+                        const members = JSON.parse(localStorage.getItem('dept_members_' + roomId) || 'null');
+                        const count = Array.isArray(members) ? members.length : (window.globalUsersCache?.length || 0);
+                        chip.textContent = count + ' members';
+                        chip.style.display = '';
+                    } else {
+                        chip.style.display = 'none';
+                    }
+                }
+
+                // Clear typing indicator when switching rooms
+                const typingBar = document.getElementById('webTypingBar');
+                if (typingBar) { typingBar.style.display = 'none'; typingBar.textContent = ''; }
+
                 // Show spinner only if no cache — otherwise old messages stay until new ones render
                 const hasCached = !!localStorage.getItem('msgcache_' + el.dataset.room);
                 const shell = document.getElementById('chatShellContainer');
@@ -1183,6 +1223,19 @@ window.startSubscriptions = function() {
                 if (payload.name) _webLsSet('dept_name_' + payload.room_id, payload.name);
                 if (typeof window.loadChatsList === 'function') window.loadChatsList();
             }
+        })
+        // Typing indicator from mobile users
+        .on('broadcast', { event: 'typing' }, ({ payload }) => {
+            if (!payload || payload.uid === window.currentUser?.id) return;
+            if (payload.room !== window.currentRoom) return;
+            const bar = document.getElementById('webTypingBar');
+            if (!bar) return;
+            bar.textContent = (payload.name || 'Someone') + ' is typing…';
+            bar.style.display = 'block';
+            clearTimeout(window._webTypingTimer);
+            window._webTypingTimer = setTimeout(() => {
+                bar.style.display = 'none'; bar.textContent = '';
+            }, 3000);
         })
         .subscribe();
 

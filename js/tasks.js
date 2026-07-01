@@ -250,6 +250,7 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
         comment = txtEl ? txtEl.value : '';
         if (!newAssignee) return window.showCenterToast('Select user to transfer', 'fa-solid fa-times', 'text-red-500');
         if (!comment) return window.showCenterToast('Reason is mandatory for transfer!', 'fa-solid fa-times', 'text-red-500');
+        if (!confirm(`Transfer this task to the selected user?\nReason: ${comment}\n\nThis action cannot be undone.`)) return;
         actionText = 'UPDATE';
         await sb.from('task_assignees').delete().eq('task_id', taskId).eq('assignee_id', assigneeId).eq('tenant_id', window.currentTenantId);
         await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, tenant_id: window.currentTenantId, status: 'pending_ack', state: 'pending' });

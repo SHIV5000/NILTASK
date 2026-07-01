@@ -59,8 +59,8 @@ window.openTopPanel = async function(type) {
     // ── REMINDERS ──────────────────────────────────────────────────────────
     } else if (type==='reminders') {
         panel.innerHTML=`<h4 class="font-bold border-b pb-3 mb-3 flex items-center gap-2" style="border-color:var(--border-color);color:var(--text-primary);"><i class="fa-solid fa-stopwatch text-purple-500"></i> Reminders</h4>`;
-        const {data:upcoming}=await sb.from('reminders').select('*, messages(text, room_id)').eq('user_id',window.currentUser.id).eq('triggered',false).order('reminder_time',{ascending:true});
-        const {data:fired}=await sb.from('notifications').select('*').eq('user_id',window.currentUser.id).eq('type','reminder').order('created_at',{ascending:false}).limit(10);
+        const {data:upcoming}=await sb.from('reminders').select('*, messages(text, room_id)').eq('user_id',window.currentUser.id).eq('tenant_id',window.currentTenantId).eq('triggered',false).order('reminder_time',{ascending:true});
+        const {data:fired}=await sb.from('notifications').select('*').eq('user_id',window.currentUser.id).eq('tenant_id',window.currentTenantId).eq('type','reminder').order('created_at',{ascending:false}).limit(10);
 
         if(upcoming?.length){
             panel.innerHTML+=`<div class="text-[9px] font-black tracking-widest uppercase mb-2" style="color:var(--text-secondary);">⏳ Upcoming</div>`;
@@ -143,7 +143,7 @@ window.openTopPanel = async function(type) {
             panel.appendChild(banner);
         }
 
-        const {data}=await sb.from('notifications').select('*').eq('user_id',window.currentUser.id).order('created_at',{ascending:false}).limit(20);
+        const {data}=await sb.from('notifications').select('*').eq('user_id',window.currentUser.id).eq('tenant_id',window.currentTenantId).order('created_at',{ascending:false}).limit(20);
 
         // Batch-fetch message info (sender + room) for all notifications that have message_id
         const msgIds=(data||[]).filter(d=>d.message_id).map(d=>d.message_id);
@@ -171,7 +171,18 @@ window.openTopPanel = async function(type) {
             const iconMap={reminder:'fa-stopwatch',task:'fa-clipboard-check',message:'fa-comment',reply:'fa-reply',reaction:'fa-heart',scheduled:'fa-clock',general:'fa-bell'};
             const colorMap={reminder:'#a855f7',task:'#3b82f6',message:'#22c55e',reply:'#6366f1',reaction:'#ec4899',scheduled:'#f59e0b',general:'#f59e0b'};
 
+            // Group notifications by date
+            const todayMid = new Date(); todayMid.setHours(0,0,0,0);
+            const yesterdayMid = new Date(todayMid); yesterdayMid.setDate(yesterdayMid.getDate()-1);
+            let lastGroup = null;
+
             data.forEach(d=>{
+                const dDate = new Date(d.created_at); dDate.setHours(0,0,0,0);
+                const groupLabel = dDate >= todayMid ? 'Today' : dDate >= yesterdayMid ? 'Yesterday' : 'Earlier';
+                if (groupLabel !== lastGroup) {
+                    lastGroup = groupLabel;
+                    panel.innerHTML += `<div style="font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text-secondary);margin:8px 0 4px;">${groupLabel}</div>`;
+                }
                 const msg=window.stripHtml(d.message);
                 const t=new Date(d.created_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
                 const tp=d.type||'general';

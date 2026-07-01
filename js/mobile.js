@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v31';
+const _MOB_VER = 'v32';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -34,6 +34,9 @@ let _typingTimers = {};
 let _rtReconnectTimer = null;
 let _rtWasErrored = false;
 let _rtIntentionalClose = false;
+let _typingThrottle = 0;
+let _notifFallbackInterval = null;
+let _scrollFabCount = 0;
 
 function _lsKey(k) { return (_tid ? _tid+'_' : '')+k; }
 function _lsSet(k,v) { try { localStorage.setItem(_lsKey(k),v); } catch{} }
@@ -158,6 +161,7 @@ window.initMobileApp = async function() {
     await _ctx();
     await _navTo('home');
     _initRealtime();
+    _notifFallbackInterval = setInterval(_refreshNotifBadge, 60000);
     _showOfflineBanner(_isOffline);
     // Auto-refresh displayed timestamps every 60s + update last_seen heartbeat
     _tsInterval = setInterval(() => {
@@ -355,6 +359,9 @@ function _buildShell() {
         const top = _stack[_stack.length-1];
         const room = top?.params?.room;
         if (!room || !_bcChannel) return;
+        const now = Date.now();
+        if (now - _typingThrottle < 2000) return;
+        _typingThrottle = now;
         _bcChannel.send({ type:'broadcast', event:'typing', payload:{ room, uid:_uid, name:_uname(_uid) } });
     });
 
@@ -407,6 +414,7 @@ window._toggleInlineSearch = function() {
 window._confirmLogout = async function() {
     if (!confirm('Sign out of TaskFlow?')) return;
     if (_tsInterval) clearInterval(_tsInterval);
+    if (_notifFallbackInterval) { clearInterval(_notifFallbackInterval); _notifFallbackInterval = null; }
     if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
     // Clear all tenant-scoped localStorage data
     if (_tid) {
@@ -505,6 +513,21 @@ function _setTab(screen) {
     const active = map[screen] || null; // marks/scheduled/settings/dashboard live in More — no tab to highlight
     document.querySelectorAll('.mn-btn').forEach(b => b.classList.toggle('active', active && b.id === 'mnt-'+active));
 }
+window._toggleChatSearch = function(areaId) {
+    const bar = _el('mChatSearchBar');
+    const inp = _el('mChatSearchInp');
+    if (!bar) return;
+    const open = bar.style.display === 'none';
+    bar.style.display = open ? 'block' : 'none';
+    if (open) { inp?.focus(); } else { if (inp) inp.value = ''; window._filterChatMsgs('', areaId); }
+};
+window._filterChatMsgs = function(q, areaId) {
+    const area = _el(areaId); if (!area) return;
+    const term = (q||'').trim().toLowerCase();
+    area.querySelectorAll('.m-bubble-row').forEach(row => {
+        row.style.display = !term || (row.textContent||'').toLowerCase().includes(term) ? '' : 'none';
+    });
+};
 window._showRoomMenu = function(roomId, roomName) {
     const sheet = _el('mSheetInner');
     const canGear = window.canSeeGroupGear?.() ?? false;
@@ -808,7 +831,7 @@ function _bubbleHTML(m, reactionsMap, maxLen=150, replyMap={}, roomCtx={}) {
       <div class="m-bubble-row ${me?'snt':'rcv'}" id="row-${m.id}" data-time="${m.created_at}">
         ${!me ? _avatarHTML(sender?.avatar_url, nm, 'var(--accent)', 'm-av-tiny') : ''}
         <div class="m-bubble ${me?'snt':'rcv'}">
-          <div class="m-bmeta" data-ts="${m.created_at}" data-label="${x(nm)}">${x(nm)} · ${_ago(m.created_at)}</div>
+          <div class="m-bmeta" data-ts="${m.created_at}" data-label="${x(nm)}">${x(nm)} · ${_ago(m.created_at)}${m.updated_at && m.updated_at > (m.created_at||'').replace(/\..*$/,'.005Z') ? ' <span class="m-edited">edited</span>' : ''}</div>
           ${roleChip ? `<div style="margin:-2px 0 4px;">${roleChip}</div>` : ''}
           <div class="m-btext">${cl}</div>
           ${_chipsHTML(m.id, reactionsMap)}
@@ -827,12 +850,19 @@ function _renderLinkPills(html) {
                 const sepIdx  = decoded.indexOf('|||');
                 const name = sepIdx > -1 ? decoded.substring(0, sepIdx) : (anchorText || decoded);
                 const url  = sepIdx > -1 ? decoded.substring(sepIdx + 3) : decoded;
-                const fileExts = /\.(pdf|doc|docx|xlsx|xls|ppt|pptx|zip|rar|png|jpg|jpeg|gif|mp4|mp3)$/i;
+                const imgExts = /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i;
+                const fileExts = /\.(pdf|doc|docx|xlsx|xls|ppt|pptx|zip|rar|mp4|mp3)$/i;
+                const fixedUrl = url.replace('/object/public/chat-attachments/', '/object/public/task-proofs/');
+                const safeUrl = fixedUrl.replace(/'/g, '%27');
+                if (imgExts.test(url.split('?')[0])) {
+                    return `<div class="m-img-preview" data-action="openFile" data-url="${encodeURIComponent(safeUrl)}" style="cursor:pointer;margin:4px 0;">
+                        <img src="${x(fixedUrl)}" alt="${x(name)}" style="max-width:220px;max-height:200px;border-radius:10px;display:block;object-fit:cover;" loading="lazy"
+                            onerror="this.parentElement.innerHTML='<button class=&quot;m-link-pill&quot; data-action=&quot;openFile&quot; data-url=&quot;${encodeURIComponent(safeUrl)}&quot; style=&quot;display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;border:none;cursor:pointer;&quot;><i class=&quot;fa-solid fa-image&quot; style=&quot;font-size:9px;&quot;></i><span>${x(name)}</span></button>'">
+                    </div>`;
+                }
                 const isFile = fileExts.test(url.split('?')[0]);
                 const label  = isFile ? 'Download' : 'Visit';
                 const icon   = isFile ? 'fa-download' : 'fa-arrow-up-right-from-square';
-                const fixedUrl = url.replace('/object/public/chat-attachments/', '/object/public/task-proofs/');
-                const safeUrl = fixedUrl.replace(/'/g, '%27');
                 return `<button class="m-link-pill" data-action="openFile" data-url="${encodeURIComponent(safeUrl)}" title="${x(fixedUrl)}"
                     style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;border:none;text-decoration:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,.35);white-space:nowrap;vertical-align:middle;">
                     <i class="fa-solid ${icon}" style="font-size:9px;"></i><span>${x(name)}</span>
@@ -892,7 +922,7 @@ async function _groupChat(p) {
         if (_isOffline) return;
         try {
             const { data: msgs } = await sb.from('messages')
-                .select('id,text,sender_id,created_at,parent_message_id')
+                .select('id,text,sender_id,created_at,updated_at,parent_message_id')
                 .eq('room_id',p.room).eq('tenant_id',_tid)
                 .is('deleted_at',null).is('parent_message_id',null)
                 .order('created_at',{ascending:true}).limit(80);
@@ -935,7 +965,11 @@ async function _groupChat(p) {
           <div class="m-htitle">${x(p.name)}</div>
           ${memberCount ? `<div class="m-hsubtitle">${memberCount} members</div>` : ''}
         </div>
+        <button class="m-hdr-action" onclick="window._toggleChatSearch('mMsgArea')"><i class="fa-solid fa-magnifying-glass"></i></button>
         <button class="m-hdr-menu" onclick="window._showRoomMenu('${p.room}','${x(p.name)}')"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+      </div>
+      <div id="mChatSearchBar" style="display:none;padding:6px 12px;background:var(--surface);border-bottom:1px solid var(--border);">
+        <input id="mChatSearchInp" type="search" placeholder="Search messages…" style="width:100%;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;" oninput="window._filterChatMsgs(this.value,'mMsgArea')">
       </div>
       <div class="m-msgs" id="mMsgArea">
         ${shellMsgs.length ? (()=>{ const sr=_loadReactionsCache(); return shellMsgs.map(m=>_bubbleHTML(m,sr,140,{},p)).join(''); })() : '<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">' + (cached ? 'No messages yet.' : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…') + '</div>'}
@@ -948,7 +982,7 @@ async function _groupChat(p) {
 
 async function _thread(p) {
     const { data: replies } = await sb.from('messages')
-        .select('id,text,sender_id,created_at')
+        .select('id,text,sender_id,created_at,updated_at')
         .eq('parent_message_id',p.id).eq('tenant_id',_tid)
         .is('deleted_at',null).order('created_at',{ascending:true});
 
@@ -983,7 +1017,7 @@ async function _dm(p) {
         if (_isOffline) return;
         try {
             const { data: msgs } = await sb.from('messages')
-                .select('id,text,sender_id,created_at')
+                .select('id,text,sender_id,created_at,updated_at')
                 .eq('room_id',p.room).eq('tenant_id',_tid)
                 .is('deleted_at',null).order('created_at',{ascending:true}).limit(80);
             if (!msgs) return;
@@ -1019,7 +1053,11 @@ async function _dm(p) {
           <div class="m-htitle">${x(p.name)} ${roleTag}</div>
           ${onlineStat ? `<div class="m-hsubtitle">${onlineStat}</div>` : ''}
         </div>
+        <button class="m-hdr-action" onclick="window._toggleChatSearch('mDMArea')"><i class="fa-solid fa-magnifying-glass"></i></button>
         <button class="m-hdr-menu" onclick="window._showRoomMenu('${p.room}','${x(p.name)}')"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+      </div>
+      <div id="mChatSearchBar" style="display:none;padding:6px 12px;background:var(--surface);border-bottom:1px solid var(--border);">
+        <input id="mChatSearchInp" type="search" placeholder="Search messages…" style="width:100%;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;" oninput="window._filterChatMsgs(this.value,'mDMArea')">
       </div>
       <div class="m-msgs" id="mDMArea">
         ${shellMsgs.length ? (()=>{ const sr=_loadReactionsCache(); return shellMsgs.map(m=>_bubbleHTML(m,sr,160,{},p)).join(''); })() : `<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">${cached ? `Start a conversation with ${x(p.name)}` : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…'}</div>`}
@@ -2291,7 +2329,11 @@ async function _onNewMessage(m) {
     const wasNearBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 150;
     area.insertAdjacentHTML('beforeend', _bubbleHTML(m, {}, inThread?160:140));
     if (wasNearBottom) area.scrollTop = area.scrollHeight;
-    else _el('mScrollFab')?.style.setProperty('display','flex');
+    else {
+        _scrollFabCount++;
+        const fab = _el('mScrollFab');
+        if (fab) { fab.style.display = 'flex'; fab.innerHTML = `<i class="fa-solid fa-chevron-down"></i>${_scrollFabCount > 0 ? `<span style="position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;border-radius:50%;font-size:9px;font-weight:700;width:16px;height:16px;display:flex;align-items:center;justify-content:center;">${_scrollFabCount > 9 ? '9+' : _scrollFabCount}</span>` : ''}`; }
+    }
     // Keep room cache in sync
     if (!inThread) {
         const cached = _loadRoomCache(m.room_id) || [];
@@ -2347,7 +2389,7 @@ function _wireScreen(screen, params, container) {
             if (!params?.scrollTo) setTimeout(() => { area.scrollTop = area.scrollHeight; }, 80);
             if (fab) area.addEventListener('scroll', () => {
                 const nearBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 150;
-                fab.style.display = nearBottom ? 'none' : 'flex';
+                if (nearBottom) { fab.style.display = 'none'; _scrollFabCount = 0; fab.innerHTML = '<i class="fa-solid fa-chevron-down"></i>'; }
             }, { passive:true });
         }
     }
@@ -2463,10 +2505,16 @@ async function _doSendReply(a) {
     if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }
     const val = _ceHTML(a.target); if (!val) return;
     _ceClear(a.target);
-    if (_isOffline) { _toast('No connection — reply will send when online','err'); return; }
-    const { data: m, error } = await sb.from('messages').insert({
-        room_id:a.room, parent_message_id:a.pid, sender_id:_uid, tenant_id:_tid, text:val, created_at:new Date().toISOString()
-    }).select().single();
+    const payload = { room_id:a.room, parent_message_id:a.pid, sender_id:_uid, tenant_id:_tid, text:val, created_at:new Date().toISOString() };
+    if (_isOffline) {
+        const pid = Date.now();
+        const area = _el('mThreadArea'); if (!area) return;
+        area.insertAdjacentHTML('beforeend', _pendingBubbleHTML(pid, val));
+        area.scrollTo({ top:area.scrollHeight, behavior:'smooth' });
+        const q = _getOfflineQueue(); q.push({ pendingId:pid, payload }); _saveOfflineQueue(q);
+        return;
+    }
+    const { data: m, error } = await sb.from('messages').insert(payload).select().single();
     if (error) { _toast('Send failed: '+error.message,'err'); return; }
     window.playSound?.('message');
     _appendOwnMessage('mThreadArea', m, 160);
@@ -2760,6 +2808,7 @@ function _injectCSS(){
 .m-bubble.snt{border-left:4px solid var(--accent,#6366f1);border-right-width:1px;}
 .m-bubble.rcv{border-right:4px solid var(--accent,#6366f1);border-left-width:1px;}
 .m-bmeta{font-size:11.5px;font-weight:600;color:var(--text-secondary,#6b7280);margin-bottom:4px;}
+.m-edited{font-size:10px;font-weight:400;color:var(--text-secondary,#9ca3af);font-style:italic;margin-left:3px;}
 .m-highlight{animation:m-glow-pulse 2s ease-out;}
 @keyframes m-glow-pulse{
   0%   { background:color-mix(in srgb, var(--accent) 35%, var(--card-bg)); box-shadow:0 0 0 3px var(--accent); }

@@ -596,7 +596,7 @@ window.renderMessages = function(messages) {
             <div class="b-header">
               ${avatarHTML}
               <div class="b-name">${window.escapeHtml(senderName)} <span class="b-role">· ${roleStr}</span></div>
-              <span class="b-time">${time} ${tickHTML}</span>
+              <span class="b-time">${time}${msg.updated_at && msg.updated_at > msg.created_at ? ' <span style="font-size:10px;font-style:italic;opacity:.65;">(edited)</span>' : ''} ${tickHTML}</span>
               <div class="menu-wrap">
                 <button class="dot-btn" onclick="window.toggleDropdown('dd-${msg.id}')" aria-label="Options"><i class="ti ti-dots-vertical"></i></button>
                 <div class="bubble-dropdown" id="dd-${msg.id}">${ddItems}</div>

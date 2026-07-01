@@ -18,6 +18,7 @@ window._copyLogs = () => {
 let _stack  = [];
 let _uid    = null;
 let _tid    = null;
+let _tsInterval = null;
 let _users  = [];
 let _pendingUploadTaskId = null;
 let _pendingDeptPhoto = null;
@@ -102,7 +103,7 @@ window.initMobileApp = async function() {
     _initRealtime();
     _showOfflineBanner(_isOffline);
     // Auto-refresh displayed timestamps every 60s
-    setInterval(() => {
+    _tsInterval = setInterval(() => {
         document.querySelectorAll('.m-bmeta[data-ts]').forEach(el => {
             el.textContent = el.dataset.label + ' · ' + _ago(el.dataset.ts);
         });
@@ -119,13 +120,13 @@ let _pendingRefresh = null;
 let _refreshGen = 0;
 
 function _saveRoomCache(roomId, msgs) {
-    try { localStorage.setItem('mob_msgs_'+roomId, JSON.stringify(msgs.slice(-50))); } catch {}
+    _lsSet('mob_msgs_'+roomId, JSON.stringify(msgs.slice(-50)));
 }
 function _loadRoomCache(roomId) {
-    try { return JSON.parse(localStorage.getItem('mob_msgs_'+roomId)||'null'); } catch { return null; }
+    try { return JSON.parse(_lsGet('mob_msgs_'+roomId)||'null'); } catch { return null; }
 }
 function _loadReactionsCache() {
-    try { return JSON.parse(localStorage.getItem('mob_reactions')||'{}'); } catch { return {}; }
+    try { return JSON.parse(_lsGet('mob_reactions')||'{}'); } catch { return {}; }
 }
 function _saveReactionEntry(msgId, value, type, userId, isDelete) {
     try {
@@ -138,7 +139,7 @@ function _saveReactionEntry(msgId, value, type, userId, isDelete) {
                 cache[msgId].push({ message_id:msgId, value, type, user_id:userId });
             }
         }
-        localStorage.setItem('mob_reactions', JSON.stringify(cache));
+        _lsSet('mob_reactions', JSON.stringify(cache));
     } catch {}
 }
 
@@ -194,14 +195,14 @@ async function _ctx() {
                 .select('room_id,name,color,archived').eq('tenant_id', _tid);
             if (rs?.length) {
                 rs.forEach(r => {
-                    if (r.name)  localStorage.setItem('dept_name_'+r.room_id, r.name);
-                    if (r.color) localStorage.setItem('dept_color_'+r.room_id, r.color);
+                    if (r.name)  _lsSet('dept_name_'+r.room_id, r.name);
+                    if (r.color) _lsSet('dept_color_'+r.room_id, r.color);
                 });
                 _refreshDeptNames();
                 const fixedIds = new Set(DEPTS.map(d=>d.id));
                 _customGroups = rs
                     .filter(r => r.room_id.startsWith('grp_') && !r.archived && !fixedIds.has(r.room_id))
-                    .map(r => ({ id:r.room_id, name:r.name||r.room_id, col:r.color||'#8b5cf6', photo:localStorage.getItem('dept_photo_'+r.room_id)||'' }));
+                    .map(r => ({ id:r.room_id, name:r.name||r.room_id, col:r.color||'#8b5cf6', photo:_lsGet('dept_photo_'+r.room_id)||'' }));
             }
         } catch {}
     }
@@ -329,6 +330,12 @@ window._toggleInlineSearch = function() {
 };
 window._confirmLogout = async function() {
     if (!confirm('Sign out of TaskFlow?')) return;
+    if (_tsInterval) clearInterval(_tsInterval);
+    // Clear all tenant-scoped localStorage data
+    if (_tid) {
+        const prefix = _tid+'_';
+        Object.keys(localStorage).filter(k => k.startsWith(prefix)).forEach(k => localStorage.removeItem(k));
+    }
     await sb.auth.signOut();
     window.location.href = '/';
 };
@@ -613,7 +620,7 @@ async function _toggleReaction(msgId, value, type, isMine=false) {
     const isDelete = isMine;
     let error;
     if (isDelete) {
-        ({ error } = await sb.from('reactions').delete().eq('message_id',msgId).eq('value',value).eq('user_id',_uid));
+        ({ error } = await sb.from('reactions').delete().eq('message_id',msgId).eq('value',value).eq('user_id',_uid).eq('tenant_id',_tid));
         console.log('[mob-react] deleted reaction error='+error?.message);
     } else {
         ({ error } = await sb.from('reactions').insert({ message_id:msgId, user_id:_uid, tenant_id:_tid, value, type }));
@@ -697,11 +704,11 @@ function _renderLinkPills(html) {
                 const icon   = isFile ? 'fa-download' : 'fa-arrow-up-right-from-square';
                 const fixedUrl = url.replace('/object/public/chat-attachments/', '/object/public/task-proofs/');
                 const safeUrl = fixedUrl.replace(/'/g, '%27');
-                return `<a href="javascript:void(0);" onclick="window._mobOpenFile('${safeUrl}')" title="${x(fixedUrl)}"
-                    style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;text-decoration:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,.35);white-space:nowrap;vertical-align:middle;">
+                return `<button class="m-link-pill" data-action="openFile" data-url="${encodeURIComponent(safeUrl)}" title="${x(fixedUrl)}"
+                    style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;border:none;text-decoration:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,.35);white-space:nowrap;vertical-align:middle;">
                     <i class="fa-solid ${icon}" style="font-size:9px;"></i><span>${x(name)}</span>
                     <span style="font-size:9px;opacity:.75;border-left:1px solid rgba(255,255,255,.35);padding-left:7px;margin-left:3px;">${label}</span>
-                </a>`;
+                </button>`;
             } catch(e) { return match; }
         }
     );
@@ -1029,7 +1036,7 @@ async function _remindEdit(p) {
 }
 
 async function _notifications() {
-    const { data } = await sb.from('notifications').select('*').eq('user_id',_uid).order('created_at',{ascending:false}).limit(30);
+    const { data } = await sb.from('notifications').select('*').eq('user_id',_uid).eq('tenant_id',_tid).order('created_at',{ascending:false}).limit(30);
     const iconMap = {reminder:'fa-stopwatch',task:'fa-clipboard-check',message:'fa-comment',general:'fa-bell'};
     const colorMap = {reminder:'#a855f7',task:'#3b82f6',message:'#22c55e',general:'#f59e0b'};
 
@@ -1057,7 +1064,7 @@ async function _notifications() {
     </div>`;
 }
 async function _bookmarks() {
-    const bms = JSON.parse(localStorage.getItem('tf_bookmarks_'+_uid)||'[]');
+    const bms = JSON.parse(_lsGet('tf_bookmarks_'+_uid)||'[]');
     return `<div class="mScr-inner">
       <div class="m-hdr m-hdr-plain"><div class="m-htitle">Bookmarks</div></div>
       ${bms.length ? bms.map((b,i) => `
@@ -1125,7 +1132,7 @@ async function _scheduledEdit(p) {
 }
 
 async function _settings() {
-    const { data: p } = await sb.from('profiles').select('*').eq('id',_uid).single();
+    const { data: p } = await sb.from('profiles').select('*').eq('id',_uid).eq('tenant_id',_tid).single();
     const permState = ('Notification' in window) ? Notification.permission : 'unsupported';
     const permLabel = { granted:'✅ Enabled', denied:'🚫 Blocked in browser settings', default:'⚠️ Not yet enabled', unsupported:'Not supported on this browser' }[permState];
     return `<div class="mScr-inner">
@@ -1376,9 +1383,9 @@ async function _groupMgmt() {
         const slug  = name.toLowerCase().replace(/[^a-z0-9]/g,'_').substring(0,20);
         const roomId = 'grp_'+slug+'_'+Date.now().toString(36);
         const selectedIds = [...document.querySelectorAll('#gmMemberList input:checked')].map(el=>el.value);
-        localStorage.setItem('dept_name_'+roomId, name);
-        localStorage.setItem('dept_color_'+roomId, color);
-        if (selectedIds.length) localStorage.setItem('dept_members_'+roomId, JSON.stringify(selectedIds));
+        _lsSet('dept_name_'+roomId, name);
+        _lsSet('dept_color_'+roomId, color);
+        if (selectedIds.length) _lsSet('dept_members_'+roomId, JSON.stringify(selectedIds));
         try {
             await sb.from('room_settings').upsert({ room_id:roomId, tenant_id:_tid, name, color, updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' });
             await sb.from('messages').insert({ room_id:roomId, tenant_id:_tid, sender_id:_uid, text:`<p>📢 <strong>${x(name)}</strong> group created.</p>`, created_at:new Date().toISOString() });
@@ -1393,7 +1400,7 @@ async function _groupMgmt() {
 
     window._openGroupEditSheet = function(gid, gname, gcol) {
         const sheet = _el('mSheetInner');
-        const currentMembers = JSON.parse(localStorage.getItem('dept_members_'+gid)||'[]');
+        const currentMembers = JSON.parse(_lsGet('dept_members_'+gid)||'[]');
         sheet.innerHTML = `
           <div class="m-sheet-handle"></div>
           <div class="m-sheet-title">Edit Group</div>
@@ -1430,9 +1437,9 @@ async function _groupMgmt() {
         const color = _el('gmEditColor')?.value || '#6366f1';
         if (!gid || !name) { _toast('Invalid','err'); return; }
         const selectedIds = [...document.querySelectorAll('#gmMemberList input:checked')].map(el=>el.value);
-        localStorage.setItem('dept_name_'+gid, name);
-        localStorage.setItem('dept_color_'+gid, color);
-        localStorage.setItem('dept_members_'+gid, JSON.stringify(selectedIds));
+        _lsSet('dept_name_'+gid, name);
+        _lsSet('dept_color_'+gid, color);
+        _lsSet('dept_members_'+gid, JSON.stringify(selectedIds));
         try {
             await sb.from('room_settings').upsert({ room_id:gid, tenant_id:_tid, name, color, updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' });
             _bcChannel?.send({ type:'broadcast', event:'group_photo', payload:{ room_id:gid, name, color } });
@@ -1446,14 +1453,28 @@ async function _groupMgmt() {
     };
 
     window._archiveGroup = async function(gid) {
-        if (!confirm('Archive this group? It will be hidden from all users.')) return;
-        try {
-            await sb.from('room_settings').upsert({ room_id:gid, tenant_id:_tid, archived:true, updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' });
-        } catch(e) { _toast('DB error: '+e.message,'err'); return; }
-        const idx = _customGroups.findIndex(g=>g.id===gid);
-        if (idx>=0) _customGroups.splice(idx,1);
-        _toast('Group archived');
-        await _render('groupMgmt', null, 'forward');
+        // show confirmation inline instead of native confirm()
+        if (!_el('mSheetInner')) return;
+        const sheet = _el('mSheetInner');
+        sheet.innerHTML = `
+          <div class="m-sheet-handle"></div>
+          <div class="m-sheet-title">Archive Group?</div>
+          <div style="padding:0 16px 20px;display:flex;flex-direction:column;gap:12px;">
+            <div style="font-size:14px;color:var(--text-secondary);">This group will be hidden from all users. You can restore it from the database if needed.</div>
+            <button class="m-action-btn" style="background:#ef4444;" id="gmArchiveConfirm">Yes, Archive</button>
+            <button class="m-action-btn" style="background:transparent;color:var(--text-secondary);border:1px solid var(--border-color);" onclick="window._closeSheet()">Cancel</button>
+          </div>`;
+        _openSheet();
+        _el('gmArchiveConfirm').onclick = async () => {
+            window._closeSheet();
+            try {
+                await sb.from('room_settings').upsert({ room_id:gid, tenant_id:_tid, archived:true, updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' });
+            } catch(e) { _toast('DB error: '+e.message,'err'); return; }
+            const idx = _customGroups.findIndex(g=>g.id===gid);
+            if (idx>=0) _customGroups.splice(idx,1);
+            _toast('Group archived');
+            await _render('groupMgmt', null, 'forward');
+        };
     };
 
     return `<div class="mScr-inner">
@@ -1774,6 +1795,7 @@ async function _onShellClick(e) {
             if (typeof window.downloadTaskPDF === 'function') await window.downloadTaskPDF(a.id);
             else _toast('PDF export not available','err');
             break;
+        case 'openFile': { const u = decodeURIComponent(a.url||''); if (u.startsWith('http')) window.open(u,'_blank','noopener'); break; }
         case 'confirmLogout': await window._confirmLogout(); break;
         case 'pickTheme':
             if (typeof window.setTheme === 'function') window.setTheme(a.theme);
@@ -1842,9 +1864,9 @@ async function _onSheetClick(e) {
         case 'doForward':   await _doForward(a.room, a.text); break;
         case 'confirmSchedule': await _confirmSchedule(a.target, a.room); break;
         case 'bookmarkMsg': {
-            const bms = JSON.parse(localStorage.getItem('tf_bookmarks_'+_uid)||'[]');
+            const bms = JSON.parse(_lsGet('tf_bookmarks_'+_uid)||'[]');
             bms.unshift({msgId:a.id,text:a.text,room:a.room,rname:a.rname,rcol:a.rcol,uid:a.room?.startsWith('dm_')?a.room.replace('dm_','').split('_').find(p=>p!==_uid):'',time:_ago(new Date().toISOString())});
-            localStorage.setItem('tf_bookmarks_'+_uid, JSON.stringify(bms.slice(0,50)));
+            _lsSet('tf_bookmarks_'+_uid, JSON.stringify(bms.slice(0,50)));
             window._closeSheet(); _toast('🔖 Bookmarked!'); break;
         }
         case 'editMsg': {
@@ -1914,7 +1936,8 @@ function _onSelectionChange() {
 }
 
 function _initRealtime() {
-    if (_rtChannel || !_tid) return;
+    if (!_tid) { console.error('[mob-rt] Cannot init realtime without tenant_id'); return; }
+    if (_rtChannel) return;
     _rtChannel = sb.channel('mobile-rt-'+_tid)
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => _onNewMessage(p.new))
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'task_assignees', filter:`tenant_id=eq.${_tid}` }, p => _onTaskAssigneeUpdate(p.new))
@@ -1924,7 +1947,7 @@ function _initRealtime() {
         .on('broadcast', { event:'reaction' }, p => { console.log('[mob-rt] broadcast reaction received'); _onReactionChange(p.payload, p.payload?.isDelete ? 'DELETE' : 'INSERT'); })
         .on('broadcast', { event:'group_photo' }, p => {
             if (p.payload?.room_id && p.payload?.name) {
-                localStorage.setItem('dept_name_'+p.payload.room_id, p.payload.name);
+                _lsSet('dept_name_'+p.payload.room_id, p.payload.name);
                 // Persist to DB so cold-start mobile users also get the correct name
                 if (_tid) {
                     const upsertData = { room_id:p.payload.room_id, tenant_id:_tid, name:p.payload.name, updated_at:new Date().toISOString() };
@@ -1932,7 +1955,7 @@ function _initRealtime() {
                     sb.from('room_settings').upsert(upsertData, { onConflict:'room_id,tenant_id' }).then(() => {});
                 }
             }
-            if (p.payload?.room_id && p.payload?.color) localStorage.setItem('dept_color_'+p.payload.room_id, p.payload.color);
+            if (p.payload?.room_id && p.payload?.color) _lsSet('dept_color_'+p.payload.room_id, p.payload.color);
             _refreshDeptNames();
             const top = _stack[_stack.length-1];
             if (top?.screen === 'home') _render('home', null, 'forward');
@@ -1974,6 +1997,7 @@ async function _goToTask(taskId) {
     await _navTo('taskDetail',{id:taskId});
 }
 async function _onNewMessage(m) {
+    if (m.tenant_id && m.tenant_id !== _tid) return;
     if (!m || m.sender_id === _uid) return; // own sends are already shown by the post-send refresh
     const top = _stack[_stack.length-1];
     if (!top) return;
@@ -2046,6 +2070,7 @@ async function _onReactionChange(r, eventType) {
     _saveReactionEntry(r.message_id, r.value, r.type, r.user_id, isDelete);
 }
 async function _onTaskAssigneeUpdate(row) {
+    if (row.tenant_id && row.tenant_id !== _tid) return;
     if (!row || row.assignee_id !== _uid) return;
     const top = _stack[_stack.length-1];
     if (!top) return;
@@ -2118,7 +2143,7 @@ function _wireScreen(screen, params, container) {
         try { dataUrl = await _compressImageToDataURL(file); }
         catch(e) { _toast('Could not read that image','err'); return; }
         try {
-            localStorage.setItem('dept_photo_'+deptId, dataUrl);
+            _lsSet('dept_photo_'+deptId, dataUrl);
         } catch(e) {
             _toast('Image too large for local storage — try a smaller photo','err'); return;
         }
@@ -2245,7 +2270,7 @@ async function _mobTaskAction(taskId, action) {
         return;
     } else if (action === 'submit') {
         if (taskData.require_proof) {
-            const { data: ftrails } = await sb.from('task_trails').select('id').eq('task_id',taskId).eq('user_id',_uid).eq('action','FILE');
+            const { data: ftrails } = await sb.from('task_trails').select('id').eq('task_id',taskId).eq('user_id',_uid).eq('action','FILE').eq('tenant_id',_tid);
             if (!ftrails || !ftrails.length) { _toast('Proof required — upload a file first','err'); return; }
         }
         newStatus = 'submitted'; comment = 'Submitted for review';
@@ -2274,14 +2299,14 @@ async function _saveReminder(id) {
     _toast('Reminder saved ✓'); _back();
 }
 function _removeBookmark(i) {
-    const bms = JSON.parse(localStorage.getItem('tf_bookmarks_'+_uid)||'[]');
+    const bms = JSON.parse(_lsGet('tf_bookmarks_'+_uid)||'[]');
     bms.splice(i,1);
-    localStorage.setItem('tf_bookmarks_'+_uid, JSON.stringify(bms));
+    _lsSet('tf_bookmarks_'+_uid, JSON.stringify(bms));
     _navTo('marks',null,true);
 }
 async function _openTaskFile(path) {
     if (!path) { _toast('File path missing','err'); return; }
-    const { data, error } = await sb.storage.from('task-proofs').createSignedUrl(path, 60);
+    const { data, error } = await sb.storage.from('task-proofs').createSignedUrl(path, 3600);
     if (error || !data?.signedUrl) { _toast('Could not open file: '+(error?.message||'unknown error'),'err'); return; }
     window.open(data.signedUrl, '_blank');
 }
@@ -2295,7 +2320,7 @@ async function _saveScheduled(id) {
     if (!message_text || !scheduled_time) { _toast('Fill in both fields','err'); return; }
     const { error } = await sb.from('scheduled_messages')
         .update({ message_text, scheduled_time: new Date(scheduled_time).toISOString() })
-        .eq('id',id).eq('tenant_id',_tid);
+        .eq('id',id).eq('tenant_id',_tid).eq('sender_id',_uid);
     if (error) { _toast('Could not save: '+error.message,'err'); return; }
     _toast('Scheduled message updated ✓'); _navTo('scheduled',null,true);
 }
@@ -2303,7 +2328,7 @@ async function _saveProfile() {
     const full_name   = _el('sName')?.value?.trim();
     const designation = _el('sDesig')?.value?.trim();
     const department  = _el('sDept')?.value?.trim();
-    const { error } = await sb.from('profiles').update({full_name,designation,department}).eq('id',_uid);
+    const { error } = await sb.from('profiles').update({full_name,designation,department}).eq('id',_uid).eq('tenant_id',_tid);
     _toast(error ? 'Save failed' : 'Profile saved ✓', error?'err':'ok');
     if (!error) { window.currentUser.full_name = full_name; const u=_el('mSBInfo')?.querySelector('.m-sb-user'); if(u) u.textContent=full_name; }
 }

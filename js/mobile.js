@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v30';
+const _MOB_VER = 'v31';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -33,6 +33,7 @@ let _typingUsers = {};
 let _typingTimers = {};
 let _rtReconnectTimer = null;
 let _rtWasErrored = false;
+let _rtIntentionalClose = false;
 
 function _lsKey(k) { return (_tid ? _tid+'_' : '')+k; }
 function _lsSet(k,v) { try { localStorage.setItem(_lsKey(k),v); } catch{} }
@@ -2153,8 +2154,10 @@ function _scheduleRtReconnect() {
     _rtReconnectTimer = setTimeout(async () => {
         _rtReconnectTimer = null;
         console.log('[mob-rt] reconnecting…');
+        _rtIntentionalClose = true;
         if (_rtChannel) { try { await sb.removeChannel(_rtChannel); } catch {} _rtChannel = null; }
         if (_bcChannel) { try { await sb.removeChannel(_bcChannel); } catch {} _bcChannel = null; }
+        _rtIntentionalClose = false;
         _initRealtime();
     }, 5000);
 }
@@ -2167,8 +2170,11 @@ function _initRealtime() {
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`user_id=eq.${_uid}` }, () => _refreshNotifBadge())
         .subscribe(status => {
             console.log('[mob-rt] channel status='+status);
-            if (status === 'SUBSCRIBED' && _rtWasErrored) { _rtWasErrored = false; _toast('Connected ✓'); }
-            if (status === 'CHANNEL_ERROR' || status === 'CLOSED') _scheduleRtReconnect();
+            if (status === 'SUBSCRIBED') {
+                if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
+                if (_rtWasErrored) { _rtWasErrored = false; _toast('Connected ✓'); }
+            }
+            if ((status === 'CHANNEL_ERROR' || status === 'CLOSED') && !_rtIntentionalClose) _scheduleRtReconnect();
         });
     _bcChannel = sb.channel('mobile-bc-'+_tid, { config: { broadcast: { self: false } } })
         .on('broadcast', { event:'reaction' }, p => { console.log('[mob-rt] broadcast reaction received'); _onReactionChange(p.payload, p.payload?.isDelete ? 'DELETE' : 'INSERT'); })
@@ -2210,7 +2216,8 @@ function _initRealtime() {
         })
         .subscribe(status => {
             console.log('[mob-rt] bc channel status='+status);
-            if (status === 'CHANNEL_ERROR' || status === 'CLOSED') _scheduleRtReconnect();
+            if (status === 'SUBSCRIBED' && _rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
+            if ((status === 'CHANNEL_ERROR' || status === 'CLOSED') && !_rtIntentionalClose) _scheduleRtReconnect();
         });
     _refreshNotifBadge();
     // Realtime badge update already wired via postgres_changes INSERT on notifications — no polling needed

@@ -24,16 +24,6 @@ window.notifyUser = async function(userId, message, messageId = null, type = 'ta
     try {
         const cleanMsg = window.stripHtml ? window.stripHtml(message) : message;
 
-        // Deduplicate: skip if same user+type+message_id exists in last 5 seconds
-        if (messageId) {
-            const { count } = await sb.from('notifications')
-                .select('id', { count: 'exact', head: true })
-                .eq('user_id', userId)
-                .eq('type', type)
-                .eq('message_id', messageId);
-            if (count > 0) return;
-        }
-
         const payload = {
             user_id:    userId,
             type,
@@ -43,7 +33,12 @@ window.notifyUser = async function(userId, message, messageId = null, type = 'ta
             is_read:    false
         };
         if (taskId) payload.task_id = taskId;
-        await sb.from('notifications').insert(payload);
+        try {
+            await sb.from('notifications').insert(payload);
+        } catch(e) {
+            if (!e.message?.includes('duplicate') && !e.code?.includes('23505')) throw e;
+            // Duplicate — silently ignore
+        }
     } catch (e) {
         // notification insert failed — non-fatal
     }
@@ -192,7 +187,7 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
         if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Acknowledging...'; }
     }
 
-    const { data: taskData } = await sb.from('tasks').select('*').eq('id', taskId).single();
+    const { data: taskData } = await sb.from('tasks').select('*').eq('id', taskId).eq('tenant_id', window.currentTenantId).single();
     const creatorId = taskData.assigned_by;
 
     if (action === 'ack') {
@@ -256,7 +251,7 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
         if (!newAssignee) return window.showCenterToast('Select user to transfer', 'fa-solid fa-times', 'text-red-500');
         if (!comment) return window.showCenterToast('Reason is mandatory for transfer!', 'fa-solid fa-times', 'text-red-500');
         actionText = 'UPDATE';
-        await sb.from('task_assignees').delete().eq('task_id', taskId).eq('assignee_id', assigneeId);
+        await sb.from('task_assignees').delete().eq('task_id', taskId).eq('assignee_id', assigneeId).eq('tenant_id', window.currentTenantId);
         await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, tenant_id: window.currentTenantId, status: 'pending_ack', state: 'pending' });
         await window.notifyUser(newAssignee, `🔁 Task Transferred to you: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
         await window.notifyUser(assigneeId, `🔁 Your task was transferred: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
@@ -267,7 +262,7 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
         if (action === 'ack') updatePayload.acked = true;
         const { data: updatedData, error } = await sb.from('task_assignees').update(updatePayload).eq('task_id', taskId).eq('assignee_id', assigneeId).select();
         if (error || !updatedData || updatedData.length === 0) {
-            window.showCenterToast('Database Blocked Status Update! Run RLS SQL Fix.', 'fa-solid fa-lock', 'text-red-500');
+            window.showCenterToast('Could not update task. Please try again.', 'fa-solid fa-lock', 'text-red-500');
             if (action === 'ack') {
                 const btn = document.getElementById(`ack-btn-${taskId}-${assigneeId}`);
                 if (btn) { btn.disabled = false; btn.innerHTML = 'Acknowledge Task'; }
@@ -290,6 +285,7 @@ window.loadTasksForPanel = async function() {
     }
     const { data: tasks } = await sb.from('tasks')
         .select('*, creator:profiles!assigned_by(full_name, email)')
+        .limit(200)
         .order('created_at', { ascending: false });
     if (!tasks) return;
 

@@ -271,7 +271,8 @@ window.loadDashboard = async function(filter) {
     if (!el) return;
     el.innerHTML = '<p style="text-align:center;padding:48px;color:var(--text-secondary);"><i class="fa-solid fa-spinner fa-spin"></i> Loading scorecard...</p>';
 
-    const now = new Date();
+    // Use IST time for period calculation to match server
+    const now = new Date(new Date().toLocaleString('en-US', {timeZone: 'Asia/Kolkata'}));
     const pad = n => String(n).padStart(2,'0');
     const ymd = d => d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
     const today = ymd(now);

@@ -3,6 +3,11 @@ import logger from './utils/logger.js';
 
 // v1.51.0 - Departments/Staff sidebar, unread badges, search fix, cross-room scroll
 
+// ─── TENANT-NAMESPACED localStorage HELPERS ───────────────────────────────────
+function _webLsKey(k) { return (window.currentTenantId ? window.currentTenantId+'_' : '')+k; }
+function _webLsSet(k,v) { try { localStorage.setItem(_webLsKey(k),v); } catch{} }
+function _webLsGet(k,def='') { return localStorage.getItem(_webLsKey(k)) ?? def; }
+
 let messageSubscription = null;
 let taskSubscription = null;
 let assigneeSubscription = null;
@@ -158,10 +163,10 @@ window.saveNewGroup = async function() {
     if (_ngSelectedMembers.size===0) { err.textContent='Add at least one member.'; err.style.display='block'; return; }
     btn.disabled=true; btn.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Creating...';
     const roomId = 'grp_'+name.toLowerCase().replace(/[^a-z0-9]/g,'_').replace(/_+/g,'_').substring(0,30)+'_'+Date.now().toString(36);
-    localStorage.setItem('dept_name_'+roomId, name);
-    localStorage.setItem('dept_color_'+roomId, _ngColor);
-    if (_ngPhotoDataUrl) localStorage.setItem('dept_photo_'+roomId, _ngPhotoDataUrl);
-    localStorage.setItem('dept_members_'+roomId, JSON.stringify([window.currentUser.id,..._ngSelectedMembers]));
+    _webLsSet('dept_name_'+roomId, name);
+    _webLsSet('dept_color_'+roomId, _ngColor);
+    if (_ngPhotoDataUrl) _webLsSet('dept_photo_'+roomId, _ngPhotoDataUrl);
+    _webLsSet('dept_members_'+roomId, JSON.stringify([window.currentUser.id,..._ngSelectedMembers]));
     const { error } = await sb.from('messages').insert({
         room_id:roomId, sender_id:window.currentUser.id, tenant_id:window.currentTenantId,
         text:`<p>📢 <strong>${window.escapeHtml(name)}</strong> group created.</p>`,
@@ -248,7 +253,7 @@ window.renderMainApp = async function() {
                 <div style="border-top:1px solid var(--border-color);background:var(--bg-body);padding:8px 10px;">
                     <div style="display:flex;align-items:center;gap:7px;">
                         <div id="sidebarAvatar" style="width:30px;height:30px;border-radius:50%;background:var(--accent);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;">
-                            ${(window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + (window.currentUser?.id||''))) ? '<img src="' + (window._userAvatarUrl || localStorage.getItem('mpgs_avatar_' + (window.currentUser?.id||''))) + '" style="width:100%;height:100%;object-fit:cover;">' : userNameDisplay.charAt(0).toUpperCase()}
+                            ${(window._userAvatarUrl || _webLsGet('mpgs_avatar_' + (window.currentUser?.id||''))) ? '<img src="' + (window._userAvatarUrl || _webLsGet('mpgs_avatar_' + (window.currentUser?.id||''))) + '" style="width:100%;height:100%;object-fit:cover;">' : userNameDisplay.charAt(0).toUpperCase()}
                         </div>
                         <div style="flex:1;min-width:0;">
                             <div id="sidebarNameDisplay" style="font-size:12px;font-weight:700;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${window.escapeHtml(window.toSentenceCase?.(userNameDisplay) || userNameDisplay)}</div>
@@ -864,9 +869,9 @@ window.filterSidebar = function(term) {
 
 // ─── GROUP PHOTO CACHE HELPER ───────────────────────────────────────────────
 window._clearGroupPhoto = function(g) {
-    localStorage.removeItem('dept_photo_' + g);
-    localStorage.removeItem('dept_photo_ts_' + g);
-    localStorage.setItem('dept_photo_none_' + g, String(Date.now())); // 24h skip flag
+    localStorage.removeItem(_webLsKey('dept_photo_' + g));
+    localStorage.removeItem(_webLsKey('dept_photo_ts_' + g));
+    _webLsSet('dept_photo_none_' + g, String(Date.now())); // 24h skip flag
 };
 
 // ─── LOAD CHATS LIST (Departments + Staff Members) ─────────────────────────
@@ -889,14 +894,14 @@ window.loadChatsList = async function() {
         const displayName = g.charAt(0).toUpperCase() + g.slice(1);
 
         // Check for stored group display name and photo
-        const storedName = localStorage.getItem('dept_name_' + g) || displayName;
-        const storedColor = localStorage.getItem('dept_color_' + g) || bgColor;
-        let storedPhoto = localStorage.getItem('dept_photo_' + g) || '';
-        const storedTs = parseInt(localStorage.getItem('dept_photo_ts_' + g) || '0');
+        const storedName = _webLsGet('dept_name_' + g) || displayName;
+        const storedColor = _webLsGet('dept_color_' + g) || bgColor;
+        let storedPhoto = _webLsGet('dept_photo_' + g) || '';
+        const storedTs = parseInt(_webLsGet('dept_photo_ts_' + g) || '0');
         const expired = !storedTs || (Date.now() - storedTs > 1800000); // 30 min cache
 
         // Skip if "no photo" flag set within 24h (avoids hammering Supabase for missing files)
-        const noneTs = parseInt(localStorage.getItem('dept_photo_none_' + g) || '0');
+        const noneTs = parseInt(_webLsGet('dept_photo_none_' + g) || '0');
         const noneRecent = noneTs && (Date.now() - noneTs < 86400000);
 
         // Fetch signed URL from task-proofs when cache empty or expired
@@ -905,11 +910,11 @@ window.loadChatsList = async function() {
             const { data: sd, error: sdErr } = await sb.storage.from('task-proofs').createSignedUrl(path, 3600);
             if (!sdErr && sd?.signedUrl) {
                 storedPhoto = sd.signedUrl;
-                localStorage.setItem('dept_photo_' + g, storedPhoto);
-                localStorage.setItem('dept_photo_ts_' + g, String(Date.now()));
+                _webLsSet('dept_photo_' + g, storedPhoto);
+                _webLsSet('dept_photo_ts_' + g, String(Date.now()));
             } else {
-                localStorage.removeItem('dept_photo_' + g);
-                localStorage.removeItem('dept_photo_ts_' + g);
+                localStorage.removeItem(_webLsKey('dept_photo_' + g));
+                localStorage.removeItem(_webLsKey('dept_photo_ts_' + g));
                 storedPhoto = '';
             }
         }
@@ -1150,7 +1155,7 @@ window.startSubscriptions = function() {
             if (payload?.room_id) {
                 localStorage.removeItem('dept_photo_' + payload.room_id);
                 localStorage.removeItem('dept_photo_ts_' + payload.room_id);
-                if (payload.name) localStorage.setItem('dept_name_' + payload.room_id, payload.name);
+                if (payload.name) _webLsSet('dept_name_' + payload.room_id, payload.name);
                 if (typeof window.loadChatsList === 'function') window.loadChatsList();
             }
         })
@@ -1305,7 +1310,7 @@ window.getRoomDisplayName = function(roomId) {
         return 'Direct Message';
     }
     // Check localStorage for custom name set via group settings
-    const stored = localStorage.getItem('dept_name_' + roomId);
+    const stored = _webLsGet('dept_name_' + roomId);
     if (stored) return stored;
     // Fallback: capitalise roomId
     return roomId.charAt(0).toUpperCase() + roomId.slice(1).replace(/_/g,' ');

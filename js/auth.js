@@ -272,6 +272,16 @@ window.signUp = async function(email, pwd) {
 // ─── LOGOUT ─────────────────────────────────────────────────────
 window.logout = async function() {
     logger.logAction('logout', { email: window.currentUser?.email });
+    // Clear tenant-scoped localStorage data
+    const tid = window.currentTenantId;
+    if (tid) {
+        const prefix = tid + '_';
+        Object.keys(localStorage).filter(k => k.startsWith(prefix)).forEach(k => localStorage.removeItem(k));
+    }
+    // Also clear known non-prefixed legacy keys
+    ['mpgs_avatar_'+window.currentUser?.id, 'mob_reactions', 'mob_msgs'].forEach(k => {
+        Object.keys(localStorage).filter(lk => lk.startsWith(k)).forEach(lk => localStorage.removeItem(lk));
+    });
     await sb.auth.signOut();
     // Clear tenant context then redirect to login
     // Use location.href so it works from any page (admin.html, index, etc.)

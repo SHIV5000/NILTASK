@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v34';
+const _MOB_VER = 'v35';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -44,6 +44,8 @@ let _rtWasErrored = false;
 let _rtIntentionalClose = false;
 let _typingThrottle = 0;
 let _notifFallbackInterval = null;
+let _bellCount = 0;   // instant in-memory unread count (survives RLS-blocked notification inserts)
+let _replyMapCache = {};   // room_id -> {parentId: replyCount} so thread buttons show on instant shell render
 let _scrollFabCount = 0;
 let _oldestTs = {};      // room_id -> created_at of oldest loaded message (pagination)
 let _allLoaded = {};     // room_id -> true when no older messages remain
@@ -108,8 +110,8 @@ function _updateTypingUI(room) {
 function _buildDepts() {
     return [
         {id:'general',   name:_lsGet('dept_name_general')   ||'General',   col:_lsGet('dept_color_general')   ||'#6366f1', photo:_lsGet('dept_photo_general')||''},
-        {id:'math',      name:_lsGet('dept_name_math')      ||'Mathematics',col:_lsGet('dept_color_math')      ||'#0ea5e9', photo:_lsGet('dept_photo_math')||''},
-        {id:'science',   name:_lsGet('dept_name_science')   ||'Science',   col:_lsGet('dept_color_science')   ||'#10b981', photo:_lsGet('dept_photo_photo')||''},
+        {id:'math',      name:_lsGet('dept_name_math')      ||'Math',      col:_lsGet('dept_color_math')      ||'#0ea5e9', photo:_lsGet('dept_photo_math')||''},
+        {id:'science',   name:_lsGet('dept_name_science')   ||'Science',   col:_lsGet('dept_color_science')   ||'#10b981', photo:_lsGet('dept_photo_science')||''},
         {id:'leadership',name:_lsGet('dept_name_leadership')||'Leadership',col:_lsGet('dept_color_leadership')||'#f59e0b', photo:_lsGet('dept_photo_leadership')||''},
     ];
 }
@@ -279,20 +281,41 @@ async function _ctx() {
 async function _syncRoomSettings() {
     if (!_tid) return;
     try {
-        const { data: rs } = await sb.from('room_settings')
-            .select('room_id,name,color,archived').eq('tenant_id', _tid);
+        // Try to include members (DB column may not exist yet — fall back gracefully).
+        let rs = null;
+        const withMembers = await sb.from('room_settings')
+            .select('room_id,name,color,archived,members').eq('tenant_id', _tid);
+        if (withMembers.error) {
+            const basic = await sb.from('room_settings')
+                .select('room_id,name,color,archived').eq('tenant_id', _tid);
+            rs = basic.data;
+        } else {
+            rs = withMembers.data;
+        }
         if (rs?.length) {
             rs.forEach(r => {
                 if (r.name)  _lsSet('dept_name_'+r.room_id, r.name);
                 if (r.color) _lsSet('dept_color_'+r.room_id, r.color);
+                // Hydrate members from DB so counts match across devices/users
+                if (Array.isArray(r.members)) _lsSet('dept_members_'+r.room_id, JSON.stringify(r.members));
             });
             _refreshDeptNames();
             const fixedIds = new Set(DEPTS.map(d=>d.id));
+            // Match web: any non-fixed, non-archived room is a custom group
             _customGroups = rs
-                .filter(r => r.room_id.startsWith('grp_') && !r.archived && !fixedIds.has(r.room_id))
+                .filter(r => !fixedIds.has(r.room_id) && !r.archived && !r.room_id.startsWith('dm_'))
                 .map(r => ({ id:r.room_id, name:r.name||r.room_id, col:r.color||'#8b5cf6', photo:_lsGet('dept_photo_'+r.room_id)||'' }));
         }
     } catch {}
+}
+
+// Upsert room_settings including members; retries without members if the column doesn't exist yet.
+async function _upsertRoomSettings(base, members) {
+    if (Array.isArray(members)) {
+        const withMembers = await sb.from('room_settings').upsert({ ...base, members }, { onConflict:'room_id,tenant_id' });
+        if (!withMembers.error) return;
+    }
+    await sb.from('room_settings').upsert(base, { onConflict:'room_id,tenant_id' });
 }
 
 function _buildShell() {
@@ -826,7 +849,7 @@ function _bubbleHTML(m, reactionsMap, maxLen=150, replyMap={}, roomCtx={}) {
     const sender = !me ? _users.find(u=>u.id===m.sender_id) : null;
     const rc = (replyMap||{})[m.id];
     const rCtx = roomCtx || {};
-    const threadBtn = rc ? `<button class="m-thread-link" data-action="thread"
+    const threadBtn = rc ? `<button class="m-thread-link" data-action="thread" data-n="${rc}"
         data-id="${m.id}" data-text="${x((m.text||'').substring(0,120))}"
         data-sender="${x(nm)}" data-time="${_ago(m.created_at)}"
         data-room="${rCtx.room||''}" data-rname="${x(rCtx.name||'')}" data-rcol="${rCtx.color||''}">
@@ -953,6 +976,7 @@ async function _groupChat(p) {
             ]);
             const replyMap = {};
             (replyData.data||[]).forEach(r => { replyMap[r.parent_message_id] = (replyMap[r.parent_message_id]||0)+1; });
+            _replyMapCache[p.room] = replyMap;   // cache for instant shell render next time
             if (myGen !== _refreshGen) { return; }
             const area = document.getElementById('mMsgArea');
             if (area) {
@@ -990,7 +1014,7 @@ async function _groupChat(p) {
         <input id="mChatSearchInp" type="search" placeholder="Search messages…" style="width:100%;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;" oninput="window._filterChatMsgs(this.value,'mMsgArea')">
       </div>
       <div class="m-msgs" id="mMsgArea">
-        ${shellMsgs.length ? (()=>{ const sr=_loadReactionsCache(); return shellMsgs.map(m=>_bubbleHTML(m,sr,140,{},p)).join(''); })() : '<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">' + (cached ? 'No messages yet.' : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…') + '</div>'}
+        ${shellMsgs.length ? (()=>{ const sr=_loadReactionsCache(); const rmap=_replyMapCache[p.room]||{}; return shellMsgs.map(m=>_bubbleHTML(m,sr,140,rmap,p)).join(''); })() : '<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">' + (cached ? 'No messages yet.' : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…') + '</div>'}
       </div>
       <button class="m-scrollfab" id="mScrollFab" style="display:none;" onclick="document.getElementById('mMsgArea').scrollTo({top:9e9,behavior:'smooth'})"><i class="fa-solid fa-chevron-down"></i></button>
       <div class="m-typing-area" id="mTypingArea"></div>
@@ -1253,6 +1277,7 @@ async function _notifications() {
     const hasUnread = (data||[]).some(d=>!d.is_read);
     // Mark all as read silently
     const unreadIds = (data||[]).filter(d=>!d.is_read).map(d=>d.id);
+    _clearBellBadge();   // opening the notifications screen clears the unread badge
     if (unreadIds.length) {
         sb.from('notifications').update({is_read:true}).in('id',unreadIds).then(()=>_refreshNotifBadge());
     }
@@ -1301,6 +1326,7 @@ async function _notifications() {
     </div>`;
 }
 window._markAllNotifsRead = async () => {
+    _clearBellBadge();
     await sb.from('notifications').update({is_read:true}).eq('user_id',_uid).eq('tenant_id',_tid).eq('is_read',false);
     _refreshNotifBadge();
     _render('notifications');
@@ -1629,7 +1655,7 @@ async function _groupMgmt() {
         _lsSet('dept_color_'+roomId, color);
         if (selectedIds.length) _lsSet('dept_members_'+roomId, JSON.stringify(selectedIds));
         try {
-            await sb.from('room_settings').upsert({ room_id:roomId, tenant_id:_tid, name, color, updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' });
+            await _upsertRoomSettings({ room_id:roomId, tenant_id:_tid, name, color, updated_at:new Date().toISOString() }, selectedIds);
             await sb.from('messages').insert({ room_id:roomId, tenant_id:_tid, sender_id:_uid, text:`<p>📢 <strong>${x(name)}</strong> group created.</p>`, created_at:new Date().toISOString() });
             _bcSend('group_photo', { room_id:roomId, name, color });
         } catch(e) { _toast('DB error: '+e.message, 'err'); }
@@ -1683,7 +1709,7 @@ async function _groupMgmt() {
         _lsSet('dept_color_'+gid, color);
         _lsSet('dept_members_'+gid, JSON.stringify(selectedIds));
         try {
-            await sb.from('room_settings').upsert({ room_id:gid, tenant_id:_tid, name, color, updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' });
+            await _upsertRoomSettings({ room_id:gid, tenant_id:_tid, name, color, updated_at:new Date().toISOString() }, selectedIds);
             _bcSend('group_photo', { room_id:gid, name, color });
         } catch(e) { _toast('DB error: '+e.message, 'err'); }
         const cg = _customGroups.find(g=>g.id===gid);
@@ -2305,11 +2331,20 @@ function _initRealtime() {
 }
 async function _refreshNotifBadge() {
     const { count } = await sb.from('notifications').select('*',{count:'exact',head:true}).eq('user_id',_uid).eq('tenant_id',_tid).eq('is_read',false);
+    // Use the larger of the DB count and our instant in-memory count, so the badge
+    // still shows even if the notifications INSERT is blocked by RLS.
+    _bellCount = Math.max(count || 0, _bellCount);
+    _renderBellBadge();
+}
+// Render the bell badge from the in-memory count (instant, no DB dependency).
+function _renderBellBadge() {
     const badge = _el('mNotifBadge');
     if (!badge) return;
-    if (count && count > 0) { badge.textContent = count > 9 ? '9+' : String(count); badge.style.display = 'flex'; }
+    if (_bellCount > 0) { badge.textContent = _bellCount > 9 ? '9+' : String(_bellCount); badge.style.display = 'flex'; }
     else badge.style.display = 'none';
 }
+function _bumpBellBadge() { _bellCount++; _renderBellBadge(); }
+function _clearBellBadge() { _bellCount = 0; _renderBellBadge(); }
 async function _goToMessage(messageId, roomIdHint) {
     if (!messageId) { _toast('No message linked to this notification','err'); return; }
     let room = roomIdHint;
@@ -2349,17 +2384,21 @@ async function _onNewMessage(m) {
     const inThread = top.screen==='thread'    && m.parent_message_id===top.params?.id;
     console.log('[mob-rt] msg id='+m.id+' parent='+m.parent_message_id+' room='+m.room_id+' screen='+top.screen+' params='+JSON.stringify(top.params)+' inGroup='+inGroup+' inThread='+inThread);
     if (!inGroup && !inDM && !inThread) {
-        // Update reply count badge on parent bubble if visible in current chat
+        // Update the reply indicator on the parent bubble if it's visible in the current chat.
+        // Use the SAME clickable .m-thread-link element the renderer emits (not a separate div),
+        // so the indicator stays single and tappable to open the thread.
         if (m.parent_message_id) {
             const parentRow = document.getElementById('row-'+m.parent_message_id);
             if (parentRow) {
-                let rc = parentRow.querySelector('.m-reply-count');
-                if (!rc) {
-                    parentRow.querySelector('.m-bubble')?.insertAdjacentHTML('beforeend',
-                        `<div class="m-reply-count" data-n="1" data-pid="${m.parent_message_id}">1 reply ›</div>`);
+                const link = parentRow.querySelector('.m-thread-link');
+                if (link) {
+                    const n = (parseInt(link.dataset.n||'1')+1);
+                    link.dataset.n = n;
+                    link.innerHTML = `💬 ${n} repl${n===1?'y':'ies'} ›`;
                 } else {
-                    const n = (parseInt(rc.dataset.n||'1')+1);
-                    rc.dataset.n = n; rc.textContent = n+' repl'+(n===1?'y':'ies')+' ›';
+                    const dept = DEPTS.find(d=>d.id===m.room_id) || _customGroups.find(g=>g.id===m.room_id);
+                    parentRow.querySelector('.m-bubble')?.insertAdjacentHTML('beforeend',
+                        `<button class="m-thread-link" data-action="thread" data-n="1" data-id="${m.parent_message_id}" data-room="${m.room_id||''}" data-rname="${x(dept?.name||'')}" data-rcol="${dept?.col||''}">💬 1 reply ›</button>`);
                 }
             }
         }
@@ -2370,7 +2409,9 @@ async function _onNewMessage(m) {
             const isDM = m.room_id?.startsWith('dm_');
             const roomLabel = dept ? dept.name : (isDM ? 'a direct message' : 'a group');
             _toast(`${name} — ${roomLabel}: ${_snip(m.text,50)}`);
-            // Write a notification row so the bell badge increments (mirrors web; dedup by message_id)
+            // Bump the bell instantly — independent of the DB insert (which RLS may block).
+            _bumpBellBadge();
+            // Write a notification row so the notifications list is populated (dedup by message_id)
             try {
                 const { count } = await sb.from('notifications').select('id',{count:'exact',head:true})
                     .eq('user_id',_uid).eq('message_id',m.id);
@@ -2626,6 +2667,19 @@ async function _doSendReply(a) {
     if (error) { _toast('Send failed: '+error.message,'err'); return; }
     window.playSound?.('message');
     _appendOwnMessage('mThreadArea', m, 160);
+    // Notify the parent author that someone replied (mirrors web notifyUser)
+    try {
+        const { data: parent } = await sb.from('messages').select('sender_id').eq('id', a.pid).single();
+        if (parent && parent.sender_id && parent.sender_id !== _uid) {
+            const me = _users.find(u=>u.id===_uid);
+            const myName = me ? (me.full_name||me.email?.split('@')[0]) : 'Someone';
+            await sb.from('notifications').insert({
+                user_id: parent.sender_id, type:'reply',
+                message: `↩ ${myName} replied: ${_snip(val.replace(/<[^>]*>/g,''), 80)}`,
+                message_id: m.id, tenant_id:_tid, is_read:false
+            });
+        }
+    } catch(e) { /* non-fatal */ }
 }
 async function _doSendDM(a) {
     if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }

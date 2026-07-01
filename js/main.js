@@ -195,8 +195,9 @@ window.saveNewGroup = async function() {
     if (rsErr) { err.textContent='Could not create group: '+rsErr.message; err.style.display='block'; return; }
     if (error) { err.textContent='Could not post system message: '+error.message; err.style.display='block'; return; }
 
-    // Broadcast so other online users refresh their sidebar immediately
+    // Broadcast so other online users refresh their sidebar immediately (web + cross-platform mobile)
     window._reactionsBroadcast?.send({ type:'broadcast', event:'group_photo', payload:{ room_id:roomId, name, color:_ngColor } });
+    window._sharedBroadcast?.send({ type:'broadcast', event:'group_photo', payload:{ room_id:roomId, name, color:_ngColor, src:'w' } });
 
     window.closeNewGroupModal();
     window.showCenterToast(`"${name}" created ✓`,'fa-solid fa-users');
@@ -293,7 +294,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.62.0 &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.63.0 (v33) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -751,9 +752,10 @@ window.renderMainApp = async function() {
         const now = Date.now();
         if (now - _webTypingThrottle < 2000) return;
         _webTypingThrottle = now;
-        if (!window._reactionsBroadcast || !window.currentRoom || !window.currentUser) return;
+        if (!window.currentRoom || !window.currentUser) return;
         const name = window.currentUser.user_metadata?.full_name || window.currentUser.email?.split('@')[0] || 'Someone';
-        window._reactionsBroadcast.send({ type: 'broadcast', event: 'typing', payload: { room: window.currentRoom, uid: window.currentUser.id, name } });
+        window._reactionsBroadcast?.send({ type: 'broadcast', event: 'typing', payload: { room: window.currentRoom, uid: window.currentUser.id, name } });
+        window._sharedBroadcast?.send({ type: 'broadcast', event: 'typing', payload: { room: window.currentRoom, uid: window.currentUser.id, name, src: 'w' } });
     });
 
     // Offline indicator
@@ -945,7 +947,7 @@ window.loadChatsList = async function() {
         } catch {}
     }
 
-    const {data: users} = await sb.from('profiles').select('id, email, full_name, designation, avatar_url').eq('tenant_id', window.currentTenantId);
+    const {data: users} = await sb.from('profiles').select('id, email, full_name, designation, avatar_url, last_seen').eq('tenant_id', window.currentTenantId);
     window.globalUsersCache = users || [];
 
     // Department label colours for avatars
@@ -1046,6 +1048,7 @@ window.loadChatsList = async function() {
             <div class="relative flex-shrink-0">
                 <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm"
                     style="${u.avatar_url ? `background-image:url('${u.avatar_url}');background-size:cover;background-position:center;color:transparent;` : 'background:var(--accent);'}">${u.avatar_url ? '' : name.charAt(0).toUpperCase()}</div>
+                ${window.getPresenceStatus?.(u.last_seen)?.online ? `<span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2" style="background:#22c55e;border-color:var(--bg-sidebar);"></span>` : ''}
                 ${unread > 0 ? `<span class="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full" style="background:#22c55e;"></span>
                     <span class="absolute -top-1 -right-1 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center" style="background:#22c55e;">${unread > 9 ? '9+' : unread}</span>` : ''}
             </div>
@@ -1084,7 +1087,7 @@ window.loadChatsList = async function() {
                 const titleSpan = document.getElementById('roomTitleDisplay');
                 if (titleSpan) titleSpan.innerText = el.dataset.name;
 
-                // Update member count chip
+                // Update header chip — member count for groups, online status for DMs
                 const chip = document.getElementById('memberCountChip');
                 if (chip) {
                     const roomId = el.dataset.room;
@@ -1092,9 +1095,22 @@ window.loadChatsList = async function() {
                         const members = JSON.parse(localStorage.getItem('dept_members_' + roomId) || 'null');
                         const count = Array.isArray(members) ? members.length : (window.globalUsersCache?.length || 0);
                         chip.textContent = count + ' members';
+                        chip.style.background = 'var(--accent-muted,rgba(99,102,241,0.1))';
+                        chip.style.color = 'var(--accent)';
                         chip.style.display = '';
                     } else {
-                        chip.style.display = 'none';
+                        // DM — show the other user's online/last-seen status
+                        const otherId = roomId.replace('dm_', '').split('_').find(id => id !== window.currentUser.id);
+                        const other = (window.globalUsersCache || []).find(u => u.id === otherId);
+                        const pres = window.getPresenceStatus?.(other?.last_seen) || { online: false, label: '' };
+                        if (pres.label) {
+                            chip.textContent = (pres.online ? '🟢 ' : '') + pres.label;
+                            chip.style.background = pres.online ? 'rgba(34,197,94,0.12)' : 'transparent';
+                            chip.style.color = pres.online ? '#16a34a' : 'var(--text-secondary)';
+                            chip.style.display = '';
+                        } else {
+                            chip.style.display = 'none';
+                        }
                     }
                 }
 
@@ -1226,65 +1242,77 @@ window.startSubscriptions = function() {
     if (window._reactionsBroadcast) {
         try { window._reactionsBroadcast.unsubscribe(); } catch(e) {}
     }
+    // ─── Named broadcast handlers (reused by legacy + shared cross-platform channels) ───
+    window._onBcReactionAdd = function(p) {
+        if (p && p.user_id !== window.currentUser.id && (!p.tenant_id || p.tenant_id === window.currentTenantId)) {
+            if (typeof window.applyReactionDOM === 'function') {
+                window.applyReactionDOM(p.message_id, p.value, p.type, p.user_id);
+            }
+        }
+    };
+    window._onBcReactionRemove = function(p) {
+        if (p && p.user_id !== window.currentUser.id && (!p.tenant_id || p.tenant_id === window.currentTenantId)) {
+            const footer = document.getElementById('footer-' + p.message_id);
+            if (!footer) return;
+            const chip = footer.querySelector(`[data-emoji="${p.value}"]`);
+            const tag  = footer.querySelector(`[data-tag="${p.value}"]`);
+            if (chip) {
+                const cnt = chip.querySelector('.e-cnt');
+                const current = parseInt(cnt?.textContent || '1');
+                if (current > 1) { if (cnt) cnt.textContent = current - 1; }
+                else chip.remove();
+            }
+            if (tag) tag.remove();
+            if (window.reactionsCache?.[p.message_id]) {
+                const cache = window.reactionsCache[p.message_id];
+                const idx = cache.findIndex(r => r.value === p.value && r.user_id === p.user_id);
+                if (idx !== -1) {
+                    if ((cache[idx].count || 1) > 1) cache[idx].count--;
+                    else cache.splice(idx, 1);
+                }
+            }
+        }
+    };
+    window._onBcGroupPhoto = function(payload) {
+        if (payload?.room_id) {
+            localStorage.removeItem('dept_photo_' + payload.room_id);
+            localStorage.removeItem('dept_photo_ts_' + payload.room_id);
+            if (payload.name) _webLsSet('dept_name_' + payload.room_id, payload.name);
+            if (typeof window.loadChatsList === 'function') window.loadChatsList();
+        }
+    };
+    window._onBcTyping = function(payload) {
+        if (!payload || payload.uid === window.currentUser?.id) return;
+        if (payload.room !== window.currentRoom) return;
+        const bar = document.getElementById('webTypingBar');
+        if (!bar) return;
+        bar.textContent = (payload.name || 'Someone') + ' is typing…';
+        bar.style.display = 'block';
+        clearTimeout(window._webTypingTimer);
+        window._webTypingTimer = setTimeout(() => {
+            bar.style.display = 'none'; bar.textContent = '';
+        }, 3000);
+    };
+
+    // Legacy web-only channel (kept for backward compat with un-updated web clients)
     window._reactionsBroadcast = sb.channel('mpgs-reactions-v1');
     window._reactionsBroadcast
-        // Handle reaction ADD from other users
-        .on('broadcast', { event: 'reaction' }, (payload) => {
-            const p = payload.payload;
-            if (p && p.user_id !== window.currentUser.id && p.tenant_id === window.currentTenantId) {
-                if (typeof window.applyReactionDOM === 'function') {
-                    window.applyReactionDOM(p.message_id, p.value, p.type, p.user_id);
-                }
-            }
+        .on('broadcast', { event: 'reaction' }, ({ payload }) => window._onBcReactionAdd(payload))
+        .on('broadcast', { event: 'reaction_remove' }, ({ payload }) => window._onBcReactionRemove(payload))
+        .on('broadcast', { event: 'group_photo' }, ({ payload }) => window._onBcGroupPhoto(payload))
+        .on('broadcast', { event: 'typing' }, ({ payload }) => window._onBcTyping(payload))
+        .subscribe();
+
+    // Shared cross-platform channel (mobile ↔ web) — v33. Ignore src:'w' (own platform,
+    // already delivered via the legacy channel). Reaction uses a single event with isDelete flag.
+    window._sharedBroadcast = sb.channel('taskflow-bc-' + window.currentTenantId, { config: { broadcast: { self: false } } });
+    window._sharedBroadcast
+        .on('broadcast', { event: 'reaction' }, ({ payload: p }) => {
+            if (!p || p.src === 'w') return;
+            if (p.isDelete) window._onBcReactionRemove(p); else window._onBcReactionAdd(p);
         })
-        // Handle reaction REMOVE from other users — decrement count, only remove chip when count hits 0
-        .on('broadcast', { event: 'reaction_remove' }, (payload) => {
-            const p = payload.payload;
-            if (p && p.user_id !== window.currentUser.id && p.tenant_id === window.currentTenantId) {
-                const footer = document.getElementById('footer-' + p.message_id);
-                if (!footer) return;
-                const chip = footer.querySelector(`[data-emoji="${p.value}"]`);
-                const tag  = footer.querySelector(`[data-tag="${p.value}"]`);
-                if (chip) {
-                    const cnt = chip.querySelector('.e-cnt');
-                    const current = parseInt(cnt?.textContent || '1');
-                    if (current > 1) { if (cnt) cnt.textContent = current - 1; }
-                    else chip.remove();
-                }
-                if (tag) tag.remove();
-                // Keep cache in sync
-                if (window.reactionsCache?.[p.message_id]) {
-                    const cache = window.reactionsCache[p.message_id];
-                    const idx = cache.findIndex(r => r.value === p.value && r.user_id === p.user_id);
-                    if (idx !== -1) {
-                        if ((cache[idx].count || 1) > 1) cache[idx].count--;
-                        else cache.splice(idx, 1);
-                    }
-                }
-            }
-        })
-        // Sync group photo to all online users — clear cache so next loadChatsList fetches a fresh signed URL
-        .on('broadcast', { event: 'group_photo' }, ({ payload }) => {
-            if (payload?.room_id) {
-                localStorage.removeItem('dept_photo_' + payload.room_id);
-                localStorage.removeItem('dept_photo_ts_' + payload.room_id);
-                if (payload.name) _webLsSet('dept_name_' + payload.room_id, payload.name);
-                if (typeof window.loadChatsList === 'function') window.loadChatsList();
-            }
-        })
-        // Typing indicator from mobile users
-        .on('broadcast', { event: 'typing' }, ({ payload }) => {
-            if (!payload || payload.uid === window.currentUser?.id) return;
-            if (payload.room !== window.currentRoom) return;
-            const bar = document.getElementById('webTypingBar');
-            if (!bar) return;
-            bar.textContent = (payload.name || 'Someone') + ' is typing…';
-            bar.style.display = 'block';
-            clearTimeout(window._webTypingTimer);
-            window._webTypingTimer = setTimeout(() => {
-                bar.style.display = 'none'; bar.textContent = '';
-            }, 3000);
-        })
+        .on('broadcast', { event: 'group_photo' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onBcGroupPhoto(p); })
+        .on('broadcast', { event: 'typing' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onBcTyping(p); })
         .subscribe();
 
     // Scheduled messages: notify sender when status changes to 'sent'
@@ -1368,6 +1396,26 @@ window.startSubscriptions = function() {
         }).subscribe();
 
     if (typeof window.refreshNotificationBadge === 'function') window.refreshNotificationBadge();
+
+    // ── Presence heartbeat (v33) — mirror mobile so web users show as online in DM headers ──
+    if (!window._webHeartbeat) {
+        const beat = () => {
+            if (!window.currentUser?.id) return;
+            sb.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', window.currentUser.id).then(() => {});
+        };
+        beat();
+        window._webHeartbeat = setInterval(beat, 60000);
+    }
+};
+
+// ── Presence helper (v33) — online status text from last_seen (parity with mobile) ──
+window.getPresenceStatus = function(lastSeen) {
+    if (!lastSeen) return { online: false, label: '' };
+    const diffMin = (Date.now() - new Date(lastSeen).getTime()) / 60000;
+    if (diffMin < 3)  return { online: true,  label: 'Online' };
+    if (diffMin < 60) return { online: false, label: `Last seen ${Math.round(diffMin)}m ago` };
+    if (diffMin < 1440) return { online: false, label: `Last seen ${Math.round(diffMin/60)}h ago` };
+    return { online: false, label: `Last seen ${Math.round(diffMin/1440)}d ago` };
 };
 
 // Bell animation — pulses until user clicks it

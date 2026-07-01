@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v33';
+const _MOB_VER = 'v34';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -45,6 +45,9 @@ let _rtIntentionalClose = false;
 let _typingThrottle = 0;
 let _notifFallbackInterval = null;
 let _scrollFabCount = 0;
+let _oldestTs = {};      // room_id -> created_at of oldest loaded message (pagination)
+let _allLoaded = {};     // room_id -> true when no older messages remain
+let _loadingOlder = false;
 
 function _lsKey(k) { return (_tid ? _tid+'_' : '')+k; }
 function _lsSet(k,v) { try { localStorage.setItem(_lsKey(k),v); } catch{} }
@@ -268,23 +271,28 @@ async function _ctx() {
         } catch {}
     }
     // Sync room names from DB → localStorage → DEPTS; also collect custom groups
-    if (_tid) {
-        try {
-            const { data: rs } = await sb.from('room_settings')
-                .select('room_id,name,color,archived').eq('tenant_id', _tid);
-            if (rs?.length) {
-                rs.forEach(r => {
-                    if (r.name)  _lsSet('dept_name_'+r.room_id, r.name);
-                    if (r.color) _lsSet('dept_color_'+r.room_id, r.color);
-                });
-                _refreshDeptNames();
-                const fixedIds = new Set(DEPTS.map(d=>d.id));
-                _customGroups = rs
-                    .filter(r => r.room_id.startsWith('grp_') && !r.archived && !fixedIds.has(r.room_id))
-                    .map(r => ({ id:r.room_id, name:r.name||r.room_id, col:r.color||'#8b5cf6', photo:_lsGet('dept_photo_'+r.room_id)||'' }));
-            }
-        } catch {}
-    }
+    await _syncRoomSettings();
+}
+
+// Fetch room_settings from DB, sync names/colors to localStorage, and rebuild _customGroups.
+// Called at startup (_ctx) and on live group_photo broadcasts so new groups appear without reload.
+async function _syncRoomSettings() {
+    if (!_tid) return;
+    try {
+        const { data: rs } = await sb.from('room_settings')
+            .select('room_id,name,color,archived').eq('tenant_id', _tid);
+        if (rs?.length) {
+            rs.forEach(r => {
+                if (r.name)  _lsSet('dept_name_'+r.room_id, r.name);
+                if (r.color) _lsSet('dept_color_'+r.room_id, r.color);
+            });
+            _refreshDeptNames();
+            const fixedIds = new Set(DEPTS.map(d=>d.id));
+            _customGroups = rs
+                .filter(r => r.room_id.startsWith('grp_') && !r.archived && !fixedIds.has(r.room_id))
+                .map(r => ({ id:r.room_id, name:r.name||r.room_id, col:r.color||'#8b5cf6', photo:_lsGet('dept_photo_'+r.room_id)||'' }));
+        }
+    } catch {}
 }
 
 function _buildShell() {
@@ -928,12 +936,15 @@ async function _groupChat(p) {
         const myGen = ++_refreshGen;
         if (_isOffline) return;
         try {
-            const { data: msgs } = await sb.from('messages')
+            const { data: rawMsgs } = await sb.from('messages')
                 .select('id,text,sender_id,created_at,updated_at,parent_message_id')
                 .eq('room_id',p.room).eq('tenant_id',_tid)
                 .is('deleted_at',null).is('parent_message_id',null)
-                .order('created_at',{ascending:true}).limit(80);
-            if (!msgs) return;
+                .order('created_at',{ascending:false}).limit(50);
+            if (!rawMsgs) return;
+            const msgs = rawMsgs.reverse();  // oldest → newest for display
+            _oldestTs[p.room] = msgs[0]?.created_at || null;
+            _allLoaded[p.room] = rawMsgs.length < 50;
             _saveRoomCache(p.room, msgs);
             const msgIds = msgs.map(m=>m.id);
             const [reactionsMap, replyData] = await Promise.all([
@@ -1023,11 +1034,14 @@ async function _dm(p) {
         const myGen = ++_refreshGen;
         if (_isOffline) return;
         try {
-            const { data: msgs } = await sb.from('messages')
+            const { data: rawMsgs } = await sb.from('messages')
                 .select('id,text,sender_id,created_at,updated_at')
                 .eq('room_id',p.room).eq('tenant_id',_tid)
-                .is('deleted_at',null).order('created_at',{ascending:true}).limit(80);
-            if (!msgs) return;
+                .is('deleted_at',null).order('created_at',{ascending:false}).limit(50);
+            if (!rawMsgs) return;
+            const msgs = rawMsgs.reverse();  // oldest → newest for display
+            _oldestTs[p.room] = msgs[0]?.created_at || null;
+            _allLoaded[p.room] = rawMsgs.length < 50;
             _saveRoomCache(p.room, msgs);
             const reactionsMap = await _fetchReactions(msgs.map(m=>m.id));
             if (myGen !== _refreshGen) return;
@@ -2240,9 +2254,11 @@ function _initRealtime() {
             }
         }
         if (p.payload?.room_id && p.payload?.color) _lsSet('dept_color_'+p.payload.room_id, p.payload.color);
-        _refreshDeptNames();
-        const top = _stack[_stack.length-1];
-        if (top?.screen === 'home') _render('home', null, 'forward');
+        // Rebuild custom groups from DB so a group created on another device appears live
+        _syncRoomSettings().then(() => {
+            const top = _stack[_stack.length-1];
+            if (top?.screen === 'home') _render('home', null, 'forward');
+        });
     };
     const _hTyping = p => {
         if (!p.payload || p.payload.uid === _uid) return;
@@ -2288,7 +2304,7 @@ function _initRealtime() {
     // Realtime badge update already wired via postgres_changes INSERT on notifications — no polling needed
 }
 async function _refreshNotifBadge() {
-    const { count } = await sb.from('notifications').select('*',{count:'exact',head:true}).eq('user_id',_uid).eq('is_read',false);
+    const { count } = await sb.from('notifications').select('*',{count:'exact',head:true}).eq('user_id',_uid).eq('tenant_id',_tid).eq('is_read',false);
     const badge = _el('mNotifBadge');
     if (!badge) return;
     if (count && count > 0) { badge.textContent = count > 9 ? '9+' : String(count); badge.style.display = 'flex'; }
@@ -2321,6 +2337,11 @@ async function _goToTask(taskId) {
 async function _onNewMessage(m) {
     if (m.tenant_id && m.tenant_id !== _tid) return;
     if (!m || m.sender_id === _uid) return; // own sends are already shown by the post-send refresh
+    // DM privacy guard — ignore DMs the current user is not a participant of (no toast/notif/render)
+    if (m.room_id && m.room_id.startsWith('dm_')) {
+        const parts = m.room_id.replace('dm_','').split('_');
+        if (!parts.includes(_uid)) return;
+    }
     const top = _stack[_stack.length-1];
     if (!top) return;
     const inGroup  = top.screen==='groupChat' && m.room_id===top.params?.room && !m.parent_message_id;
@@ -2345,9 +2366,24 @@ async function _onNewMessage(m) {
         if (!m.parent_message_id) {
             const sender = _users.find(u=>u.id===m.sender_id);
             const name = sender ? (sender.full_name||sender.email?.split('@')[0]) : 'Someone';
-            const dept = DEPTS.find(d=>d.id===m.room_id);
-            const roomLabel = dept ? dept.name : 'a direct message';
+            const dept = DEPTS.find(d=>d.id===m.room_id) || _customGroups.find(g=>g.id===m.room_id);
+            const isDM = m.room_id?.startsWith('dm_');
+            const roomLabel = dept ? dept.name : (isDM ? 'a direct message' : 'a group');
             _toast(`${name} — ${roomLabel}: ${_snip(m.text,50)}`);
+            // Write a notification row so the bell badge increments (mirrors web; dedup by message_id)
+            try {
+                const { count } = await sb.from('notifications').select('id',{count:'exact',head:true})
+                    .eq('user_id',_uid).eq('message_id',m.id);
+                if (!count) {
+                    const snippet = _snip(m.text, 80);
+                    const msg = isDM ? `💬 ${name}: ${snippet}` : `${name} in ${roomLabel}: ${snippet}`;
+                    await sb.from('notifications').insert({
+                        user_id:_uid, type:'message', message:msg,
+                        message_id:m.id, tenant_id:_tid, is_read:false
+                    });
+                    await _refreshNotifBadge();
+                }
+            } catch(e) { /* non-fatal */ }
         }
         return;
     }
@@ -2407,6 +2443,44 @@ async function _onTaskAssigneeUpdate(row) {
     }
 }
 
+async function _loadOlderMessages(areaId, room, screen) {
+    if (_loadingOlder || _allLoaded[room] || !_oldestTs[room]) return;
+    const area = _el(areaId); if (!area) return;
+    _loadingOlder = true;
+    try {
+        const isGroup = screen === 'groupChat';
+        let q = sb.from('messages')
+            .select(isGroup ? 'id,text,sender_id,created_at,updated_at,parent_message_id' : 'id,text,sender_id,created_at,updated_at')
+            .eq('room_id',room).eq('tenant_id',_tid).is('deleted_at',null);
+        if (isGroup) q = q.is('parent_message_id',null);
+        const { data: raw } = await q.lt('created_at', _oldestTs[room]).order('created_at',{ascending:false}).limit(50);
+        if (!raw || raw.length === 0) { _allLoaded[room] = true; return; }
+        const older = raw.reverse();  // oldest → newest
+        _oldestTs[room] = older[0]?.created_at || _oldestTs[room];
+        if (raw.length < 50) _allLoaded[room] = true;
+        const ids = older.map(m=>m.id);
+        let reactionsMap = {}, replyMap = {};
+        if (isGroup) {
+            const [rm, replyData] = await Promise.all([
+                _fetchReactions(ids),
+                sb.from('messages').select('parent_message_id').in('parent_message_id', ids).eq('tenant_id',_tid).is('deleted_at',null)
+            ]);
+            reactionsMap = rm;
+            (replyData.data||[]).forEach(r => { replyMap[r.parent_message_id] = (replyMap[r.parent_message_id]||0)+1; });
+        } else {
+            reactionsMap = await _fetchReactions(ids);
+        }
+        const roomCtx = _stack[_stack.length-1]?.params || {};
+        const maxLen = isGroup ? 140 : 160;
+        const html = older.map(m => _bubbleHTML(m, reactionsMap, maxLen, replyMap, roomCtx)).join('');
+        // Prepend while preserving scroll position (anchor to current top element)
+        const prevHeight = area.scrollHeight;
+        const prevTop = area.scrollTop;
+        area.insertAdjacentHTML('afterbegin', html);
+        area.scrollTop = prevTop + (area.scrollHeight - prevHeight);
+    } catch {} finally { _loadingOlder = false; }
+}
+
 function _wireScreen(screen, params, container) {
     const areaId = screen==='groupChat'?'mMsgArea':screen==='dm'?'mDMArea':screen==='thread'?'mThreadArea':null;
     if (areaId) {
@@ -2414,9 +2488,16 @@ function _wireScreen(screen, params, container) {
         const fab  = _el('mScrollFab');
         if (area) {
             if (!params?.scrollTo) setTimeout(() => { area.scrollTop = area.scrollHeight; }, 80);
-            if (fab) area.addEventListener('scroll', () => {
-                const nearBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 150;
-                if (nearBottom) { fab.style.display = 'none'; _scrollFabCount = 0; fab.innerHTML = '<i class="fa-solid fa-chevron-down"></i>'; }
+            const room = params?.room;
+            if (area) area.addEventListener('scroll', () => {
+                if (fab) {
+                    const nearBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 150;
+                    if (nearBottom) { fab.style.display = 'none'; _scrollFabCount = 0; fab.innerHTML = '<i class="fa-solid fa-chevron-down"></i>'; }
+                }
+                // Load older messages when scrolled near the top (group + DM only)
+                if (room && (screen === 'groupChat' || screen === 'dm') && area.scrollTop < 60) {
+                    _loadOlderMessages(areaId, room, screen);
+                }
             }, { passive:true });
         }
     }

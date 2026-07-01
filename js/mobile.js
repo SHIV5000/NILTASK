@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v26';
+const _MOB_VER = 'v27';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -10,7 +10,7 @@ console.log   = (...a) => { _logBuf.push('[L] '+a.join(' ')); if (_logBuf.length
 console.warn  = (...a) => { _logBuf.push('[W] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); };
 console.error = (...a) => { _logBuf.push('[E] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); };
 window._copyLogs = () => {
-    const txt = '[v26 log dump '+new Date().toISOString()+']\n'+_logBuf.join('\n');
+    const txt = '[v27 log dump '+new Date().toISOString()+']\n'+_logBuf.join('\n');
     navigator.clipboard?.writeText(txt)
         .then(() => _toast('Logs copied ✓ — paste anywhere'))
         .catch(() => _toast('Clipboard denied — use eruda','err'));
@@ -28,12 +28,17 @@ let _swipeStart = null, _swipeRow = null, _swipeTriggered = false;
 let _searchMode = false;
 let _customGroups = [];
 
+function _lsKey(k) { return (_tid ? _tid+'_' : '')+k; }
+function _lsSet(k,v) { try { localStorage.setItem(_lsKey(k),v); } catch{} }
+function _lsGet(k,def='') { return localStorage.getItem(_lsKey(k)) ?? def; }
+function _lsRm(k) { localStorage.removeItem(_lsKey(k)); }
+
 function _buildDepts() {
     return [
-        {id:'general',   name:localStorage.getItem('dept_name_general')   ||'General',   col:localStorage.getItem('dept_color_general')   ||'#6366f1', photo:localStorage.getItem('dept_photo_general')||''},
-        {id:'math',      name:localStorage.getItem('dept_name_math')      ||'Mathematics',col:localStorage.getItem('dept_color_math')      ||'#0ea5e9', photo:localStorage.getItem('dept_photo_math')||''},
-        {id:'science',   name:localStorage.getItem('dept_name_science')   ||'Science',   col:localStorage.getItem('dept_color_science')   ||'#10b981', photo:localStorage.getItem('dept_photo_science')||''},
-        {id:'leadership',name:localStorage.getItem('dept_name_leadership')||'Leadership',col:localStorage.getItem('dept_color_leadership')||'#f59e0b', photo:localStorage.getItem('dept_photo_leadership')||''},
+        {id:'general',   name:_lsGet('dept_name_general')   ||'General',   col:_lsGet('dept_color_general')   ||'#6366f1', photo:_lsGet('dept_photo_general')||''},
+        {id:'math',      name:_lsGet('dept_name_math')      ||'Mathematics',col:_lsGet('dept_color_math')      ||'#0ea5e9', photo:_lsGet('dept_photo_math')||''},
+        {id:'science',   name:_lsGet('dept_name_science')   ||'Science',   col:_lsGet('dept_color_science')   ||'#10b981', photo:_lsGet('dept_photo_photo')||''},
+        {id:'leadership',name:_lsGet('dept_name_leadership')||'Leadership',col:_lsGet('dept_color_leadership')||'#f59e0b', photo:_lsGet('dept_photo_leadership')||''},
     ];
 }
 let DEPTS = _buildDepts();
@@ -168,6 +173,11 @@ async function _ctx() {
         }
     }
     if (_users.length) _usersLoaded = true;
+    if (!_tid) {
+        console.error('[mob] No tenant_id found for user — aborting session');
+        _toast('Account configuration error. Please contact your administrator.', 'err');
+        return;
+    }
     // Load RBAC role if not already set by web auth flow
     if (_tid && _uid && !window.currentRole) {
         try {

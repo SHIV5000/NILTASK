@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v27';
+const _MOB_VER = 'v28';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -31,7 +31,16 @@ let _customGroups = [];
 
 function _lsKey(k) { return (_tid ? _tid+'_' : '')+k; }
 function _lsSet(k,v) { try { localStorage.setItem(_lsKey(k),v); } catch{} }
-function _lsGet(k,def='') { return localStorage.getItem(_lsKey(k)) ?? def; }
+function _lsGet(k,def='') {
+    const val = localStorage.getItem(_lsKey(k));
+    if (val !== null && val !== '') return val;
+    const legacy = localStorage.getItem(k);
+    if (legacy !== null) {
+        try { localStorage.setItem(_lsKey(k), legacy); } catch{}
+        return legacy;
+    }
+    return def;
+}
 function _lsRm(k) { localStorage.removeItem(_lsKey(k)); }
 
 function _buildDepts() {
@@ -1795,7 +1804,16 @@ async function _onShellClick(e) {
             if (typeof window.downloadTaskPDF === 'function') await window.downloadTaskPDF(a.id);
             else _toast('PDF export not available','err');
             break;
-        case 'openFile': { const u = decodeURIComponent(a.url||''); if (u.startsWith('http')) window.open(u,'_blank','noopener'); break; }
+        case 'openFile': {
+            const u = decodeURIComponent(a.url||'');
+            const match = u.match(/\/storage\/v1\/object\/(?:public\/)?(?:sign\/)?task-proofs\/(.+?)(?:\?.*)?$/);
+            if (match) {
+                await _openTaskFile(decodeURIComponent(match[1]));
+            } else if (u.startsWith('http')) {
+                window.open(u, '_blank', 'noopener');
+            }
+            break;
+        }
         case 'confirmLogout': await window._confirmLogout(); break;
         case 'pickTheme':
             if (typeof window.setTheme === 'function') window.setTheme(a.theme);

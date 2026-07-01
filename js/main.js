@@ -6,7 +6,16 @@ import logger from './utils/logger.js';
 // ─── TENANT-NAMESPACED localStorage HELPERS ───────────────────────────────────
 function _webLsKey(k) { return (window.currentTenantId ? window.currentTenantId+'_' : '')+k; }
 function _webLsSet(k,v) { try { localStorage.setItem(_webLsKey(k),v); } catch{} }
-function _webLsGet(k,def='') { return localStorage.getItem(_webLsKey(k)) ?? def; }
+function _webLsGet(k,def='') {
+    const val = localStorage.getItem(_webLsKey(k));
+    if (val !== null && val !== '') return val;
+    const legacy = localStorage.getItem(k);
+    if (legacy !== null) {
+        try { localStorage.setItem(_webLsKey(k), legacy); } catch{}
+        return legacy;
+    }
+    return def;
+}
 
 let messageSubscription = null;
 let taskSubscription = null;
@@ -877,6 +886,22 @@ window._clearGroupPhoto = function(g) {
 // ─── LOAD CHATS LIST (Departments + Staff Members) ─────────────────────────
 window.loadChatsList = async function() {
     const departments = ['general', 'math', 'science', 'leadership'];
+
+    // Sync custom dept names/colors from DB
+    if (window.currentTenantId) {
+        try {
+            const { data: rs } = await sb.from('room_settings')
+                .select('room_id,name,color,archived')
+                .eq('tenant_id', window.currentTenantId);
+            if (rs?.length) {
+                rs.forEach(r => {
+                    if (r.name)  _webLsSet('dept_name_'+r.room_id, r.name);
+                    if (r.color) _webLsSet('dept_color_'+r.room_id, r.color);
+                });
+            }
+        } catch {}
+    }
+
     const {data: users} = await sb.from('profiles').select('id, email, full_name, designation, avatar_url').eq('tenant_id', window.currentTenantId);
     window.globalUsersCache = users || [];
 

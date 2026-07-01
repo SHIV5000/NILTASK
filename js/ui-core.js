@@ -175,7 +175,7 @@ window.goToMessage = async function(messageId, notifId, roomId) {
     // Step 1: resolve the room. If roomId is unknown, look it up in the DB.
     let targetRoom = (roomId && roomId !== 'null' && roomId !== 'undefined' && roomId !== 'null') ? roomId : null;
     if (!targetRoom) {
-        const { data: msgRow } = await sb.from('messages').select('room_id').eq('id', messageId).single();
+        const { data: msgRow } = await sb.from('messages').select('room_id').eq('id', messageId).eq('tenant_id', window.currentTenantId).single();
         targetRoom = msgRow?.room_id || null;
     }
 

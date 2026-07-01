@@ -510,7 +510,7 @@ window.renderMessages = function(messages) {
         const rcvdAvUrl = msg.profiles?.avatar_url || '';
         const avatarUrl = isSent ? sentAvUrl : rcvdAvUrl;
         const avatarHTML = avatarUrl
-            ? `<div class="${avClass}" style="overflow:hidden;padding:0;background:transparent;"><img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.parentElement.style.background='var(--accent)';this.parentElement.innerHTML='${avatarInitial}';"></div>`
+            ? `<div class="${avClass}" style="overflow:hidden;padding:0;background:transparent;"><img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none';this.nextElementSibling&&(this.nextElementSibling.style.display='')"><span style="display:none">${avatarInitial}</span></div>`
             : `<div class="${avClass}">${avatarInitial}</div>`;
         const rawRole = msg.profiles?.designation || msg.profiles?.role || 'Staff';
         const roleStr = isSent ? (window.currentDesignation || window.currentRoleName || 'Staff')
@@ -925,7 +925,7 @@ window.saveEditMessage = async function(msgId) {
 // ── DELETE MESSAGE ────────────────────────────────────────────────────────────
 window.deleteMessage = async function(msgId) {
     if (!confirm('Delete this message?')) return;
-    await sb.from('messages').delete().eq('id', msgId).eq('sender_id', window.currentUser.id);
+    await sb.from('messages').delete().eq('id', msgId).eq('sender_id', window.currentUser.id).eq('tenant_id', window.currentTenantId);
     if (typeof window.loadMessages === 'function') window.loadMessages();
 };
 

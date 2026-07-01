@@ -319,6 +319,7 @@ window.deleteReminder = async function(id) {
 };
 
 window.deleteScheduled = async function(id) {
+    if (window.guardSchedule?.()) return;
     await sb.from('scheduled_messages').delete().eq('id',id);
     document.querySelectorAll('.top-panel-dropdown').forEach(m=>m.remove());
     window.showCenterToast('Scheduled message cancelled.','fa-solid fa-info-circle','text-yellow-400');
@@ -352,6 +353,7 @@ window.closeScheduleModal = function() {
 };
 
 window.saveScheduledMessage = async function() {
+    if (window.guardSchedule?.()) return;
     const time = document.getElementById('scheduleDateTime').value;
     if (!time) { window.showCenterToast('Please pick a date/time','fa-solid fa-times','text-red-500'); return; }
     let txt = window.quillEditor.root.innerHTML.trim();

@@ -272,6 +272,8 @@ window.signUp = async function(email, pwd) {
 // ─── LOGOUT ─────────────────────────────────────────────────────
 window.logout = async function() {
     logger.logAction('logout', { email: window.currentUser?.email });
+    // Stop presence heartbeat (v33)
+    if (window._webHeartbeat) { clearInterval(window._webHeartbeat); window._webHeartbeat = null; }
     // Clear tenant-scoped localStorage data
     const tid = window.currentTenantId;
     if (tid) {

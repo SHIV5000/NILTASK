@@ -248,7 +248,7 @@ window.deleteNotification = window.dismissNotif;
 
 window.clearAllNotifications = async function() {
     // Delete in DB then refresh — Supabase v2 delete returns {error} only
-    const { error } = await sb.from('notifications').delete().eq('user_id', window.currentUser.id);
+    const { error } = await sb.from('notifications').delete().eq('user_id', window.currentUser.id).eq('tenant_id', window.currentTenantId);
     if (error) {
         window.showCenterToast('Clear failed — check RLS policy: notifications DELETE', 'fa-solid fa-lock', 'text-red-500');
         return;
@@ -260,7 +260,7 @@ window.clearAllNotifications = async function() {
 
 window.clearFiredReminders = async function() {
     const { error } = await sb.from('notifications').delete()
-        .eq('user_id', window.currentUser.id).eq('type', 'reminder');
+        .eq('user_id', window.currentUser.id).eq('tenant_id', window.currentTenantId).eq('type', 'reminder');
     if (error) {
         window.showCenterToast('Clear failed — check RLS policy','fa-solid fa-lock','text-red-500');
         return;
@@ -324,7 +324,7 @@ window.markNotifRead = async function(id) {
 };
 
 window.deleteReminder = async function(id) {
-    await sb.from('reminders').delete().eq('id',id);
+    await sb.from('reminders').delete().eq('id',id).eq('tenant_id', window.currentTenantId);
     document.querySelectorAll('.top-panel-dropdown').forEach(m=>m.remove());
     window.showCenterToast('Reminder cancelled.','fa-solid fa-info-circle','text-yellow-400');
 };

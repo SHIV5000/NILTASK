@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v32';
+const _MOB_VER = 'v33';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -24,6 +24,14 @@ let _pendingUploadTaskId = null;
 let _pendingDeptPhoto = null;
 let _rtChannel = null;
 let _bcChannel = null;
+let _sharedBc = null;  // v33 cross-platform bridge: shared with web on 'taskflow-bc-'+tid
+// Broadcast to BOTH the legacy mobile channel and the shared cross-platform channel.
+// Shared payload carries src:'m' so web ignores mobile's own-platform echo correctly,
+// and mobile's shared listener ignores src:'m' (already delivered via the legacy channel).
+function _bcSend(event, payload) {
+    try { _bcChannel?.send({ type:'broadcast', event, payload }); } catch {}
+    try { _sharedBc?.send({ type:'broadcast', event, payload:{ ...payload, src:'m' } }); } catch {}
+}
 let _notifPoll = null;
 let _swipeStart = null, _swipeRow = null, _swipeTriggered = false;
 let _searchMode = false;
@@ -362,7 +370,7 @@ function _buildShell() {
         const now = Date.now();
         if (now - _typingThrottle < 2000) return;
         _typingThrottle = now;
-        _bcChannel.send({ type:'broadcast', event:'typing', payload:{ room, uid:_uid, name:_uname(_uid) } });
+        _bcSend('typing', { room, uid:_uid, name:_uname(_uid) });
     });
 
     // Swipe-right-to-reply gesture
@@ -769,8 +777,7 @@ async function _toggleReaction(msgId, value, type, isMine=false) {
     // Persist to localStorage cache (own reaction)
     _saveReactionEntry(msgId, value, type, _uid, isDelete);
     // Broadcast to all users via dedicated broadcast channel (bypasses RLS on postgres_changes)
-    _bcChannel?.send({ type:'broadcast', event:'reaction', payload:{ message_id:msgId, value, type, user_id:_uid, isDelete } })
-        .then(s => console.log('[mob-rt] broadcast send status='+s));
+    _bcSend('reaction', { message_id:msgId, value, type, user_id:_uid, tenant_id:_tid, isDelete });
     await _refreshChips(msgId, { value, type, isDelete });
 }
 async function _refreshChips(msgId, optimistic) {
@@ -864,8 +871,8 @@ function _renderLinkPills(html) {
                 const label  = isFile ? 'Download' : 'Visit';
                 const icon   = isFile ? 'fa-download' : 'fa-arrow-up-right-from-square';
                 return `<button class="m-link-pill" data-action="openFile" data-url="${encodeURIComponent(safeUrl)}" title="${x(fixedUrl)}"
-                    style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;border:none;text-decoration:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,.35);white-space:nowrap;vertical-align:middle;">
-                    <i class="fa-solid ${icon}" style="font-size:9px;"></i><span>${x(name)}</span>
+                    style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;border:none;text-decoration:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,.35);white-space:nowrap;vertical-align:middle;max-width:100%;overflow:hidden;">
+                    <i class="fa-solid ${icon}" style="font-size:9px;flex-shrink:0;"></i><span style="overflow:hidden;text-overflow:ellipsis;">${x(name)}</span>
                     <span style="font-size:9px;opacity:.75;border-left:1px solid rgba(255,255,255,.35);padding-left:7px;margin-left:3px;">${label}</span>
                 </button>`;
             } catch(e) { return match; }
@@ -1077,7 +1084,7 @@ async function _tasks() {
     const taskIds = (data||[]).map(r=>r.tasks.id);
     let assigneeMap = {};
     if (taskIds.length) {
-        const { data: allAssignees } = await sb.from('task_assignees').select('task_id,assignee_id').in('task_id', taskIds);
+        const { data: allAssignees } = await sb.from('task_assignees').select('task_id,assignee_id').eq('tenant_id', _tid).in('task_id', taskIds);
         (allAssignees||[]).forEach(a => { (assigneeMap[a.task_id] = assigneeMap[a.task_id]||[]).push(_uname(a.assignee_id)); });
     }
 
@@ -1610,7 +1617,7 @@ async function _groupMgmt() {
         try {
             await sb.from('room_settings').upsert({ room_id:roomId, tenant_id:_tid, name, color, updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' });
             await sb.from('messages').insert({ room_id:roomId, tenant_id:_tid, sender_id:_uid, text:`<p>📢 <strong>${x(name)}</strong> group created.</p>`, created_at:new Date().toISOString() });
-            _bcChannel?.send({ type:'broadcast', event:'group_photo', payload:{ room_id:roomId, name, color } });
+            _bcSend('group_photo', { room_id:roomId, name, color });
         } catch(e) { _toast('DB error: '+e.message, 'err'); }
         _customGroups.push({ id:roomId, name, col:color, photo:'' });
         _refreshDeptNames();
@@ -1663,7 +1670,7 @@ async function _groupMgmt() {
         _lsSet('dept_members_'+gid, JSON.stringify(selectedIds));
         try {
             await sb.from('room_settings').upsert({ room_id:gid, tenant_id:_tid, name, color, updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' });
-            _bcChannel?.send({ type:'broadcast', event:'group_photo', payload:{ room_id:gid, name, color } });
+            _bcSend('group_photo', { room_id:gid, name, color });
         } catch(e) { _toast('DB error: '+e.message, 'err'); }
         const cg = _customGroups.find(g=>g.id===gid);
         if (cg) { cg.name = name; cg.col = color; }
@@ -2195,6 +2202,7 @@ function _scheduleRtReconnect() {
         _rtIntentionalClose = true;
         if (_rtChannel) { try { await sb.removeChannel(_rtChannel); } catch {} _rtChannel = null; }
         if (_bcChannel) { try { await sb.removeChannel(_bcChannel); } catch {} _bcChannel = null; }
+        if (_sharedBc) { try { await sb.removeChannel(_sharedBc); } catch {} _sharedBc = null; }
         _rtIntentionalClose = false;
         _initRealtime();
     }, 5000);
@@ -2214,35 +2222,44 @@ function _initRealtime() {
             }
             if ((status === 'CHANNEL_ERROR' || status === 'CLOSED') && !_rtIntentionalClose) _scheduleRtReconnect();
         });
-    _bcChannel = sb.channel('mobile-bc-'+_tid, { config: { broadcast: { self: false } } })
-        .on('broadcast', { event:'reaction' }, p => { console.log('[mob-rt] broadcast reaction received'); _onReactionChange(p.payload, p.payload?.isDelete ? 'DELETE' : 'INSERT'); })
-        .on('broadcast', { event:'group_photo' }, p => {
-            if (p.payload?.room_id && p.payload?.name) {
-                _lsSet('dept_name_'+p.payload.room_id, p.payload.name);
-                // Persist to DB so cold-start mobile users also get the correct name
-                if (_tid) {
-                    const upsertData = { room_id:p.payload.room_id, tenant_id:_tid, name:p.payload.name, updated_at:new Date().toISOString() };
-                    if (p.payload.color) upsertData.color = p.payload.color;
-                    sb.from('room_settings').upsert(upsertData, { onConflict:'room_id,tenant_id' }).then(() => {});
-                }
+    // Shared broadcast handlers — attached to BOTH the legacy mobile channel and the
+    // cross-platform 'taskflow-bc' channel so mobile ↔ web sync live (v33).
+    const _hReaction = p => {
+        if (p.payload && p.payload.tenant_id && p.payload.tenant_id !== _tid) return;
+        if (p.payload && p.payload.user_id === _uid) return;  // ignore own echo (shared channel)
+        _onReactionChange(p.payload, p.payload?.isDelete ? 'DELETE' : 'INSERT');
+    };
+    const _hGroupPhoto = p => {
+        if (p.payload?.room_id && p.payload?.name) {
+            _lsSet('dept_name_'+p.payload.room_id, p.payload.name);
+            // Persist to DB so cold-start mobile users also get the correct name
+            if (_tid) {
+                const upsertData = { room_id:p.payload.room_id, tenant_id:_tid, name:p.payload.name, updated_at:new Date().toISOString() };
+                if (p.payload.color) upsertData.color = p.payload.color;
+                sb.from('room_settings').upsert(upsertData, { onConflict:'room_id,tenant_id' }).then(() => {});
             }
-            if (p.payload?.room_id && p.payload?.color) _lsSet('dept_color_'+p.payload.room_id, p.payload.color);
-            _refreshDeptNames();
-            const top = _stack[_stack.length-1];
-            if (top?.screen === 'home') _render('home', null, 'forward');
-        })
-        .on('broadcast', { event:'typing' }, p => {
-            if (!p.payload || p.payload.uid === _uid) return;
-            const r = p.payload.room;
-            if (!_typingUsers[r]) _typingUsers[r] = {};
-            _typingUsers[r][p.payload.uid] = { name: p.payload.name, ts: Date.now() };
-            clearTimeout(_typingTimers[p.payload.uid]);
-            _typingTimers[p.payload.uid] = setTimeout(() => {
-                if (_typingUsers[r]) delete _typingUsers[r][p.payload.uid];
-                _updateTypingUI(r);
-            }, 3000);
+        }
+        if (p.payload?.room_id && p.payload?.color) _lsSet('dept_color_'+p.payload.room_id, p.payload.color);
+        _refreshDeptNames();
+        const top = _stack[_stack.length-1];
+        if (top?.screen === 'home') _render('home', null, 'forward');
+    };
+    const _hTyping = p => {
+        if (!p.payload || p.payload.uid === _uid) return;
+        const r = p.payload.room;
+        if (!_typingUsers[r]) _typingUsers[r] = {};
+        _typingUsers[r][p.payload.uid] = { name: p.payload.name, ts: Date.now() };
+        clearTimeout(_typingTimers[p.payload.uid]);
+        _typingTimers[p.payload.uid] = setTimeout(() => {
+            if (_typingUsers[r]) delete _typingUsers[r][p.payload.uid];
             _updateTypingUI(r);
-        })
+        }, 3000);
+        _updateTypingUI(r);
+    };
+    _bcChannel = sb.channel('mobile-bc-'+_tid, { config: { broadcast: { self: false } } })
+        .on('broadcast', { event:'reaction' }, _hReaction)
+        .on('broadcast', { event:'group_photo' }, _hGroupPhoto)
+        .on('broadcast', { event:'typing' }, _hTyping)
         .on('broadcast', { event:'room_read' }, p => {
             if (!p.payload || p.payload.uid === _uid) return;
             _lsSet('last_read_other_'+p.payload.room, p.payload.ts);
@@ -2255,6 +2272,16 @@ function _initRealtime() {
         .subscribe(status => {
             console.log('[mob-rt] bc channel status='+status);
             if (status === 'SUBSCRIBED' && _rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
+            if ((status === 'CHANNEL_ERROR' || status === 'CLOSED') && !_rtIntentionalClose) _scheduleRtReconnect();
+        });
+    // Shared cross-platform channel (mobile ↔ web). self:false so we don't hear our own broadcasts.
+    // Ignore src:'m' (own platform) — those are already delivered via the legacy mobile-bc channel.
+    _sharedBc = sb.channel('taskflow-bc-'+_tid, { config: { broadcast: { self: false } } })
+        .on('broadcast', { event:'reaction' }, p => { if (p.payload?.src === 'm') return; _hReaction(p); })
+        .on('broadcast', { event:'group_photo' }, p => { if (p.payload?.src === 'm') return; _hGroupPhoto(p); })
+        .on('broadcast', { event:'typing' }, p => { if (p.payload?.src === 'm') return; _hTyping(p); })
+        .subscribe(status => {
+            console.log('[mob-rt] shared bc status='+status);
             if ((status === 'CHANNEL_ERROR' || status === 'CLOSED') && !_rtIntentionalClose) _scheduleRtReconnect();
         });
     _refreshNotifBadge();
@@ -2594,12 +2621,12 @@ async function _mobTaskAction(taskId, action) {
 }
 
 async function _deleteReminder(id) {
-    await sb.from('reminders').delete().eq('id',id).eq('user_id',_uid);
+    await sb.from('reminders').delete().eq('id',id).eq('user_id',_uid).eq('tenant_id',_tid);
     _toast('Reminder deleted'); await _navTo('remind',null,true);
 }
 async function _saveReminder(id) {
     const at = _el('rAt')?.value; if (!at) { _toast('Pick a date and time','err'); return; }
-    const { error } = await sb.from('reminders').update({ reminder_time:new Date(at).toISOString() }).eq('id',id).eq('user_id',_uid);
+    const { error } = await sb.from('reminders').update({ reminder_time:new Date(at).toISOString() }).eq('id',id).eq('user_id',_uid).eq('tenant_id',_tid);
     if (error) { _toast('Could not save: '+error.message,'err'); return; }
     _toast('Reminder saved ✓'); _back();
 }

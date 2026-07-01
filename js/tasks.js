@@ -221,7 +221,7 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
         if (progressContainer) setTimeout(() => { progressContainer.classList.add('hidden'); progressBar.style.width = '0%'; }, 500);
     } else if (action === 'submit') {
         if (requireProof) {
-            const { data: ftrails } = await sb.from('task_trails').select('*').eq('task_id', taskId).eq('user_id', window.currentUser.id).eq('action', 'FILE');
+            const { data: ftrails } = await sb.from('task_trails').select('*').eq('task_id', taskId).eq('tenant_id', window.currentTenantId).eq('user_id', window.currentUser.id).eq('action', 'FILE');
             if (!ftrails || ftrails.length === 0) return window.showCenterToast('Proof required — please attach a file.', 'fa-solid fa-exclamation-triangle', 'text-red-500');
         }
         newStatus = 'submitted'; actionText = 'UPDATE'; comment = 'Submitted for Review';
@@ -286,8 +286,9 @@ window.loadTasksForPanel = async function() {
     }
     const { data: tasks } = await sb.from('tasks')
         .select('*, creator:profiles!assigned_by(full_name, email)')
-        .limit(200)
-        .order('created_at', { ascending: false });
+        .eq('tenant_id', window.currentTenantId)
+        .order('created_at', { ascending: false })
+        .limit(200);
     if (!tasks) return;
 
     const ids = tasks.map(t => t.id);
@@ -298,9 +299,11 @@ window.loadTasksForPanel = async function() {
 
     const { data: assignees } = await sb.from('task_assignees')
         .select('task_id, assignee_id, status, profiles!assignee_id(full_name, email)')
+        .eq('tenant_id', window.currentTenantId)
         .in('task_id', ids);
     const { data: trails } = await sb.from('task_trails')
         .select('*, profiles(full_name, email)')
+        .eq('tenant_id', window.currentTenantId)
         .in('task_id', ids)
         .order('created_at', { ascending: true });
 

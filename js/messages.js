@@ -229,6 +229,7 @@ window.loadMessages = async function() {
             .select('*')
             .eq('room_id', window.currentRoom)
             .eq('tenant_id', window.currentTenantId)
+            .is('deleted_at', null)
             .order('created_at', { ascending: false })
             .limit(PAGE),
         sb.from('bookmarks')
@@ -359,6 +360,7 @@ window._loadOlderMsgs = async function() {
         .select('*')
         .eq('room_id', window.currentRoom)
         .eq('tenant_id', window.currentTenantId)
+        .is('deleted_at', null)
         .lt('created_at', window._oldestMsgTs)
         .order('created_at', { ascending: false })
         .limit(PAGE);
@@ -708,7 +710,7 @@ window._showReactionPicker = function(msgId, btn) {
     panel.innerHTML =
         '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);margin-bottom:8px;">Reactions</div>' +
         '<div style="display:flex;flex-wrap:wrap;gap:4px;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border-color);">' +
-        ['👍','❤️','😂','😮','😢','🙏','🎉','🔥'].map(e =>
+        ['👍','👎','❤️','😂','😮','😢','🙏','🔥','✅','⚡','💡','📌'].map(e =>
             '<span style="cursor:pointer;font-size:20px;padding:4px 6px;border-radius:8px;transition:background .1s;" ' +
             'onmouseover="this.style.background=\'var(--bg-body)\'" onmouseout="this.style.background=\'\'" ' +
             'onclick="window.applyReaction(\'' + msgId + '\',\'' + e + '\',\'emoji\');document.getElementById(\'__reactionPicker\')?.remove();">' + e + '</span>'
@@ -783,6 +785,11 @@ window.applyReaction = async function(msgId, value, type) {
                 type:'broadcast', event:'reaction_remove',
                 payload:{ message_id:msgId, value, user_id:window.currentUser.id, tenant_id:window.currentTenantId }
             });
+            // Shared cross-platform channel (reaches mobile) — reaction event w/ isDelete:true
+            if (window._sharedBroadcast) window._sharedBroadcast.send({
+                type:'broadcast', event:'reaction',
+                payload:{ message_id:msgId, value, user_id:window.currentUser.id, tenant_id:window.currentTenantId, isDelete:true, src:'w' }
+            });
         } catch(e) {}
         return; // done
     }
@@ -795,6 +802,11 @@ window.applyReaction = async function(msgId, value, type) {
         if (window._reactionsBroadcast) await window._reactionsBroadcast.send({
             type:'broadcast', event:'reaction',
             payload:{ message_id:msgId, value, type, user_id:window.currentUser.id, tenant_id:window.currentTenantId }
+        });
+        // Shared cross-platform channel (reaches mobile users) — normalized isDelete format
+        if (window._sharedBroadcast) window._sharedBroadcast.send({
+            type:'broadcast', event:'reaction',
+            payload:{ message_id:msgId, value, type, user_id:window.currentUser.id, tenant_id:window.currentTenantId, isDelete:false, src:'w' }
         });
     } catch(e) {}
 
@@ -861,6 +873,15 @@ window.applyReactionDOM = function(msgId, value, type, userId) {
 window._editCache = {};  // store original HTML per msgId
 
 window.startEditMessage = function(msgId) {
+    // 30-min edit window (parity with mobile) — block edits on older messages
+    const msg = (window._roomMsgs || []).find(m => String(m.id) === String(msgId));
+    if (msg && msg.created_at) {
+        const ageMs = Date.now() - new Date(msg.created_at).getTime();
+        if (ageMs > 30 * 60 * 1000) {
+            window.showCenterToast('Edit window closed (30 min limit)', 'fa-solid fa-clock', 'text-orange-500');
+            return;
+        }
+    }
     const textDiv = document.querySelector('#row-' + msgId + ' .b-text');
     if (!textDiv) return;
     window._editCache[msgId] = textDiv.innerHTML;
@@ -906,8 +927,10 @@ window.saveEditMessage = async function(msgId) {
     if (!newText) { window.showCenterToast('Message cannot be empty','fa-solid fa-times','text-red-500'); return; }
     const wrapped = `<p>${newText.replace(/\n/g,'</p><p>')}</p>`;
     const { error, data: updData } = await sb.from('messages')
-        .update({ text: wrapped })
+        .update({ text: wrapped, updated_at: new Date().toISOString() })
         .eq('id', msgId)
+        .eq('sender_id', window.currentUser.id)
+        .eq('tenant_id', window.currentTenantId)
         .select();
     if (error) {
         window.showCenterToast('Edit failed — check RLS: messages UPDATE policy needed', 'fa-solid fa-lock', 'text-red-500');
@@ -925,7 +948,9 @@ window.saveEditMessage = async function(msgId) {
 // ── DELETE MESSAGE ────────────────────────────────────────────────────────────
 window.deleteMessage = async function(msgId) {
     if (!confirm('Delete this message?')) return;
-    await sb.from('messages').delete().eq('id', msgId).eq('sender_id', window.currentUser.id).eq('tenant_id', window.currentTenantId);
+    // Soft-delete (parity with mobile) — keep the row, hide via deleted_at
+    await sb.from('messages').update({ deleted_at: new Date().toISOString() })
+        .eq('id', msgId).eq('sender_id', window.currentUser.id).eq('tenant_id', window.currentTenantId);
     if (typeof window.loadMessages === 'function') window.loadMessages();
 };
 

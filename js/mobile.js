@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v29';
+const _MOB_VER = 'v30';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -10,7 +10,7 @@ console.log   = (...a) => { _logBuf.push('[L] '+a.join(' ')); if (_logBuf.length
 console.warn  = (...a) => { _logBuf.push('[W] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); };
 console.error = (...a) => { _logBuf.push('[E] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); };
 window._copyLogs = () => {
-    const txt = '[v27 log dump '+new Date().toISOString()+']\n'+_logBuf.join('\n');
+    const txt = '['+_MOB_VER+' log dump '+new Date().toISOString()+']\n'+_logBuf.join('\n');
     navigator.clipboard?.writeText(txt)
         .then(() => _toast('Logs copied ✓ — paste anywhere'))
         .catch(() => _toast('Clipboard denied — use eruda','err'));
@@ -31,6 +31,8 @@ let _customGroups = [];
 let _userRoles = {};
 let _typingUsers = {};
 let _typingTimers = {};
+let _rtReconnectTimer = null;
+let _rtWasErrored = false;
 
 function _lsKey(k) { return (_tid ? _tid+'_' : '')+k; }
 function _lsSet(k,v) { try { localStorage.setItem(_lsKey(k),v); } catch{} }
@@ -404,6 +406,7 @@ window._toggleInlineSearch = function() {
 window._confirmLogout = async function() {
     if (!confirm('Sign out of TaskFlow?')) return;
     if (_tsInterval) clearInterval(_tsInterval);
+    if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
     // Clear all tenant-scoped localStorage data
     if (_tid) {
         const prefix = _tid+'_';
@@ -699,12 +702,11 @@ async function _fetchReactions(msgIds) {
     msgIds.forEach(id => { if (cache[id]?.length) map[id] = [...cache[id]]; });
     // Merge DB reactions (authoritative — returns all if RLS policy allows tenant read)
     const { data, error } = await sb.from('reactions').select('*').in('message_id', msgIds).eq('tenant_id', _tid);
-    if (error) console.log('[mob-react] _fetchReactions error='+error.message);
+    if (error) console.error('[mob-react] _fetchReactions error='+error.message);
     (data||[]).forEach(r => {
         if (!map[r.message_id]) map[r.message_id] = [];
         if (!map[r.message_id].find(x => x.value===r.value && x.user_id===r.user_id)) map[r.message_id].push(r);
     });
-    console.log('[mob-react] _fetchReactions ids='+msgIds.length+' db='+((data||[]).length)+' total='+Object.values(map).reduce((s,a)=>s+a.length,0));
     return map;
 }
 const TAG_COLORS = { 'Thank You':'#16a34a','Noted':'#2563eb','Copied':'#7c3aed','Yes Sir':'#ea580c','Yes Madam':'#db2777' };
@@ -902,8 +904,7 @@ async function _groupChat(p) {
             ]);
             const replyMap = {};
             (replyData.data||[]).forEach(r => { replyMap[r.parent_message_id] = (replyMap[r.parent_message_id]||0)+1; });
-            if (myGen !== _refreshGen) { console.log('[mob-react] pendingRefresh ABORTED gen='+myGen+' current='+_refreshGen); return; }
-            console.log('[mob-react] pendingRefresh REPLACING innerHTML gen='+myGen+' replyMap='+JSON.stringify(replyMap));
+            if (myGen !== _refreshGen) { return; }
             const area = document.getElementById('mMsgArea');
             if (area) {
                 // Preserve any live-appended rows (realtime/optimistic) not in DB result
@@ -2144,6 +2145,19 @@ function _onSelectionChange() {
     popup.style.left = Math.min(Math.max(8, rect.left), window.innerWidth-150) + 'px';
 }
 
+function _scheduleRtReconnect() {
+    if (_rtReconnectTimer) return;
+    _rtWasErrored = true;
+    _toast('Reconnecting…', 'info');
+    console.log('[mob-rt] scheduling reconnect in 5s');
+    _rtReconnectTimer = setTimeout(async () => {
+        _rtReconnectTimer = null;
+        console.log('[mob-rt] reconnecting…');
+        if (_rtChannel) { try { await sb.removeChannel(_rtChannel); } catch {} _rtChannel = null; }
+        if (_bcChannel) { try { await sb.removeChannel(_bcChannel); } catch {} _bcChannel = null; }
+        _initRealtime();
+    }, 5000);
+}
 function _initRealtime() {
     if (!_tid) { console.error('[mob-rt] Cannot init realtime without tenant_id'); return; }
     if (_rtChannel) return;
@@ -2151,7 +2165,11 @@ function _initRealtime() {
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => _onNewMessage(p.new))
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'task_assignees', filter:`tenant_id=eq.${_tid}` }, p => _onTaskAssigneeUpdate(p.new))
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`user_id=eq.${_uid}` }, () => _refreshNotifBadge())
-        .subscribe(status => console.log('[mob-rt] channel status='+status));
+        .subscribe(status => {
+            console.log('[mob-rt] channel status='+status);
+            if (status === 'SUBSCRIBED' && _rtWasErrored) { _rtWasErrored = false; _toast('Connected ✓'); }
+            if (status === 'CHANNEL_ERROR' || status === 'CLOSED') _scheduleRtReconnect();
+        });
     _bcChannel = sb.channel('mobile-bc-'+_tid, { config: { broadcast: { self: false } } })
         .on('broadcast', { event:'reaction' }, p => { console.log('[mob-rt] broadcast reaction received'); _onReactionChange(p.payload, p.payload?.isDelete ? 'DELETE' : 'INSERT'); })
         .on('broadcast', { event:'group_photo' }, p => {
@@ -2190,7 +2208,10 @@ function _initRealtime() {
                 document.querySelectorAll('.m-tick.sent').forEach(el => { el.className = 'm-tick read'; el.textContent = '✓✓'; });
             }
         })
-        .subscribe(status => console.log('[mob-rt] bc channel status='+status));
+        .subscribe(status => {
+            console.log('[mob-rt] bc channel status='+status);
+            if (status === 'CHANNEL_ERROR' || status === 'CLOSED') _scheduleRtReconnect();
+        });
     _refreshNotifBadge();
     // Realtime badge update already wired via postgres_changes INSERT on notifications — no polling needed
 }
@@ -2585,12 +2606,10 @@ function _fmtIST(ts, withTime=true) {
     if (!ts) return '';
     const utc = (ts.indexOf('Z')===-1 && ts.indexOf('+')===-1) ? ts+'Z' : ts;
     const d = new Date(utc);
-    if (isNaN(d)) { console.log('[mob-time] _fmtIST INVALID ts='+ts); return ''; }
+    if (isNaN(d)) return '';
     const opts = { day:'2-digit', month:'short', year:'2-digit', timeZone:'Asia/Kolkata' };
     if (withTime) { opts.hour = '2-digit'; opts.minute = '2-digit'; opts.hour12 = true; }
-    const result = new Intl.DateTimeFormat('en-IN', opts).format(d);
-    console.log('[mob-time] _fmtIST ts='+ts+' => '+result);
-    return result;
+    return new Intl.DateTimeFormat('en-IN', opts).format(d);
 }
 function _uname(id){ const u=_users.find(u=>u.id===id); return u ? (u.full_name||u.email?.split('@')[0]||'User') : 'User'; }
 function _dmRoom(uid){ return ['dm',...[_uid,uid].sort()].join('_'); }
@@ -2605,7 +2624,6 @@ function _ago(ts){
         : d<86400 ? Math.floor(d/3600)+'h ago'
         : d<604800 ? Math.floor(d/86400)+'d ago'
         : _istFmtDate.format(new Date(utc));
-    console.log('[mob-time] _ago ts='+ts+' d='+Math.round(d)+'s => '+result);
     return result;
 }
 function _scrollTop(id){ const el=_el(id); if(el) el.scrollTop=0; }

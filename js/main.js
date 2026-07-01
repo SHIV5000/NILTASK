@@ -930,14 +930,26 @@ window.loadChatsList = async function() {
     let _customGroups = [];
     if (window.currentTenantId) {
         try {
-            const { data: rs } = await sb.from('room_settings')
-                .select('room_id,name,color,archived')
+            // Try to include members (column may not exist yet — fall back gracefully).
+            let rs = null;
+            const withMembers = await sb.from('room_settings')
+                .select('room_id,name,color,archived,members')
                 .eq('tenant_id', window.currentTenantId);
+            if (withMembers.error) {
+                const basic = await sb.from('room_settings')
+                    .select('room_id,name,color,archived')
+                    .eq('tenant_id', window.currentTenantId);
+                rs = basic.data;
+            } else {
+                rs = withMembers.data;
+            }
             if (rs?.length) {
                 const fixedIds = new Set(['general','math','science','leadership']);
                 rs.forEach(r => {
                     if (r.name)  _webLsSet('dept_name_'+r.room_id, r.name);
                     if (r.color) _webLsSet('dept_color_'+r.room_id, r.color);
+                    // Hydrate members from DB so counts match across devices/users
+                    if (Array.isArray(r.members)) _webLsSet('dept_members_'+r.room_id, JSON.stringify(r.members));
                     // Collect custom groups not in the 4 fixed rooms
                     if (!fixedIds.has(r.room_id) && !r.archived) {
                         _customGroups.push(r);
@@ -1176,7 +1188,7 @@ window.debouncedLoadTasks = function() {
 };
 
 // ─── SUBSCRIPTIONS ─────────────────────────────────────────────────────────
-window.startSubscriptions = function() {
+window.startSubscriptions = async function() {
     if (messageSubscription) messageSubscription.unsubscribe();
     messageSubscription = sb.channel('public:messages')
         .on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, async (p) => {
@@ -1193,18 +1205,21 @@ window.startSubscriptions = function() {
                         window.triggerMessageNotification(p.new);
                 }
             } else {
-                window.unreadCounts = window.unreadCounts || {};
-                window.unreadCounts[incomingRoom] = (window.unreadCounts[incomingRoom] || 0) + 1;
+                // Ignore DMs the current user is not a participant of — no unread, no toast/chime, no notification.
+                const isDmForMe = !incomingRoom.startsWith('dm_') || incomingRoom.includes(window.currentUser.id);
 
-                if (!isMine) {
+                if (isDmForMe) {
+                    window.unreadCounts = window.unreadCounts || {};
+                    window.unreadCounts[incomingRoom] = (window.unreadCounts[incomingRoom] || 0) + 1;
+                }
+
+                if (!isMine && isDmForMe) {
                     if (typeof window.triggerMessageNotification === 'function')
                         window.triggerMessageNotification(p.new);
 
                     // ── Insert into notifications table (powers the bell badge) ──
-                    // Skip DM notifications for rooms the current user is not part of
-                    const isDmForMe = !incomingRoom.startsWith('dm_') || incomingRoom.includes(window.currentUser.id);
                     // Deduplicate by message_id to prevent double entries
-                    if (isDmForMe) try {
+                    try {
                         const { count } = await sb.from('notifications')
                             .select('id', { count: 'exact', head: true })
                             .eq('user_id', window.currentUser.id)
@@ -1228,7 +1243,7 @@ window.startSubscriptions = function() {
                         }
                     } catch(e) { /* notification insert failed — non-fatal */ }
                     // Increment badge instantly — no DB read needed
-                    if (isDmForMe) window._incrementBellBadge?.();
+                    window._incrementBellBadge?.();
                 }
                 if (typeof window.loadChatsList === 'function') window.loadChatsList();
                 if (incomingRoom.startsWith('dm_') && incomingRoom.includes(window.currentUser.id) && !isMine)
@@ -1396,6 +1411,17 @@ window.startSubscriptions = function() {
         }).subscribe();
 
     if (typeof window.refreshNotificationBadge === 'function') window.refreshNotificationBadge();
+
+    // ── Seed the bell badge from existing unread notifications on load ──
+    // (_bellCount starts at 0 and is only incremented, so pre-existing unread would never show.)
+    try {
+        const { count } = await sb.from('notifications')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', window.currentUser.id)
+            .eq('tenant_id', window.currentTenantId)
+            .eq('is_read', false);
+        if (count && count > 0) window._setBellBadge?.(count);
+    } catch(e) { /* non-fatal */ }
 
     // ── Presence heartbeat (v33) — mirror mobile so web users show as online in DM headers ──
     if (!window._webHeartbeat) {

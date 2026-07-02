@@ -9,6 +9,13 @@ const _origConsoleLog = console.log.bind(console);
 console.log   = (...a) => { _logBuf.push('[L] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); _origConsoleLog(...a); };
 console.warn  = (...a) => { _logBuf.push('[W] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); };
 console.error = (...a) => { _logBuf.push('[E] '+a.join(' ')); if (_logBuf.length>300) _logBuf.shift(); };
+// Capture uncaught errors WITH their source location so the log dump can pinpoint
+// the failing file:line (plain console.error loses this).
+window.addEventListener('error', (e) => {
+    const where = e.filename ? (e.filename.split('/').pop()+':'+e.lineno+':'+e.colno) : '?';
+    _logBuf.push('[ERR] '+(e.message||'error')+' @ '+where);
+    if (_logBuf.length>300) _logBuf.shift();
+});
 window._copyLogs = () => {
     const txt = '['+_MOB_VER+' log dump '+new Date().toISOString()+']\n'+_logBuf.join('\n');
     navigator.clipboard?.writeText(txt)

@@ -90,7 +90,7 @@ window.requestNotificationPermission = async function() {
 };
 
 // ── SHOW SYSTEM NOTIFICATION (wakes screen on Android) ────────
-window.showSystemNotification = function(title, body, options = {}) {
+window.showSystemNotification = async function(title, body, options = {}) {
     if (!('Notification' in window)) return;
     if (Notification.permission !== 'granted') return;
 
@@ -98,7 +98,7 @@ window.showSystemNotification = function(title, body, options = {}) {
     // Do NOT suppress just because the tab is visible — they may be in a different channel
     if (options.room && options.room === window.currentRoom && document.visibilityState === 'visible') return;
 
-    const n = new Notification(title, {
+    const opts = {
         body,
         icon:     '/favicon.svg',
         badge:    '/favicon.svg',
@@ -106,19 +106,34 @@ window.showSystemNotification = function(title, body, options = {}) {
         renotify: true,
         silent:   false,
         ...options
-    });
-
-    n.onclick = () => {
-        window.focus();
-        n.close();
-        if (options.room && typeof window.setMobileView === 'function') {
-            window.currentRoom = options.room;
-            window.loadMessages?.();
-            window.setMobileView('chat');
-        }
     };
 
-    setTimeout(() => n.close(), 8000);
+    // Mobile (Android/Chrome) forbids `new Notification()` — it throws
+    // "Illegal constructor". Use the service worker registration there.
+    try {
+        if ('serviceWorker' in navigator) {
+            const reg = await navigator.serviceWorker.getRegistration();
+            if (reg && typeof reg.showNotification === 'function') {
+                await reg.showNotification(title, opts);
+                return;
+            }
+        }
+    } catch (e) { /* fall through to desktop Notification */ }
+
+    // Desktop fallback — direct Notification with click-to-open.
+    try {
+        const n = new Notification(title, opts);
+        n.onclick = () => {
+            window.focus();
+            n.close();
+            if (options.room && typeof window.setMobileView === 'function') {
+                window.currentRoom = options.room;
+                window.loadMessages?.();
+                window.setMobileView('chat');
+            }
+        };
+        setTimeout(() => n.close(), 8000);
+    } catch (e) { /* environment blocks direct Notification — non-fatal */ }
 };
 
 // ── MAIN NOTIFICATION TRIGGER ─────────────────────────────────

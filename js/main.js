@@ -930,6 +930,20 @@ window._clearGroupPhoto = function(g) {
     _webLsSet('dept_photo_none_' + g, String(Date.now())); // 24h skip flag
 };
 
+// ─── ENSURE USER CACHE ─────────────────────────────────────────────────────
+// Lightweight tenant-user load for sender-name resolution. Kept separate from
+// loadChatsList's heavier fetch (which also pulls base64 avatars, ~1MB) so
+// message rendering never races an empty cache and shows "Unknown".
+window.ensureUsersLoaded = async function(force) {
+    if (!force && window.globalUsersCache?.length) return window.globalUsersCache;
+    if (!window.currentTenantId) return window.globalUsersCache || [];
+    const { data } = await sb.from('profiles')
+        .select('id, email, full_name, designation')
+        .eq('tenant_id', window.currentTenantId);
+    if (data?.length) window.globalUsersCache = data;
+    return window.globalUsersCache || [];
+};
+
 // ─── LOAD CHATS LIST (Departments + Staff Members) ─────────────────────────
 window.loadChatsList = async function() {
     // Build the group list purely from room_settings — no hard-coded departments.

@@ -19,23 +19,26 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- ── Section 1: repair orphaned tenants ──────────────────────────────────────
--- NOTE: school_name is a placeholder because the original name is not recoverable
--- from these tables. The principal can rename the school afterwards. If your
--- tenants table has additional NOT NULL columns without defaults, add them here.
-insert into public.tenants (id, school_name)
-select distinct p.tenant_id, 'School (auto-repaired)'
+-- NOTE: tenants requires school_name, principal_name, mobile (all NOT NULL, no
+-- default). school_name/mobile are placeholders (the original values are not
+-- recoverable here); principal_name is pulled from an existing profile/allowed_user
+-- when available. Rename afterwards via UPDATE.
+insert into public.tenants (id, school_name, principal_name, mobile)
+select p.tenant_id, 'School (auto-repaired)', coalesce(max(p.full_name), 'Principal'), 'N/A'
 from public.profiles p
 left join public.tenants t on t.id = p.tenant_id
 where p.tenant_id is not null
   and t.id is null
+group by p.tenant_id
 on conflict (id) do nothing;
 
-insert into public.tenants (id, school_name)
-select distinct a.tenant_id, 'School (auto-repaired)'
+insert into public.tenants (id, school_name, principal_name, mobile)
+select a.tenant_id, 'School (auto-repaired)', coalesce(max(a.full_name), 'Principal'), 'N/A'
 from public.allowed_users a
 left join public.tenants t on t.id = a.tenant_id
 where a.tenant_id is not null
   and t.id is null
+group by a.tenant_id
 on conflict (id) do nothing;
 
 -- ── Section 2: preserve existing room history as named groups ────────────────

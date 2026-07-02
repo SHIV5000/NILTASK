@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v36';
+const _MOB_VER = 'v37';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -913,6 +913,16 @@ function _bubbleHTML(m, reactionsMap, maxLen=150, replyMap={}, roomCtx={}) {
 }
 function _renderLinkPills(html) {
     let safe = (html || '').replace(/<script[\s\S]*?<\/script>/gi, '');
+    // Path-based secure files (private bucket) — open via a signed URL on tap.
+    safe = safe.replace(
+        /<a\s+href="https:\/\/secure-file\.local\/([^"]+)"[^>]*>([^<]*)<\/a>/g,
+        (m, path, label) => {
+            const p = String(path).replace(/"/g, '%22');
+            const name = label || 'File';
+            return `<button class="m-link-pill" data-action="openTaskFile" data-path="${p}"
+                style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;border:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,.35);white-space:nowrap;max-width:100%;overflow:hidden;">
+                <i class="fa-solid fa-paperclip" style="font-size:9px;flex-shrink:0;"></i><span style="overflow:hidden;text-overflow:ellipsis;">${x(name)}</span></button>`;
+        });
     return safe.replace(
         /<a\s+href="https:\/\/link-pill\.local\/([^"]+)"[^>]*>([^<]*)<\/a>/g,
         (match, encoded, anchorText) => {
@@ -2131,10 +2141,9 @@ async function _handleComposerIcon(caction, targetId) {
                 const filePath = `chat/${_tid}/${Date.now()}_${safeName}`;
                 const { error } = await sb.storage.from('task-proofs').upload(filePath, file);
                 if (error) { _toast('Upload failed: '+error.message,'err'); return; }
-                const { data: pub } = sb.storage.from('task-proofs').getPublicUrl(filePath);
                 ceEl?.focus();
-                const encoded = encodeURIComponent(file.name + '|||' + pub.publicUrl);
-                document.execCommand('insertHTML', false, `<a href="https://link-pill.local/${encoded}">📎 ${x(file.name)}</a>&nbsp;`);
+                // Private bucket → store the PATH and open via signed URL (same format as web).
+                document.execCommand('insertHTML', false, `<a href="https://secure-file.local/${filePath}">📎 ${x(file.name)}</a>&nbsp;`);
                 _toast('Attached ✓');
             };
             input.click();

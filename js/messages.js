@@ -224,6 +224,9 @@ window.loadMessages = async function() {
     // Fetch messages and bookmarks in parallel — saves one sequential round-trip
     const _t1 = performance.now();
     const roomAtStart = window.currentRoom;
+    // Ensure the sender-name cache is ready (concurrently) — otherwise names
+    // render as "Unknown" when this runs before loadChatsList fills the cache.
+    const _usersReady = window.ensureUsersLoaded?.();
     const [{ data: msgs }, { data: bms }] = await Promise.all([
         sb.from('messages')
             .select('*')
@@ -242,8 +245,17 @@ window.loadMessages = async function() {
     // Discard results if user switched rooms while we were fetching
     if (window.currentRoom !== roomAtStart) return;
 
+    // Wait for the sender-name cache before mapping names.
+    try { await _usersReady; } catch(e) {}
+
     // Enrich messages with sender profiles from in-memory cache — no SQL JOIN needed
-    const usersMap = new Map((window.globalUsersCache || []).map(u => [u.id, u]));
+    let usersMap = new Map((window.globalUsersCache || []).map(u => [u.id, u]));
+    // Safety net: if any sender is still unknown (e.g. a user who joined this
+    // session), refresh the cache once and re-map.
+    if ((msgs || []).some(m => m.sender_id && m.sender_id !== window.currentUser.id && !usersMap.has(m.sender_id))) {
+        await window.ensureUsersLoaded?.(true);
+        usersMap = new Map((window.globalUsersCache || []).map(u => [u.id, u]));
+    }
     const allMsgs = (msgs || []).reverse().map(m => ({
         ...m,
         profiles: usersMap.get(m.sender_id) || null

@@ -177,6 +177,7 @@ window.saveSettings = async function() {
 }
 
 window.saveGroupSettings = async function() {
+    if (window.guardManageGroups?.()) return;
     const gid  = document.getElementById('groupSettingsId')?.value;
     const name = document.getElementById('groupSettingsName')?.value.trim();
     if (!gid || !name) { window.showCenterToast('Name cannot be empty','fa-solid fa-times','text-red-500'); return; }

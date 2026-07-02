@@ -67,7 +67,3 @@ window.openSecureFile = async function(filePath) {
     }
     window.open(data.signedUrl, '_blank');
 }
-
-window.notifyUser = async function(userId, message) {
-    await sb.from('notifications').insert({ user_id: userId, message: message, created_at: new Date().toISOString() });
-}

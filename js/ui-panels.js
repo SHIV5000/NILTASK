@@ -149,7 +149,7 @@ window.openTopPanel = async function(type) {
         const msgIds=(data||[]).filter(d=>d.message_id).map(d=>d.message_id);
         let msgInfoMap=new Map();
         if(msgIds.length){
-            const {data:relMsgs}=await sb.from('messages').select('id,room_id,sender_id,profiles(full_name,email)').in('id',msgIds);
+            const {data:relMsgs}=await sb.from('messages').select('id,room_id,sender_id,profiles(full_name,email)').eq('tenant_id',window.currentTenantId).in('id',msgIds);
             relMsgs?.forEach(m=>msgInfoMap.set(m.id,m));
         }
 

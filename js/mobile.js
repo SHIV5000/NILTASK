@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v35';
+const _MOB_VER = 'v36';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -107,16 +107,19 @@ function _updateTypingUI(room) {
     el.innerHTML = `<div class="m-typing"><span class="m-typing-dots"><span></span><span></span><span></span></span><span class="m-typing-text">${label}</span></div>`;
 }
 
-function _buildDepts() {
-    return [
-        {id:'general',   name:_lsGet('dept_name_general')   ||'General',   col:_lsGet('dept_color_general')   ||'#6366f1', photo:_lsGet('dept_photo_general')||''},
-        {id:'math',      name:_lsGet('dept_name_math')      ||'Math',      col:_lsGet('dept_color_math')      ||'#0ea5e9', photo:_lsGet('dept_photo_math')||''},
-        {id:'science',   name:_lsGet('dept_name_science')   ||'Science',   col:_lsGet('dept_color_science')   ||'#10b981', photo:_lsGet('dept_photo_science')||''},
-        {id:'leadership',name:_lsGet('dept_name_leadership')||'Leadership',col:_lsGet('dept_color_leadership')||'#f59e0b', photo:_lsGet('dept_photo_leadership')||''},
-    ];
-}
+// Default departments are abolished — all groups come from room_settings
+// (_customGroups). DEPTS is kept as an empty list so the many [...DEPTS, ...]
+// spreads throughout the file keep working without change.
+function _buildDepts() { return []; }
 let DEPTS = _buildDepts();
 function _refreshDeptNames() { DEPTS = _buildDepts(); }
+
+// Group lookup helpers (all groups now live in _customGroups).
+function _findGroup(id) { return _customGroups.find(g => g.id === id); }
+// Exact DM-participant check — split on '_' so a uuid only matches a full segment.
+function _isDmMine(room) {
+    return typeof room === 'string' && room.startsWith('dm_') && room.split('_').includes(_uid);
+}
 
 function _showOfflineBanner(show) {
     let el = document.getElementById('mOfflineBanner');
@@ -254,13 +257,24 @@ async function _ctx() {
         _toast('Account configuration error. Please contact your administrator.', 'err');
         return;
     }
+    // Detect orphaned tenant (tenant_id with no tenants row) once, so group
+    // creation surfaces a clear message instead of a raw FK error. Skipped if the
+    // web auth flow already set the flag.
+    if (window._tenantOrphaned === undefined && _tid) {
+        try {
+            const { data: t } = await sb.from('tenants').select('id').eq('id', _tid).maybeSingle();
+            window._tenantOrphaned = !t;
+        } catch { /* network error — leave undefined, don't block */ }
+    }
     // Load RBAC role if not already set by web auth flow
     if (_tid && _uid && !window.currentRole) {
         try {
             const { data: ur } = await sb.from('user_roles')
-                .select('*, role:roles(name)')
+                .select('*, role:roles(name, display_name, permissions)')
                 .eq('user_id', _uid).eq('tenant_id', _tid).single();
             if (ur?.role?.name) window.currentRole = ur.role.name;
+            if (ur?.role?.display_name) window.currentRoleName = ur.role.display_name;
+            if (ur?.role?.permissions) window.currentPermissions = ur.role.permissions;
         } catch {}
     }
     // Load all user roles for role badge display
@@ -300,11 +314,22 @@ async function _syncRoomSettings() {
                 if (Array.isArray(r.members)) _lsSet('dept_members_'+r.room_id, JSON.stringify(r.members));
             });
             _refreshDeptNames();
-            const fixedIds = new Set(DEPTS.map(d=>d.id));
-            // Match web: any non-fixed, non-archived room is a custom group
+            // Every non-archived, non-DM room is a group (no more hard-coded defaults).
             _customGroups = rs
-                .filter(r => !fixedIds.has(r.room_id) && !r.archived && !r.room_id.startsWith('dm_'))
+                .filter(r => !r.archived && !r.room_id.startsWith('dm_'))
                 .map(r => ({ id:r.room_id, name:r.name||r.room_id, col:r.color||'#8b5cf6', photo:_lsGet('dept_photo_'+r.room_id)||'' }));
+        } else {
+            _customGroups = [];
+        }
+
+        // Auto-seed a single "General" starter group for a brand-new tenant so the
+        // app is never empty. Managers only (RBAC + tenant must exist).
+        if (_customGroups.length === 0 && !window._tenantOrphaned && (window.canManageGroups?.() ?? false)) {
+            try {
+                await _upsertRoomSettings({ room_id:'general', tenant_id:_tid, name:'General', archived:false, updated_at:new Date().toISOString() }, []);
+                _lsSet('dept_name_general', 'General');
+                _customGroups = [{ id:'general', name:'General', col:'#6366f1', photo:'' }];
+            } catch {}
         }
     } catch {}
 }
@@ -638,6 +663,7 @@ async function _home() {
 
     return `<div class="mScr-inner">
       <div class="m-sl">CHANNELS</div>
+      ${_customGroups.length === 0 ? `<div class="m-empty">${(window.canManageGroups?.() ?? false) ? 'No groups yet. Open Profile → Group Management to create one.' : 'No groups yet. Ask your principal to create one.'}</div>` : ''}
       ${[...DEPTS, ..._customGroups].map(d => {
         const lm = last[d.id];
         const unread = window.unreadCounts?.[d.id] || 0;
@@ -690,15 +716,15 @@ async function _activity() {
         .order('created_at',{ascending:false}).limit(120);
 
     const mine = (msgs||[]).filter(m => {
-        const isDept = DEPTS.some(d => d.id === m.room_id);
-        const isMyDM = m.room_id?.startsWith('dm_') && m.room_id.includes(_uid);
+        const isDept = !!_findGroup(m.room_id);
+        const isMyDM = _isDmMine(m.room_id);
         return isDept || isMyDM;
     }).slice(0,50);
 
     return `<div class="mScr-inner">
       <div class="m-hdr m-hdr-plain"><div class="m-htitle">Activity</div></div>
       ${mine.length ? mine.map(m => {
-        const dept = DEPTS.find(d => d.id === m.room_id);
+        const dept = _findGroup(m.room_id);
         const isDM = m.room_id?.startsWith('dm_');
         let roomName = dept?.name, roomColor = dept?.col, otherUid = null;
         if (isDM) {
@@ -743,10 +769,10 @@ async function _runInlineSearch(q) {
           <div class="m-ri"><div class="m-rn">${x(u.full_name||u.email)}</div><div class="m-rs">Staff member</div></div>
         </div>`));
     (msgs||[]).forEach(m => {
-        const isDept = DEPTS.some(d=>d.id===m.room_id);
-        const isMyDM = m.room_id?.startsWith('dm_') && m.room_id.includes(_uid);
+        const isDept = !!_findGroup(m.room_id);
+        const isMyDM = _isDmMine(m.room_id);
         if (!isDept && !isMyDM) return;
-        const dept = DEPTS.find(d=>d.id===m.room_id);
+        const dept = _findGroup(m.room_id);
         rows.push(`
         <div class="m-row" data-action="${isDept?'groupChat':'dm'}" data-room="${m.room_id}"
              data-name="${x(dept?.name||'')}" data-color="${dept?.col||''}" data-scroll="${m.id}">
@@ -1358,7 +1384,7 @@ async function _scheduled() {
     return `<div class="mScr-inner">
       <div class="m-hdr m-hdr-plain"><div class="m-htitle">Scheduled Messages</div></div>
       ${(data||[]).length ? (data||[]).map(s => {
-        const dept = DEPTS.find(d=>d.id===s.room_id);
+        const dept = _findGroup(s.room_id);
         const roomName = dept ? dept.name : (s.room_id?.startsWith('dm_') ? 'Direct message' : s.room_id);
         return `
         <div class="m-row">
@@ -1600,8 +1626,6 @@ async function _dashboard(p={}) {
 window._mobDash = async (f) => { await window._navTo('dashboard', {filter:f}, true); };
 
 async function _groupMgmt() {
-    const allGroups = [...DEPTS, ..._customGroups];
-    const fixedIds  = new Set(DEPTS.map(d=>d.id));
     const PRESET_COLORS = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6'];
 
     window._openGroupCreateSheet = function() {
@@ -1645,6 +1669,8 @@ async function _groupMgmt() {
     };
 
     window._doCreateGroup = async function() {
+        if (window.guardManageGroups?.()) return;
+        if (window._tenantOrphaned) { _toast('School account still being set up — contact support to finish setup.','err'); return; }
         const name  = (_el('gmCreateName')?.value||'').trim();
         const color = _el('gmCreateColor')?.value || '#6366f1';
         if (!name) { _toast('Enter a group name','err'); return; }
@@ -1700,6 +1726,7 @@ async function _groupMgmt() {
     };
 
     window._doSaveGroup = async function() {
+        if (window.guardManageGroups?.()) return;
         const gid   = _el('gmEditId')?.value;
         const name  = (_el('gmEditName')?.value||'').trim();
         const color = _el('gmEditColor')?.value || '#6366f1';
@@ -1721,6 +1748,7 @@ async function _groupMgmt() {
     };
 
     window._archiveGroup = async function(gid) {
+        if (window.guardManageGroups?.()) return;
         // show confirmation inline instead of native confirm()
         if (!_el('mSheetInner')) return;
         const sheet = _el('mSheetInner');
@@ -1755,28 +1783,18 @@ async function _groupMgmt() {
           <i class="fa-solid fa-plus"></i> Create New Group
         </button>
 
-        <div class="m-sl">FIXED GROUPS (read-only)</div>
-        ${DEPTS.map(d=>`
+        <div class="m-sl">GROUPS</div>
+        ${_customGroups.length ? _customGroups.map(d=>`
           <div class="m-row" style="padding:10px 0;">
-            <div style="width:40px;height:40px;border-radius:12px;background:${d.col};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;">${d.photo?`<img src="${d.photo}" style="width:100%;height:100%;border-radius:12px;object-fit:cover;">`:'🏫'}</div>
-            <div class="m-ri"><div class="m-rn">${x(d.name)}</div><div class="m-rs" style="color:${d.col};">Fixed group · cannot archive</div></div>
-            <button onclick="window._openGroupEditSheet('${d.id}','${x(d.name)}','${d.col}')"
-              style="padding:6px 12px;border-radius:8px;background:#6366f120;color:#6366f1;border:none;font-size:12px;font-weight:600;cursor:pointer;">Edit</button>
-          </div>`).join('')}
-
-        ${_customGroups.length ? `
-        <div class="m-sl">CUSTOM GROUPS</div>
-        ${_customGroups.map(d=>`
-          <div class="m-row" style="padding:10px 0;">
-            <div style="width:40px;height:40px;border-radius:12px;background:${d.col};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;">👥</div>
-            <div class="m-ri"><div class="m-rn">${x(d.name)}</div><div class="m-rs" style="color:${d.col};">Custom group</div></div>
+            <div style="width:40px;height:40px;border-radius:12px;background:${d.col};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;">${d.photo?`<img src="${d.photo}" style="width:100%;height:100%;border-radius:12px;object-fit:cover;">`:'👥'}</div>
+            <div class="m-ri"><div class="m-rn">${x(d.name)}</div><div class="m-rs" style="color:${d.col};">Group</div></div>
             <div style="display:flex;gap:6px;">
               <button onclick="window._openGroupEditSheet('${d.id}','${x(d.name)}','${d.col}')"
                 style="padding:6px 12px;border-radius:8px;background:#6366f120;color:#6366f1;border:none;font-size:12px;font-weight:600;cursor:pointer;">Edit</button>
               <button onclick="window._archiveGroup('${d.id}')"
                 style="padding:6px 12px;border-radius:8px;background:#ef444420;color:#ef4444;border:none;font-size:12px;font-weight:600;cursor:pointer;">Archive</button>
             </div>
-          </div>`).join('')}` : ''}
+          </div>`).join('') : '<div class="m-empty">No groups yet. Tap “Create New Group” to add one for your staff.</div>'}
       </div>
     </div>`;
 }
@@ -1941,9 +1959,9 @@ function _showForwardSheet(text) {
       <div class="m-sheet-handle"></div>
       <div class="m-sheet-title">Forward to…</div>
       <div style="max-height:50vh;overflow-y:auto;padding:0 8px 16px;">
-        ${DEPTS.map(d=>`
+        ${_customGroups.map(d=>`
           <div class="m-sheet-row" data-action="doForward" data-room="${d.id}" data-text="${x(text)}">
-            <span class="m-av sq" style="width:30px;height:30px;font-size:13px;background:${d.col};">${d.name[0]}</span> ${x(d.name)}
+            <span class="m-av sq" style="width:30px;height:30px;font-size:13px;background:${d.col};">${(d.name||'?')[0]}</span> ${x(d.name)}
           </div>`).join('')}
         ${others.map(u=>`
           <div class="m-sheet-row" data-action="doForward" data-room="${_dmRoom(u.id)}" data-text="${x(text)}">
@@ -2169,14 +2187,14 @@ async function _onSheetClick(e) {
             window._closeSheet();
             const newText = prompt('Edit message:', a.text);
             if (newText === null || !newText.trim()) break;
-            await sb.from('messages').update({ text:`<p>${x(newText.trim())}</p>` }).eq('id',a.id).eq('tenant_id',_tid);
+            await sb.from('messages').update({ text:`<p>${x(newText.trim())}</p>` }).eq('id',a.id).eq('tenant_id',_tid).eq('sender_id',_uid);
             _toast('Message updated ✓');
             { const top = _stack[_stack.length-1]; if (top) await _render(top.screen, top.params, 'forward'); }
             break;
         }
         case 'deleteMsg':
             window._closeSheet();
-            await sb.from('messages').update({deleted_at:new Date().toISOString()}).eq('id',a.id).eq('tenant_id',_tid);
+            await sb.from('messages').update({deleted_at:new Date().toISOString()}).eq('id',a.id).eq('tenant_id',_tid).eq('sender_id',_uid);
             _toast('Message deleted'); _back(); break;
         case 'ctSaveTask': await _saveConvertedTask(a.msgid); break;
         case 'pickTheme':
@@ -2353,7 +2371,7 @@ async function _goToMessage(messageId, roomIdHint) {
         room = data?.room_id;
     }
     if (!room) { _toast('That message could not be found','err'); return; }
-    const dept = DEPTS.find(d=>d.id===room);
+    const dept = _findGroup(room);
     if (dept) {
         await _navTo('groupChat',{room:dept.id,name:dept.name,color:dept.col,scrollTo:messageId});
     } else if (room.startsWith('dm_')) {
@@ -2595,8 +2613,8 @@ function _wireScreen(screen, params, container) {
         } catch(e) {
             _toast('Image too large for local storage — try a smaller photo','err'); return;
         }
-        const d = DEPTS.find(d=>d.id===deptId); if (d) d.photo = dataUrl;
-        _toast('Department photo updated ✓');
+        const d = _findGroup(deptId); if (d) d.photo = dataUrl;
+        _toast('Group photo updated ✓');
         await _navTo('home',null,true);
     };
 }

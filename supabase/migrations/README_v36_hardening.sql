@@ -1,0 +1,82 @@
+-- ═════════════════════════════════════════════════════════════════════════════
+-- v36 — OPTIONAL schema hardening (REVIEW BEFORE RUNNING — NOT auto-applied)
+--
+-- These statements address gap-report items G2, G3, G4, G9 and G13. They are
+-- kept OUT of the main migration on purpose: they touch the live schema / RLS,
+-- and the exact current policies and data are not visible from the app code.
+-- Run them one section at a time in the Supabase SQL editor AFTER you have run
+-- 20260702_v36_tenant_repair_and_groups.sql (which removes orphaned tenant_ids
+-- that would otherwise make the FK constraints below fail to validate).
+--
+-- Every statement is written to be idempotent where Postgres allows it.
+-- ═════════════════════════════════════════════════════════════════════════════
+
+-- ── G2: tenant_id foreign keys (integrity) ──────────────────────────────────
+-- Run ONLY after Section 1 of the repair migration; otherwise validation fails
+-- on rows whose tenant_id has no tenants row. Add per table as appropriate.
+--
+-- alter table public.profiles
+--   add constraint profiles_tenant_id_fkey
+--   foreign key (tenant_id) references public.tenants(id) on delete cascade;
+--
+-- alter table public.messages
+--   add constraint messages_tenant_id_fkey
+--   foreign key (tenant_id) references public.tenants(id) on delete cascade;
+--
+-- alter table public.tasks
+--   add constraint tasks_tenant_id_fkey
+--   foreign key (tenant_id) references public.tenants(id) on delete cascade;
+
+-- ── G3 / G4: uniqueness (prevent duplicate reactions / notifications) ────────
+-- Adjust column names to match your schema before running.
+--
+-- create unique index if not exists bookmarks_user_message_uq
+--   on public.bookmarks (user_id, message_id);
+--
+-- create unique index if not exists reactions_user_message_value_uq
+--   on public.reactions (message_id, user_id, value);
+--
+-- -- App already dedupes notifications by (user_id, message_id) before insert;
+-- -- this makes it authoritative. Only add if you have no NULL message_id rows.
+-- create unique index if not exists notifications_user_message_type_uq
+--   on public.notifications (user_id, message_id, type)
+--   where message_id is not null;
+
+-- ── G13: performance indexes for common query paths ─────────────────────────
+-- create index if not exists messages_tenant_room_time
+--   on public.messages (tenant_id, room_id, created_at desc);
+-- create index if not exists notifications_user_read
+--   on public.notifications (user_id, is_read);
+-- create index if not exists task_assignees_tenant
+--   on public.task_assignees (tenant_id);
+
+-- ── G9: Row-Level Security policies (server-authoritative tenant isolation) ──
+-- The app filters by tenant_id in every query, but RLS makes it enforced even
+-- if a query is missed. get_current_tenant_id() already exists (see
+-- 20260627_app_logs.sql). Enable RLS and add policies table-by-table, testing
+-- login + messaging after each one so a mistake never locks users out silently.
+--
+-- Example for room_settings (mirror for messages, tasks, notifications, …):
+--
+-- alter table public.room_settings enable row level security;
+--
+-- create policy room_settings_tenant_select on public.room_settings
+--   for select using (tenant_id = app.get_current_tenant_id());
+--
+-- create policy room_settings_tenant_write on public.room_settings
+--   for all using (tenant_id = app.get_current_tenant_id())
+--   with check (tenant_id = app.get_current_tenant_id());
+--
+-- For messages, additionally restrict UPDATE (edit/delete) to the sender or a
+-- moderator role so the client-side sender check is enforced server-side:
+--
+-- create policy messages_update_own on public.messages
+--   for update using (
+--     tenant_id = app.get_current_tenant_id()
+--     and (sender_id = auth.uid() or exists (
+--       select 1 from public.user_roles ur
+--       join public.roles r on r.id = ur.role_id
+--       where ur.user_id = auth.uid()
+--         and r.name in ('principal','vp_admin','management')
+--     ))
+--   );

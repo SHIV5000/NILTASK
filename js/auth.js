@@ -215,6 +215,19 @@ window.loadTenantContext = async function() {
 
     window.currentTenantId   = profile.tenant_id;
     window.currentSchoolName = profile.tenant?.school_name || 'School';
+
+    // Orphaned-tenant guard: profile.tenant_id is set but there is no matching
+    // row in tenants (join came back null). Any write to a tenant-scoped table
+    // (e.g. room_settings) would fail the FK constraint. Flag it so group
+    // creation can show a clear, actionable message instead of a raw DB error.
+    // The repair migration (20260702_v36_tenant_repair_and_groups.sql) fixes the
+    // underlying data.
+    window._tenantOrphaned = !profile.tenant;
+    if (window._tenantOrphaned) {
+        logger.error('AUTH', 'orphaned tenant — tenant_id has no tenants row', {
+            tenant_id: profile.tenant_id, user: uid
+        });
+    }
     window._userAvatarUrl    = localStorage.getItem('mpgs_avatar_' + uid) || profile.avatar_url || null;
 
     // Get user role + permissions

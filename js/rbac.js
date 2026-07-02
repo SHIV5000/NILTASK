@@ -102,6 +102,22 @@ window.guardSchedule = function() {
     return false;
 };
 
+/**
+ * Call this at the TOP of any group create / edit / archive function.
+ * Returns true if blocked (show error), false if allowed.
+ */
+window.canManageGroups = () => R.GROUP_MANAGERS.includes(window.currentRole);
+window.guardManageGroups = function() {
+    if (!window.canManageGroups()) {
+        window.showCenterToast(
+            'Group management is not allowed for your role (' + (window.currentRoleName || window.currentRole) + ').',
+            'fa-solid fa-ban', 'text-red-400'
+        );
+        return true; // blocked
+    }
+    return false; // allowed
+};
+
 // ─────────────────────────────────────────────────────────────
 // MAIN RBAC ENFORCEMENT
 // ─────────────────────────────────────────────────────────────

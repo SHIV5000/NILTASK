@@ -963,10 +963,11 @@ window.openForwardModal = function(msgId, snippet, fromName) {
     const sel = document.getElementById('forwardRoomSelect');
     if (!sel) return;
     sel.innerHTML = '';
-    // Departments
-    ['general','math','science','leadership'].forEach(g => {
+    // Groups — sourced from the live room_settings list, not hard-coded departments.
+    (window._groupsCache || []).forEach(grp => {
+        const label = grp.name || grp.room_id;
         const opt = document.createElement('option');
-        opt.value = g; opt.textContent = '# ' + g.charAt(0).toUpperCase() + g.slice(1);
+        opt.value = grp.room_id; opt.textContent = '# ' + (label.charAt(0).toUpperCase() + label.slice(1));
         sel.appendChild(opt);
     });
     // DMs
@@ -988,7 +989,7 @@ window.closeForwardModal = function() {
 window.sendForwardedMessage = async function() {
     const sel = document.getElementById('forwardRoomSelect');
     if (!sel?.value) return;
-    const { data: orig } = await sb.from('messages').select('text').eq('id', window._fwdMsgId).single();
+    const { data: orig } = await sb.from('messages').select('text').eq('id', window._fwdMsgId).eq('tenant_id', window.currentTenantId).single();
     if (!orig) return;
     const forwardText = `<p style="font-size:11px;color:#6b7280;border-left:3px solid #6366f1;padding-left:8px;margin-bottom:6px;">↪ Forwarded from ${window.escapeHtml(window._fwdFrom)}</p>${orig.text}`;
     await sb.from('messages').insert({ room_id: sel.value, sender_id: window.currentUser.id, tenant_id: window.currentTenantId, text: forwardText });

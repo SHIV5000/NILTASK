@@ -168,6 +168,14 @@ window.saveNewGroup = async function() {
     const err = document.getElementById('ngErr');
     const name = document.getElementById('ngName').value.trim();
     err.style.display = 'none';
+    // Server-authoritative role guard — not just UI hiding.
+    if (window.guardManageGroups?.()) return;
+    // Orphaned-tenant guard — surface a clear message instead of a raw FK error.
+    if (window._tenantOrphaned) {
+        err.textContent = 'Your school account is still being set up (missing tenant record). Please contact support to finish setup before creating groups.';
+        err.style.display = 'block';
+        return;
+    }
     if (!name) { err.textContent='Group name is required.'; err.style.display='block'; return; }
     if (_ngSelectedMembers.size===0) { err.textContent='Add at least one member.'; err.style.display='block'; return; }
     btn.disabled=true; btn.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Creating...';
@@ -294,7 +302,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.63.0 (v33) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.63.0 (v36) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -924,10 +932,8 @@ window._clearGroupPhoto = function(g) {
 
 // ─── LOAD CHATS LIST (Departments + Staff Members) ─────────────────────────
 window.loadChatsList = async function() {
-    const departments = ['general', 'math', 'science', 'leadership'];
-
-    // Sync custom dept names/colors/groups from DB
-    let _customGroups = [];
+    // Build the group list purely from room_settings — no hard-coded departments.
+    let groups = [];
     if (window.currentTenantId) {
         try {
             // Try to include members (column may not exist yet — fall back gracefully).
@@ -943,50 +949,74 @@ window.loadChatsList = async function() {
             } else {
                 rs = withMembers.data;
             }
-            if (rs?.length) {
-                const fixedIds = new Set(['general','math','science','leadership']);
-                rs.forEach(r => {
-                    if (r.name)  _webLsSet('dept_name_'+r.room_id, r.name);
-                    if (r.color) _webLsSet('dept_color_'+r.room_id, r.color);
-                    // Hydrate members from DB so counts match across devices/users
-                    if (Array.isArray(r.members)) _webLsSet('dept_members_'+r.room_id, JSON.stringify(r.members));
-                    // Collect custom groups not in the 4 fixed rooms
-                    if (!fixedIds.has(r.room_id) && !r.archived) {
-                        _customGroups.push(r);
-                    }
-                });
-            }
+            (rs || []).forEach(r => {
+                if (r.name)  _webLsSet('dept_name_'+r.room_id, r.name);
+                if (r.color) _webLsSet('dept_color_'+r.room_id, r.color);
+                // Hydrate members from DB so counts match across devices/users
+                if (Array.isArray(r.members)) _webLsSet('dept_members_'+r.room_id, JSON.stringify(r.members));
+                // Every non-archived, non-DM room is a group in the sidebar.
+                if (!r.archived && !String(r.room_id).startsWith('dm_')) {
+                    groups.push({ room_id: r.room_id, name: r.name || r.room_id, color: r.color || null });
+                }
+            });
         } catch {}
     }
+
+    // Auto-seed a single "General" starter group for a brand-new tenant so the
+    // app is never empty and the default room resolves. Managers only.
+    if (groups.length === 0 && window.currentTenantId && !window._tenantOrphaned && window.canManageGroups?.()) {
+        try {
+            await sb.from('room_settings').upsert(
+                { room_id:'general', tenant_id:window.currentTenantId, name:'General', archived:false, updated_at:new Date().toISOString() },
+                { onConflict:'room_id,tenant_id' });
+            groups.push({ room_id:'general', name:'General', color:null });
+        } catch {}
+    }
+
+    // If the remembered room no longer exists as a group (and isn't a DM),
+    // fall back to the first available group so the sidebar highlight is valid.
+    if (groups.length && window.currentRoom && !String(window.currentRoom).startsWith('dm_')
+        && !groups.some(g => g.room_id === window.currentRoom)) {
+        window.currentRoom = groups[0].room_id;
+        try { localStorage.setItem('mpgs_current_room', window.currentRoom); } catch {}
+    }
+
+    // Expose for other modules (e.g. the forward modal).
+    window._groupsCache = groups;
 
     const {data: users} = await sb.from('profiles').select('id, email, full_name, designation, avatar_url, last_seen').eq('tenant_id', window.currentTenantId);
     window.globalUsersCache = users || [];
 
-    // Department label colours for avatars
+    // Fallback colours / initials for the legacy fixed room ids.
     const deptColors = { general: '#6366f1', math: '#0ea5e9', science: '#10b981', leadership: '#f59e0b' };
     const deptInitials = { general: 'GN', math: 'MA', science: 'SC', leadership: 'LD' };
 
     let html = `<div class="sidebar-section-label px-4 py-2 mt-2 text-[10px] font-black tracking-widest uppercase" style="color:var(--text-secondary);">Departments</div>`;
 
-    for (const g of departments) {
+    if (groups.length === 0) {
+        html += window.canManageGroups?.()
+            ? `<div style="padding:14px 16px;text-align:center;">
+                 <p style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">No groups yet. Create one for your staff.</p>
+                 <button onclick="window.openNewGroupModal()" style="font-size:12px;font-weight:700;color:#fff;background:var(--accent);border:none;border-radius:8px;padding:7px 14px;cursor:pointer;">
+                   <i class="fa-solid fa-plus"></i> Create your first group</button>
+               </div>`
+            : `<div style="padding:14px 16px;text-align:center;font-size:12px;color:var(--text-secondary);">No groups yet. Ask your principal to create one.</div>`;
+    }
+
+    for (const grp of groups) {
+        const g = grp.room_id;
         const isCurrent = window.currentRoom === g;
         const unread = window.unreadCounts?.[g] || 0;
-        const bgColor = deptColors[g] || 'var(--accent)';
-        const initials = deptInitials[g] || g.substring(0,2).toUpperCase();
-        const displayName = g.charAt(0).toUpperCase() + g.slice(1);
+        const displayName = _webLsGet('dept_name_' + g) || grp.name || (g.charAt(0).toUpperCase() + g.slice(1));
+        const storedColor = _webLsGet('dept_color_' + g) || grp.color || deptColors[g] || 'var(--accent)';
+        const initials = deptInitials[g] || (displayName.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase() || 'GR');
 
-        // Check for stored group display name and photo
-        const storedName = _webLsGet('dept_name_' + g) || displayName;
-        const storedColor = _webLsGet('dept_color_' + g) || bgColor;
+        // photo: localStorage cache → signed URL from storage (filename is the room_id)
         let storedPhoto = _webLsGet('dept_photo_' + g) || '';
         const storedTs = parseInt(_webLsGet('dept_photo_ts_' + g) || '0');
         const expired = !storedTs || (Date.now() - storedTs > 1800000); // 30 min cache
-
-        // Skip if "no photo" flag set within 24h (avoids hammering Supabase for missing files)
         const noneTs = parseInt(_webLsGet('dept_photo_none_' + g) || '0');
         const noneRecent = noneTs && (Date.now() - noneTs < 86400000);
-
-        // Fetch signed URL from task-proofs when cache empty or expired
         if ((!storedPhoto || expired) && window.currentTenantId && !noneRecent) {
             const path = `group-photos/${window.currentTenantId}/${g}.jpg`;
             const { data: sd, error: sdErr } = await sb.storage.from('task-proofs').createSignedUrl(path, 3600);
@@ -1002,47 +1032,20 @@ window.loadChatsList = async function() {
         }
         html += `<div class="channel-item group/dept p-2.5 mx-2 mb-1 rounded-xl cursor-pointer flex items-center gap-3 transition-colors border"
             style="background-color:${isCurrent ? 'var(--bg-body)' : 'transparent'};border-color:${isCurrent ? 'var(--border-color)' : 'transparent'};font-weight:${isCurrent ? 'bold' : 'normal'};"
-            data-room="${g}" data-name="${storedName}">
+            data-room="${g}" data-name="${window.escapeHtml(displayName)}">
             <div class="relative flex-shrink-0">
                 <div class="w-9 h-9 rounded-lg flex items-center justify-center text-white text-[11px] font-bold shadow-sm overflow-hidden"
                     style="background:${storedColor};">${storedPhoto ? `<img src="${storedPhoto}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;" onerror="window._clearGroupPhoto('${g}');this.remove();this.parentElement.textContent='${initials}';">` : initials}</div>
                 ${unread > 0 ? `<span class="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full" style="background:#22c55e;"></span>
                     <span class="absolute -top-1 -right-1 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center" style="background:#22c55e;">${unread > 9 ? '9+' : unread}</span>` : ''}
             </div>
-            <span class="flex-1 truncate tracking-wide text-sm" style="color:var(--text-primary);">${storedName}</span>
-            <button onclick="event.stopPropagation();window.openGroupSettings('${g}')"
+            <span class="flex-1 truncate tracking-wide text-sm" style="color:var(--text-primary);">${window.escapeHtml(displayName)}</span>
+            ${window.canSeeGroupGear?.() ? `<button onclick="event.stopPropagation();window.openGroupSettings('${g}')"
                 class="opacity-0 group-hover/dept:opacity-100 transition-opacity p-1 rounded hover:bg-gray-100 flex-shrink-0"
-                style="color:var(--text-secondary);" title="Department Settings">
+                style="color:var(--text-secondary);" title="Group Settings">
                 <i class="fa-solid fa-gear text-[10px]"></i>
-            </button>
+            </button>` : ''}
         </div>`;
-    }
-
-    // Render custom groups from room_settings (grp_* rooms)
-    if (_customGroups.length > 0) {
-        for (const g of _customGroups) {
-            const isCurrent = window.currentRoom === g.room_id;
-            const unread = window.unreadCounts?.[g.room_id] || 0;
-            const storedName = _webLsGet('dept_name_'+g.room_id) || g.name || g.room_id;
-            const storedColor = _webLsGet('dept_color_'+g.room_id) || g.color || '#8b5cf6';
-            const storedPhoto = _webLsGet('dept_photo_'+g.room_id) || '';
-            const initials = storedName.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase() || 'GR';
-            html += `<div class="channel-item group/dept p-2.5 mx-2 mb-1 rounded-xl cursor-pointer flex items-center gap-3 transition-colors border"
-                style="background-color:${isCurrent?'var(--bg-body)':'transparent'};border-color:${isCurrent?'var(--border-color)':'transparent'};font-weight:${isCurrent?'bold':'normal'};"
-                data-room="${g.room_id}" data-name="${window.escapeHtml(storedName)}">
-                <div class="relative flex-shrink-0">
-                    <div class="w-9 h-9 rounded-lg flex items-center justify-center text-white text-[11px] font-bold shadow-sm overflow-hidden"
-                        style="background:${storedColor};">${storedPhoto?`<img src="${storedPhoto}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`:initials}</div>
-                    ${unread > 0 ? `<span class="absolute -top-1 -right-1 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center" style="background:#22c55e;">${unread > 9 ? '9+' : unread}</span>` : ''}
-                </div>
-                <span class="flex-1 truncate tracking-wide text-sm" style="color:var(--text-primary);">${window.escapeHtml(storedName)}</span>
-                <button onclick="event.stopPropagation();window.openGroupSettings('${g.room_id}')"
-                    class="opacity-0 group-hover/dept:opacity-100 transition-opacity p-1 rounded hover:bg-gray-100 flex-shrink-0"
-                    style="color:var(--text-secondary);" title="Group Settings">
-                    <i class="fa-solid fa-gear text-[10px]"></i>
-                </button>
-            </div>`;
-        }
     }
 
     html += `<div class="sidebar-section-label px-4 py-2 mt-4 text-[10px] font-black tracking-widest uppercase" style="color:var(--text-secondary);">Staff Members</div>`;
@@ -1155,6 +1158,14 @@ window.getDmRoomId = function(otherUserId) {
     return `dm_${ids[0]}_${ids[1]}`;
 };
 
+// Exact DM-participant check. Room ids are dm_<uuid>_<uuid>; split on '_' so a
+// user id can only match a full participant segment (no substring false matches).
+window.isDmParticipant = function(roomId) {
+    return typeof roomId === 'string'
+        && roomId.startsWith('dm_')
+        && roomId.split('_').includes(window.currentUser?.id);
+};
+
 // ─── SOUNDS ────────────────────────────────────────────────────────────────
 window._soundLastPlayed = {};
 window.playSound = function(type) {
@@ -1190,8 +1201,11 @@ window.debouncedLoadTasks = function() {
 // ─── SUBSCRIPTIONS ─────────────────────────────────────────────────────────
 window.startSubscriptions = async function() {
     if (messageSubscription) messageSubscription.unsubscribe();
-    messageSubscription = sb.channel('public:messages')
-        .on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, async (p) => {
+    messageSubscription = sb.channel('public:messages-' + window.currentTenantId)
+        .on('postgres_changes', {event:'INSERT', schema:'public', table:'messages', filter:'tenant_id=eq.'+window.currentTenantId}, async (p) => {
+            // Tenant isolation guard — never react to another tenant's message even
+            // if the server-side filter is bypassed (shared room ids like 'general').
+            if (p.new?.tenant_id && p.new.tenant_id !== window.currentTenantId) return;
             logger.logRealtime('msg:INSERT', { id: p.new?.id, room: p.new?.room_id });
             const incomingRoom = p.new.room_id;
             const isMine = p.new.sender_id === window.currentUser?.id;
@@ -1206,7 +1220,7 @@ window.startSubscriptions = async function() {
                 }
             } else {
                 // Ignore DMs the current user is not a participant of — no unread, no toast/chime, no notification.
-                const isDmForMe = !incomingRoom.startsWith('dm_') || incomingRoom.includes(window.currentUser.id);
+                const isDmForMe = !incomingRoom.startsWith('dm_') || window.isDmParticipant(incomingRoom);
 
                 if (isDmForMe) {
                     window.unreadCounts = window.unreadCounts || {};
@@ -1246,7 +1260,7 @@ window.startSubscriptions = async function() {
                     window._incrementBellBadge?.();
                 }
                 if (typeof window.loadChatsList === 'function') window.loadChatsList();
-                if (incomingRoom.startsWith('dm_') && incomingRoom.includes(window.currentUser.id) && !isMine)
+                if (window.isDmParticipant(incomingRoom) && !isMine)
                     window.playSound('message');
             }
             if (window._activityFeedOpen && typeof window.refreshActivityFeed === 'function') window.refreshActivityFeed();
@@ -1309,8 +1323,10 @@ window.startSubscriptions = async function() {
         }, 3000);
     };
 
-    // Legacy web-only channel (kept for backward compat with un-updated web clients)
-    window._reactionsBroadcast = sb.channel('mpgs-reactions-v1');
+    // Legacy web-only channel — now tenant-scoped so reactions / typing / group-photo
+    // broadcasts never cross tenants (reactions also propagate via the tenant-scoped
+    // shared channel below, so same-tenant delivery is unaffected).
+    window._reactionsBroadcast = sb.channel('mpgs-reactions-v1-' + window.currentTenantId);
     window._reactionsBroadcast
         .on('broadcast', { event: 'reaction' }, ({ payload }) => window._onBcReactionAdd(payload))
         .on('broadcast', { event: 'reaction_remove' }, ({ payload }) => window._onBcReactionRemove(payload))

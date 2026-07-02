@@ -134,6 +134,7 @@ window._loadActivityFeed = async function() {
     if (!msgData.length && window.currentRoom) {
         const { data: fb } = await sb.from('messages')
             .select('id,created_at,room_id,sender_id,text,parent_message_id,profiles(full_name,email)')
+            .eq('tenant_id', tid)
             .eq('room_id', window.currentRoom).is('deleted_at', null)
             .order('created_at', { ascending: false }).limit(60);
         msgData = fb || [];

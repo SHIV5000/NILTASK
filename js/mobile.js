@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v51';
+const _MOB_VER = 'v52';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -274,6 +274,9 @@ async function _ctx() {
         _toast('Account configuration error. Please contact your administrator.', 'err');
         return;
     }
+    // Pull the tenant's admin-configured quick-reply tags so they show in the
+    // reaction/insert menus on this device too (DB → localStorage).
+    window.syncQuickTags?.();
     // Detect orphaned tenant (tenant_id with no tenants row) once, so group
     // creation surfaces a clear message instead of a raw FK error. Skipped if the
     // web auth flow already set the flag.

@@ -36,6 +36,7 @@ function fmtLogin(ts) {
     }
     if (IS_MOB()) renderAdminMobile(); else renderAdmin();
     renderInlineRolesTable();
+    await window.syncQuickTags?.();   // pull the tenant's saved tags from the DB
     loadQuickTagsUI();
     await loadAdminData();
     await loadArchivedStaff();
@@ -1783,6 +1784,7 @@ window.addQuickTag = function() {
     tags.push({v:label, c:hex, bg, border});
     localStorage.setItem(getTagKey(), JSON.stringify(tags));
     window._quickTags = tags;
+    window.saveQuickTagsToDB?.(tags);   // share with all staff (all devices)
     document.getElementById('newTagInput').value = '';
     loadQuickTagsUI();
     showToast('"' + label + '" tag added.','#16a34a');
@@ -1800,6 +1802,7 @@ window.editQuickTag = function(idx) {
     tags[idx].v = trimmed;
     localStorage.setItem(getTagKey(), JSON.stringify(tags));
     window._quickTags = tags;
+    window.saveQuickTagsToDB?.(tags);
     loadQuickTagsUI();
 };
 
@@ -1811,6 +1814,7 @@ window.deleteQuickTag = function(idx) {
     tags.splice(idx, 1);
     localStorage.setItem(getTagKey(), JSON.stringify(tags));
     window._quickTags = tags;
+    window.saveQuickTagsToDB?.(tags);
     loadQuickTagsUI();
     showToast('"' + name + '" deleted.','#ef4444');
 };

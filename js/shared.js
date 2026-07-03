@@ -14,6 +14,38 @@ window.currentReminderId = null;
 window.currentMessageId = null; 
 window.currentMessageTextRaw = '';
 
+// ─── QUICK TAGS (tenant-shared, DB-backed) ────────────────────────
+// Quick-reply tags are configured by the principal in the Admin panel and
+// must reach every staff member on every device. They live in the DB table
+// public.quick_tags (tenant_id → tags jsonb) and are mirrored into
+// localStorage('quickTags_<tenant>') so the existing pickers (web + mobile)
+// read them synchronously. Call on login to refresh the local copy.
+window.syncQuickTags = async function() {
+    try {
+        const tid = window.currentTenantId;
+        if (!tid) return null;
+        const { data, error } = await sb.from('quick_tags')
+            .select('tags').eq('tenant_id', tid).maybeSingle();
+        if (error) return null;                 // table missing / RLS — keep local defaults
+        if (data && Array.isArray(data.tags)) {
+            localStorage.setItem('quickTags_' + tid, JSON.stringify(data.tags));
+            window._quickTags = data.tags;
+            return data.tags;
+        }
+    } catch (e) { /* non-fatal — fall back to localStorage/defaults */ }
+    return null;
+};
+// Persist the tenant's tag list to the DB (called from the Admin panel).
+window.saveQuickTagsToDB = async function(tags) {
+    try {
+        const tid = window.currentTenantId;
+        if (!tid) return false;
+        const { error } = await sb.from('quick_tags')
+            .upsert({ tenant_id: tid, tags, updated_at: new Date().toISOString() }, { onConflict: 'tenant_id' });
+        return !error;
+    } catch (e) { return false; }
+};
+
 // Global Helpers
 window.escapeHtml = function(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m] || m)); }
 window.toSentenceCase = function(str) { if (!str) return ''; return str.toLowerCase().replace(/(^\w{1})|(\s+\w{1})/g, letter => letter.toUpperCase()); }

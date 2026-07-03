@@ -69,11 +69,17 @@ function _urlB64ToUint8(base64) {
 
 // Subscribe this device for background push and store the subscription so the
 // edge function can reach it. Safe to call repeatedly (idempotent upsert).
-window.subscribeToPush = async function() {
+window.subscribeToPush = async function(opts = {}) {
     try {
-        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-        if (!window.currentUser?.id) return;
-        if (Notification.permission !== 'granted') return;
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
+        if (!window.currentUser?.id) return false;
+        if (Notification.permission === 'denied') return false;
+        // Ask for permission if not yet decided (so resumed sessions also register).
+        // opts.prompt=true means this came from a user tap — always safe to prompt.
+        if (Notification.permission !== 'granted') {
+            const p = await Notification.requestPermission();
+            if (p !== 'granted') return false;
+        }
         const reg = await navigator.serviceWorker.ready;
         let sub = await reg.pushManager.getSubscription();
         if (!sub) {
@@ -82,14 +88,15 @@ window.subscribeToPush = async function() {
                 applicationServerKey: _urlB64ToUint8(VAPID_PUBLIC)
             });
         }
-        await sb.from('push_subscriptions').upsert({
+        const { error } = await sb.from('push_subscriptions').upsert({
             user_id:      window.currentUser.id,
             tenant_id:    window.currentTenantId,
             endpoint:     sub.endpoint,
             subscription: sub.toJSON()
         }, { onConflict: 'endpoint' });
         window._persistAuthForSW?.();
-    } catch (e) { /* push subscribe failed — non-fatal, in-app notifications still work */ }
+        return !error;
+    } catch (e) { return false; /* non-fatal, in-app notifications still work */ }
 };
 
 // ── SHARED AUDIO CONTEXT — unlocked once on first user gesture ────
@@ -169,8 +176,11 @@ window.showSystemNotification = async function(title, body, options = {}) {
     if (!('Notification' in window)) return;
     if (Notification.permission !== 'granted') return;
 
+    // When the app is NOT visible (backgrounded/closed), Web Push delivers the
+    // system notification — so don't also raise one here, or it shows twice.
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+
     // Only suppress if the user is already looking at the exact room this message came from
-    // Do NOT suppress just because the tab is visible — they may be in a different channel
     if (options.room && options.room === window.currentRoom && document.visibilityState === 'visible') return;
 
     const opts = {

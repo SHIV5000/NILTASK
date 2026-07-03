@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v38';
+const _MOB_VER = 'v39';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -1491,8 +1491,13 @@ async function _settings() {
       <div style="padding:0 16px 8px;">
         <div class="m-detail-row"><span class="m-detail-lbl">Status</span><span class="m-detail-val">${permLabel}</span></div>
         <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;padding:4px 0 10px;">
-          When enabled, you'll get a phone notification (with sound + vibration) for new messages and task updates — even if TaskFlow isn't open on screen. Without it, you'll only see updates when you're actively looking at the app. This is requested automatically once when you first log in.
+          When enabled, you'll get a phone notification (with sound + vibration) for new messages and task updates — even if TaskFlow isn't open on screen.
         </div>
+        ${permState !== 'granted' ? `<button class="m-action-btn" style="background:#6366f1;" data-action="enablePush">
+          <i class="fa-solid fa-bell"></i> Enable notifications on this device
+        </button>` : `<button class="m-action-btn" style="background:#16a34a;" data-action="enablePush">
+          <i class="fa-solid fa-rotate"></i> Re-register this device
+        </button>`}
       </div>
 
       <div class="m-sl">PROFILE</div>
@@ -2115,6 +2120,13 @@ async function _onShellClick(e) {
             break;
         }
         case 'confirmLogout': await window._confirmLogout(); break;
+        case 'enablePush': {
+            _toast('Enabling…');
+            const ok = await window.subscribeToPush?.({ prompt: true });
+            _toast(ok ? '🔔 Notifications enabled on this device' : 'Could not enable — allow notifications in browser settings', ok ? 'ok' : 'err');
+            if (ok) { const top = _stack[_stack.length-1]; if (top?.screen === 'settings') await _render('settings', null, 'forward'); }
+            break;
+        }
         case 'pickTheme':
             if (typeof window.setTheme === 'function') window.setTheme(a.theme);
             window._closeSheet();

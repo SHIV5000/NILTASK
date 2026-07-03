@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v39';
+const _MOB_VER = 'v40';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -1117,15 +1117,23 @@ async function _dm(p) {
         if (_isOffline) return;
         try {
             const { data: rawMsgs } = await sb.from('messages')
-                .select('id,text,sender_id,created_at,updated_at')
+                .select('id,text,sender_id,created_at,updated_at,parent_message_id')
                 .eq('room_id',p.room).eq('tenant_id',_tid)
-                .is('deleted_at',null).order('created_at',{ascending:false}).limit(50);
+                .is('deleted_at',null).is('parent_message_id',null)
+                .order('created_at',{ascending:false}).limit(50);
             if (!rawMsgs) return;
             const msgs = rawMsgs.reverse();  // oldest → newest for display
             _oldestTs[p.room] = msgs[0]?.created_at || null;
             _allLoaded[p.room] = rawMsgs.length < 50;
             _saveRoomCache(p.room, msgs);
-            const reactionsMap = await _fetchReactions(msgs.map(m=>m.id));
+            const msgIds = msgs.map(m=>m.id);
+            const [reactionsMap, replyData] = await Promise.all([
+                _fetchReactions(msgIds),
+                sb.from('messages').select('parent_message_id').in('parent_message_id', msgIds).eq('tenant_id',_tid).is('deleted_at',null)
+            ]);
+            const replyMap = {};
+            (replyData.data||[]).forEach(r => { replyMap[r.parent_message_id] = (replyMap[r.parent_message_id]||0)+1; });
+            _replyMapCache[p.room] = replyMap;
             if (myGen !== _refreshGen) return;
             const area = document.getElementById('mDMArea');
             if (area) {
@@ -1133,7 +1141,7 @@ async function _dm(p) {
                 const liveRows2 = [...area.querySelectorAll('[id^="row-"]')]
                     .filter(el => !dbIds2.has(el.id.replace('row-','')))
                     .map(el => el.outerHTML);
-                area.innerHTML = msgs.map(m=>_bubbleHTML(m,reactionsMap,160)).join('') || `<div class="m-empty">Start a conversation with ${x(p.name)}</div>`;
+                area.innerHTML = msgs.map(m=>_bubbleHTML(m,reactionsMap,160,replyMap,p)).join('') || `<div class="m-empty">Start a conversation with ${x(p.name)}</div>`;
                 liveRows2.forEach(html => area.insertAdjacentHTML('beforeend', html));
                 area.scrollTop = area.scrollHeight;
             }
@@ -1163,7 +1171,7 @@ async function _dm(p) {
         <input id="mChatSearchInp" type="search" placeholder="Search messages…" style="width:100%;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;" oninput="window._filterChatMsgs(this.value,'mDMArea')">
       </div>
       <div class="m-msgs" id="mDMArea">
-        ${shellMsgs.length ? (()=>{ const sr=_loadReactionsCache(); return shellMsgs.map(m=>_bubbleHTML(m,sr,160,{},p)).join(''); })() : `<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">${cached ? `Start a conversation with ${x(p.name)}` : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…'}</div>`}
+        ${shellMsgs.length ? (()=>{ const sr=_loadReactionsCache(); const rmap=_replyMapCache[p.room]||{}; return shellMsgs.map(m=>_bubbleHTML(m,sr,160,rmap,p)).join(''); })() : `<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">${cached ? `Start a conversation with ${x(p.name)}` : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…'}</div>`}
       </div>
       <button class="m-scrollfab" id="mScrollFab" style="display:none;" onclick="document.getElementById('mDMArea').scrollTo({top:9e9,behavior:'smooth'})"><i class="fa-solid fa-chevron-down"></i></button>
       <div class="m-typing-area" id="mTypingArea"></div>
@@ -2927,7 +2935,7 @@ function _fmtIST(ts, withTime=true) {
     if (withTime) { opts.hour = '2-digit'; opts.minute = '2-digit'; opts.hour12 = true; }
     return new Intl.DateTimeFormat('en-IN', opts).format(d);
 }
-function _uname(id){ const u=_users.find(u=>u.id===id); return u ? (u.full_name||u.email?.split('@')[0]||'User') : 'User'; }
+function _uname(id){ const u=_users.find(u=>u.id===id) || (window.globalUsersCache||[]).find(u=>u.id===id); return u ? (u.full_name||u.email?.split('@')[0]||'User') : 'User'; }
 function _dmRoom(uid){ return ['dm',...[_uid,uid].sort()].join('_'); }
 function _snip(h,n){ const t=(h||'').replace(/<[^>]*>/g,'').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&quot;/g,'"').trim(); return t.length>n?t.substring(0,n)+'…':t; }
 const _istFmt12 = new Intl.DateTimeFormat('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'});

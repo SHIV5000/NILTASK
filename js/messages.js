@@ -454,7 +454,10 @@ window.renderMessages = function(messages) {
 
     function buildMsgHTML(msg) {
         const isSent = msg.sender_id === window.currentUser.id;
-        const senderName = isSent ? 'You' : window.toSentenceCase(msg.profiles?.full_name || msg.profiles?.email.split('@')[0] || 'Unknown');
+        // Resolve from the live user cache too, so cached/realtime rows (whose
+        // .profiles wasn't attached) still show a real name instead of "Unknown".
+        const _u = msg.profiles || (window.globalUsersCache || []).find(u => u.id === msg.sender_id);
+        const senderName = isSent ? 'You' : window.toSentenceCase(_u?.full_name || _u?.email?.split('@')[0] || 'Unknown');
         const time = window.getISTTime(msg.created_at);
         const snippetText = window.getSnippet(msg.text);
 

@@ -34,12 +34,25 @@ function fmtLogin(ts) {
             return;
         }
     }
-    renderAdmin();
+    if (IS_MOB()) renderAdminMobile(); else renderAdmin();
     renderInlineRolesTable();
     loadQuickTagsUI();
     await loadAdminData();
     await loadArchivedStaff();
 })();
+
+// ≤768px gets the dedicated mobile app shell; desktop keeps the full panel.
+const IS_MOB = () => window.innerWidth <= 768;
+// Re-render the correct shell if the viewport crosses the breakpoint.
+let _admWasMob = IS_MOB();
+window.addEventListener('resize', () => {
+    const m = IS_MOB();
+    if (m === _admWasMob) return;
+    _admWasMob = m;
+    if (m) renderAdminMobile(); else renderAdmin();
+    renderInlineRolesTable(); loadQuickTagsUI();
+    loadAdminData(); loadArchivedStaff();
+}, { passive:true });
 
 // ─── RENDER SHELL ──────────────────────────────────────────────
 function renderAdmin() {
@@ -279,7 +292,12 @@ function renderAdmin() {
 
     </div>`;
 
-    // Inject reset password modal (separate from add/edit modal)
+    injectResetModal();
+}
+
+// Reset-password modal — shared by desktop + mobile shells.
+function injectResetModal() {
+    if (document.getElementById('resetPwdModal')) return;
     const resetModal = document.createElement('div');
     resetModal.id = 'resetPwdModal';
     resetModal.className = 'modal-wrap';
@@ -309,6 +327,243 @@ function renderAdmin() {
             </div>
         </div>`;
     document.body.appendChild(resetModal);
+}
+
+// ─── MOBILE APP SHELL ─────────────────────────────────────────
+// A native-feeling phone layout: sticky app bar with a Chat⇆Admin toggle,
+// tab panels (Home · Staff · Scores · More), list cards instead of wide
+// tables, and a floating "Add Staff". Reuses every desktop handler + the
+// same element IDs, so all data loaders and modals work unchanged.
+let _admTabCur = 'home';
+function renderAdminMobile() {
+    const schoolName = window.currentSchoolName || 'School';
+    const userName   = window.currentUser?.user_metadata?.full_name
+                    || window.currentUser?.email?.split('@')[0] || 'Admin';
+    const tile = (id,label,dot) =>
+        `<div class="ma-tile"><div class="ma-tile-n" id="${id}">—</div><div class="ma-tile-l"><span class="ma-dot" style="background:${dot};"></span>${label}</div></div>`;
+    const qa = (tab,ico,bg,fg,title,sub) =>
+        `<button class="ma-qa" onclick="window._admTab('${tab}')"><div class="ma-qi" style="background:${bg};color:${fg};">${ico}</div><div class="ma-qt">${title}</div><div class="ma-qs">${sub}</div></button>`;
+
+    document.getElementById('adminRoot').innerHTML = `
+    <div id="adminMobile">
+      <div class="ma-bar">
+        <div class="ma-brand">
+          <div class="ma-school">${window.escapeHtml(schoolName)}</div>
+          <div class="ma-role">${window.escapeHtml(window.currentRoleName || 'Admin')} · ${window.escapeHtml(userName)}</div>
+        </div>
+        <div class="ma-seg">
+          <button onclick="window.location.href='/?mode=chat'">💬 Chat</button>
+          <button class="on">🛡 Admin</button>
+        </div>
+      </div>
+
+      <div class="ma-body">
+        <!-- HOME -->
+        <section class="ma-panel" id="matab-home">
+          <div class="ma-trial" id="trialBanner">
+            <div class="ma-trial-ic"><i class="fa-solid fa-star"></i></div>
+            <div style="flex:1;min-width:0;">
+              <div class="ma-trial-t" id="planName">Loading plan…</div>
+              <div class="ma-trial-s" id="planSub"></div>
+            </div>
+          </div>
+          <div class="ma-tiles">
+            ${tile('statTotal','Total staff','var(--accent)')}
+            ${tile('statApproved','Approved','#16a34a')}
+            ${tile('statPending','Pending','#f59e0b')}
+            ${tile('statDays','Trial days left','var(--accent)')}
+          </div>
+          <div class="ma-seclbl">Manage</div>
+          <div class="ma-qa-grid">
+            ${qa('staff','👥','rgba(99,102,241,.12)','#4f46e5','Staff','Add · approve · edit')}
+            ${qa('scores','🏆','rgba(245,158,11,.14)','#b45309','Scorecard','Performance')}
+            ${qa('more','🛡','rgba(22,163,74,.12)','#15803d','Roles','Permissions · PDF')}
+            ${qa('more','🏷','var(--bg-body)','var(--text-secondary)','Text Tags','Reaction chips')}
+          </div>
+        </section>
+
+        <!-- STAFF -->
+        <section class="ma-panel" id="matab-staff" style="display:none;">
+          <div class="ma-search"><i class="fa-solid fa-magnifying-glass"></i>
+            <input id="staffSearch" placeholder="Search name or email…" oninput="filterStaff(this.value)"></div>
+          <div class="ma-row-tools">
+            <button class="btn-outline btn-sm" onclick="window.openBulkAddModal()" style="color:#0ea5e9;border-color:#0ea5e9;"><i class="fa-solid fa-file-csv"></i> Bulk add</button>
+            <button class="btn-outline btn-sm" onclick="window.printStaffTable()"><i class="fa-solid fa-print"></i> Print</button>
+          </div>
+          <div id="staffTableBody" class="ma-list"></div>
+        </section>
+
+        <!-- SCORES -->
+        <section class="ma-panel" id="matab-scores" style="display:none;">
+          <div class="ma-row-tools">
+            <select id="scMonth" class="ma-select">
+              <option value="this_month">This Month</option>
+              <option value="last_month">Last Month</option>
+              <option value="this_quarter">This Quarter</option>
+              <option value="this_year">This Year</option>
+            </select>
+            <button class="btn-accent btn-sm" onclick="loadScorecard()"><i class="fa-solid fa-chart-bar"></i> Generate</button>
+            <button class="btn-outline btn-sm" onclick="window.printScorecard()"><i class="fa-solid fa-print"></i> Print</button>
+          </div>
+          <div id="scorecardBody" class="ma-list">
+            <div class="ma-empty">Pick a period and tap <b>Generate</b>.</div>
+          </div>
+          <div id="scorecardNote" style="display:none;"></div>
+        </section>
+
+        <!-- MORE -->
+        <section class="ma-panel" id="matab-more" style="display:none;">
+          <div class="ma-seclbl">Roles &amp; Permissions</div>
+          <div class="ma-row-tools">
+            <button class="btn-outline btn-sm" onclick="window.openRolesPermPanel?.()"><i class="fa-solid fa-expand"></i> Full view</button>
+            <button class="btn-outline btn-sm" onclick="window.printRolesPDF()"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+          </div>
+          <div class="ma-scroll"><table class="staff-table"><thead><tr>
+            <th>Staff</th><th>Role</th><th>Sched</th><th>Upload</th><th>Task</th><th>Hub</th><th>Groups</th><th>Activity</th><th>Dash</th><th>Admin</th><th>Remind</th><th>Assign</th>
+          </tr></thead><tbody id="rolesInlineTbody"></tbody></table></div>
+
+          <div class="ma-seclbl" style="margin-top:20px;">Quick Text Tags</div>
+          <div class="ma-row-tools">
+            <input type="text" id="newTagInput" placeholder="New tag label…" maxlength="20" class="ma-input" style="flex:1;">
+            <input type="color" id="newTagColor" value="#1d4ed8" title="Tag colour" class="ma-color">
+            <button class="btn-accent btn-sm" onclick="window.addQuickTag()"><i class="fa-solid fa-plus"></i></button>
+          </div>
+          <div id="tagsContainer" class="ma-tags"><span style="font-size:12px;color:var(--text-secondary);">Loading…</span></div>
+
+          <div class="ma-seclbl" style="margin-top:20px;">Archived Staff</div>
+          <div id="archivedSection">
+            <div class="ma-row-tools"><button class="btn-outline btn-sm" onclick="loadArchivedStaff()">Refresh</button></div>
+            <div class="ma-scroll"><table class="staff-table"><thead><tr><th>Staff</th><th>Role</th><th>Archived</th><th>Actions</th></tr></thead>
+              <tbody id="archivedTableBody"><tr><td colspan="4" style="padding:16px;text-align:center;color:var(--text-secondary);">Loading…</td></tr></tbody></table></div>
+          </div>
+
+          <div class="ma-seclbl" style="margin-top:20px;">Account</div>
+          <div class="ma-acct">
+            <button class="ma-acct-btn" onclick="window.toggleAdminTheme()"><i class="fa-solid fa-circle-half-stroke"></i> Toggle theme</button>
+            <button class="ma-acct-btn danger" onclick="window.logout?.()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Log out</button>
+          </div>
+        </section>
+      </div>
+
+      <button class="ma-fab" id="maFab" onclick="openAddStaffModal()"><i class="fa-solid fa-plus"></i> Add Staff</button>
+
+      <nav class="ma-tabs">
+        <button class="ma-tab on" data-tab="home"  onclick="window._admTab('home')"><i class="fa-solid fa-house"></i>Home</button>
+        <button class="ma-tab"    data-tab="staff" onclick="window._admTab('staff')"><i class="fa-solid fa-users"></i>Staff</button>
+        <button class="ma-tab"    data-tab="scores" onclick="window._admTab('scores')"><i class="fa-solid fa-trophy"></i>Scores</button>
+        <button class="ma-tab"    data-tab="more"  onclick="window._admTab('more')"><i class="fa-solid fa-ellipsis"></i>More</button>
+      </nav>
+    </div>`;
+
+    injectResetModal();
+    window._admTab(_admTabCur);
+}
+
+// Switch mobile tab panels + reflect the FAB (only shown on the Staff tab).
+window._admTab = function(name) {
+    _admTabCur = name;
+    ['home','staff','scores','more'].forEach(t => {
+        const p = document.getElementById('matab-'+t);
+        if (p) p.style.display = t===name ? 'flex' : 'none';
+    });
+    document.querySelectorAll('.ma-tab').forEach(b => b.classList.toggle('on', b.dataset.tab===name));
+    const fab = document.getElementById('maFab');
+    if (fab) fab.style.display = name==='staff' ? 'flex' : 'none';
+    const body = document.querySelector('#adminMobile .ma-body');
+    if (body) body.scrollTop = 0;
+};
+
+// Staff as list cards (mobile). Reuses the same per-row handlers as the table.
+function renderStaffCards(staff) {
+    const box = document.getElementById('staffTableBody');
+    if (!box) return;
+    if (!staff.length) {
+        box.innerHTML = `<div class="ma-empty" style="padding:36px 18px;">
+            <div style="font-size:34px;margin-bottom:8px;">👥</div>
+            <div style="font-weight:800;color:var(--text-primary);font-size:15px;">Add your first staff member</div>
+            <div style="margin-top:6px;">Tap <b>＋ Add Staff</b> below to get started.</div></div>`;
+        return;
+    }
+    const roleNames = { management:'Management', principal:'Principal', vp_admin:'VP / Admin', coordinator:'Coordinator', exam_controller:'Exam Controller', hod:'HOD', teacher:'Teacher', admin_staff:'Admin Staff', support_staff:'Support Staff' };
+    const avatarColors = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899'];
+    box.innerHTML = staff.map((s,i) => {
+        const roleName = roleNames[s.role] || 'Teacher';
+        const avColor = avatarColors[i % avatarColors.length];
+        const initials = (s.full_name || 'U').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+        const statusPill = s.approved
+            ? `<span class="ma-pill g">Approved</span>`
+            : `<span class="ma-pill w">Pending</span>`;
+        return `<div class="ma-scard">
+            <div class="ma-av" style="background:${avColor};">${initials}</div>
+            <div class="ma-who">
+              <div class="ma-nm">${window.escapeHtml(s.full_name)}</div>
+              <div class="ma-meta">${window.escapeHtml(roleName)}${s.designation?' · '+window.escapeHtml(s.designation):(s.department?' · '+window.escapeHtml(s.department):'')}</div>
+            </div>
+            ${statusPill}
+            <button class="ma-kebab" onclick="window._admStaffSheet('${s.id}')"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+        </div>`;
+    }).join('');
+}
+
+// Row-action bottom sheet for a staff member (mobile).
+window._admStaffSheet = function(id) {
+    const s = allStaff.find(x => String(x.id) === String(id));
+    if (!s) return;
+    const initials = (s.full_name || 'U').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+    const email = window.escapeHtml(s.email), name = window.escapeHtml(s.full_name);
+    let sheet = document.getElementById('maSheet');
+    if (!sheet) { sheet = document.createElement('div'); sheet.id='maSheet'; sheet.className='ma-sheet-scrim'; document.body.appendChild(sheet); }
+    sheet.innerHTML = `<div class="ma-sheet">
+        <div class="ma-grab"></div>
+        <div class="ma-sh-head">
+          <div class="ma-av" style="background:#6366f1;">${initials}</div>
+          <div style="min-width:0;"><div class="ma-nm">${name}</div><div class="ma-meta">${email}</div></div>
+        </div>
+        <button class="ma-act" onclick="window._admSheetClose();openEditStaffModal('${s.id}')"><i class="fa-solid fa-pen"></i> Edit details</button>
+        <button class="ma-act" onclick="window._admSheetClose();openResetPwdModal('${email}','${name}')"><i class="fa-solid fa-key"></i> Reset password</button>
+        <button class="ma-act" onclick="window._admSheetClose();toggleApproval('${s.id}', ${s.approved})"><i class="fa-solid fa-user-check"></i> ${s.approved?'Block (un-approve)':'Approve for login'}</button>
+        <button class="ma-act danger" onclick="window._admSheetClose();archiveStaff('${s.id}','${name}')"><i class="fa-solid fa-box-archive"></i> Archive staff member</button>
+        <button class="ma-act danger" onclick="window._admSheetClose();permanentDeleteStaff('${s.id}','${name}')"><i class="fa-solid fa-trash"></i> Delete permanently</button>
+    </div>`;
+    sheet.classList.add('open');
+    sheet.onclick = (e) => { if (e.target === sheet) window._admSheetClose(); };
+};
+window._admSheetClose = function() { document.getElementById('maSheet')?.classList.remove('open'); };
+
+// Scorecard as cards (mobile). Consumes the same RPC rows as the table.
+function renderScoreCards(staff) {
+    const box = document.getElementById('scorecardBody');
+    if (!box) return;
+    if (!staff.length) { box.innerHTML = `<div class="ma-empty">No task data for this period yet.</div>`; return; }
+    const gradeColors = { 'A+':{bg:'#dcfce7',color:'#16a34a'},'A':{bg:'#dbeafe',color:'#1d4ed8'},'B':{bg:'#fef9c3',color:'#854d0e'},'C':{bg:'#ffedd5',color:'#c2410c'},'D':{bg:'#fee2e2',color:'#b91c1c'},'N/A':{bg:'#f1f5f9',color:'#64748b'} };
+    box.innerHTML = staff.map(s => {
+        const gc = gradeColors[s.grade] || gradeColors['N/A'];
+        const pct = s.score ?? 0;
+        const barColor = pct>=90?'#16a34a':pct>=65?'#f59e0b':'#ef4444';
+        const ackRate = s.msgs_received>0 ? Math.round(s.acknowledged/s.msgs_received*100)+'%' : '—';
+        return `<div class="ma-sc">
+          <div class="ma-sc-top">
+            <div class="ma-grade" style="background:${gc.bg};color:${gc.color};"><div class="g">${s.grade}</div><div class="gl">Grade</div></div>
+            <div style="flex:1;min-width:0;">
+              <div class="ma-nm">${window.escapeHtml(s.staff_name||'—')}</div>
+              <div style="display:flex;align-items:baseline;gap:6px;margin:2px 0 5px;">
+                <span style="font-size:19px;font-weight:900;color:${barColor};font-variant-numeric:tabular-nums;">${s.score!==null?s.score+'%':'—'}</span>
+                <span style="font-size:11px;color:var(--text-secondary);">overall</span>
+              </div>
+              <div class="ma-bar"><i style="width:${Math.min(100,pct)}%;background:${barColor};"></i></div>
+            </div>
+            <button class="ma-kebab" onclick='window.downloadStaffScorecard(${JSON.stringify(s).replace(/'/g,"&#39;")})' title="Download card"><i class="fa-solid fa-download"></i></button>
+          </div>
+          <div class="ma-metrics">
+            <div class="ma-metric"><div class="mv">${s.tasks_on_time||0}</div><div class="ml">On time</div></div>
+            <div class="ma-metric"><div class="mv">${s.tasks_delayed||0}</div><div class="ml">Delayed</div></div>
+            <div class="ma-metric"><div class="mv">${s.tasks_pending||0}</div><div class="ml">Pending</div></div>
+            <div class="ma-metric"><div class="mv">${s.tasks_total||0}</div><div class="ml">Tasks</div></div>
+            <div class="ma-metric"><div class="mv">${ackRate}</div><div class="ml">Ack rate</div></div>
+            <div class="ma-metric"><div class="mv">${s.active_days||0}</div><div class="ml">Active</div></div>
+          </div>
+        </div>`;
+    }).join('');
 }
 
 // ─── LOAD DATA ────────────────────────────────────────────────
@@ -400,6 +655,7 @@ function updateStats(staff) {
 }
 
 function renderStaffTable(staff) {
+    if (IS_MOB()) return renderStaffCards(staff);
     const tbody = document.getElementById('staffTableBody');
     if (!tbody) return;
 
@@ -893,6 +1149,8 @@ window.loadScorecard = async function() {
     }
 
     const staff = Array.isArray(data) ? data : JSON.parse(data || '[]');
+
+    if (IS_MOB()) { renderScoreCards(staff); if (note) note.style.display = 'block'; return; }
 
     if (!staff.length) {
         tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-secondary);">

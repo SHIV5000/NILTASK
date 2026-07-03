@@ -179,6 +179,7 @@ window.initMobileApp = async function() {
         document.head.appendChild(s);
     }
     _el('root')?.style.setProperty('display', 'none', 'important');
+    try { document.documentElement.removeAttribute('data-theme'); } catch (e) {}  // mobile = light only
     _injectCSS();
     _buildShell();
     await _ctx();
@@ -382,7 +383,6 @@ function _buildShell() {
           <i class="fa-solid fa-bell"></i>
           <span id="mNotifBadge" class="m-notif-badge" style="display:none;"></span>
         </button>
-        <button class="m-sb-icon" title="Theme" onclick="window._openThemeSheet()"><i class="fa-solid fa-palette"></i></button>
         <button class="m-sb-icon" title="Sign out" onclick="window._confirmLogout()"><i class="fa-solid fa-right-from-bracket"></i></button>
         <div id="mSBResults"></div>
       </div>
@@ -550,6 +550,8 @@ window.addEventListener('popstate', () => {
     }
 });
 async function _render(screen, params, dir='forward') {
+    // Mobile app is light-only — strip any dark/colored theme the web layer set.
+    try { document.documentElement.removeAttribute('data-theme'); } catch (e) {}
     const stage = _el('mStage');
     if (!stage) return;
     const fns = {
@@ -1484,15 +1486,6 @@ async function _settings() {
         </div>
       </div>` : ''}
 
-      <div class="m-sl">APPEARANCE</div>
-      <div style="padding:0 16px 8px;">
-        <div class="m-theme-grid">
-          ${(window.THEME_LIST||[]).map(t=>`
-            <button class="m-theme-pill ${window.currentTheme===t.id?'active':''}" data-action="pickTheme" data-theme="${t.id}">
-              <span class="m-theme-dot" style="background:${t.swatch};"></span>${t.label}
-            </button>`).join('') || '<div class="m-empty">Theme system not loaded</div>'}
-        </div>
-      </div>
 
       <div class="m-sl">NOTIFICATIONS</div>
       <div style="padding:0 16px 8px;">

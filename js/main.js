@@ -302,7 +302,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.63.0 (v42) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.63.0 (v43) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -1238,7 +1238,9 @@ window.startSubscriptions = async function() {
                     window.unreadCounts[incomingRoom] = (window.unreadCounts[incomingRoom] || 0) + 1;
                 }
 
-                if (!isMine && isDmForMe) {
+                // On mobile, mobile.js `_onNewMessage` owns notifications + bell; running
+                // this web path too double-counts (most visible on DMs). Skip on mobile.
+                if (!isMine && isDmForMe && !window.isMobileView?.()) {
                     if (typeof window.triggerMessageNotification === 'function')
                         window.triggerMessageNotification(p.new);
 

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v42';
+const _MOB_VER = 'v43';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -389,7 +389,7 @@ function _buildShell() {
         </div>
         <button class="m-sb-icon" id="mSBLens" title="Search" onclick="window._toggleInlineSearch()"><i class="fa-solid fa-magnifying-glass"></i></button>
         <button class="m-sb-icon" id="mSBDnd" title="Do Not Disturb" data-action="toggleDND" style="${(window._isDND?.())?'color:#ef4444;':''}">
-          <i class="fa-solid ${(window._isDND?.())?'fa-bell-slash':'fa-bell'}"></i>
+          <i class="fa-solid ${(window._isDND?.())?'fa-volume-xmark':'fa-volume-high'}"></i>
         </button>
         <button class="m-sb-icon" id="mSBBell" title="Notifications" data-action="openNotifs" style="position:relative;">
           <i class="fa-solid fa-bell"></i>
@@ -401,8 +401,9 @@ function _buildShell() {
       <div id="mStage"></div>
       <div id="mNav">
         ${tabs.map(t=>`
-          <button class="mn-btn" id="mnt-${t.id}" onclick="${t.action}">
+          <button class="mn-btn" id="mnt-${t.id}" onclick="${t.action}" style="position:relative;">
             <i class="fa-solid ${t.icon}"></i>
+            ${t.id==='activity'?`<span class="mn-badge" id="mnActBadge" style="display:none;"></span>`:''}
             <span class="mn-lbl">${t.lbl}</span>
           </button>`).join('')}
       </div>
@@ -601,7 +602,7 @@ function _scrollAndGlow(msgId, attempt=0) {
     const card = row.querySelector('.m-bubble') || row;
     row.scrollIntoView({ behavior:'smooth', block:'center' });
     setTimeout(() => card.classList.add('m-highlight'), 50);
-    setTimeout(() => card.classList.remove('m-highlight'), 2050);
+    setTimeout(() => card.classList.remove('m-highlight'), 3050);   // highlight 3s
 }
 function _setTab(screen) {
     const map = { home:'home', groupChat:'home', thread:'home', dm:'home',
@@ -747,42 +748,72 @@ async function _home() {
     </div>`;
 }
 
+function _fmtDateTime(ds){ try { const d=new Date(ds); return _istFmtDate.format(d)+', '+_istFmt12.format(d); } catch { return ''; } }
 async function _activity() {
-    const { data: msgs } = await sb.from('messages')
-        .select('id,room_id,text,created_at,sender_id')
-        .eq('tenant_id',_tid).is('deleted_at',null)
-        .order('created_at',{ascending:false}).limit(120);
+    const filter = window._afFilter || 'all';
+    // Opening the feed marks it "seen" (clears the Activity tab badge).
+    try { localStorage.setItem('activity_seen_ts', new Date().toISOString()); } catch(e){}
+    _el('mnActBadge')?.style.setProperty('display','none');
 
-    const mine = (msgs||[]).filter(m => {
-        const isDept = !!_findGroup(m.room_id);
-        const isMyDM = _isDmMine(m.room_id);
-        return isDept || isMyDM;
-    }).slice(0,50);
+    const { data: notifs } = await sb.from('notifications')
+        .select('id,type,message,message_id,task_id,created_at,is_read')
+        .eq('user_id',_uid).eq('tenant_id',_tid)
+        .order('created_at',{ascending:false}).limit(80);
+
+    const kind = (n) => {
+        const t = n.type || 'message';
+        if (t==='task')     return { cat:'tasks',     cls:'orange', badge:'📋 Task',     emoji:'📋', act:(n.task_id?{k:'task',id:n.task_id}:null) };
+        if (t==='reminder') return { cat:'reminders', cls:'green',  badge:'⏰ Reminder', emoji:'⏰', act:(n.message_id?{k:'msg',id:n.message_id}:null) };
+        if (t==='reply')    return { cat:'chats',     cls:'blue',   badge:'↩ Reply',    emoji:'↩',  act:(n.message_id?{k:'msg',id:n.message_id}:null) };
+        if (t==='reaction') return { cat:'chats',     cls:'blue',   badge:'❤️ Reaction', emoji:'❤️', act:(n.message_id?{k:'msg',id:n.message_id}:null) };
+        return { cat:'chats', cls:'blue', badge:'💬 Message', emoji:'💬', act:(n.message_id?{k:'msg',id:n.message_id}:null) };
+    };
+
+    const items = (notifs||[]).map(n => ({ n, ...kind(n) }))
+        .filter(it => filter==='all' || it.cat===filter);
+    const unread = (notifs||[]).filter(n=>!n.is_read).length;
+
+    const today = _istFmtDate.format(new Date());
+    const yest  = _istFmtDate.format(new Date(Date.now()-86400000));
+    const dayLabel = (ds) => { const d=_istFmtDate.format(new Date(ds)); return d===today?'Today':d===yest?'Yesterday':d; };
+
+    const groups = [];
+    let curL=null, cur=null;
+    items.forEach(it => { const l=dayLabel(it.n.created_at); if(l!==curL){curL=l;cur={label:l,items:[]};groups.push(cur);} cur.items.push(it); });
+
+    const pills = [['all','All'],['chats','💬 Chats'],['tasks','📋 Tasks'],['reminders','⏰ Reminders'],['system','🛠 System']];
+
+    const card = (it) => {
+        const n = it.n;
+        const data = it.act ? (it.act.k==='task'
+            ? `data-action="goToTaskNotif" data-tid="${it.act.id}"`
+            : `data-action="goToMsgNotif" data-mid="${it.act.id}"`) : '';
+        const btn = it.act ? (it.act.k==='task'
+            ? `<button class="af-btn primary" ${data}>📂 View Task</button>`
+            : `<button class="af-btn primary" ${data}>🚀 Open</button>`) : '';
+        return `<div class="af-card ${n.is_read?'':'unread'}" ${data}>
+            <span class="af-badge ${it.cls}">${it.badge}</span>
+            <div class="af-title"><span>${it.emoji}</span> ${x(_snip(n.message,70))}</div>
+            <div class="af-meta"><i class="fa-regular fa-clock"></i> ${_ago(n.created_at)} · ${_fmtDateTime(n.created_at)}</div>
+            ${btn?`<div class="af-actions">${btn}</div>`:''}
+        </div>`;
+    };
+
+    const feed = groups.length ? groups.map(g => `
+        <div class="af-div"><span>🔵 ${g.label}</span><div class="ln"></div></div>
+        ${g.items.map(card).join('')}`).join('')
+      : `<div class="af-empty"><div class="em">🚀</div><div class="t">All caught up!</div>
+           <div style="margin-top:6px;">${filter==='all' ? 'Your activity will appear here when teammates chat, assign tasks, or reminders fire.' : 'No activity matches this filter.'}</div></div>`;
 
     return `<div class="mScr-inner">
-      <div class="m-hdr m-hdr-plain"><div class="m-htitle">Activity</div></div>
-      ${mine.length ? mine.map(m => {
-        const dept = _findGroup(m.room_id);
-        const isDM = m.room_id?.startsWith('dm_');
-        let roomName = dept?.name, roomColor = dept?.col, otherUid = null;
-        if (isDM) {
-            const parts = m.room_id.replace('dm_','').split('_');
-            otherUid = parts.find(p => p !== _uid);
-            const ou = _users.find(u => u.id === otherUid);
-            roomName = ou ? (ou.full_name||ou.email.split('@')[0]) : 'Direct message';
-        }
-        const isMe = m.sender_id === _uid;
-        return `
-        <div class="m-row" data-action="${isDM?'dm':'groupChat'}"
-             data-room="${m.room_id}" data-name="${x(roomName||'')}" data-color="${roomColor||''}"
-             data-uid="${otherUid||''}" data-scroll="${m.id}">
-          <div class="m-av ${isDM?'':'sq'}" style="background:${roomColor||'var(--accent)'};">${(roomName||'?')[0].toUpperCase()}</div>
-          <div class="m-ri">
-            <div class="m-rn">${x(roomName||'Department')}</div>
-            <div class="m-rs">${isMe?'You: ':x(_uname(m.sender_id))+': '}${_snip(m.text,40)}</div>
-          </div>
-          <div style="font-size:11px;color:var(--text-secondary);white-space:nowrap;">${_ago(m.created_at)}</div>
-        </div>`; }).join('') : '<div class="m-empty">No recent activity yet</div>'}
+      <div class="m-hdr m-hdr-plain" style="display:flex;align-items:center;justify-content:space-between;">
+        <div class="m-htitle">🔔 Activity ${unread?`<span style="background:#2563eb;color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:30px;margin-left:6px;vertical-align:middle;">${unread} new</span>`:''}</div>
+        ${unread?`<button class="m-hdr-action" data-action="markAllRead" title="Mark all read"><i class="fa-solid fa-check-double"></i></button>`:''}
+      </div>
+      <div class="af-filters">
+        ${pills.map(([k,l])=>`<button class="af-pill ${filter===k?'active':''}" data-action="afFilter" data-f="${k}">${l}</button>`).join('')}
+      </div>
+      <div class="af-feed">${feed}</div>
     </div>`;
 }
 
@@ -1077,9 +1108,9 @@ async function _groupChat(p) {
       <div class="m-hdr">
         <button class="m-back" onclick="window._back()"><i class="fa-solid fa-arrow-left"></i></button>
         ${_avatarHTML(DEPTS.find(d=>d.id===p.room)?.photo || _customGroups.find(g=>g.id===p.room)?.photo, p.name, p.color, 'm-av-sm sq')}
-        <div class="m-htitle-wrap">
+        <div class="m-htitle-wrap" data-action="viewMembersSheet" data-room="${p.room}" style="cursor:pointer;">
           <div class="m-htitle">${x(p.name)}</div>
-          ${memberCount ? `<div class="m-hsubtitle">${memberCount} members</div>` : ''}
+          <div class="m-hsubtitle">${memberCount ? memberCount + ' members' : 'View members'} ›</div>
         </div>
         <button class="m-hdr-action" onclick="window._toggleChatSearch('mMsgArea')"><i class="fa-solid fa-magnifying-glass"></i></button>
         <button class="m-hdr-menu" onclick="window._showRoomMenu('${p.room}','${x(p.name)}')"><i class="fa-solid fa-ellipsis-vertical"></i></button>
@@ -2132,6 +2163,18 @@ async function _onShellClick(e) {
         case 'openNotifs': await _navTo('notifications'); break;
         case 'goToMsgNotif': await _goToMessage(a.mid); break;
         case 'goToTaskNotif': await _goToTask(a.tid); break;
+        case 'afFilter': window._afFilter = a.f; await _render('activity', null, 'forward'); break;
+        case 'markAllRead': {
+            try {
+                await sb.from('notifications').update({ is_read:true })
+                    .eq('user_id',_uid).eq('tenant_id',_tid).eq('is_read',false);
+            } catch(e){}
+            _clearBellBadge();
+            await _refreshNotifBadge();
+            await _render('activity', null, 'forward');
+            break;
+        }
+        case 'goToTaskNotif': await _goToTask(a.tid); break;
         case 'navGroupMgmt':   _navTo('groupMgmt'); break;
         case 'saveProfile':    await _saveProfile(); break;
         case 'setMyPhoto':   _el('mMyPhotoInput')?.click(); break;
@@ -2179,7 +2222,7 @@ async function _onShellClick(e) {
             await window._setDND?.(on);
             _toast(on ? '🔕 Do Not Disturb ON — no sound, vibration or notifications' : '🔔 Do Not Disturb OFF');
             const b = _el('mSBDnd');
-            if (b) { b.style.color = on ? '#ef4444' : ''; const ic = b.querySelector('i'); if (ic) ic.className = 'fa-solid ' + (on ? 'fa-bell-slash' : 'fa-bell'); }
+            if (b) { b.style.color = on ? '#ef4444' : ''; const ic = b.querySelector('i'); if (ic) ic.className = 'fa-solid ' + (on ? 'fa-volume-xmark' : 'fa-volume-high'); }
             break;
         }
         case 'pickTheme':
@@ -2247,7 +2290,8 @@ async function _onSheetClick(e) {
                 if (!u) return '';
                 const nm = u.full_name||u.email?.split('@')[0]||'User';
                 return `<div class="m-sheet-row">${_avatarHTML(u.avatar_url,nm,'var(--accent)','m-av-tiny')} <span style="flex:1;">${x(nm)}</span>${_roleChip(uid)}</div>`;
-              }).join('')}</div>`;
+              }).join('') || '<div class="m-empty">No members yet.</div>'}</div>`;
+            _openSheet();
             break;
         }
         case 'addEmoji':    _showReactionEmojiPicker(a.id); break;
@@ -2454,9 +2498,17 @@ async function _refreshNotifBadge() {
 // Render the bell badge from the in-memory count (instant, no DB dependency).
 function _renderBellBadge() {
     const badge = _el('mNotifBadge');
-    if (!badge) return;
-    if (_bellCount > 0) { badge.textContent = _bellCount > 9 ? '9+' : String(_bellCount); badge.style.display = 'flex'; }
-    else badge.style.display = 'none';
+    if (badge) {
+        if (_bellCount > 0) { badge.textContent = _bellCount > 9 ? '9+' : String(_bellCount); badge.style.display = 'flex'; }
+        else badge.style.display = 'none';
+    }
+    // Mirror onto the Activity bottom-nav tab (hidden while the feed is open).
+    const nb = _el('mnActBadge');
+    if (nb) {
+        const onActivity = _stack[_stack.length-1]?.screen === 'activity';
+        if (_bellCount > 0 && !onActivity) { nb.textContent = _bellCount > 9 ? '9+' : String(_bellCount); nb.style.display = 'flex'; }
+        else nb.style.display = 'none';
+    }
 }
 function _bumpBellBadge() { _bellCount++; _renderBellBadge(); }
 function _clearBellBadge() { _bellCount = 0; _renderBellBadge(); }
@@ -3164,7 +3216,33 @@ function _injectCSS(){
 .m-bubble.rcv{border-right:4px solid var(--accent,#6366f1);border-left-width:1px;}
 .m-bmeta{font-size:11.5px;font-weight:600;color:var(--text-secondary,#6b7280);margin-bottom:4px;}
 .m-edited{font-size:10px;font-weight:400;color:var(--text-secondary,#9ca3af);font-style:italic;margin-left:3px;}
-.m-highlight{animation:m-glow-pulse 2s ease-out;}
+.m-highlight{animation:m-glow-pulse 3s ease-out;}
+/* ── Activity Feed ─────────────────────────────────────────── */
+.af-filters{display:flex;gap:8px;overflow-x:auto;padding:10px 14px;border-bottom:1px solid var(--border,#eef1f5);-ms-overflow-style:none;scrollbar-width:none;}
+.af-filters::-webkit-scrollbar{display:none;}
+.af-pill{background:var(--surface,#f1f5f9);color:var(--text-secondary,#475569);padding:6px 14px;border-radius:40px;font-size:12.5px;font-weight:600;white-space:nowrap;border:none;cursor:pointer;flex-shrink:0;}
+.af-pill.active{background:#1e293b;color:#fff;}
+.af-feed{padding:12px 14px 90px;display:flex;flex-direction:column;gap:14px;}
+.af-div{display:flex;align-items:center;gap:10px;margin:2px 0;}
+.af-div span{font-size:11.5px;font-weight:700;color:var(--text-secondary,#64748b);background:var(--surface,#f1f5f9);padding:3px 12px;border-radius:30px;}
+.af-div .ln{flex:1;height:1px;background:var(--border,#e2e8f0);}
+.af-card{background:var(--bg,#fff);border-radius:16px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.05),0 4px 12px rgba(0,0,0,.03);border-left:4px solid #94a3b8;position:relative;animation:af-up .28s ease;}
+.af-card.unread{border-left-color:#2563eb;background:color-mix(in srgb,#2563eb 6%,var(--bg,#fff));}
+.af-card.unread::before{content:'●';position:absolute;top:14px;right:14px;color:#2563eb;font-size:10px;}
+.af-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:2px 10px;border-radius:40px;background:#f1f5f9;color:#475569;display:inline-block;margin-bottom:6px;}
+.af-badge.blue{background:#dbeafe;color:#1d4ed8;}.af-badge.orange{background:#ffedd5;color:#c2410c;}
+.af-badge.green{background:#dcfce7;color:#15803d;}.af-badge.purple{background:#f3e8ff;color:#7e22ce;}
+.af-title{font-size:14.5px;font-weight:600;color:var(--text,#0f172a);margin-bottom:3px;display:flex;align-items:center;gap:6px;}
+.af-desc{font-size:13.5px;color:var(--text-secondary,#334155);line-height:1.5;margin-bottom:3px;}
+.af-meta{font-size:11.5px;color:var(--text-secondary,#94a3b8);margin-top:5px;}
+.af-actions{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap;}
+.af-btn{padding:6px 15px;border-radius:40px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:#f1f5f9;color:#1e293b;}
+.af-btn.primary{background:#2563eb;color:#fff;}.af-btn.success{background:#22c55e;color:#fff;}
+.af-empty{text-align:center;padding:48px 20px;color:var(--text-secondary,#94a3b8);}
+.af-empty .em{font-size:46px;margin-bottom:10px;}
+.af-empty .t{font-weight:700;font-size:16px;color:var(--text-secondary,#475569);}
+.mn-badge{position:absolute;top:-2px;right:8px;background:#dc2626;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:30px;border:2px solid var(--bg,#fff);}
+@keyframes af-up{0%{opacity:0;transform:translateY(10px);}100%{opacity:1;transform:translateY(0);}}
 @keyframes m-glow-pulse{
   0%   { background:color-mix(in srgb, var(--accent) 35%, var(--card-bg)); box-shadow:0 0 0 3px var(--accent); }
   60%  { background:color-mix(in srgb, var(--accent) 22%, var(--card-bg)); box-shadow:0 0 0 2px var(--accent); }

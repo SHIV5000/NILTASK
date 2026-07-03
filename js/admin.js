@@ -36,6 +36,7 @@ function fmtLogin(ts) {
     }
     if (IS_MOB()) renderAdminMobile(); else renderAdmin();
     renderInlineRolesTable();
+    await window.syncQuickTags?.();   // pull the tenant's saved tags from the DB
     loadQuickTagsUI();
     await loadAdminData();
     await loadArchivedStaff();
@@ -347,16 +348,18 @@ function renderAdminMobile() {
     document.getElementById('adminRoot').innerHTML = `
     <div id="adminMobile">
       <div class="ma-bar">
-        <div class="ma-brand">
-          <div class="ma-school">${window.escapeHtml(schoolName)}</div>
-          <div class="ma-role">${window.escapeHtml(window.currentRoleName || 'Admin')} · ${window.escapeHtml(userName)}</div>
+        <div class="ma-bar-row">
+          <div class="ma-brand">
+            <div class="ma-school">${window.escapeHtml(schoolName)}</div>
+            <div class="ma-role">${window.escapeHtml(window.currentRoleName || 'Admin')} · ${window.escapeHtml(userName)}</div>
+          </div>
+          <button class="ma-ico" title="Toggle theme" onclick="window.toggleAdminTheme()"><i class="fa-solid fa-circle-half-stroke"></i></button>
+          <button class="ma-ico" title="Log out" onclick="window.logout?.()" style="color:#ef4444;"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
         </div>
         <div class="ma-seg">
           <button onclick="window.location.href='/?mode=chat'">💬 Chat</button>
           <button class="on">🛡 Admin</button>
         </div>
-        <button class="ma-ico" title="Toggle theme" onclick="window.toggleAdminTheme()"><i class="fa-solid fa-circle-half-stroke"></i></button>
-        <button class="ma-ico" title="Log out" onclick="window.logout?.()" style="color:#ef4444;"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
       </div>
 
       <div class="ma-body">
@@ -1781,6 +1784,7 @@ window.addQuickTag = function() {
     tags.push({v:label, c:hex, bg, border});
     localStorage.setItem(getTagKey(), JSON.stringify(tags));
     window._quickTags = tags;
+    window.saveQuickTagsToDB?.(tags);   // share with all staff (all devices)
     document.getElementById('newTagInput').value = '';
     loadQuickTagsUI();
     showToast('"' + label + '" tag added.','#16a34a');
@@ -1798,6 +1802,7 @@ window.editQuickTag = function(idx) {
     tags[idx].v = trimmed;
     localStorage.setItem(getTagKey(), JSON.stringify(tags));
     window._quickTags = tags;
+    window.saveQuickTagsToDB?.(tags);
     loadQuickTagsUI();
 };
 
@@ -1809,6 +1814,7 @@ window.deleteQuickTag = function(idx) {
     tags.splice(idx, 1);
     localStorage.setItem(getTagKey(), JSON.stringify(tags));
     window._quickTags = tags;
+    window.saveQuickTagsToDB?.(tags);
     loadQuickTagsUI();
     showToast('"' + name + '" deleted.','#ef4444');
 };

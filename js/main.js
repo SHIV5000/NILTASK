@@ -302,7 +302,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.70.0 (v50) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.72.0 (v52) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -1594,6 +1594,8 @@ window.getRoomDisplayName = function(roomId) {
     if (typeof window.renderMainApp === 'function') window.renderMainApp();
     if (typeof window.startSubscriptions === 'function') window.startSubscriptions();
     if (typeof window.initScrollArrows === 'function') window.initScrollArrows();
+    // Refresh the tenant's admin-configured quick-reply tags (DB → localStorage).
+    if (typeof window.syncQuickTags === 'function') window.syncQuickTags();
     // Apply RBAC after render — hides/shows elements by role + feature flags
     if (typeof window.applyRBAC === 'function') window.applyRBAC();
 

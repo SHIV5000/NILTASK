@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v47';
+const _MOB_VER = 'v52';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -274,6 +274,9 @@ async function _ctx() {
         _toast('Account configuration error. Please contact your administrator.', 'err');
         return;
     }
+    // Pull the tenant's admin-configured quick-reply tags so they show in the
+    // reaction/insert menus on this device too (DB → localStorage).
+    window.syncQuickTags?.();
     // Detect orphaned tenant (tenant_id with no tenants row) once, so group
     // creation surfaces a clear message instead of a raw FK error. Skipped if the
     // web auth flow already set the flag.
@@ -1989,6 +1992,21 @@ window._showMsgActions = function(params) {
 const EMOJI_LIST = ['👍','👎','❤️','😂','😮','😢','🙏','🔥','✅','⚡','💡','📌'];
 const QUICK_TAGS  = ['Thank You','Noted','Copied','Yes Sir','Yes Madam'];
 
+// Quick-reply tags — read the admin-configured list (same localStorage key the
+// web app + admin panel use), so tags created in the Admin panel show here too.
+// Falls back to the built-in defaults.
+function _quickTagList() {
+    try {
+        const raw = localStorage.getItem('quickTags_' + (_tid || window.currentTenantId || 'default'));
+        if (raw) {
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr) && arr.length)
+                return arr.map(t => ({ v: t.v, c: t.c || TAG_COLORS[t.v] || '#2563eb' }));
+        }
+    } catch(e) {}
+    return QUICK_TAGS.map(v => ({ v, c: TAG_COLORS[v] || '#2563eb' }));
+}
+
 function _showReactionEmojiPicker(msgId) {
     const sheet = _el('mSheetInner');
     sheet.innerHTML = `
@@ -2005,7 +2023,7 @@ function _showReactionTagPicker(msgId) {
       <div class="m-sheet-handle"></div>
       <div class="m-sheet-title">Quick Reply Tag</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;padding:8px 16px 20px;">
-        ${QUICK_TAGS.map(t=>{const c=TAG_COLORS[t];return`<button class="m-tag-btn" style="border-color:${c};color:${c};" data-action="reactTag" data-id="${msgId}" data-value="${x(t)}">${x(t)}</button>`;}).join('')}
+        ${_quickTagList().map(t=>`<button class="m-tag-btn" style="border-color:${t.c};color:${t.c};" data-action="reactTag" data-id="${msgId}" data-value="${x(t.v)}">${x(t.v)}</button>`).join('')}
       </div>`;
     _openSheet();
 }
@@ -2025,7 +2043,7 @@ function _showInsertTagPicker(targetId) {
       <div class="m-sheet-handle"></div>
       <div class="m-sheet-title">Insert Quick Tag</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;padding:8px 16px 20px;">
-        ${QUICK_TAGS.map(t=>{const c=TAG_COLORS[t];return`<button class="m-tag-btn" style="border-color:${c};color:${c};" data-action="insertTag" data-target="${targetId}" data-value="${x(t)}">${x(t)}</button>`;}).join('')}
+        ${_quickTagList().map(t=>`<button class="m-tag-btn" style="border-color:${t.c};color:${t.c};" data-action="insertTag" data-target="${targetId}" data-value="${x(t.v)}">${x(t.v)}</button>`).join('')}
       </div>`;
     _openSheet();
 }

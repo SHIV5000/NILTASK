@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v41';
+const _MOB_VER = 'v42';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -336,16 +336,25 @@ async function _syncRoomSettings() {
         } else {
             _customGroups = [];
         }
-
-        // Auto-seed a single "General" starter group for a brand-new tenant so the
-        // app is never empty. Managers only (RBAC + tenant must exist).
-        if (_customGroups.length === 0 && !window._tenantOrphaned && (window.canManageGroups?.() ?? false)) {
+        // No default group — a new school starts empty; the principal creates the first.
+        // Pull group photos from storage (signed URL) so photos set on other devices show.
+        await Promise.all(_customGroups.map(async g => {
+            const ts = parseInt(_lsGet('dept_photo_ts_'+g.id)||'0');
+            const noneTs = parseInt(_lsGet('dept_photo_none_'+g.id)||'0');
+            if (g.photo && ts && (Date.now()-ts < 1800000)) return;          // fresh cache
+            if (!g.photo && noneTs && (Date.now()-noneTs < 86400000)) return; // known "no photo"
             try {
-                await _upsertRoomSettings({ room_id:'general', tenant_id:_tid, name:'General', archived:false, updated_at:new Date().toISOString() }, []);
-                _lsSet('dept_name_general', 'General');
-                _customGroups = [{ id:'general', name:'General', col:'#6366f1', photo:'' }];
-            } catch {}
-        }
+                const { data: sd, error } = await sb.storage.from('task-proofs')
+                    .createSignedUrl(`group-photos/${_tid}/${g.id}.jpg`, 3600);
+                if (!error && sd?.signedUrl) {
+                    g.photo = sd.signedUrl;
+                    _lsSet('dept_photo_'+g.id, sd.signedUrl);
+                    _lsSet('dept_photo_ts_'+g.id, String(Date.now()));
+                } else {
+                    _lsSet('dept_photo_none_'+g.id, String(Date.now()));
+                }
+            } catch(e){}
+        }));
     } catch {}
 }
 
@@ -379,6 +388,9 @@ function _buildShell() {
           <input id="mSBSearchInp" placeholder="Search messages, staff…">
         </div>
         <button class="m-sb-icon" id="mSBLens" title="Search" onclick="window._toggleInlineSearch()"><i class="fa-solid fa-magnifying-glass"></i></button>
+        <button class="m-sb-icon" id="mSBDnd" title="Do Not Disturb" data-action="toggleDND" style="${(window._isDND?.())?'color:#ef4444;':''}">
+          <i class="fa-solid ${(window._isDND?.())?'fa-bell-slash':'fa-bell'}"></i>
+        </button>
         <button class="m-sb-icon" id="mSBBell" title="Notifications" data-action="openNotifs" style="position:relative;">
           <i class="fa-solid fa-bell"></i>
           <span id="mNotifBadge" class="m-notif-badge" style="display:none;"></span>
@@ -683,9 +695,13 @@ async function _home() {
         } catch {}
     };
 
+    const _canMng = window.canManageGroups?.() ?? false;
     return `<div class="mScr-inner">
-      <div class="m-sl">CHANNELS</div>
-      ${_customGroups.length === 0 ? `<div class="m-empty">${(window.canManageGroups?.() ?? false) ? 'No groups yet. Open Profile → Group Management to create one.' : 'No groups yet. Ask your principal to create one.'}</div>` : ''}
+      <div class="m-sl" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>CHANNELS</span>
+        ${_canMng ? `<button data-action="navGroupMgmt" style="background:none;border:none;color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;"><i class="fa-solid fa-users-gear"></i> Manage</button>` : ''}
+      </div>
+      ${_customGroups.length === 0 ? `<div class="m-empty">${_canMng ? '<button data-action="navGroupMgmt" style="background:var(--accent);color:#fff;border:none;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;"><i class="fa-solid fa-plus"></i> Create your first group</button>' : 'No groups yet. Ask your principal to create one.'}</div>` : ''}
       ${[...DEPTS, ..._customGroups].map(d => {
         const lm = last[d.id];
         const unread = window.unreadCounts?.[d.id] || 0;
@@ -1506,6 +1522,13 @@ async function _settings() {
         </button>` : `<button class="m-action-btn" style="background:#16a34a;" data-action="enablePush">
           <i class="fa-solid fa-rotate"></i> Re-register this device
         </button>`}
+        <div class="m-detail-row" style="margin-top:10px;">
+          <span class="m-detail-lbl">Notification sound</span>
+          <button data-action="toggleSound" style="background:${(window._isSoundOff?.())?'#9ca3af':'var(--accent)'};color:#fff;border:none;border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer;">${(window._isSoundOff?.())?'Off':'On'}</button>
+        </div>
+        <button class="m-action-btn" style="background:#0ea5e9;margin-top:8px;" data-action="testSound">
+          <i class="fa-solid fa-volume-high"></i> Play test sound
+        </button>
       </div>
 
       <div class="m-sl">PROFILE</div>
@@ -1801,6 +1824,7 @@ async function _groupMgmt() {
             window._closeSheet();
             try {
                 await sb.from('room_settings').upsert({ room_id:gid, tenant_id:_tid, archived:true, updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' });
+                _bcSend('group_photo', { room_id:gid });  // live: other devices re-sync and drop the archived group
             } catch(e) { _toast('DB error: '+e.message,'err'); return; }
             const idx = _customGroups.findIndex(g=>g.id===gid);
             if (idx>=0) _customGroups.splice(idx,1);
@@ -2135,6 +2159,29 @@ async function _onShellClick(e) {
             if (ok) { const top = _stack[_stack.length-1]; if (top?.screen === 'settings') await _render('settings', null, 'forward'); }
             break;
         }
+        case 'toggleSound': {
+            const off = !(window._isSoundOff?.());
+            try { localStorage.setItem('mpgs_sound_off', off ? '1' : '0'); } catch(e){}
+            _toast(off ? '🔇 Notification sound off' : '🔔 Notification sound on');
+            { const top = _stack[_stack.length-1]; if (top?.screen === 'settings') await _render('settings', null, 'forward'); }
+            break;
+        }
+        case 'testSound': {
+            if (window._isSoundOff?.()) { _toast('Sound is off — turn it on first','err'); break; }
+            if (window._isDND?.()) { _toast('Do Not Disturb is on','err'); break; }
+            window._unlockSharedAudio?.();
+            window.playSound?.('message');
+            _toast('🔊 Test sound played');
+            break;
+        }
+        case 'toggleDND': {
+            const on = !(window._isDND?.());
+            await window._setDND?.(on);
+            _toast(on ? '🔕 Do Not Disturb ON — no sound, vibration or notifications' : '🔔 Do Not Disturb OFF');
+            const b = _el('mSBDnd');
+            if (b) { b.style.color = on ? '#ef4444' : ''; const ic = b.querySelector('i'); if (ic) ic.className = 'fa-solid ' + (on ? 'fa-bell-slash' : 'fa-bell'); }
+            break;
+        }
         case 'pickTheme':
             if (typeof window.setTheme === 'function') window.setTheme(a.theme);
             window._closeSheet();
@@ -2330,6 +2377,14 @@ function _initRealtime() {
         _onReactionChange(p.payload, p.payload?.isDelete ? 'DELETE' : 'INSERT');
     };
     const _hGroupPhoto = p => {
+        // Bust the local photo cache so _syncRoomSettings re-fetches the new photo.
+        if (p.payload?.room_id) {
+            try {
+                localStorage.removeItem(_lsKey('dept_photo_'+p.payload.room_id));
+                localStorage.removeItem(_lsKey('dept_photo_ts_'+p.payload.room_id));
+                localStorage.removeItem(_lsKey('dept_photo_none_'+p.payload.room_id));
+            } catch(e){}
+        }
         if (p.payload?.room_id && p.payload?.name) {
             _lsSet('dept_name_'+p.payload.room_id, p.payload.name);
             // Persist to DB so cold-start mobile users also get the correct name
@@ -2523,7 +2578,7 @@ async function _onNewMessage(m) {
             const dept = _findGroup(m.room_id);
             const isDM = m.room_id?.startsWith('dm_');
             const roomLabel = dept ? dept.name : (isDM ? 'a direct message' : 'a group');
-            _toast(`${name} — ${roomLabel}: ${_snip(m.text,50)}`);
+            if (!(window._isDND?.())) _toast(`${name} — ${roomLabel}: ${_snip(m.text,50)}`);
             // Write a notification row so the notifications list is populated (dedup by message_id)
             try {
                 const { count } = await sb.from('notifications').select('id',{count:'exact',head:true})
@@ -2699,14 +2754,27 @@ function _wireScreen(screen, params, container) {
         const file = deptPhotoInp.files[0]; deptPhotoInp.value = '';
         const deptId = _pendingDeptPhoto; _pendingDeptPhoto = null;
         if (!file || !deptId) return;
-        _toast('Processing photo…');
+        _toast('Uploading photo…');
         let dataUrl;
         try { dataUrl = await _compressImageToDataURL(file); }
         catch(e) { _toast('Could not read that image','err'); return; }
+        // Upload to storage so the photo syncs to every device (not just this one).
         try {
-            _lsSet('dept_photo_'+deptId, dataUrl);
+            const blob = await (await fetch(dataUrl)).blob();
+            const path = `group-photos/${_tid}/${deptId}.jpg`;
+            const { error: upErr } = await sb.storage.from('task-proofs').upload(path, blob, { upsert:true, contentType:'image/jpeg' });
+            if (!upErr) {
+                _lsSet('dept_photo_'+deptId, dataUrl);
+                _lsSet('dept_photo_ts_'+deptId, String(Date.now()));
+                try { localStorage.removeItem(_lsKey('dept_photo_none_'+deptId)); } catch(e){}
+                // Broadcast so other devices drop their cache and re-fetch the new photo.
+                _bcSend('group_photo', { room_id:deptId });
+            } else {
+                _lsSet('dept_photo_'+deptId, dataUrl);  // fallback: local only
+                _toast('Photo saved on this device only (storage error)','err');
+            }
         } catch(e) {
-            _toast('Image too large for local storage — try a smaller photo','err'); return;
+            try { _lsSet('dept_photo_'+deptId, dataUrl); } catch(e2) { _toast('Image too large — try a smaller photo','err'); return; }
         }
         const d = _findGroup(deptId); if (d) d.photo = dataUrl;
         _toast('Group photo updated ✓');

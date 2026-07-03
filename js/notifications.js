@@ -39,6 +39,17 @@ function _idbPutAuth(obj) {
         } catch (e) { res(); }
     });
 }
+// Do Not Disturb — persisted to localStorage AND IndexedDB so the service
+// worker can also suppress background push while DND is on.
+window._setDND = async function(on) {
+    try { localStorage.setItem('mpgs_dnd', on ? '1' : '0'); } catch (e) {}
+    try {
+        const r = indexedDB.open('taskflow', 1);
+        r.onupgradeneeded = () => { try { r.result.createObjectStore('kv'); } catch (e) {} };
+        r.onsuccess = () => { try { r.result.transaction('kv', 'readwrite').objectStore('kv').put(on ? 1 : 0, 'dnd'); } catch (e) {} };
+    } catch (e) {}
+};
+
 window._persistAuthForSW = async function() {
     try {
         const { data: { session } } = await sb.auth.getSession();
@@ -175,6 +186,7 @@ window.requestNotificationPermission = async function() {
 window.showSystemNotification = async function(title, body, options = {}) {
     if (!('Notification' in window)) return;
     if (Notification.permission !== 'granted') return;
+    if (window._isDND?.()) return;   // Do Not Disturb
 
     // When the app is NOT visible (backgrounded/closed), Web Push delivers the
     // system notification — so don't also raise one here, or it shows twice.
@@ -226,6 +238,8 @@ window.showSystemNotification = async function(title, body, options = {}) {
 window.triggerMessageNotification = function(msg) {
     // Skip own messages
     if (msg.sender_id === window.currentUser?.id) return;
+    // Do Not Disturb — no chime, no vibration, no notification.
+    if (window._isDND?.()) return;
 
     // Find sender name from cache
     const sender = window.globalUsersCache?.find(u => u.id === msg.sender_id);
@@ -234,8 +248,8 @@ window.triggerMessageNotification = function(msg) {
     const text   = _stripHtml(msg.text || '📎 File shared');
     const preview= text.length > 80 ? text.substring(0, 80) + '\u2026' : text;
 
-    // 1. Play chime sound
-    _makeChime(0.35);
+    // 1. Play chime sound (respects the sound setting)
+    if (!window._isSoundOff?.()) _makeChime(0.35);
 
     // 2. Vibrate (mobile)
     if (navigator.vibrate) navigator.vibrate([120, 60, 120]);

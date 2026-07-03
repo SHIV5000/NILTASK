@@ -222,6 +222,19 @@ window.saveGroupSettings = async function() {
     localStorage.setItem('dept_members_' + gid, JSON.stringify(memberIds));
     localStorage.setItem('dept_admins_'  + gid, JSON.stringify(adminIds));
 
+    // Persist name + members to room_settings so they sync across all devices
+    // (this was previously localStorage-only, so renames never propagated).
+    try {
+        const base = { room_id: gid, tenant_id: window.currentTenantId, name, updated_at: new Date().toISOString() };
+        let { error } = await sb.from('room_settings').upsert({ ...base, members: memberIds }, { onConflict: 'room_id,tenant_id' });
+        if (error?.message?.includes('members')) await sb.from('room_settings').upsert(base, { onConflict: 'room_id,tenant_id' });
+    } catch (e) { /* non-fatal */ }
+    // Broadcast so every device (web + mobile) refreshes this group live.
+    try {
+        window._reactionsBroadcast?.send({ type:'broadcast', event:'group_photo', payload:{ room_id: gid, name } });
+        window._sharedBroadcast?.send({ type:'broadcast', event:'group_photo', payload:{ room_id: gid, name, src:'w' } });
+    } catch (e) {}
+
     if (window.currentRoom === gid) {
         const t = document.getElementById('roomTitleDisplay');
         if (t) t.innerText = name;

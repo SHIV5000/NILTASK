@@ -2,7 +2,7 @@
  * TaskFlow Service Worker — enables PWA install prompt on Android/Chrome
  * Caches core app shell for offline-capable experience
  */
-const CACHE   = 'taskflow-v38';
+const CACHE   = 'taskflow-v39';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -93,6 +93,12 @@ self.addEventListener('push', e => {
   const data = e.data?.json() || {};
   const tag = data.tag || 'taskflow';
   e.waitUntil((async () => {
+    // If the app is open AND visible, let the in-app handler show it (avoids a
+    // duplicate with the page's own notification). Only show from here otherwise.
+    try {
+      const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      if (wins.some(c => c.visibilityState === 'visible')) return;
+    } catch (e) {}
     // Stack per chat: fold repeats into one notification with a running count.
     let count = 1;
     try {

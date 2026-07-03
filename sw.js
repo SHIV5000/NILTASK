@@ -2,7 +2,7 @@
  * TaskFlow Service Worker — enables PWA install prompt on Android/Chrome
  * Caches core app shell for offline-capable experience
  */
-const CACHE   = 'taskflow-v41';
+const CACHE   = 'taskflow-v42';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -65,6 +65,22 @@ function _swGetAuth() {
   });
 }
 
+function _swGetKV(key) {
+  return new Promise(res => {
+    try {
+      const r = indexedDB.open('taskflow', 1);
+      r.onupgradeneeded = () => { try { r.result.createObjectStore('kv'); } catch(e){} };
+      r.onsuccess = () => {
+        try {
+          const g = r.result.transaction('kv', 'readonly').objectStore('kv').get(key);
+          g.onsuccess = () => res(g.result); g.onerror = () => res(null);
+        } catch(e) { res(null); }
+      };
+      r.onerror = () => res(null);
+    } catch(e) { res(null); }
+  });
+}
+
 async function _swSendReply(room, text) {
   const auth = await _swGetAuth();
   if (!auth?.token || !auth?.url || !room || !text) return false;
@@ -94,6 +110,8 @@ self.addEventListener('push', e => {
   const data = e.data?.json() || {};
   const tag = data.tag || 'taskflow';
   e.waitUntil((async () => {
+    // Do Not Disturb — suppress background notifications entirely.
+    try { if (await _swGetKV('dnd')) return; } catch (e) {}
     // If the app is open AND visible, let the in-app handler show it (avoids a
     // duplicate with the page's own notification). Only show from here otherwise.
     try {

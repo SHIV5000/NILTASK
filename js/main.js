@@ -302,7 +302,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.63.0 (v41) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.63.0 (v42) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -976,16 +976,7 @@ window.loadChatsList = async function() {
         } catch {}
     }
 
-    // Auto-seed a single "General" starter group for a brand-new tenant so the
-    // app is never empty and the default room resolves. Managers only.
-    if (groups.length === 0 && window.currentTenantId && !window._tenantOrphaned && window.canManageGroups?.()) {
-        try {
-            await sb.from('room_settings').upsert(
-                { room_id:'general', tenant_id:window.currentTenantId, name:'General', archived:false, updated_at:new Date().toISOString() },
-                { onConflict:'room_id,tenant_id' });
-            groups.push({ room_id:'general', name:'General', color:null });
-        } catch {}
-    }
+    // No default group — a new school starts empty; the principal creates the first.
 
     // If the remembered room no longer exists as a group (and isn't a DM),
     // fall back to the first available group so the sidebar highlight is valid.
@@ -1182,7 +1173,11 @@ window.isDmParticipant = function(roomId) {
 
 // ─── SOUNDS ────────────────────────────────────────────────────────────────
 window._soundLastPlayed = {};
+// Global mute helpers — respected by sound, vibration, and notifications.
+window._isDND      = () => localStorage.getItem('mpgs_dnd') === '1';
+window._isSoundOff = () => localStorage.getItem('mpgs_sound_off') === '1';
 window.playSound = function(type) {
+    if (window._isDND() || window._isSoundOff()) return;
     if (type === 'message' && localStorage.getItem('mpgs_mute_incoming') === '1') return;
     if (type !== 'message' && localStorage.getItem('mpgs_mute_outgoing') === '1') return;
     const now = Date.now();

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v40';
+const _MOB_VER = 'v41';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -2414,6 +2414,22 @@ function _updateAppBadge() {
         }
     } catch (e) { /* Badging API unsupported — ignore */ }
 }
+// Live-patch a single chat row's unread badge on the home list (no full re-render).
+function _patchHomeUnread(room) {
+    try {
+        const el = document.querySelector('[data-room="' + room + '"]');
+        const row = el ? (el.closest('.m-row') || (el.classList.contains('m-row') ? el : null)) : null;
+        if (!row) return;
+        const n = window.unreadCounts?.[room] || 0;
+        const holder = row.querySelector('.m-unread-badge')?.parentElement
+                    || row.querySelector('.m-chv')?.parentElement
+                    || row.lastElementChild;
+        if (!holder) return;
+        holder.innerHTML = n > 0
+            ? `<span class="m-unread-badge">${n > 99 ? '99+' : n}</span>`
+            : '<i class="fa-solid fa-chevron-right m-chv"></i>';
+    } catch (e) {}
+}
 // Open a chat by room id (from a push deep-link).
 async function _openRoomByRoom(room) {
     if (!room) return;
@@ -2492,9 +2508,13 @@ async function _onNewMessage(m) {
             }
         }
         // Per-chat unread badge (this chat isn't open) — WhatsApp-style count.
+        // Runs for every received message (incl. replies) so the badges + bell
+        // update the instant the realtime event arrives.
         window.unreadCounts = window.unreadCounts || {};
         window.unreadCounts[m.room_id] = (window.unreadCounts[m.room_id] || 0) + 1;
         _updateAppBadge();
+        _bumpBellBadge();                       // live bell count (mSB), independent of DB
+        _patchHomeUnread(m.room_id);            // live badge on the chat-list row if visible
         if (top.screen === 'home') { _render('home', null, 'forward'); }
 
         if (!m.parent_message_id) {
@@ -2504,8 +2524,6 @@ async function _onNewMessage(m) {
             const isDM = m.room_id?.startsWith('dm_');
             const roomLabel = dept ? dept.name : (isDM ? 'a direct message' : 'a group');
             _toast(`${name} — ${roomLabel}: ${_snip(m.text,50)}`);
-            // Bump the bell instantly — independent of the DB insert (which RLS may block).
-            _bumpBellBadge();
             // Write a notification row so the notifications list is populated (dedup by message_id)
             try {
                 const { count } = await sb.from('notifications').select('id',{count:'exact',head:true})

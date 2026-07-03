@@ -17,6 +17,44 @@
  * ─────────────────────────────────────────────────────────────
  */
 
+import { sb } from './shared.js';
+
+// ── WEB PUSH (background notifications) ───────────────────────────
+// Public VAPID key — safe to ship. The matching private key lives only as a
+// Supabase secret used by the send-push edge function.
+const VAPID_PUBLIC = 'BC1e4iEc-QRWZB2pugDZCElyEFWTja-XS_L0Ij_1gq1Ox2zs6s1gMOSF-k7Leu70yJw81jHChVIvltxOuDGlQEM';
+
+function _urlB64ToUint8(base64) {
+    const padding = '='.repeat((4 - base64.length % 4) % 4);
+    const b64 = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(b64);
+    return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+// Subscribe this device for background push and store the subscription so the
+// edge function can reach it. Safe to call repeatedly (idempotent upsert).
+window.subscribeToPush = async function() {
+    try {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+        if (!window.currentUser?.id) return;
+        if (Notification.permission !== 'granted') return;
+        const reg = await navigator.serviceWorker.ready;
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+            sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: _urlB64ToUint8(VAPID_PUBLIC)
+            });
+        }
+        await sb.from('push_subscriptions').upsert({
+            user_id:      window.currentUser.id,
+            tenant_id:    window.currentTenantId,
+            endpoint:     sub.endpoint,
+            subscription: sub.toJSON()
+        }, { onConflict: 'endpoint' });
+    } catch (e) { /* push subscribe failed — non-fatal, in-app notifications still work */ }
+};
+
 // ── SHARED AUDIO CONTEXT — unlocked once on first user gesture ────
 let _sharedCtx = null;
 let _audioUnlocked = false;
@@ -178,8 +216,9 @@ window.triggerTaskNotification = function(taskTitle, fromName) {
 // Request permission after user logs in (called by auth.js)
 window.initNotifications = async function() {
     const granted = await window.requestNotificationPermission();
-    if (!granted) {
-        // System notifications disabled — app notifications still work
+    if (granted) {
+        // Register this device for background push (when the app is closed).
+        window.subscribeToPush?.();
     }
     return granted;
 };

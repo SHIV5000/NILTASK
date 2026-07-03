@@ -1597,6 +1597,9 @@ window.getRoomDisplayName = function(roomId) {
     // Apply RBAC after render — hides/shows elements by role + feature flags
     if (typeof window.applyRBAC === 'function') window.applyRBAC();
 
+    // Re-register background push for resumed sessions (no prompt; only if already granted).
+    if (typeof window.subscribeToPush === 'function') window.subscribeToPush();
+
     // Re-apply mobile layout on orientation change
     window.addEventListener('resize', () => {
         if (typeof window.initMobile === 'function') window.initMobile();

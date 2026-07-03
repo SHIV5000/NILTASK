@@ -110,6 +110,16 @@ window.sendMessage = async function() {
         if (!Array.isArray(window._roomMsgs)) window._roomMsgs = [];
         if (!window._roomMsgs.find(m => m.id === msgData.id)) window._roomMsgs.push(msgData);
 
+        // Replies must nest under their parent — a flat append would show them as a
+        // separate bottom message. Re-render the thread from memory (no network).
+        if (msgData.parent_message_id) {
+            if (typeof window.renderMessages === 'function') window.renderMessages(window._roomMsgs);
+            if (typeof window.applyRBAC === 'function') window.applyRBAC();
+            const mc = document.getElementById('messagesContainer');
+            if (mc) mc.scrollTop = mc.scrollHeight;
+            return;
+        }
+
         const container = document.getElementById('chatShellContainer');
         if (container) {
             const newId  = msgData.id;

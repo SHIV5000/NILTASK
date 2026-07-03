@@ -240,9 +240,12 @@ window.triggerMessageNotification = function(msg) {
     // 2. Vibrate (mobile)
     if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
 
-    // 3. System notification (wakes screen if off)
+    // 3. System notification (wakes screen if off) — friendly title (no raw room id).
+    const isDM = String(room).startsWith('dm_');
+    const roomLabel = window.getRoomDisplayName?.(room) || (isDM ? '' : room);
+    const title = isDM ? name : (name + (roomLabel ? ' · ' + roomLabel : ''));
     window.showSystemNotification(
-        name + ' — ' + room.charAt(0).toUpperCase() + room.slice(1),
+        title,
         preview,
         { tag: 'msg-' + msg.room_id, room: msg.room_id }
     );

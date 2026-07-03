@@ -302,7 +302,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.63.0 (v37) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.63.0 (v38) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -1236,7 +1236,9 @@ window.startSubscriptions = async function() {
                 // Ignore DMs the current user is not a participant of — no unread, no toast/chime, no notification.
                 const isDmForMe = !incomingRoom.startsWith('dm_') || window.isDmParticipant(incomingRoom);
 
-                if (isDmForMe) {
+                // Only count real receipts (not own sends), and let mobile own its
+                // own unread accounting (it tracks the actually-open chat, not window.currentRoom).
+                if (isDmForMe && !isMine && !window.isMobileView?.()) {
                     window.unreadCounts = window.unreadCounts || {};
                     window.unreadCounts[incomingRoom] = (window.unreadCounts[incomingRoom] || 0) + 1;
                 }
@@ -1599,6 +1601,22 @@ window.getRoomDisplayName = function(roomId) {
 
     // Re-register background push for resumed sessions (no prompt; only if already granted).
     if (typeof window.subscribeToPush === 'function') window.subscribeToPush();
+
+    // Deep-link from a push tap (?room=…) or SW message — open that chat (desktop; mobile handles its own).
+    const _openWebRoom = (room) => {
+        if (!room || window.isMobileView?.()) return;
+        window.currentRoom = room;
+        try { localStorage.setItem('mpgs_current_room', room); } catch (e) {}
+        window.loadMessages?.();
+        window.loadChatsList?.();
+    };
+    try {
+        const _room = new URLSearchParams(location.search).get('room');
+        if (_room) { history.replaceState({}, '', location.pathname); _openWebRoom(_room); }
+        navigator.serviceWorker?.addEventListener('message', (e) => {
+            if (e.data?.type === 'open-room') _openWebRoom(e.data.room);
+        });
+    } catch (e) {}
 
     // Re-apply mobile layout on orientation change
     window.addEventListener('resize', () => {

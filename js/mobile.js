@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v37';
+const _MOB_VER = 'v38';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -179,11 +179,19 @@ window.initMobileApp = async function() {
         document.head.appendChild(s);
     }
     _el('root')?.style.setProperty('display', 'none', 'important');
+    try { document.documentElement.removeAttribute('data-theme'); } catch (e) {}  // mobile = light only
     _injectCSS();
     _buildShell();
     await _ctx();
     await _navTo('home');
     _initRealtime();
+    // Deep-link: open a specific chat from a push tap (?room=…) or SW message.
+    _openRoomFromUrl();
+    try {
+        navigator.serviceWorker?.addEventListener('message', (e) => {
+            if (e.data?.type === 'open-room' && e.data.room) _openRoomByRoom(e.data.room);
+        });
+    } catch (e) {}
     _notifFallbackInterval = setInterval(_refreshNotifBadge, 60000);
     _showOfflineBanner(_isOffline);
     // Auto-refresh displayed timestamps every 60s + update last_seen heartbeat
@@ -375,7 +383,6 @@ function _buildShell() {
           <i class="fa-solid fa-bell"></i>
           <span id="mNotifBadge" class="m-notif-badge" style="display:none;"></span>
         </button>
-        <button class="m-sb-icon" title="Theme" onclick="window._openThemeSheet()"><i class="fa-solid fa-palette"></i></button>
         <button class="m-sb-icon" title="Sign out" onclick="window._confirmLogout()"><i class="fa-solid fa-right-from-bracket"></i></button>
         <div id="mSBResults"></div>
       </div>
@@ -502,6 +509,7 @@ window._navTo = async function(screen, params, replace = false) {
     if ((screen === 'groupChat' || screen === 'dm') && params?.room) {
         window.unreadCounts = window.unreadCounts || {};
         window.unreadCounts[params.room] = 0;
+        _updateAppBadge();
     }
     if (replace) _stack.pop();
     _stack.push({ screen, params });
@@ -542,6 +550,8 @@ window.addEventListener('popstate', () => {
     }
 });
 async function _render(screen, params, dir='forward') {
+    // Mobile app is light-only — strip any dark/colored theme the web layer set.
+    try { document.documentElement.removeAttribute('data-theme'); } catch (e) {}
     const stage = _el('mStage');
     if (!stage) return;
     const fns = {
@@ -1476,15 +1486,6 @@ async function _settings() {
         </div>
       </div>` : ''}
 
-      <div class="m-sl">APPEARANCE</div>
-      <div style="padding:0 16px 8px;">
-        <div class="m-theme-grid">
-          ${(window.THEME_LIST||[]).map(t=>`
-            <button class="m-theme-pill ${window.currentTheme===t.id?'active':''}" data-action="pickTheme" data-theme="${t.id}">
-              <span class="m-theme-dot" style="background:${t.swatch};"></span>${t.label}
-            </button>`).join('') || '<div class="m-empty">Theme system not loaded</div>'}
-        </div>
-      </div>
 
       <div class="m-sl">NOTIFICATIONS</div>
       <div style="padding:0 16px 8px;">
@@ -2384,6 +2385,35 @@ function _renderBellBadge() {
 }
 function _bumpBellBadge() { _bellCount++; _renderBellBadge(); }
 function _clearBellBadge() { _bellCount = 0; _renderBellBadge(); }
+// App-icon unread badge (installed PWA) — total across all chats.
+function _updateAppBadge() {
+    try {
+        const total = Object.values(window.unreadCounts || {}).reduce((a, b) => a + (b || 0), 0);
+        if (navigator.setAppBadge) {
+            if (total > 0) navigator.setAppBadge(total); else navigator.clearAppBadge?.();
+        }
+    } catch (e) { /* Badging API unsupported — ignore */ }
+}
+// Open a chat by room id (from a push deep-link).
+async function _openRoomByRoom(room) {
+    if (!room) return;
+    const g = _findGroup(room);
+    if (g) { await _navTo('groupChat', { room: g.id, name: g.name, color: g.col }); return; }
+    if (String(room).startsWith('dm_')) {
+        const other = room.replace('dm_', '').split('_').find(p => p !== _uid);
+        const u = _users.find(x => x.id === other);
+        const nm = u ? (u.full_name || u.email?.split('@')[0]) : 'Direct Message';
+        await _navTo('dm', { uid: other, name: nm, room });
+    }
+}
+function _openRoomFromUrl() {
+    try {
+        const room = new URLSearchParams(location.search).get('room');
+        if (!room) return;
+        history.replaceState({}, '', location.pathname);  // don't reopen on back
+        _openRoomByRoom(room);
+    } catch (e) {}
+}
 async function _goToMessage(messageId, roomIdHint) {
     if (!messageId) { _toast('No message linked to this notification','err'); return; }
     let room = roomIdHint;
@@ -2441,10 +2471,16 @@ async function _onNewMessage(m) {
                 }
             }
         }
+        // Per-chat unread badge (this chat isn't open) — WhatsApp-style count.
+        window.unreadCounts = window.unreadCounts || {};
+        window.unreadCounts[m.room_id] = (window.unreadCounts[m.room_id] || 0) + 1;
+        _updateAppBadge();
+        if (top.screen === 'home') { _render('home', null, 'forward'); }
+
         if (!m.parent_message_id) {
             const sender = _users.find(u=>u.id===m.sender_id);
             const name = sender ? (sender.full_name||sender.email?.split('@')[0]) : 'Someone';
-            const dept = DEPTS.find(d=>d.id===m.room_id) || _customGroups.find(g=>g.id===m.room_id);
+            const dept = _findGroup(m.room_id);
             const isDM = m.room_id?.startsWith('dm_');
             const roomLabel = dept ? dept.name : (isDM ? 'a direct message' : 'a group');
             _toast(`${name} — ${roomLabel}: ${_snip(m.text,50)}`);
@@ -2706,6 +2742,18 @@ async function _doSendReply(a) {
     if (error) { _toast('Send failed: '+error.message,'err'); return; }
     window.playSound?.('message');
     _appendOwnMessage('mThreadArea', m, 160);
+    // Reflect the reply on the parent's "N replies" link (group view + cache) so it
+    // shows under the parent immediately, without needing a reload.
+    _replyMapCache[a.room] = _replyMapCache[a.room] || {};
+    _replyMapCache[a.room][a.pid] = (_replyMapCache[a.room][a.pid] || 0) + 1;
+    const _pRow = document.getElementById('row-' + a.pid);
+    if (_pRow) {
+        const _n = _replyMapCache[a.room][a.pid];
+        const _link = _pRow.querySelector('.m-thread-link');
+        if (_link) { _link.dataset.n = _n; _link.innerHTML = `💬 ${_n} repl${_n===1?'y':'ies'} ›`; }
+        else _pRow.querySelector('.m-bubble')?.insertAdjacentHTML('beforeend',
+            `<button class="m-thread-link" data-action="thread" data-n="${_n}" data-id="${a.pid}" data-room="${a.room}" data-rname="${x(a.rname||'')}" data-rcol="${a.rcol||''}">💬 ${_n} repl${_n===1?'y':'ies'} ›</button>`);
+    }
     // Notify the parent author that someone replied (mirrors web notifyUser)
     try {
         const { data: parent } = await sb.from('messages').select('sender_id').eq('id', a.pid).single();

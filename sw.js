@@ -2,7 +2,7 @@
  * TaskFlow Service Worker — enables PWA install prompt on Android/Chrome
  * Caches core app shell for offline-capable experience
  */
-const CACHE   = 'taskflow-v37';
+const CACHE   = 'taskflow-v38';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -46,33 +46,102 @@ self.addEventListener('activate', e => {
   );
 });
 
-// ── Push event (from future push server) ─────────────────
+// ── IndexedDB auth (written by the client) so the SW can post quick-replies ──
+function _swGetAuth() {
+  return new Promise(res => {
+    try {
+      const r = indexedDB.open('taskflow', 1);
+      r.onupgradeneeded = () => { try { r.result.createObjectStore('kv'); } catch(e){} };
+      r.onsuccess = () => {
+        try {
+          const g = r.result.transaction('kv', 'readonly').objectStore('kv').get('auth');
+          g.onsuccess = () => res(g.result || null);
+          g.onerror   = () => res(null);
+        } catch(e) { res(null); }
+      };
+      r.onerror = () => res(null);
+    } catch(e) { res(null); }
+  });
+}
+
+async function _swSendReply(room, text) {
+  const auth = await _swGetAuth();
+  if (!auth?.token || !auth?.url || !room || !text) return false;
+  try {
+    const res = await fetch(auth.url + '/rest/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': auth.anon,
+        'Authorization': 'Bearer ' + auth.token,
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({
+        room_id: room,
+        sender_id: auth.uid,
+        tenant_id: auth.tenant,
+        text: '<p>' + String(text).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) + '</p>',
+        created_at: new Date().toISOString()
+      })
+    });
+    return res.ok;
+  } catch(e) { return false; }
+}
+
+// ── Push event ───────────────────────────────────────────
 self.addEventListener('push', e => {
   const data = e.data?.json() || {};
-  e.waitUntil(
-    self.registration.showNotification(data.title || 'TaskFlow', {
-      body:    data.body || 'New message',
+  const tag = data.tag || 'taskflow';
+  e.waitUntil((async () => {
+    // Stack per chat: fold repeats into one notification with a running count.
+    let count = 1;
+    try {
+      const existing = await self.registration.getNotifications({ tag });
+      if (existing.length) count = (existing[0].data?.count || 1) + 1;
+    } catch(e) {}
+    const body = count > 1 ? (count + ' new messages') : (data.body || 'New message');
+    try { if (self.navigator?.setAppBadge) await self.navigator.setAppBadge(); } catch(e) {}
+    await self.registration.showNotification(data.title || 'TaskFlow', {
+      body,
       icon:    '/favicon.svg',
       badge:   '/favicon.svg',
       vibrate: [200, 100, 200],
-      tag:     data.tag || 'taskflow',
-      data:    { url: data.url || '/' }
-    })
-  );
+      tag,
+      renotify: true,
+      data:    { url: data.url || '/', room: data.room, count },
+      actions: [{ action: 'reply', type: 'text', title: 'Reply', placeholder: 'Message…' }]
+    });
+  })());
 });
 
-// ── Notification click ─────────────────────────────────────
+// ── Notification click / quick-reply ───────────────────────
 self.addEventListener('notificationclick', e => {
+  const room = e.notification.data?.room;
+  const url  = e.notification.data?.url || '/';
+
+  // Inline reply from the notification shade (Android).
+  if (e.action === 'reply' && e.reply) {
+    e.notification.close();
+    e.waitUntil((async () => {
+      const ok = await _swSendReply(room, e.reply);
+      if (!ok) {
+        // Couldn't post (e.g. token expired) — open the chat so the user can send.
+        const list = await clients.matchAll({ type:'window', includeUncontrolled:true });
+        if (list[0]) { list[0].postMessage({ type:'open-room', room }); list[0].focus(); }
+        else await clients.openWindow(url);
+      }
+    })());
+    return;
+  }
+
   e.notification.close();
-  e.waitUntil(
-    clients.matchAll({ type:'window', includeUncontrolled:true })
-      .then(clientList => {
-        const url = e.notification.data?.url || '/';
-        const existing = clientList.find(c => c.url.includes(url) && 'focus' in c);
-        if (existing) return existing.focus();
-        return clients.openWindow(url);
-      })
-  );
+  e.waitUntil((async () => {
+    try { if (self.navigator?.clearAppBadge) await self.navigator.clearAppBadge(); } catch(e) {}
+    const list = await clients.matchAll({ type:'window', includeUncontrolled:true });
+    const existing = list.find(c => 'focus' in c);
+    if (existing) { existing.postMessage({ type:'open-room', room }); return existing.focus(); }
+    return clients.openWindow(url);
+  })());
 });
 
 // Fetch — network first, cache fallback

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v45';
+const _MOB_VER = 'v46';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -391,7 +391,7 @@ function _buildShell() {
         <button class="m-sb-icon" id="mSBDnd" title="Do Not Disturb" data-action="toggleDND" style="${(window._isDND?.())?'color:#ef4444;':''}">
           <i class="fa-solid ${(window._isDND?.())?'fa-volume-xmark':'fa-volume-high'}"></i>
         </button>
-        <button class="m-sb-icon" id="mSBBell" title="Notifications" data-action="openNotifs" style="position:relative;">
+        <button class="m-sb-icon" id="mSBBell" title="Notifications & Activity" data-action="openActivity" style="position:relative;">
           <i class="fa-solid fa-bell"></i>
           <span id="mNotifBadge" class="m-notif-badge" style="display:none;"></span>
         </button>
@@ -759,9 +759,10 @@ function _fmtDateTime(ds){ try { const d=new Date(ds); return _istFmtDate.format
 async function _activity() {
     const filter = window._afFilter || 'all';
     const senderFilter = window._afSender || '';
-    // Opening the feed marks it "seen" (clears the Activity tab badge).
+    // Opening the feed marks it "seen" (clears the Activity tab badge + bell badge).
     try { localStorage.setItem('activity_seen_ts', new Date().toISOString()); } catch(e){}
     _el('mnActBadge')?.style.setProperty('display','none');
+    _clearBellBadge();
 
     const { data: notifs } = await sb.from('notifications')
         .select('id,type,message,message_id,task_id,created_at,is_read')
@@ -2200,7 +2201,8 @@ async function _onShellClick(e) {
         case 'editScheduled': await _navTo('scheduledEdit',{id:a.id,text:a.text,at:a.at,room:a.room}); break;
         case 'saveScheduled': await _saveScheduled(a.id); break;
         case 'openTaskFile': await _openTaskFile(a.path); break;
-        case 'openNotifs': await _navTo('notifications'); break;
+        case 'openNotifs': await _navTo('activity'); break;
+        case 'openActivity': await _navTo('activity'); break;
         case 'goToMsgNotif': await _goToMessage(a.mid); break;
         case 'goToTaskNotif': await _goToTask(a.tid); break;
         case 'afFilter': window._afFilter = a.f; window._afSender = ''; await _render('activity', null, 'forward'); break;

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v46';
+const _MOB_VER = 'v47';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -183,6 +183,8 @@ window.initMobileApp = async function() {
     _injectCSS();
     _buildShell();
     await _ctx();
+    // Principals/admins get a toggle to the Admin Panel (permission known after _ctx).
+    if (window.currentPermissions?.admin_panel) _el('mSBAdmin')?.style.setProperty('display','flex');
     await _navTo('home');
     _initRealtime();
     // Deep-link: open a specific chat from a push tap (?room=…) or SW message.
@@ -387,6 +389,7 @@ function _buildShell() {
         <div id="mSBSearch" class="m-sb-search" style="display:none;">
           <input id="mSBSearchInp" placeholder="Search messages, staff…">
         </div>
+        <button class="m-sb-icon" id="mSBAdmin" title="Switch to Admin Panel" onclick="window.location.href='/admin.html'" style="display:none;color:var(--accent,#6366f1);"><i class="fa-solid fa-user-shield"></i></button>
         <button class="m-sb-icon" id="mSBLens" title="Search" onclick="window._toggleInlineSearch()"><i class="fa-solid fa-magnifying-glass"></i></button>
         <button class="m-sb-icon" id="mSBDnd" title="Do Not Disturb" data-action="toggleDND" style="${(window._isDND?.())?'color:#ef4444;':''}">
           <i class="fa-solid ${(window._isDND?.())?'fa-volume-xmark':'fa-volume-high'}"></i>

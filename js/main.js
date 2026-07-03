@@ -302,7 +302,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.66.0 (v46) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.67.0 (v47) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -327,6 +327,10 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <div class="flex items-center gap-4" style="color:var(--text-secondary);">
+                        ${window.currentPermissions?.admin_panel ? `
+                        <div class="topbar-icon-btn top-bar-icon" onclick="window.location.href='/admin.html'" title="Switch to Admin Panel" style="color:var(--accent);">
+                            <i class="fa-solid fa-user-shield text-[17px]"></i><span>Admin</span>
+                        </div>` : ''}
                         <div class="topbar-icon-btn top-bar-icon" id="topBarScheduleBtn" onclick="window.openTopPanel('scheduled')" title="Scheduled Messages">
                             <i class="ti ti-clock text-xl"></i><span>Schedule</span>
                         </div>

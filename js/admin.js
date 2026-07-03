@@ -376,9 +376,14 @@ function renderAdminMobile() {
           <div class="ma-seclbl">Manage</div>
           <div class="ma-qa-grid">
             ${qa('staff','👥','rgba(99,102,241,.12)','#4f46e5','Staff','Add · approve · edit')}
+            ${qa('roles','🛡','rgba(22,163,74,.12)','#15803d','Roles','Permissions · PDF')}
             ${qa('scores','🏆','rgba(245,158,11,.14)','#b45309','Scorecard','Performance')}
-            ${qa('more','🛡','rgba(22,163,74,.12)','#15803d','Roles','Permissions · PDF')}
-            ${qa('more','🏷','var(--bg-body)','var(--text-secondary)','Text Tags','Reaction chips')}
+            ${qa('tags','🏷','rgba(14,165,233,.12)','#0369a1','Text Tags','Reaction chips')}
+          </div>
+          <div class="ma-seclbl" style="margin-top:6px;">Account</div>
+          <div class="ma-acct">
+            <button class="ma-acct-btn" onclick="window.toggleAdminTheme()"><i class="fa-solid fa-circle-half-stroke"></i> Toggle theme</button>
+            <button class="ma-acct-btn danger" onclick="window.logout?.()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Log out</button>
           </div>
         </section>
 
@@ -391,6 +396,24 @@ function renderAdminMobile() {
             <button class="btn-outline btn-sm" onclick="window.printStaffTable()"><i class="fa-solid fa-print"></i> Print</button>
           </div>
           <div id="staffTableBody" class="ma-list"></div>
+
+          <div class="ma-seclbl" style="margin-top:18px;">Archived Staff</div>
+          <div id="archivedSection">
+            <div class="ma-row-tools"><button class="btn-outline btn-sm" onclick="loadArchivedStaff()">Refresh</button></div>
+            <div class="ma-scroll"><table class="staff-table"><thead><tr><th>Staff</th><th>Role</th><th>Archived</th><th>Actions</th></tr></thead>
+              <tbody id="archivedTableBody"><tr><td colspan="4" style="padding:16px;text-align:center;color:var(--text-secondary);">Loading…</td></tr></tbody></table></div>
+          </div>
+        </section>
+
+        <!-- ROLES -->
+        <section class="ma-panel" id="matab-roles" style="display:none;">
+          <div class="ma-row-tools">
+            <button class="btn-outline btn-sm" onclick="window.openRolesPermPanel?.()"><i class="fa-solid fa-expand"></i> Full view</button>
+            <button class="btn-outline btn-sm" onclick="window.printRolesPDF()"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+          </div>
+          <div class="ma-scroll"><table class="staff-table"><thead><tr>
+            <th>Staff</th><th>Role</th><th>Sched</th><th>Upload</th><th>Task</th><th>Hub</th><th>Groups</th><th>Activity</th><th>Dash</th><th>Admin</th><th>Remind</th><th>Assign</th>
+          </tr></thead><tbody id="rolesInlineTbody"></tbody></table></div>
         </section>
 
         <!-- SCORES -->
@@ -411,37 +434,15 @@ function renderAdminMobile() {
           <div id="scorecardNote" style="display:none;"></div>
         </section>
 
-        <!-- MORE -->
-        <section class="ma-panel" id="matab-more" style="display:none;">
-          <div class="ma-seclbl">Roles &amp; Permissions</div>
-          <div class="ma-row-tools">
-            <button class="btn-outline btn-sm" onclick="window.openRolesPermPanel?.()"><i class="fa-solid fa-expand"></i> Full view</button>
-            <button class="btn-outline btn-sm" onclick="window.printRolesPDF()"><i class="fa-solid fa-file-pdf"></i> PDF</button>
-          </div>
-          <div class="ma-scroll"><table class="staff-table"><thead><tr>
-            <th>Staff</th><th>Role</th><th>Sched</th><th>Upload</th><th>Task</th><th>Hub</th><th>Groups</th><th>Activity</th><th>Dash</th><th>Admin</th><th>Remind</th><th>Assign</th>
-          </tr></thead><tbody id="rolesInlineTbody"></tbody></table></div>
-
-          <div class="ma-seclbl" style="margin-top:20px;">Quick Text Tags</div>
+        <!-- TAGS -->
+        <section class="ma-panel" id="matab-tags" style="display:none;">
           <div class="ma-row-tools">
             <input type="text" id="newTagInput" placeholder="New tag label…" maxlength="20" class="ma-input" style="flex:1;">
             <input type="color" id="newTagColor" value="#1d4ed8" title="Tag colour" class="ma-color">
-            <button class="btn-accent btn-sm" onclick="window.addQuickTag()"><i class="fa-solid fa-plus"></i></button>
+            <button class="btn-accent btn-sm" onclick="window.addQuickTag()"><i class="fa-solid fa-plus"></i> Add</button>
           </div>
           <div id="tagsContainer" class="ma-tags"><span style="font-size:12px;color:var(--text-secondary);">Loading…</span></div>
-
-          <div class="ma-seclbl" style="margin-top:20px;">Archived Staff</div>
-          <div id="archivedSection">
-            <div class="ma-row-tools"><button class="btn-outline btn-sm" onclick="loadArchivedStaff()">Refresh</button></div>
-            <div class="ma-scroll"><table class="staff-table"><thead><tr><th>Staff</th><th>Role</th><th>Archived</th><th>Actions</th></tr></thead>
-              <tbody id="archivedTableBody"><tr><td colspan="4" style="padding:16px;text-align:center;color:var(--text-secondary);">Loading…</td></tr></tbody></table></div>
-          </div>
-
-          <div class="ma-seclbl" style="margin-top:20px;">Account</div>
-          <div class="ma-acct">
-            <button class="ma-acct-btn" onclick="window.toggleAdminTheme()"><i class="fa-solid fa-circle-half-stroke"></i> Toggle theme</button>
-            <button class="ma-acct-btn danger" onclick="window.logout?.()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Log out</button>
-          </div>
+          <div style="font-size:11.5px;color:var(--text-secondary);">Changes appear immediately in the reaction menu for all staff.</div>
         </section>
       </div>
 
@@ -450,8 +451,9 @@ function renderAdminMobile() {
       <nav class="ma-tabs">
         <button class="ma-tab on" data-tab="home"  onclick="window._admTab('home')"><i class="fa-solid fa-house"></i>Home</button>
         <button class="ma-tab"    data-tab="staff" onclick="window._admTab('staff')"><i class="fa-solid fa-users"></i>Staff</button>
+        <button class="ma-tab"    data-tab="roles" onclick="window._admTab('roles')"><i class="fa-solid fa-shield-halved"></i>Roles</button>
         <button class="ma-tab"    data-tab="scores" onclick="window._admTab('scores')"><i class="fa-solid fa-trophy"></i>Scores</button>
-        <button class="ma-tab"    data-tab="more"  onclick="window._admTab('more')"><i class="fa-solid fa-ellipsis"></i>More</button>
+        <button class="ma-tab"    data-tab="tags"  onclick="window._admTab('tags')"><i class="fa-solid fa-tag"></i>Tags</button>
       </nav>
     </div>`;
 
@@ -462,7 +464,7 @@ function renderAdminMobile() {
 // Switch mobile tab panels + reflect the FAB (only shown on the Staff tab).
 window._admTab = function(name) {
     _admTabCur = name;
-    ['home','staff','scores','more'].forEach(t => {
+    ['home','staff','roles','scores','tags'].forEach(t => {
         const p = document.getElementById('matab-'+t);
         if (p) p.style.display = t===name ? 'flex' : 'none';
     });

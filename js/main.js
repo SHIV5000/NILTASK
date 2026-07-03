@@ -302,7 +302,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.65.0 (v45) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.66.0 (v46) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -336,11 +336,8 @@ window.renderMainApp = async function() {
                         <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('bookmarks')" title="Bookmarks">
                             <i class="ti ti-bookmark text-xl"></i><span>Bookmarks</span>
                         </div>
-                        <div class="topbar-icon-btn top-bar-icon" onclick="window.openTopPanel('alerts')" title="Notifications">
-                            <i class="ti ti-bell text-xl" style="color:var(--text-secondary,#5b6e8c);"></i><span>Alerts</span>
-                        </div>
-                        <div class="topbar-icon-btn top-bar-icon" onclick="window.openActivityFeed()" title="Activity Feed">
-                            <i class="fa-solid fa-bolt text-[17px]"></i><span>Activity</span>
+                        <div class="topbar-icon-btn top-bar-icon" onclick="window.openActivityFeed()" title="Notifications & Activity">
+                            <i class="ti ti-bell text-xl" style="color:var(--text-secondary,#5b6e8c);"></i><span>Activity</span>
                         </div>
                         <div class="border-l pl-4 ml-1 flex gap-3" style="border-color:var(--border-color);">
                             <div class="topbar-icon-btn" onclick="window.toggleRightSidebar()" title="Toggle Task Panel">

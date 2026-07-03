@@ -167,6 +167,15 @@ window.openActivityFeed = async function() {
 
     rs.appendChild(panel);
     await window._loadActivityFeed();
+
+    // Opening the feed IS "seeing" your notifications — mark personal unread
+    // notifications read and clear the bell badge (the feed replaces the old
+    // alerts panel, so this is where the actionable count is consumed).
+    try {
+        await sb.from('notifications').update({ is_read: true })
+            .eq('user_id', window.currentUser?.id).eq('is_read', false);
+    } catch(e) {}
+    window._clearBellBadge?.();
 };
 
 window._loadActivityFeed = async function() {

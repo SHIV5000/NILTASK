@@ -8,7 +8,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>MPGS TaskFlow — Admin Panel</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -172,7 +172,9 @@
       /* App bar — broad, two-row layout so everything fits at any width.
          Row 1: school + role · user + theme/logout icons. Row 2: Chat/Admin toggle. */
       .ma-bar { display:flex; flex-direction:column; gap:11px;
-        padding:calc(18px + env(safe-area-inset-top,0px)) 14px 14px;
+        /* Guarantee clearance below the status bar even when safe-area is 0
+           (some Android PWAs/webviews report 0) — never let the brand clip. */
+        padding:max(calc(env(safe-area-inset-top,0px) + 16px), 44px) 14px 14px;
         background:var(--bg-sidebar); border-bottom:1px solid var(--border-color); flex-shrink:0;
         position:sticky; top:0; z-index:5; }
       .ma-bar-row { display:flex; align-items:center; gap:9px; }

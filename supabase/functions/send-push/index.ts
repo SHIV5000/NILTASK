@@ -62,7 +62,16 @@ Deno.serve(async (req) => {
       .from('profiles').select('full_name,email').eq('id', senderId).maybeSingle();
     const senderName = sp?.full_name || sp?.email?.split('@')[0] || 'Someone';
     const text = (m.text || '').replace(/<[^>]*>/g, '').trim().slice(0, 120) || '📎 Attachment';
-    const title = room.startsWith('dm_') ? senderName : `${senderName} · ${room}`;
+
+    // Friendly title: DM → sender's name; group → "Sender · GroupName" (not the raw room id).
+    let title = senderName;
+    if (!room.startsWith('dm_')) {
+      const { data: rs } = await supabase
+        .from('room_settings').select('name')
+        .eq('room_id', room).eq('tenant_id', tenantId).maybeSingle();
+      const groupName = rs?.name || room.replace(/^grp_/, '').replace(/_[a-z0-9]+$/, '').replace(/_/g, ' ');
+      title = `${senderName} · ${groupName}`;
+    }
     const payload = JSON.stringify({
       title, body: text, tag: room, room,
       url: '/?room=' + encodeURIComponent(room),   // deep-link: tap opens this chat

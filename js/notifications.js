@@ -197,8 +197,8 @@ window.showSystemNotification = async function(title, body, options = {}) {
 
     const opts = {
         body,
-        icon:     '/icons/notif.svg',
-        badge:    '/icons/notif.svg',
+        icon:     '/icons/notif.png',
+        badge:    '/icons/notif.png',
         tag:      options.tag || 'taskflow-msg',
         renotify: true,
         silent:   false,

@@ -498,6 +498,11 @@ window._confirmLogout = async function() {
 
 window._navTo = async function(screen, params, replace = false) {
     if (_searchMode) window._toggleInlineSearch();
+    // Opening a chat marks it read — clear its unread badge (home re-reads this on back).
+    if ((screen === 'groupChat' || screen === 'dm') && params?.room) {
+        window.unreadCounts = window.unreadCounts || {};
+        window.unreadCounts[params.room] = 0;
+    }
     if (replace) _stack.pop();
     _stack.push({ screen, params });
     if (replace) history.replaceState({ mobDepth:_stack.length }, '', location.href);

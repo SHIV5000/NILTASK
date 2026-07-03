@@ -17,7 +17,43 @@
  * ─────────────────────────────────────────────────────────────
  */
 
-import { sb } from './shared.js';
+import { sb, SUPABASE_URL, SUPABASE_ANON_KEY } from './shared.js';
+
+// ── SW AUTH BRIDGE — lets the service worker post quick-replies ───
+// Persist the current session (access token + ids) to IndexedDB so sw.js can
+// insert a message on the user's behalf from the notification shade.
+function _idbPutAuth(obj) {
+    return new Promise(res => {
+        try {
+            const r = indexedDB.open('taskflow', 1);
+            r.onupgradeneeded = () => { try { r.result.createObjectStore('kv'); } catch (e) {} };
+            r.onsuccess = () => {
+                try {
+                    const tx = r.result.transaction('kv', 'readwrite');
+                    tx.objectStore('kv').put(obj, 'auth');
+                    tx.oncomplete = () => res();
+                    tx.onerror = () => res();
+                } catch (e) { res(); }
+            };
+            r.onerror = () => res();
+        } catch (e) { res(); }
+    });
+}
+window._persistAuthForSW = async function() {
+    try {
+        const { data: { session } } = await sb.auth.getSession();
+        if (!session?.access_token) return;
+        await _idbPutAuth({
+            url:    SUPABASE_URL,
+            anon:   SUPABASE_ANON_KEY,
+            token:  session.access_token,
+            uid:    window.currentUser?.id,
+            tenant: window.currentTenantId
+        });
+    } catch (e) { /* non-fatal */ }
+};
+// Keep the stored token fresh across refreshes.
+try { sb.auth.onAuthStateChange((_e, session) => { if (session) window._persistAuthForSW(); }); } catch (e) {}
 
 // ── WEB PUSH (background notifications) ───────────────────────────
 // Public VAPID key — safe to ship. The matching private key lives only as a
@@ -52,6 +88,7 @@ window.subscribeToPush = async function() {
             endpoint:     sub.endpoint,
             subscription: sub.toJSON()
         }, { onConflict: 'endpoint' });
+        window._persistAuthForSW?.();
     } catch (e) { /* push subscribe failed — non-fatal, in-app notifications still work */ }
 };
 

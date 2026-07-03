@@ -60,7 +60,10 @@ Deno.serve(async (req) => {
     const senderName = sp?.full_name || sp?.email?.split('@')[0] || 'Someone';
     const text = (m.text || '').replace(/<[^>]*>/g, '').trim().slice(0, 120) || '📎 Attachment';
     const title = room.startsWith('dm_') ? senderName : `${senderName} · ${room}`;
-    const payload = JSON.stringify({ title, body: text, url: '/', tag: room });
+    const payload = JSON.stringify({
+      title, body: text, tag: room, room,
+      url: '/?room=' + encodeURIComponent(room),   // deep-link: tap opens this chat
+    });
 
     const { data: subs } = await supabase
       .from('push_subscriptions').select('endpoint,subscription')

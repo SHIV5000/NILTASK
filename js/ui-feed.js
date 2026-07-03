@@ -35,6 +35,56 @@ function _feedTimeAgo(isoStr) {
 const _esc  = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const _strip = s => String(s||'').replace(/<[^>]*>/g,'').trim();
 
+// ── Card palette (exact spec) ────────────────────────────────────────────────
+const _AF_PAL = {
+    chats:     { hex:'#2563EB', bg:'#DBEAFE', badge:'💬 Chats',     label:'Chats' },
+    tasks:     { hex:'#F97316', bg:'#FFEDD5', badge:'📋 Tasks',     label:'Tasks' },
+    reminders: { hex:'#22C55E', bg:'#DCFCE7', badge:'⏰ Reminder',  label:'Reminders' },
+    system:    { hex:'#A855F7', bg:'#F3E8FF', badge:'🛠 System',    label:'System' },
+};
+// Map a raw notification/trail type to a feed category.
+function _afCat(type) {
+    if (type==='task' || (type||'').startsWith('task_')) return 'tasks';
+    if (type==='reminder' || type==='scheduled')         return 'reminders';
+    if (type==='message' || type==='reply' || type==='reaction') return 'chats';
+    return 'system';
+}
+function _istDateStr(ts) {
+    try { return new Date(new Date(ts).toLocaleString('en-US',{timeZone:'Asia/Kolkata'})).toDateString(); }
+    catch(e){ return ''; }
+}
+function _afDayLabel(ts) {
+    const d = _istDateStr(ts);
+    const today = _istDateStr(Date.now());
+    const yest  = _istDateStr(Date.now()-86400000);
+    if (d===today) return 'Today';
+    if (d===yest)  return 'Yesterday';
+    try { return new Date(ts).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); } catch(e){ return d; }
+}
+function _afDateTime(ts) {
+    try { return new Date(ts).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata'}); }
+    catch(e){ return ''; }
+}
+// Render one normalized card.
+function _afCard(it) {
+    const p = _AF_PAL[it.cat] || _AF_PAL.system;
+    const click = it.click ? ' onclick="' + it.click + '" style="cursor:pointer;' : ' style="';
+    const btn = it.click
+        ? '<button ' + (it.click ? 'onclick="event.stopPropagation();' + it.click + '"' : '') + ' style="margin-top:10px;padding:5px 14px;border-radius:40px;font-size:11.5px;font-weight:600;border:none;cursor:pointer;background:' + p.hex + ';color:#fff;">' + (it.cat==='tasks'?'📂 View Task':'🚀 Open') + '</button>'
+        : '';
+    return '<div' + click
+        + 'background:#FFFFFF;border-radius:14px;padding:13px 14px;margin-bottom:11px;position:relative;'
+        + 'border-left:4px solid ' + p.hex + ';box-shadow:0 1px 2px rgba(0,0,0,.06),0 1px 3px rgba(0,0,0,.05);'
+        + (it.unread ? 'background:#F8FBFF;' : '') + '">'
+        + '<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:2px 10px;border-radius:40px;background:' + p.bg + ';color:' + p.hex + ';display:inline-block;margin-bottom:6px;">' + p.badge + '</span>'
+        + (it.unread ? '<span style="position:absolute;top:13px;right:14px;width:7px;height:7px;border-radius:50%;background:' + p.hex + ';"></span>' : '')
+        + '<div style="font-size:13.5px;font-weight:600;color:var(--text-primary);line-height:1.4;">' + _esc(it.title) + '</div>'
+        + (it.sender ? '<div style="font-size:11.5px;color:var(--text-secondary);margin-top:2px;">by ' + _esc(it.sender) + '</div>' : '')
+        + '<div style="font-size:11px;color:var(--text-secondary);margin-top:5px;"><i class="fa-regular fa-clock"></i> ' + _feedTimeAgo(it.ts) + ' · ' + _afDateTime(it.ts) + '</div>'
+        + btn
+        + '</div>';
+}
+
 // Render a single notification row (real-time prepend + full-reload reuse)
 function _renderNotifItem(n) {
     const cfg  = _FEED_TYPES[n.type] || _FEED_TYPES.general;
@@ -98,7 +148,7 @@ window.openActivityFeed = async function() {
         '<button onclick="window._clearAllActivity()" style="font-size:11px;padding:3px 10px;border-radius:8px;border:1px solid var(--border-color);background:transparent;cursor:pointer;color:var(--text-secondary);">Clear All</button>' +
         '<button onclick="window.closeActivityFeed()" style="width:26px;height:26px;border-radius:50%;border:none;background:transparent;cursor:pointer;color:var(--text-secondary);font-size:14px;">✕</button>' +
         '</div></div>' +
-        '<div id="activityFeedList" style="overflow-y:auto;padding:8px;max-height:calc(100vh - 60px);"><p style="text-align:center;padding:24px;color:var(--text-secondary);font-size:12px;"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>';
+        '<div id="activityFeedList" style="overflow-y:auto;padding:12px;background:#F8FAFC;max-height:calc(100vh - 60px);"><p style="text-align:center;padding:24px;color:var(--text-secondary);font-size:12px;"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</p></div>';
 
     rs.appendChild(panel);
     await window._loadActivityFeed();
@@ -145,85 +195,102 @@ window._loadActivityFeed = async function() {
     const notifMsgIds = new Set((r3.data||[]).map(n => n.message_id).filter(Boolean));
     const filteredMsgs = msgData.filter(m => !notifMsgIds.has(m.id));
 
+    const myId = window.currentUser?.id;
+    const nameOf = (prof, fallback) => {
+        const fn = prof?.full_name || (prof?.email ? prof.email.split('@')[0] : '') || fallback || '';
+        return fn ? fn.charAt(0).toUpperCase() + fn.slice(1) : '';
+    };
+
+    // ── Normalize all three sources into a single card shape ──
     const items = [];
-    filteredMsgs.forEach(m  => items.push({ k:'msg',   t:m.created_at,  d:m }));
-    (r2.data||[]).forEach(tr => items.push({ k:'trail', t:tr.created_at, d:tr }));
-    (r3.data||[]).forEach(n  => items.push({ k:'notif', t:n.created_at,  d:n }));
-    items.sort((a,b) => new Date(b.t) - new Date(a.t));
+    filteredMsgs.forEach(m => {
+        const mine = m.sender_id === myId;
+        const nm  = mine ? 'You' : nameOf(m.profiles, '');
+        const rm  = (window.getRoomDisplayName && window.getRoomDisplayName(m.room_id)) || m.room_id || '';
+        const tx  = _strip(m.text).substring(0,90) || 'Attachment';
+        items.push({
+            cat:'chats', ts:m.created_at, unread:false, sender:nm,
+            title:(m.parent_message_id?'Reply':'Message') + ' in ' + rm + ' — ' + tx,
+            click:"window.goToMessage&&window.goToMessage('" + m.id + "',null,'" + m.room_id + "')"
+        });
+    });
+    (r2.data||[]).forEach(tr => {
+        const nm  = nameOf(tr.profiles, 'Staff');
+        const ttl = (tr.tasks && tr.tasks.title) || 'Task';
+        const act = tr.action || 'update';
+        const actLabel = ({ created:'assigned', accepted:'completed', submitted:'submitted', update:'updated', delegate:'delegated', transfer:'transferred', review:'reviewed' })[act] || act;
+        items.push({
+            cat:'tasks', ts:tr.created_at, unread:false, sender:nm,
+            title:'Task ' + actLabel + ': ' + ttl,
+            click: tr.task_id ? "window.goToTask&&window.goToTask('" + tr.task_id + "')" : ''
+        });
+    });
+    (r3.data||[]).forEach(n => {
+        const cat = _afCat(n.type);
+        const click = n.task_id
+            ? "window.goToTask&&window.goToTask('" + n.task_id + "','" + n.id + "')"
+            : n.message_id
+                ? "window.goToMessage&&window.goToMessage('" + n.message_id + "',null,null)"
+                : '';
+        items.push({
+            cat, ts:n.created_at, unread:!n.is_read, sender:'',
+            title:_strip(n.message||'').substring(0,120), click, _sid:n.message_id
+        });
+    });
+    items.sort((a,b) => new Date(b.ts) - new Date(a.ts));
 
     // Update bell badge to reflect actual unread count
     const unreadCount = (r3.data||[]).filter(n => !n.is_read).length;
     window._setBellBadge?.(unreadCount);
 
-    if (!items.length) {
-        list.innerHTML = '<p style="text-align:center;padding:32px;color:var(--text-secondary);font-size:12px;">No activity yet.</p>';
+    // ── Filters ──
+    const filter = window._webAfFilter || 'all';
+    const senderFilter = window._webAfSender || '';
+    let shown = items.filter(it => filter==='all' || it.cat===filter);
+    const senders = [...new Set(shown.map(it=>it.sender).filter(s=>s && s!=='You'))].sort();
+    if (senderFilter) shown = shown.filter(it => it.sender === senderFilter);
+
+    const pills = [['all','All'],['chats','💬 Chats'],['tasks','📋 Tasks'],['reminders','⏰ Reminders'],['system','🛠 System']];
+    const pillBtn = (k,l) => '<button onclick="window._webSetAfFilter(\'' + k + '\')" style="padding:5px 13px;border-radius:40px;font-size:12px;font-weight:600;white-space:nowrap;border:none;cursor:pointer;flex-shrink:0;'
+        + (filter===k ? 'background:#1e293b;color:#fff;' : 'background:var(--bg-body);color:var(--text-secondary);') + '">' + l + '</button>';
+    const senderBtn = (s,l,active) => '<button onclick="window._webSetAfSender(\'' + _esc(s).replace(/'/g,"\\'") + '\')" style="padding:4px 11px;border-radius:40px;font-size:11.5px;font-weight:600;white-space:nowrap;border:none;cursor:pointer;flex-shrink:0;'
+        + (active ? 'background:#2563EB;color:#fff;' : 'background:var(--bg-body);color:var(--text-secondary);') + '">' + _esc(l) + '</button>';
+
+    const filtersHtml =
+        '<div style="display:flex;gap:7px;overflow-x:auto;padding:4px 2px 10px;scrollbar-width:none;">' + pills.map(p=>pillBtn(p[0],p[1])).join('') + '</div>'
+        + (senders.length ? '<div style="display:flex;gap:6px;overflow-x:auto;padding:0 2px 10px;scrollbar-width:none;">'
+            + senderBtn('','👥 Everyone',!senderFilter)
+            + senders.map(s=>senderBtn(s, s.split(' ')[0], senderFilter===s)).join('') + '</div>' : '');
+
+    if (!shown.length) {
+        list.innerHTML = filtersHtml
+            + '<div style="text-align:center;padding:40px 20px;color:var(--text-secondary);"><div style="font-size:42px;margin-bottom:8px;">🚀</div>'
+            + '<div style="font-weight:700;font-size:15px;color:var(--text-primary);">All caught up!</div>'
+            + '<div style="font-size:12px;margin-top:6px;">' + (filter==='all'&&!senderFilter?'Your activity will appear here when teammates chat, assign tasks, or reminders fire.':'No activity matches this filter.') + '</div></div>';
         return;
     }
 
-    let renderedCount = 0;
-    const html = items.map((item, idx) => {
-        try {
-            const ago = _feedTimeAgo(item.t);
-
-            if (item.k === 'msg') {
-                const m = item.d;
-                const mine = m.sender_id === (window.currentUser && window.currentUser.id);
-                const prof = m.profiles || {};
-                const fn  = prof.full_name || (prof.email ? prof.email.split('@')[0] : '') || '?';
-                const nm  = mine ? 'You' : fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase();
-                const rm  = (window.getRoomDisplayName && window.getRoomDisplayName(m.room_id)) || m.room_id || '';
-                const tx  = _strip(m.text).substring(0,90) || 'Attachment';
-                const bg  = mine ? 'var(--accent)' : '#6366f1';
-                const typeLabel = m.parent_message_id ? 'Reply' : 'Message';
-                renderedCount++;
-                return '<div style="display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border-color);align-items:flex-start;cursor:pointer;" onclick="window.goToMessage&&window.goToMessage(\'' + m.id + '\',null,\'' + m.room_id + '\')">'
-                    + '<div style="width:32px;height:32px;border-radius:50%;background:' + bg + ';flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;">' + _esc((nm.charAt(0)||'?').toUpperCase()) + '</div>'
-                    + '<div style="flex:1;min-width:0;">'
-                    + '<div style="font-size:12px;font-weight:600;color:var(--text-primary);">' + _esc(nm) + '<span style="font-weight:400;font-size:10px;color:var(--text-secondary);margin-left:4px;">' + typeLabel + ' in ' + _esc(rm) + '</span></div>'
-                    + '<div style="font-size:12px;color:var(--text-secondary);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _esc(tx) + '</div>'
-                    + '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + ago + '</div>'
-                    + '</div></div>';
-            }
-
-            if (item.k === 'trail') {
-                const tr = item.d;
-                const tprof = tr.profiles || {};
-                const fn  = tprof.full_name || (tprof.email ? tprof.email.split('@')[0] : '') || 'Staff';
-                const nm  = fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase();
-                const ttl = (tr.tasks && tr.tasks.title) || 'Task';
-                const act = tr.action || 'update';
-                const trailType = act === 'created' ? 'task_created' : act === 'accepted' ? 'task_completed' : 'task_updated';
-                const cfg = _FEED_TYPES[trailType] || _FEED_TYPES.task_updated;
-                const actLabel = ({ created:'ASSIGNED', accepted:'DONE', submitted:'SUBMITTED', update:'UPDATED', delegate:'DELEGATED', transfer:'TRANSFERRED', review:'REVIEWED' })[act] || act.toUpperCase();
-                renderedCount++;
-                return '<div style="display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border-color);align-items:flex-start;cursor:pointer;" onclick="window.goToTask&&window.goToTask(\'' + (tr.task_id||'') + '\')">'
-                    + '<div style="width:32px;height:32px;border-radius:50%;background:' + cfg.color + '18;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><i class="fa-solid ' + cfg.fa + '" style="color:' + cfg.color + ';font-size:13px;"></i></div>'
-                    + '<div style="flex:1;min-width:0;">'
-                    + '<div style="font-size:12px;font-weight:600;color:var(--text-primary);">' + _esc(nm) + '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;background:' + cfg.color + '18;color:' + cfg.color + ';margin-left:6px;">' + actLabel + '</span></div>'
-                    + '<div style="font-size:12px;color:var(--text-secondary);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _esc(ttl) + '</div>'
-                    + '<div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">' + ago + '</div>'
-                    + '</div></div>';
-            }
-
-            // Notification item
-            renderedCount++;
-            return _renderNotifItem(item.d);
-        } catch(err) {
-            return '';
+    // ── Date-grouped cards ──
+    let out = filtersHtml, curDay = null;
+    shown.forEach(it => {
+        const day = _afDayLabel(it.ts);
+        if (day !== curDay) {
+            curDay = day;
+            out += '<div style="display:flex;align-items:center;gap:10px;margin:8px 0 10px;"><span style="font-size:11px;font-weight:700;color:var(--text-secondary);background:var(--bg-body);padding:3px 12px;border-radius:30px;">' + day + '</span><div style="flex:1;height:1px;background:var(--border-color);"></div></div>';
         }
-    }).join('');
-    list.innerHTML = html || '<p style="text-align:center;padding:32px;color:var(--text-secondary);font-size:12px;">No activity yet.</p>';
+        try { out += _afCard(it); } catch(e){}
+    });
+    list.innerHTML = out;
 };
 
-// Real-time: prepend a single incoming notification to the feed list without full reload
+window._webSetAfFilter = function(f) { window._webAfFilter = f; window._webAfSender = ''; window._loadActivityFeed(); };
+window._webSetAfSender = function(s) { window._webAfSender = s || ''; window._loadActivityFeed(); };
+
+// Real-time: a new notification arrived — re-render the card feed so the new
+// item slots into the correct date group / filter with the card styling.
 window.prependFeedItem = function(notif) {
     if (!notif) return;
-    const list = document.getElementById('activityFeedList');
-    if (!list) return;
-    // Remove empty-state placeholder if present
-    const placeholder = list.querySelector('p');
-    if (placeholder && !list.querySelector('[id^="feed-notif-"]')) placeholder.remove();
-    list.insertAdjacentHTML('afterbegin', _renderNotifItem(notif));
+    if (document.getElementById('activityFeedList')) window._loadActivityFeed();
 };
 
 window.closeActivityFeed = function() {

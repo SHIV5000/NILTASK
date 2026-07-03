@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v43';
+const _MOB_VER = 'v44';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -594,11 +594,18 @@ async function _render(screen, params, dir='forward') {
 
     if (params?.scrollTo) _scrollAndGlow(params.scrollTo);
 
-    if (_pendingRefresh) { const fn = _pendingRefresh; _pendingRefresh = null; fn(); }
+    if (_pendingRefresh) {
+        const fn = _pendingRefresh; _pendingRefresh = null;
+        Promise.resolve(fn()).then(() => {
+            // The background refresh may have replaced the message area innerHTML,
+            // wiping the highlighted row — re-apply the glow after it settles.
+            if (params?.scrollTo) _scrollAndGlow(params.scrollTo);
+        });
+    }
 }
 function _scrollAndGlow(msgId, attempt=0) {
     const row = document.getElementById('row-'+msgId);
-    if (!row) { if (attempt<5) setTimeout(()=>_scrollAndGlow(msgId,attempt+1), 120); return; }
+    if (!row) { if (attempt<8) setTimeout(()=>_scrollAndGlow(msgId,attempt+1), 150); return; }
     const card = row.querySelector('.m-bubble') || row;
     row.scrollIntoView({ behavior:'smooth', block:'center' });
     setTimeout(() => card.classList.add('m-highlight'), 50);
@@ -751,6 +758,7 @@ async function _home() {
 function _fmtDateTime(ds){ try { const d=new Date(ds); return _istFmtDate.format(d)+', '+_istFmt12.format(d); } catch { return ''; } }
 async function _activity() {
     const filter = window._afFilter || 'all';
+    const senderFilter = window._afSender || '';
     // Opening the feed marks it "seen" (clears the Activity tab badge).
     try { localStorage.setItem('activity_seen_ts', new Date().toISOString()); } catch(e){}
     _el('mnActBadge')?.style.setProperty('display','none');
@@ -759,6 +767,21 @@ async function _activity() {
         .select('id,type,message,message_id,task_id,created_at,is_read')
         .eq('user_id',_uid).eq('tenant_id',_tid)
         .order('created_at',{ascending:false}).limit(80);
+
+    // Enrich message-type notifications with a sender name (join messages on id).
+    const senderById = {};
+    try {
+        const msgIds = (notifs||[]).filter(n=>n.message_id).map(n=>n.message_id);
+        if (msgIds.length) {
+            const { data: msgs } = await sb.from('messages')
+                .select('id,sender_id').in('id', msgIds);
+            (msgs||[]).forEach(m => { senderById[m.id] = m.sender_id; });
+        }
+    } catch(e){}
+    const _senderName = (n) => {
+        const sid = n.message_id ? senderById[n.message_id] : null;
+        return sid ? (_uname(sid) || '') : '';
+    };
 
     const kind = (n) => {
         const t = n.type || 'message';
@@ -769,8 +792,11 @@ async function _activity() {
         return { cat:'chats', cls:'blue', badge:'💬 Message', emoji:'💬', act:(n.message_id?{k:'msg',id:n.message_id}:null) };
     };
 
-    const items = (notifs||[]).map(n => ({ n, ...kind(n) }))
+    let items = (notifs||[]).map(n => ({ n, sender:_senderName(n), ...kind(n) }))
         .filter(it => filter==='all' || it.cat===filter);
+    // Distinct senders present in the (category-filtered) feed, for the sender chips.
+    const senders = [...new Set(items.map(it=>it.sender).filter(Boolean))].sort();
+    if (senderFilter) items = items.filter(it => it.sender === senderFilter);
     const unread = (notifs||[]).filter(n=>!n.is_read).length;
 
     const today = _istFmtDate.format(new Date());
@@ -791,9 +817,9 @@ async function _activity() {
         const btn = it.act ? (it.act.k==='task'
             ? `<button class="af-btn primary" ${data}>📂 View Task</button>`
             : `<button class="af-btn primary" ${data}>🚀 Open</button>`) : '';
-        return `<div class="af-card ${n.is_read?'':'unread'}" ${data}>
+        return `<div class="af-card ${it.cls} ${n.is_read?'':'unread'}" ${data}>
             <span class="af-badge ${it.cls}">${it.badge}</span>
-            <div class="af-title"><span>${it.emoji}</span> ${x(_snip(n.message,70))}</div>
+            <div class="af-title">${x(_snip(n.message,70))}</div>
             <div class="af-meta"><i class="fa-regular fa-clock"></i> ${_ago(n.created_at)} · ${_fmtDateTime(n.created_at)}</div>
             ${btn?`<div class="af-actions">${btn}</div>`:''}
         </div>`;
@@ -813,6 +839,10 @@ async function _activity() {
       <div class="af-filters">
         ${pills.map(([k,l])=>`<button class="af-pill ${filter===k?'active':''}" data-action="afFilter" data-f="${k}">${l}</button>`).join('')}
       </div>
+      ${senders.length ? `<div class="af-filters af-senders">
+        <button class="af-pill sm ${senderFilter?'':'active'}" data-action="afSender" data-s="">👥 Everyone</button>
+        ${senders.map(s=>`<button class="af-pill sm ${senderFilter===s?'active':''}" data-action="afSender" data-s="${x(s)}">${x(s.split(' ')[0])}</button>`).join('')}
+      </div>` : ''}
       <div class="af-feed">${feed}</div>
     </div>`;
 }
@@ -2163,7 +2193,8 @@ async function _onShellClick(e) {
         case 'openNotifs': await _navTo('notifications'); break;
         case 'goToMsgNotif': await _goToMessage(a.mid); break;
         case 'goToTaskNotif': await _goToTask(a.tid); break;
-        case 'afFilter': window._afFilter = a.f; await _render('activity', null, 'forward'); break;
+        case 'afFilter': window._afFilter = a.f; window._afSender = ''; await _render('activity', null, 'forward'); break;
+        case 'afSender': window._afSender = a.s || ''; await _render('activity', null, 'forward'); break;
         case 'markAllRead': {
             try {
                 await sb.from('notifications').update({ is_read:true })
@@ -3222,16 +3253,21 @@ function _injectCSS(){
 .af-filters::-webkit-scrollbar{display:none;}
 .af-pill{background:var(--surface,#f1f5f9);color:var(--text-secondary,#475569);padding:6px 14px;border-radius:40px;font-size:12.5px;font-weight:600;white-space:nowrap;border:none;cursor:pointer;flex-shrink:0;}
 .af-pill.active{background:#1e293b;color:#fff;}
-.af-feed{padding:12px 14px 90px;display:flex;flex-direction:column;gap:14px;}
+.af-senders{padding-top:0;border-bottom:1px solid var(--border,#eef1f5);}
+.af-pill.sm{font-size:12px;padding:5px 12px;background:var(--surface,#eef2f7);}
+.af-feed{padding:12px 14px 90px;display:flex;flex-direction:column;gap:14px;background:#F8FAFC;min-height:100%;}
 .af-div{display:flex;align-items:center;gap:10px;margin:2px 0;}
 .af-div span{font-size:11.5px;font-weight:700;color:var(--text-secondary,#64748b);background:var(--surface,#f1f5f9);padding:3px 12px;border-radius:30px;}
 .af-div .ln{flex:1;height:1px;background:var(--border,#e2e8f0);}
-.af-card{background:var(--bg,#fff);border-radius:16px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.05),0 4px 12px rgba(0,0,0,.03);border-left:4px solid #94a3b8;position:relative;animation:af-up .28s ease;}
-.af-card.unread{border-left-color:#2563eb;background:color-mix(in srgb,#2563eb 6%,var(--bg,#fff));}
-.af-card.unread::before{content:'●';position:absolute;top:14px;right:14px;color:#2563eb;font-size:10px;}
+.af-card{background:#FFFFFF;border-radius:16px;padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.06),0 1px 3px rgba(0,0,0,.05);border-left:4px solid #94a3b8;position:relative;animation:af-up .28s ease;}
+/* Category left-border — exact palette */
+.af-card.blue{border-left-color:#2563EB;}.af-card.orange{border-left-color:#F97316;}
+.af-card.green{border-left-color:#22C55E;}.af-card.purple{border-left-color:#A855F7;}
+.af-card.unread{background:#F8FBFF;}
+.af-card.unread::before{content:'●';position:absolute;top:14px;right:14px;color:#2563EB;font-size:10px;}
 .af-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:2px 10px;border-radius:40px;background:#f1f5f9;color:#475569;display:inline-block;margin-bottom:6px;}
-.af-badge.blue{background:#dbeafe;color:#1d4ed8;}.af-badge.orange{background:#ffedd5;color:#c2410c;}
-.af-badge.green{background:#dcfce7;color:#15803d;}.af-badge.purple{background:#f3e8ff;color:#7e22ce;}
+.af-badge.blue{background:#DBEAFE;color:#2563EB;}.af-badge.orange{background:#FFEDD5;color:#F97316;}
+.af-badge.green{background:#DCFCE7;color:#16A34A;}.af-badge.purple{background:#F3E8FF;color:#A855F7;}
 .af-title{font-size:14.5px;font-weight:600;color:var(--text,#0f172a);margin-bottom:3px;display:flex;align-items:center;gap:6px;}
 .af-desc{font-size:13.5px;color:var(--text-secondary,#334155);line-height:1.5;margin-bottom:3px;}
 .af-meta{font-size:11.5px;color:var(--text-secondary,#94a3b8);margin-top:5px;}

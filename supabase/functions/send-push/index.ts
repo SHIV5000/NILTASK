@@ -35,7 +35,9 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const m = body.record || body;
+    console.log('send-push invoked', JSON.stringify({ room: m?.room_id, sender: m?.sender_id, tenant: m?.tenant_id }));
     if (!m || !m.room_id || m.deleted_at) {
+      console.log('send-push skip: no room_id or deleted');
       return new Response('skip', { status: 200 });
     }
 
@@ -53,6 +55,7 @@ Deno.serve(async (req) => {
         .eq('tenant_id', tenantId).neq('id', senderId);
       recipientIds = (profs || []).map((p: { id: string }) => p.id);
     }
+    console.log('send-push recipients', recipientIds.length);
     if (!recipientIds.length) return new Response('no recipients', { status: 200 });
 
     const { data: sp } = await supabase
@@ -68,17 +71,23 @@ Deno.serve(async (req) => {
     const { data: subs } = await supabase
       .from('push_subscriptions').select('endpoint,subscription')
       .in('user_id', recipientIds);
+    console.log('send-push subscriptions', (subs || []).length);
 
+    let sent = 0, failed = 0;
     await Promise.all((subs || []).map(async (s: { endpoint: string; subscription: unknown }) => {
       try {
         await webpush.sendNotification(s.subscription as webpush.PushSubscription, payload);
+        sent++;
       } catch (e: any) {
+        failed++;
+        console.log('send-push send failed', e?.statusCode, e?.body || e?.message);
         // Expired/invalid subscription → remove it.
         if (e?.statusCode === 404 || e?.statusCode === 410) {
           await supabase.from('push_subscriptions').delete().eq('endpoint', s.endpoint);
         }
       }
     }));
+    console.log('send-push done', JSON.stringify({ sent, failed }));
 
     return new Response('ok', { status: 200 });
   } catch (e) {

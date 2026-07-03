@@ -347,16 +347,18 @@ function renderAdminMobile() {
     document.getElementById('adminRoot').innerHTML = `
     <div id="adminMobile">
       <div class="ma-bar">
-        <div class="ma-brand">
-          <div class="ma-school">${window.escapeHtml(schoolName)}</div>
-          <div class="ma-role">${window.escapeHtml(window.currentRoleName || 'Admin')} · ${window.escapeHtml(userName)}</div>
+        <div class="ma-bar-row">
+          <div class="ma-brand">
+            <div class="ma-school">${window.escapeHtml(schoolName)}</div>
+            <div class="ma-role">${window.escapeHtml(window.currentRoleName || 'Admin')} · ${window.escapeHtml(userName)}</div>
+          </div>
+          <button class="ma-ico" title="Toggle theme" onclick="window.toggleAdminTheme()"><i class="fa-solid fa-circle-half-stroke"></i></button>
+          <button class="ma-ico" title="Log out" onclick="window.logout?.()" style="color:#ef4444;"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
         </div>
         <div class="ma-seg">
           <button onclick="window.location.href='/?mode=chat'">💬 Chat</button>
           <button class="on">🛡 Admin</button>
         </div>
-        <button class="ma-ico" title="Toggle theme" onclick="window.toggleAdminTheme()"><i class="fa-solid fa-circle-half-stroke"></i></button>
-        <button class="ma-ico" title="Log out" onclick="window.logout?.()" style="color:#ef4444;"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
       </div>
 
       <div class="ma-body">

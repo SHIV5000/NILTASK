@@ -169,22 +169,24 @@
     @media (max-width:768px) {
       #adminMobile { display:flex; flex-direction:column; height:100vh; height:100dvh; background:var(--bg-body); }
 
-      /* App bar — extra headroom past the status bar / notch so nothing is clipped */
-      .ma-bar { display:flex; align-items:center; gap:8px;
-        padding:calc(16px + env(safe-area-inset-top,0px)) 12px 12px;
+      /* App bar — broad, two-row layout so everything fits at any width.
+         Row 1: school + role · user + theme/logout icons. Row 2: Chat/Admin toggle. */
+      .ma-bar { display:flex; flex-direction:column; gap:11px;
+        padding:calc(18px + env(safe-area-inset-top,0px)) 14px 14px;
         background:var(--bg-sidebar); border-bottom:1px solid var(--border-color); flex-shrink:0;
         position:sticky; top:0; z-index:5; }
+      .ma-bar-row { display:flex; align-items:center; gap:9px; }
       .ma-brand { flex:1; min-width:0; }
-      .ma-school { font-size:15px; font-weight:800; letter-spacing:-.01em; color:var(--text-primary); line-height:1.3;
+      .ma-school { font-size:17px; font-weight:800; letter-spacing:-.01em; color:var(--text-primary); line-height:1.3;
         white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-      .ma-role { font-size:11px; color:var(--accent); font-weight:700; letter-spacing:.03em; line-height:1.4;
+      .ma-role { font-size:11.5px; color:var(--accent); font-weight:700; letter-spacing:.03em; line-height:1.45;
         white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-      .ma-seg { display:flex; background:var(--bg-body); border:1px solid var(--border-color); border-radius:12px; padding:3px; gap:3px; flex-shrink:0; }
-      .ma-seg button { border:none; background:transparent; color:var(--text-secondary); font:inherit; font-size:11.5px; font-weight:700;
-        padding:7px 9px; border-radius:9px; cursor:pointer; white-space:nowrap; }
+      .ma-seg { display:flex; background:var(--bg-body); border:1px solid var(--border-color); border-radius:12px; padding:4px; gap:4px; }
+      .ma-seg button { flex:1; border:none; background:transparent; color:var(--text-secondary); font:inherit; font-size:13px; font-weight:700;
+        padding:9px 10px; border-radius:9px; cursor:pointer; white-space:nowrap; }
       .ma-seg button.on { background:var(--accent); color:#fff; box-shadow:0 1px 3px rgba(99,102,241,.4); }
-      .ma-ico { width:34px; height:34px; border-radius:11px; border:1px solid var(--border-color); background:var(--bg-body);
-        color:var(--text-secondary); font-size:14px; display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer; }
+      .ma-ico { width:38px; height:38px; border-radius:12px; border:1px solid var(--border-color); background:var(--bg-body);
+        color:var(--text-secondary); font-size:15px; display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer; }
 
       /* Scroll body + panels */
       .ma-body { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; }

@@ -355,6 +355,8 @@ function renderAdminMobile() {
           <button onclick="window.location.href='/?mode=chat'">💬 Chat</button>
           <button class="on">🛡 Admin</button>
         </div>
+        <button class="ma-ico" title="Toggle theme" onclick="window.toggleAdminTheme()"><i class="fa-solid fa-circle-half-stroke"></i></button>
+        <button class="ma-ico" title="Log out" onclick="window.logout?.()" style="color:#ef4444;"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
       </div>
 
       <div class="ma-body">
@@ -379,11 +381,6 @@ function renderAdminMobile() {
             ${qa('roles','🛡','rgba(22,163,74,.12)','#15803d','Roles','Permissions · PDF')}
             ${qa('scores','🏆','rgba(245,158,11,.14)','#b45309','Scorecard','Performance')}
             ${qa('tags','🏷','rgba(14,165,233,.12)','#0369a1','Text Tags','Reaction chips')}
-          </div>
-          <div class="ma-seclbl" style="margin-top:6px;">Account</div>
-          <div class="ma-acct">
-            <button class="ma-acct-btn" onclick="window.toggleAdminTheme()"><i class="fa-solid fa-circle-half-stroke"></i> Toggle theme</button>
-            <button class="ma-acct-btn danger" onclick="window.logout?.()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Log out</button>
           </div>
         </section>
 

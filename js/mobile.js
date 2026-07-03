@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v44';
+const _MOB_VER = 'v45';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -818,6 +818,7 @@ async function _activity() {
             ? `<button class="af-btn primary" ${data}>📂 View Task</button>`
             : `<button class="af-btn primary" ${data}>🚀 Open</button>`) : '';
         return `<div class="af-card ${it.cls} ${n.is_read?'':'unread'}" ${data}>
+            <button class="af-clear" data-action="afClear" data-nid="${n.id}" title="Clear"><i class="fa-solid fa-xmark"></i></button>
             <span class="af-badge ${it.cls}">${it.badge}</span>
             <div class="af-title">${x(_snip(n.message,70))}</div>
             <div class="af-meta"><i class="fa-regular fa-clock"></i> ${_ago(n.created_at)} · ${_fmtDateTime(n.created_at)}</div>
@@ -831,21 +832,30 @@ async function _activity() {
       : `<div class="af-empty"><div class="em">🚀</div><div class="t">All caught up!</div>
            <div style="margin-top:6px;">${filter==='all' ? 'Your activity will appear here when teammates chat, assign tasks, or reminders fire.' : 'No activity matches this filter.'}</div></div>`;
 
+    const hasAny = (notifs||[]).length > 0;
     return `<div class="mScr-inner">
       <div class="m-hdr m-hdr-plain" style="display:flex;align-items:center;justify-content:space-between;">
         <div class="m-htitle">🔔 Activity ${unread?`<span style="background:#2563eb;color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:30px;margin-left:6px;vertical-align:middle;">${unread} new</span>`:''}</div>
-        ${unread?`<button class="m-hdr-action" data-action="markAllRead" title="Mark all read"><i class="fa-solid fa-check-double"></i></button>`:''}
+        <div style="display:flex;gap:6px;">
+          ${unread?`<button class="m-hdr-action" data-action="markAllRead" title="Mark all read"><i class="fa-solid fa-check-double"></i></button>`:''}
+          ${hasAny?`<button class="m-hdr-action" data-action="afClearAll" title="Clear all"><i class="fa-solid fa-trash-can"></i></button>`:''}
+        </div>
       </div>
-      <div class="af-filters">
-        ${pills.map(([k,l])=>`<button class="af-pill ${filter===k?'active':''}" data-action="afFilter" data-f="${k}">${l}</button>`).join('')}
+      <div class="af-filters af-selrow">
+        <select class="af-select" data-action="afFilterSel" onchange="window._mobAfFilter(this.value)">
+          ${pills.map(([k,l])=>`<option value="${k}" ${filter===k?'selected':''}>${l}</option>`).join('')}
+        </select>
+        <select class="af-select" data-action="afSenderSel" onchange="window._mobAfSender(this.value)" ${senders.length?'':'disabled'}>
+          <option value="" ${senderFilter?'':'selected'}>👥 Everyone</option>
+          ${senders.map(s=>`<option value="${x(s)}" ${senderFilter===s?'selected':''}>${x(s)}</option>`).join('')}
+        </select>
       </div>
-      ${senders.length ? `<div class="af-filters af-senders">
-        <button class="af-pill sm ${senderFilter?'':'active'}" data-action="afSender" data-s="">👥 Everyone</button>
-        ${senders.map(s=>`<button class="af-pill sm ${senderFilter===s?'active':''}" data-action="afSender" data-s="${x(s)}">${x(s.split(' ')[0])}</button>`).join('')}
-      </div>` : ''}
       <div class="af-feed">${feed}</div>
     </div>`;
 }
+window._mobRerenderActivity = () => _render('activity', null, 'forward');
+window._mobAfFilter = function(v){ window._afFilter = v; window._afSender = ''; window._mobRerenderActivity(); };
+window._mobAfSender = function(v){ window._afSender = v || ''; window._mobRerenderActivity(); };
 
 async function _runInlineSearch(q) {
     const box = _el('mSBResults');
@@ -2195,6 +2205,19 @@ async function _onShellClick(e) {
         case 'goToTaskNotif': await _goToTask(a.tid); break;
         case 'afFilter': window._afFilter = a.f; window._afSender = ''; await _render('activity', null, 'forward'); break;
         case 'afSender': window._afSender = a.s || ''; await _render('activity', null, 'forward'); break;
+        case 'afClear': {
+            try { await sb.from('notifications').delete().eq('id',a.nid).eq('user_id',_uid); } catch(e){}
+            await _refreshNotifBadge();
+            await _render('activity', null, 'forward');
+            break;
+        }
+        case 'afClearAll': {
+            try { await sb.from('notifications').delete().eq('user_id',_uid).eq('tenant_id',_tid); } catch(e){}
+            _clearBellBadge();
+            await _refreshNotifBadge();
+            await _render('activity', null, 'forward');
+            break;
+        }
         case 'markAllRead': {
             try {
                 await sb.from('notifications').update({ is_read:true })
@@ -3255,6 +3278,16 @@ function _injectCSS(){
 .af-pill.active{background:#1e293b;color:#fff;}
 .af-senders{padding-top:0;border-bottom:1px solid var(--border,#eef1f5);}
 .af-pill.sm{font-size:12px;padding:5px 12px;background:var(--surface,#eef2f7);}
+.af-selrow{gap:10px;}
+.af-select{flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--text,#0f172a);
+  background:#fff;border:1px solid var(--border,#e2e8f0);border-radius:10px;padding:8px 10px;cursor:pointer;
+  -webkit-appearance:none;appearance:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat:no-repeat;background-position:right 10px center;padding-right:28px;}
+.af-select:disabled{opacity:.5;}
+.af-clear{position:absolute;top:10px;right:10px;width:26px;height:26px;border-radius:50%;border:none;
+  background:rgba(148,163,184,.14);color:#64748b;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2;}
+.af-clear:active{background:rgba(148,163,184,.3);}
 .af-feed{padding:12px 14px 90px;display:flex;flex-direction:column;gap:14px;background:#F8FAFC;min-height:100%;}
 .af-div{display:flex;align-items:center;gap:10px;margin:2px 0;}
 .af-div span{font-size:11.5px;font-weight:700;color:var(--text-secondary,#64748b);background:var(--surface,#f1f5f9);padding:3px 12px;border-radius:30px;}
@@ -3264,7 +3297,7 @@ function _injectCSS(){
 .af-card.blue{border-left-color:#2563EB;}.af-card.orange{border-left-color:#F97316;}
 .af-card.green{border-left-color:#22C55E;}.af-card.purple{border-left-color:#A855F7;}
 .af-card.unread{background:#F8FBFF;}
-.af-card.unread::before{content:'●';position:absolute;top:14px;right:14px;color:#2563EB;font-size:10px;}
+.af-card.unread::before{content:'●';position:absolute;top:15px;right:44px;color:#2563EB;font-size:9px;}
 .af-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:2px 10px;border-radius:40px;background:#f1f5f9;color:#475569;display:inline-block;margin-bottom:6px;}
 .af-badge.blue{background:#DBEAFE;color:#2563EB;}.af-badge.orange{background:#FFEDD5;color:#F97316;}
 .af-badge.green{background:#DCFCE7;color:#16A34A;}.af-badge.purple{background:#F3E8FF;color:#A855F7;}

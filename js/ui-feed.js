@@ -42,6 +42,19 @@ const _AF_PAL = {
     reminders: { hex:'#22C55E', bg:'#DCFCE7', badge:'⏰ Reminder',  label:'Reminders' },
     system:    { hex:'#A855F7', bg:'#F3E8FF', badge:'🛠 System',    label:'System' },
 };
+// Locally-dismissed non-notification feed items (raw messages / task trails),
+// which have no per-user deletable row — hidden client-side per tenant+user.
+function _afDismissKey() { return 'af_dismissed_' + (window.currentTenantId||'') + '_' + (window.currentUser?.id||''); }
+function _afGetDismissed() {
+    try { return JSON.parse(localStorage.getItem(_afDismissKey()) || '[]'); } catch(e) { return []; }
+}
+function _afAddDismissed(id) {
+    try {
+        const s = new Set(_afGetDismissed()); s.add(id);
+        localStorage.setItem(_afDismissKey(), JSON.stringify([...s].slice(-500)));
+    } catch(e) {}
+}
+
 // Map a raw notification/trail type to a feed category.
 function _afCat(type) {
     if (type==='task' || (type||'').startsWith('task_')) return 'tasks';
@@ -72,12 +85,14 @@ function _afCard(it) {
     const btn = it.click
         ? '<button ' + (it.click ? 'onclick="event.stopPropagation();' + it.click + '"' : '') + ' style="margin-top:10px;padding:5px 14px;border-radius:40px;font-size:11.5px;font-weight:600;border:none;cursor:pointer;background:' + p.hex + ';color:#fff;">' + (it.cat==='tasks'?'📂 View Task':'🚀 Open') + '</button>'
         : '';
+    const clr = '<button onclick="event.stopPropagation();window._webClearActivityItem(\'' + it.src + '\',\'' + String(it.id).replace(/'/g,"\\'") + '\')" title="Clear" style="position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:50%;border:none;background:rgba(148,163,184,.16);color:#64748b;font-size:11px;cursor:pointer;line-height:1;z-index:2;">✕</button>';
     return '<div' + click
         + 'background:#FFFFFF;border-radius:14px;padding:13px 14px;margin-bottom:11px;position:relative;'
         + 'border-left:4px solid ' + p.hex + ';box-shadow:0 1px 2px rgba(0,0,0,.06),0 1px 3px rgba(0,0,0,.05);'
         + (it.unread ? 'background:#F8FBFF;' : '') + '">'
+        + clr
         + '<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:2px 10px;border-radius:40px;background:' + p.bg + ';color:' + p.hex + ';display:inline-block;margin-bottom:6px;">' + p.badge + '</span>'
-        + (it.unread ? '<span style="position:absolute;top:13px;right:14px;width:7px;height:7px;border-radius:50%;background:' + p.hex + ';"></span>' : '')
+        + (it.unread ? '<span style="position:absolute;top:13px;right:40px;width:7px;height:7px;border-radius:50%;background:' + p.hex + ';"></span>' : '')
         + '<div style="font-size:13.5px;font-weight:600;color:var(--text-primary);line-height:1.4;">' + _esc(it.title) + '</div>'
         + (it.sender ? '<div style="font-size:11.5px;color:var(--text-secondary);margin-top:2px;">by ' + _esc(it.sender) + '</div>' : '')
         + '<div style="font-size:11px;color:var(--text-secondary);margin-top:5px;"><i class="fa-regular fa-clock"></i> ' + _feedTimeAgo(it.ts) + ' · ' + _afDateTime(it.ts) + '</div>'
@@ -201,26 +216,31 @@ window._loadActivityFeed = async function() {
         return fn ? fn.charAt(0).toUpperCase() + fn.slice(1) : '';
     };
 
+    // Locally-dismissed (non-notification) item ids
+    const dismissed = new Set(_afGetDismissed());
+
     // ── Normalize all three sources into a single card shape ──
     const items = [];
     filteredMsgs.forEach(m => {
+        if (dismissed.has('msg:'+m.id)) return;
         const mine = m.sender_id === myId;
         const nm  = mine ? 'You' : nameOf(m.profiles, '');
         const rm  = (window.getRoomDisplayName && window.getRoomDisplayName(m.room_id)) || m.room_id || '';
         const tx  = _strip(m.text).substring(0,90) || 'Attachment';
         items.push({
-            cat:'chats', ts:m.created_at, unread:false, sender:nm,
+            id:'msg:'+m.id, src:'local', cat:'chats', ts:m.created_at, unread:false, sender:nm,
             title:(m.parent_message_id?'Reply':'Message') + ' in ' + rm + ' — ' + tx,
             click:"window.goToMessage&&window.goToMessage('" + m.id + "',null,'" + m.room_id + "')"
         });
     });
     (r2.data||[]).forEach(tr => {
+        if (dismissed.has('trail:'+tr.id)) return;
         const nm  = nameOf(tr.profiles, 'Staff');
         const ttl = (tr.tasks && tr.tasks.title) || 'Task';
         const act = tr.action || 'update';
         const actLabel = ({ created:'assigned', accepted:'completed', submitted:'submitted', update:'updated', delegate:'delegated', transfer:'transferred', review:'reviewed' })[act] || act;
         items.push({
-            cat:'tasks', ts:tr.created_at, unread:false, sender:nm,
+            id:'trail:'+tr.id, src:'local', cat:'tasks', ts:tr.created_at, unread:false, sender:nm,
             title:'Task ' + actLabel + ': ' + ttl,
             click: tr.task_id ? "window.goToTask&&window.goToTask('" + tr.task_id + "')" : ''
         });
@@ -233,11 +253,13 @@ window._loadActivityFeed = async function() {
                 ? "window.goToMessage&&window.goToMessage('" + n.message_id + "',null,null)"
                 : '';
         items.push({
-            cat, ts:n.created_at, unread:!n.is_read, sender:'',
-            title:_strip(n.message||'').substring(0,120), click, _sid:n.message_id
+            id:n.id, src:'notif', cat, ts:n.created_at, unread:!n.is_read, sender:'',
+            title:_strip(n.message||'').substring(0,120), click
         });
     });
     items.sort((a,b) => new Date(b.ts) - new Date(a.ts));
+    // Track loaded local (non-notification) ids so Clear-all can dismiss them.
+    window._afLocalShown = items.filter(it => it.src === 'local').map(it => it.id);
 
     // Update bell badge to reflect actual unread count
     const unreadCount = (r3.data||[]).filter(n => !n.is_read).length;
@@ -250,17 +272,15 @@ window._loadActivityFeed = async function() {
     const senders = [...new Set(shown.map(it=>it.sender).filter(s=>s && s!=='You'))].sort();
     if (senderFilter) shown = shown.filter(it => it.sender === senderFilter);
 
-    const pills = [['all','All'],['chats','💬 Chats'],['tasks','📋 Tasks'],['reminders','⏰ Reminders'],['system','🛠 System']];
-    const pillBtn = (k,l) => '<button onclick="window._webSetAfFilter(\'' + k + '\')" style="padding:5px 13px;border-radius:40px;font-size:12px;font-weight:600;white-space:nowrap;border:none;cursor:pointer;flex-shrink:0;'
-        + (filter===k ? 'background:#1e293b;color:#fff;' : 'background:var(--bg-body);color:var(--text-secondary);') + '">' + l + '</button>';
-    const senderBtn = (s,l,active) => '<button onclick="window._webSetAfSender(\'' + _esc(s).replace(/'/g,"\\'") + '\')" style="padding:4px 11px;border-radius:40px;font-size:11.5px;font-weight:600;white-space:nowrap;border:none;cursor:pointer;flex-shrink:0;'
-        + (active ? 'background:#2563EB;color:#fff;' : 'background:var(--bg-body);color:var(--text-secondary);') + '">' + _esc(l) + '</button>';
+    const pills = [['all','All types'],['chats','💬 Chats'],['tasks','📋 Tasks'],['reminders','⏰ Reminders'],['system','🛠 System']];
+    const selStyle = 'flex:1;min-width:0;font-size:12.5px;font-weight:600;color:var(--text-primary);background:var(--bg-body);border:1px solid var(--border-color);border-radius:9px;padding:7px 9px;cursor:pointer;';
+    const typeSel = '<select onchange="window._webSetAfFilter(this.value)" style="' + selStyle + '">'
+        + pills.map(p=>'<option value="' + p[0] + '"' + (filter===p[0]?' selected':'') + '>' + p[1] + '</option>').join('') + '</select>';
+    const userSel = '<select onchange="window._webSetAfSender(this.value)"' + (senders.length?'':' disabled') + ' style="' + selStyle + '">'
+        + '<option value=""' + (senderFilter?'':' selected') + '>👥 Everyone</option>'
+        + senders.map(s=>'<option value="' + _esc(s) + '"' + (senderFilter===s?' selected':'') + '>' + _esc(s) + '</option>').join('') + '</select>';
 
-    const filtersHtml =
-        '<div style="display:flex;gap:7px;overflow-x:auto;padding:4px 2px 10px;scrollbar-width:none;">' + pills.map(p=>pillBtn(p[0],p[1])).join('') + '</div>'
-        + (senders.length ? '<div style="display:flex;gap:6px;overflow-x:auto;padding:0 2px 10px;scrollbar-width:none;">'
-            + senderBtn('','👥 Everyone',!senderFilter)
-            + senders.map(s=>senderBtn(s, s.split(' ')[0], senderFilter===s)).join('') + '</div>' : '');
+    const filtersHtml = '<div style="display:flex;gap:8px;padding:2px 2px 12px;">' + typeSel + userSel + '</div>';
 
     if (!shown.length) {
         list.innerHTML = filtersHtml
@@ -285,6 +305,16 @@ window._loadActivityFeed = async function() {
 
 window._webSetAfFilter = function(f) { window._webAfFilter = f; window._webAfSender = ''; window._loadActivityFeed(); };
 window._webSetAfSender = function(s) { window._webAfSender = s || ''; window._loadActivityFeed(); };
+
+// Clear a single card: delete the notification row, or dismiss a raw item locally.
+window._webClearActivityItem = async function(src, id) {
+    if (src === 'notif') {
+        try { await sb.from('notifications').delete().eq('id', id).eq('user_id', window.currentUser?.id); } catch(e){}
+    } else {
+        _afAddDismissed(id);
+    }
+    window._loadActivityFeed();
+};
 
 // Real-time: a new notification arrived — re-render the card feed so the new
 // item slots into the correct date group / filter with the card styling.
@@ -311,6 +341,12 @@ window.refreshActivityFeed = async function() {
 window._clearAllActivity = async function() {
     if (!confirm('Clear all activity?')) return;
     await sb.from('notifications').delete().eq('user_id', window.currentUser.id);
+    // Also dismiss every currently-loaded raw (message/trail) item so the feed empties.
+    try {
+        const cur = new Set(_afGetDismissed());
+        (window._afLocalShown || []).forEach(id => cur.add(id));
+        localStorage.setItem(_afDismissKey(), JSON.stringify([...cur].slice(-500)));
+    } catch(e) {}
     await window._loadActivityFeed();
 };
 

@@ -179,10 +179,13 @@
       /* No viewport-fit:cover — the webview keeps content BELOW the status bar,
          so a normal top padding is all that's needed and nothing renders behind
          the status bar (single clean layer). */
+      /* Header owns the top row: opaque, above content, never shrinks. The
+         content region (.ma-body) is a separate flex row BELOW it, so the
+         Trial banner and cards can never paint over the bar. */
       .ma-bar { display:flex; flex-direction:column; gap:11px;
         padding:14px 14px;
-        background:var(--bg-sidebar); border-bottom:1px solid var(--border-color); flex-shrink:0;
-        position:sticky; top:0; z-index:5; }
+        background:var(--bg-sidebar); border-bottom:1px solid var(--border-color);
+        flex:0 0 auto; position:relative; z-index:10; }
       .ma-bar-row { display:flex; align-items:center; gap:9px; }
       .ma-brand { flex:1; min-width:0; }
       .ma-school { font-size:17px; font-weight:800; letter-spacing:-.01em; color:var(--text-primary); line-height:1.3;
@@ -197,7 +200,7 @@
         color:var(--text-secondary); font-size:15px; display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer; }
 
       /* Scroll body + panels */
-      .ma-body { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+      .ma-body { flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; position:relative; z-index:1; }
       .ma-panel { display:flex; flex-direction:column; gap:13px; padding:14px 13px 96px; }
       .ma-seclbl { font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--text-secondary); }
 

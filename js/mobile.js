@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v59';
+const _MOB_VER = 'v61';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -169,9 +169,39 @@ async function _flushOfflineQueue() {
     else console.log('[mob-offline] '+failed.length+' items still pending');
 }
 
+// iOS fix: #mobileApp is position:fixed;inset:0, so when the soft keyboard opens
+// iOS does NOT shrink the fixed element — the bottom composer ends up hidden behind
+// the keyboard and the input feels unusable. The visualViewport API reports the
+// actually-visible region; pin the app to it so the composer stays above the keyboard.
+let _kbApplyRaf = 0;
+function _initKeyboardHandling() {
+    const vv = window.visualViewport;
+    const app = _el('mobileApp');
+    if (!vv || !app) return;
+    const apply = () => {
+        _kbApplyRaf = 0;
+        app.style.top = vv.offsetTop + 'px';
+        app.style.height = vv.height + 'px';
+        app.style.bottom = 'auto';
+    };
+    const schedule = () => { if (!_kbApplyRaf) _kbApplyRaf = requestAnimationFrame(apply); };
+    vv.addEventListener('resize', schedule);
+    vv.addEventListener('scroll', schedule);
+    // Keep the focused composer in view when it gains focus (keyboard opening).
+    app.addEventListener('focusin', e => {
+        if (!e.target.closest?.('.m-ce, .m-inp, input, textarea')) return;
+        setTimeout(() => { try { e.target.scrollIntoView({ block:'center', behavior:'smooth' }); } catch {} }, 250);
+    });
+    apply();
+}
+
 window.initMobileApp = async function() {
     if (window.innerWidth > MOB) return;
-    if (!window.__erudaLoaded) {
+    // Eruda is a heavy debug console (~100KB from CDN). Load it ONLY when explicitly
+    // debugging (?debug in the URL or localStorage.mobDebug='1') so it no longer taxes
+    // every production launch.
+    const _wantDebug = /[?&]debug\b/.test(location.search) || localStorage.getItem('mobDebug') === '1';
+    if (_wantDebug && !window.__erudaLoaded) {
         window.__erudaLoaded = true;
         const s = document.createElement('script');
         s.src = 'https://cdn.jsdelivr.net/npm/eruda';
@@ -182,6 +212,7 @@ window.initMobileApp = async function() {
     try { document.documentElement.removeAttribute('data-theme'); } catch (e) {}  // mobile = light only
     _injectCSS();
     _buildShell();
+    _initKeyboardHandling();
     await _ctx();
     // Principals/admins get a toggle to the Admin Panel (permission known after _ctx).
     if (window.currentPermissions?.admin_panel) _el('mSBAdmin')?.style.setProperty('display','flex');
@@ -223,6 +254,32 @@ function _loadRoomCache(roomId) {
 function _loadReactionsCache() {
     try { return JSON.parse(_lsGet('mob_reactions')||'{}'); } catch { return {}; }
 }
+// Users-list cache (tenant staff) so the home/DM list paints instantly on launch
+// instead of waiting for the profiles round-trip. Base64 avatars are stripped to
+// stay well under the localStorage quota; avatars fill in when the background
+// refresh completes.
+function _saveUsersCache(tid, users) {
+    if (!tid || !users?.length) return;
+    try {
+        const slim = users.map(({ avatar_url, ...rest }) => rest);
+        localStorage.setItem('mob_users_'+tid, JSON.stringify(slim));
+    } catch {}
+}
+function _loadUsersCache(tid) {
+    try { return JSON.parse(localStorage.getItem('mob_users_'+tid)||'null'); } catch { return null; }
+}
+async function _refreshUsers(tid) {
+    try {
+        const { data } = await sb.from('profiles').select('*').eq('tenant_id',tid).is('deleted_at',null);
+        if (data?.length) {
+            _users = data;
+            window.globalUsersCache = _users;
+            _saveUsersCache(tid, _users);
+            const top = _stack[_stack.length-1];
+            if (top?.screen === 'home') { try { _render('home', top.params, 'forward'); } catch {} }
+        }
+    } catch {}
+}
 function _saveReactionEntry(msgId, value, type, userId, isDelete) {
     try {
         const cache = _loadReactionsCache();
@@ -259,12 +316,22 @@ async function _ctx() {
             } catch { /* offline — _tid stays null */ }
         }
         if (_tid && !_usersLoaded && !_users.length) {
-            try {
-                const { data } = await sb.from('profiles').select('*').eq('tenant_id',_tid).is('deleted_at',null);
-                _users = data || [];
+            // Cache-first: if we have a persisted staff list, use it immediately so the
+            // first paint is instant, and refresh from the network in the background.
+            const cached = _loadUsersCache(_tid);
+            if (cached?.length) {
+                _users = cached;
                 window.globalUsersCache = _users;
-            } catch {
-                _users = window.globalUsersCache || [];
+                _refreshUsers(_tid);   // fire-and-forget hydrate (adds avatars, latest names)
+            } else {
+                try {
+                    const { data } = await sb.from('profiles').select('*').eq('tenant_id',_tid).is('deleted_at',null);
+                    _users = data || [];
+                    window.globalUsersCache = _users;
+                    _saveUsersCache(_tid, _users);
+                } catch {
+                    _users = window.globalUsersCache || [];
+                }
             }
         }
     }
@@ -277,37 +344,51 @@ async function _ctx() {
     // Pull the tenant's admin-configured quick-reply tags so they show in the
     // reaction/insert menus on this device too (DB → localStorage).
     window.syncQuickTags?.();
+
+    // These four lookups are independent of each other — run them in PARALLEL
+    // instead of four serial awaits so startup does one round-trip's worth of
+    // waiting, not four.
+    const _tasks = [];
+
     // Detect orphaned tenant (tenant_id with no tenants row) once, so group
     // creation surfaces a clear message instead of a raw FK error. Skipped if the
     // web auth flow already set the flag.
     if (window._tenantOrphaned === undefined && _tid) {
-        try {
-            const { data: t } = await sb.from('tenants').select('id').eq('id', _tid).maybeSingle();
-            window._tenantOrphaned = !t;
-        } catch { /* network error — leave undefined, don't block */ }
+        _tasks.push((async () => {
+            try {
+                const { data: t } = await sb.from('tenants').select('id').eq('id', _tid).maybeSingle();
+                window._tenantOrphaned = !t;
+            } catch { /* network error — leave undefined, don't block */ }
+        })());
     }
     // Load RBAC role if not already set by web auth flow
     if (_tid && _uid && !window.currentRole) {
-        try {
-            const { data: ur } = await sb.from('user_roles')
-                .select('*, role:roles(name, display_name, permissions)')
-                .eq('user_id', _uid).eq('tenant_id', _tid).single();
-            if (ur?.role?.name) window.currentRole = ur.role.name;
-            if (ur?.role?.display_name) window.currentRoleName = ur.role.display_name;
-            if (ur?.role?.permissions) window.currentPermissions = ur.role.permissions;
-        } catch {}
+        _tasks.push((async () => {
+            try {
+                const { data: ur } = await sb.from('user_roles')
+                    .select('*, role:roles(name, display_name, permissions)')
+                    .eq('user_id', _uid).eq('tenant_id', _tid).single();
+                if (ur?.role?.name) window.currentRole = ur.role.name;
+                if (ur?.role?.display_name) window.currentRoleName = ur.role.display_name;
+                if (ur?.role?.permissions) window.currentPermissions = ur.role.permissions;
+            } catch {}
+        })());
     }
     // Load all user roles for role badge display
     if (_tid) {
-        try {
-            const { data: allRoles } = await sb.from('user_roles')
-                .select('user_id, role:roles(name)').eq('tenant_id', _tid);
-            _userRoles = {};
-            (allRoles||[]).forEach(r => { if (r.role?.name) _userRoles[r.user_id] = r.role.name; });
-        } catch {}
+        _tasks.push((async () => {
+            try {
+                const { data: allRoles } = await sb.from('user_roles')
+                    .select('user_id, role:roles(name)').eq('tenant_id', _tid);
+                _userRoles = {};
+                (allRoles||[]).forEach(r => { if (r.role?.name) _userRoles[r.user_id] = r.role.name; });
+            } catch {}
+        })());
     }
     // Sync room names from DB → localStorage → DEPTS; also collect custom groups
-    await _syncRoomSettings();
+    _tasks.push(_syncRoomSettings());
+
+    await Promise.all(_tasks);
 }
 
 // Fetch room_settings from DB, sync names/colors to localStorage, and rebuild _customGroups.

@@ -368,6 +368,19 @@
 </div>
 
 <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+<script>
+// Self-healing service worker: force an update check on open and reload once a
+// new worker takes control, so the admin panel never gets stuck on a cached build.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js')
+    .then(reg => { try { reg.update(); } catch (e) {} })
+    .catch(() => {});
+  let _swReloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (_swReloaded) return; _swReloaded = true; window.location.reload();
+  });
+}
+</script>
 <script type="module" src="./js/shared.js"></script>
 <script type="module" src="./js/auth.js"></script>
 <script type="module" src="./js/admin.js"></script>

@@ -2,7 +2,7 @@
  * TaskFlow Service Worker — enables PWA install prompt on Android/Chrome
  * Caches core app shell for offline-capable experience
  */
-const CACHE   = 'taskflow-v56';
+const CACHE   = 'taskflow-v57';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -176,21 +176,25 @@ self.addEventListener('fetch', e => {
   if (e.request.url.includes('supabase.co')) return;
   if (e.request.url.includes('googleapis.com')) return;
 
-  // Navigation requests: network first, then cached index.html (full app), then offline.html
+  // Navigation requests: always go to network (bypass HTTP cache) so a fresh
+  // build is never masked by a stale disk-cached HTML; fall back to cache offline.
   if (e.request.mode === 'navigate') {
     e.respondWith(
-      fetch(e.request)
-        .catch(() => caches.match('/index.html'))
+      fetch(e.request, { cache: 'no-store' })
+        .catch(() => caches.match(e.request))
+        .then(r => r || caches.match('/index.html'))
         .then(r => r || caches.match('/offline.html'))
     );
     return;
   }
 
+  // JS/CSS: network-first with HTTP cache bypassed, so code updates land
+  // immediately instead of being served stale from the browser disk cache.
+  const isCode = e.request.url.includes('/css/') || e.request.url.includes('/js/');
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, isCode ? { cache: 'no-store' } : undefined)
       .then(res => {
-        // Cache successful responses for static assets
-        if (res.ok && (e.request.url.includes('/css/') || e.request.url.includes('/js/'))) {
+        if (res.ok && isCode) {
           const clone = res.clone();
           caches.open(CACHE).then(c => c.put(e.request, clone));
         }

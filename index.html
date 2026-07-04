@@ -116,8 +116,14 @@ window.addEventListener('unhandledrejection', function(event) {
 // ── Service Worker registration ───────────────────────────
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js')
-    .then(() => {})
+    .then(reg => { try { reg.update(); } catch (e) {} })
     .catch(() => {});
+  // When a new service worker takes control, reload once so the fresh
+  // HTML/JS is used immediately (self-heals stuck cached builds).
+  let _swReloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (_swReloaded) return; _swReloaded = true; window.location.reload();
+  });
 }
 
 // ── Android/Chrome: capture install prompt ────────────────

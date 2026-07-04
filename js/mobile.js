@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v61';
+const _MOB_VER = 'v63';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -220,6 +220,8 @@ window.initMobileApp = async function() {
     _initRealtime();
     // Deep-link: open a specific chat from a push tap (?room=…) or SW message.
     _openRoomFromUrl();
+    // Web Share Target: content shared into the app from the OS share sheet.
+    _handleShareTarget();
     try {
         navigator.serviceWorker?.addEventListener('message', (e) => {
             if (e.data?.type === 'open-room' && e.data.room) _openRoomByRoom(e.data.room);
@@ -2186,19 +2188,21 @@ async function _confirmReminder(mid) {
     window._closeSheet();
     _toast('Reminder set ✓ ⏰');
 }
-function _showForwardSheet(text) {
+function _showForwardSheet(text, opts={}) {
+    const title  = opts.title  || 'Forward to…';
+    const action = opts.action || 'doForward';
     const sheet = _el('mSheetInner');
     const others = _users.filter(u=>u.id!==_uid);
     sheet.innerHTML = `
       <div class="m-sheet-handle"></div>
-      <div class="m-sheet-title">Forward to…</div>
+      <div class="m-sheet-title">${x(title)}</div>
       <div style="max-height:50vh;overflow-y:auto;padding:0 8px 16px;">
         ${_customGroups.map(d=>`
-          <div class="m-sheet-row" data-action="doForward" data-room="${d.id}" data-text="${x(text)}">
+          <div class="m-sheet-row" data-action="${action}" data-room="${d.id}" data-text="${x(text)}">
             <span class="m-av sq" style="width:30px;height:30px;font-size:13px;background:${d.col};">${(d.name||'?')[0]}</span> ${x(d.name)}
           </div>`).join('')}
         ${others.map(u=>`
-          <div class="m-sheet-row" data-action="doForward" data-room="${_dmRoom(u.id)}" data-text="${x(text)}">
+          <div class="m-sheet-row" data-action="${action}" data-room="${_dmRoom(u.id)}" data-text="${x(text)}">
             <span class="m-av" style="width:30px;height:30px;font-size:12px;background:var(--accent);">${_init(u.full_name||u.email)}</span> ${x(u.full_name||u.email)}
           </div>`).join('')}
       </div>`;
@@ -2467,6 +2471,7 @@ async function _onSheetClick(e) {
         case 'confirmReminder': await _confirmReminder(a.id); break;
         case 'forwardMsg':  _showForwardSheet(a.text); break;
         case 'doForward':   await _doForward(a.room, a.text); break;
+        case 'doShareFull': await _doShareFull(a.room); break;
         case 'confirmSchedule': await _confirmSchedule(a.target, a.room); break;
         case 'bookmarkMsg': {
             const bms = JSON.parse(_lsGet('tf_bookmarks_'+_uid)||'[]');
@@ -3119,6 +3124,75 @@ async function _doForward(room, text) {
     });
     _toast(error ? 'Forward failed' : 'Message forwarded ✓', error?'err':'ok');
 }
+// Send content shared INTO the app from the OS share sheet (text and/or files),
+// as a normal message in the chosen room. Files upload to the same private bucket
+// the composer's paperclip uses, and are linked with the secure-file scheme.
+async function _doShareFull(room) {
+    window._closeSheet();
+    const pending = _pendingShare; _pendingShare = null;
+    if (!pending) { _toast('Nothing to share','err'); return; }
+    if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }
+    const { text = '', files = [] } = pending;
+    let html = '';
+    if (text) html += `<p>${x(text)}</p>`;
+    if (files.length) _toast('Uploading…');
+    for (const f of files) {
+        const safeName = (f.name || 'file').replace(/[^a-zA-Z0-9.\-_]/g,'_');
+        const filePath = `chat/${_tid}/${Date.now()}_${safeName}`;
+        const { error: upErr } = await sb.storage.from('task-proofs').upload(filePath, f);
+        if (upErr) { _toast('Upload failed: '+upErr.message,'err'); continue; }
+        html += `<p><a href="https://secure-file.local/${filePath}">📎 ${x(f.name||'file')}</a></p>`;
+    }
+    if (!html) { _toast('Nothing to share','err'); return; }
+    const { error } = await sb.from('messages').insert({
+        room_id:room, tenant_id:_tid, sender_id:_uid, text:html, created_at:new Date().toISOString()
+    });
+    _toast(error ? 'Share failed' : 'Shared ✓', error?'err':'ok');
+}
+// Web Share Target: when the user picks this app from another app's share sheet,
+// the service worker stashes the shared text + files and redirects here with
+// ?sharetarget=1. Read them, then let the user pick a chat to send them into.
+let _pendingShare = null;
+async function _handleShareTarget() {
+    try {
+        const q = new URLSearchParams(location.search);
+
+        // POST path (text and/or files) — read from the SW's share-inbox cache.
+        if (q.get('sharetarget') === '1') {
+            history.replaceState({}, '', location.pathname);
+            const cache = await caches.open('share-inbox');
+            const metaRes = await cache.match('/__share-meta');
+            const meta = metaRes ? await metaRes.json() : { title:'', text:'', url:'', count:0 };
+            const files = [];
+            for (let i = 0; i < (meta.count || 0); i++) {
+                const r = await cache.match('/__share-file-' + i);
+                if (!r) continue;
+                const blob = await r.blob();
+                const name = decodeURIComponent(r.headers.get('X-Name') || ('file-' + i));
+                files.push(new File([blob], name, { type: blob.type || 'application/octet-stream' }));
+            }
+            for (const k of await cache.keys()) await cache.delete(k);   // consume once
+            const text = [meta.title, meta.text, meta.url].filter(Boolean).join('\n').trim();
+            if (!text && !files.length) return false;
+            _pendingShare = { text, files };
+            const label = text || (files.length === 1 ? files[0].name : `${files.length} files`);
+            _showForwardSheet(label, { title:'Share to…', action:'doShareFull' });
+            return true;
+        }
+
+        // Legacy GET path (text/url only) — kept as a fallback.
+        const title = q.get('share_title') || '';
+        const text  = q.get('share_text')  || '';
+        const url   = q.get('share_url')   || '';
+        if (!title && !text && !url) return false;
+        history.replaceState({}, '', location.pathname);
+        const shared = [title, text, url].filter(Boolean).join('\n').trim();
+        if (!shared) return false;
+        _pendingShare = { text: shared, files: [] };
+        _showForwardSheet(shared, { title:'Share to…', action:'doShareFull' });
+        return true;
+    } catch (e) { return false; }
+}
 
 async function _mobTaskAction(taskId, action) {
     const { data: taskData } = await sb.from('tasks').select('*').eq('id',taskId).single();
@@ -3365,7 +3439,7 @@ function _injectCSS(){
   color:#fff;font-weight:700;font-size:10.5px;flex-shrink:0;}
 .m-bubble-row.snt{justify-content:flex-end;}
 .m-bubble-row.rcv{justify-content:flex-start;}
-.m-bubble{max-width:98%;padding:11px 14px;border-radius:12px;position:relative;
+.m-bubble{flex:1;min-width:0;max-width:100%;padding:12px 15px 13px;border-radius:14px;position:relative;
   font-size:16px;line-height:1.5;word-break:break-word;
   background:var(--card-bg,#fff);box-shadow:var(--card-shadow,0 2px 8px rgba(0,0,0,.07));
   border:1px solid var(--border-color,#e5e7eb);

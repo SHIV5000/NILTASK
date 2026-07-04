@@ -2,7 +2,7 @@
  * TaskFlow Service Worker — enables PWA install prompt on Android/Chrome
  * Caches core app shell for offline-capable experience
  */
-const CACHE   = 'taskflow-v62';
+const CACHE   = 'taskflow-v63';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -41,7 +41,8 @@ self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
       .then(keys => Promise.all(
-        keys.filter(k => k !== CACHE).map(k => caches.delete(k))
+        // Keep the share-inbox (holds files mid-share-hand-off); drop old app caches.
+        keys.filter(k => k !== CACHE && k !== 'share-inbox').map(k => caches.delete(k))
       ))
       .then(() => self.clients.claim())
   );
@@ -171,6 +172,40 @@ self.addEventListener('notificationclick', e => {
 
 // Fetch — network first, cache fallback
 self.addEventListener('fetch', e => {
+  // Web Share Target (POST): the OS share sheet posts shared text + files here.
+  // Stash them in a Cache the page can read, then redirect into the app so it can
+  // let the user pick a chat to send them into.
+  if (e.request.method === 'POST' && new URL(e.request.url).pathname === '/share-target') {
+    e.respondWith((async () => {
+      try {
+        const form  = await e.request.formData();
+        const title = form.get('share_title') || '';
+        const text  = form.get('share_text')  || '';
+        const url   = form.get('share_url')   || '';
+        const files = form.getAll('share_files') || [];
+        const cache = await caches.open('share-inbox');
+        for (const k of await cache.keys()) await cache.delete(k);   // clear any prior share
+        await cache.put('/__share-meta', new Response(
+          JSON.stringify({ title, text, url, count: files.length }),
+          { headers: { 'Content-Type': 'application/json' } }
+        ));
+        let i = 0;
+        for (const f of files) {
+          if (!f || typeof f === 'string') continue;
+          await cache.put('/__share-file-' + i, new Response(f, {
+            headers: {
+              'Content-Type': f.type || 'application/octet-stream',
+              'X-Name': encodeURIComponent(f.name || ('file-' + i))
+            }
+          }));
+          i++;
+        }
+      } catch (err) { /* fall through to the app anyway */ }
+      return Response.redirect('/?sharetarget=1', 303);
+    })());
+    return;
+  }
+
   // Only handle GET, skip Supabase API calls and external CDNs
   if (e.request.method !== 'GET') return;
   if (e.request.url.includes('supabase.co')) return;

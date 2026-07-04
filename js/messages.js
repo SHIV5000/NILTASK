@@ -134,8 +134,10 @@ window.sendMessage = async function() {
             const snippetText = window.getSnippet ? window.getSnippet(text) : text.replace(/<[^>]*>/g,'').substring(0,50);
             const escapedSnippet = snippetText.replace(/'/g,"\\'").replace(/"/g,'&quot;');
 
-            // Apply link-pill and secure-file transforms so the message renders correctly
-            let displayHtml = text.replace(
+            // Apply link-pill and secure-file transforms so the message renders correctly.
+            // _autoLinkWeb() first so bare URLs the sender typed are masked + clickable
+            // here too (not just in the recipient's render) — matches renderMessages.
+            let displayHtml = _autoLinkWeb(text).replace(
                 /<a\s+href="https:\/\/secure-file\.local\/([^"]+)"[^>]*>([^<]*)<\/a>/g,
                 (match, path, anchorText) => {
                     const ext = (path.split('.').pop()||'').toLowerCase().split('?')[0];
@@ -159,11 +161,12 @@ window.sendMessage = async function() {
                         const sepIdx  = decoded.indexOf('|||');
                         const name    = sepIdx > -1 ? decoded.substring(0, sepIdx) : (anchorText||decoded);
                         const url     = sepIdx > -1 ? decoded.substring(sepIdx+3) : decoded;
-                        const isFile  = /\.(pdf|doc|docx|xlsx|xls|ppt|pptx|zip|rar|png|jpg|jpeg|gif|mp4|mp3)$/i.test(url.split('?')[0]);
-                        const label   = isFile ? 'Click to Download' : 'Click to Visit';
-                        const icon    = isFile ? 'fa-download' : 'fa-arrow-up-right-from-square';
                         const safeUrl = url.replace(/'/g,'%27');
-                        return `<a href="javascript:void(0);" onclick="window.open('${safeUrl}','_blank')" title="${url}" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;text-decoration:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,0.35);white-space:nowrap;vertical-align:middle;"><i class="fa-solid ${icon}" style="font-size:9px;"></i><span>${name}</span><span style="font-size:9px;opacity:0.75;border-left:1px solid rgba(255,255,255,0.35);padding-left:7px;margin-left:3px;">${label}</span></a>`;
+                        if (/\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test(url.split('?')[0])) {
+                            return `<div style="margin:4px 0;cursor:pointer;" onclick="window.open('${safeUrl}','_blank')"><img src="${url}" alt="image" loading="lazy" style="max-width:260px;max-height:240px;border-radius:12px;display:block;object-fit:cover;border:1px solid rgba(0,0,0,.08);"></div>`;
+                        }
+                        const shown = name && name !== url ? name : 'Link';
+                        return `<a href="javascript:void(0);" onclick="window.open('${safeUrl}','_blank')" title="${url}" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:700;text-decoration:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,0.35);white-space:nowrap;vertical-align:middle;"><i class="fa-solid fa-link" style="font-size:10px;"></i><span>${shown}</span><span style="font-size:9px;opacity:0.8;border-left:1px solid rgba(255,255,255,0.35);padding-left:7px;margin-left:3px;">Click to open</span></a>`;
                     } catch(e) { return match; }
                 }
             );

@@ -95,7 +95,12 @@ window.toSentenceCase = function(str) {
 window.getISTTime = function(ts) {
     if (!ts) return '';
     try {
-        return new Date(ts).toLocaleString('en-IN', {
+        // Treat a timezone-less DB timestamp as UTC (append Z) so it converts to IST
+        // correctly on ANY device timezone. Without this, an IST browser parses the
+        // naive UTC value as local time and shows it 5.5h behind.
+        const norm = (typeof ts === 'string' && ts.indexOf('Z') === -1 && !/[+-]\d\d:?\d\d$/.test(ts))
+            ? ts.replace(' ', 'T') + 'Z' : ts;
+        return new Date(norm).toLocaleString('en-IN', {
             day: '2-digit', month: 'short',
             hour: '2-digit', minute: '2-digit',
             hour12: true, timeZone: 'Asia/Kolkata'

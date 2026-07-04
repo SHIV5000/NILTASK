@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v65';
+const _MOB_VER = 'v66';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -284,28 +284,42 @@ function _loadReactionsCache() {
     try { return JSON.parse(_lsGet('mob_reactions')||'{}'); } catch { return {}; }
 }
 // Users-list cache (tenant staff) so the home/DM list paints instantly on launch
-// instead of waiting for the profiles round-trip. Base64 avatars are stripped to
-// stay well under the localStorage quota; avatars fill in when the background
-// refresh completes.
+// instead of waiting for the profiles round-trip. We cache WITH avatars so the first
+// paint is complete and the background refresh usually finds no change → no second
+// re-render (no flash). If the payload is too big for the quota, retry without avatars.
 function _saveUsersCache(tid, users) {
     if (!tid || !users?.length) return;
     try {
-        const slim = users.map(({ avatar_url, ...rest }) => rest);
-        localStorage.setItem('mob_users_'+tid, JSON.stringify(slim));
-    } catch {}
+        localStorage.setItem('mob_users_'+tid, JSON.stringify(users));
+    } catch {
+        try {
+            const slim = users.map(({ avatar_url, ...rest }) => rest);
+            localStorage.setItem('mob_users_'+tid, JSON.stringify(slim));
+        } catch {}
+    }
 }
 function _loadUsersCache(tid) {
     try { return JSON.parse(localStorage.getItem('mob_users_'+tid)||'null'); } catch { return null; }
 }
+// Cheap signature of what the home/DM list actually shows, so we only re-render when
+// something visible changed (new/removed staff, renamed, avatar added/changed).
+function _usersSig(list) {
+    return (list||[]).map(u => u.id+'|'+(u.full_name||'')+'|'+(u.designation||'')+'|'+(u.avatar_url?'a':'')).sort().join(',');
+}
 async function _refreshUsers(tid) {
     try {
+        const before = _usersSig(_users);
         const { data } = await sb.from('profiles').select('*').eq('tenant_id',tid).is('deleted_at',null);
         if (data?.length) {
             _users = data;
             window.globalUsersCache = _users;
             _saveUsersCache(tid, _users);
-            const top = _stack[_stack.length-1];
-            if (top?.screen === 'home') { try { _render('home', top.params, 'forward'); } catch {} }
+            // Only re-render if the visible data actually changed — avoids the launch
+            // "flash twice" when the cached list already matches the server.
+            if (_usersSig(data) !== before) {
+                const top = _stack[_stack.length-1];
+                if (top?.screen === 'home') { try { _render('home', top.params, 'forward'); } catch {} }
+            }
         }
     } catch {}
 }
@@ -1328,6 +1342,7 @@ async function _groupChat(p) {
       <div class="m-msgs" id="mMsgArea">
         ${shellMsgs.length ? (()=>{ const sr=_loadReactionsCache(); const rmap=_replyMapCache[p.room]||{}; return shellMsgs.map(m=>_bubbleHTML(m,sr,140,rmap,p)).join(''); })() : '<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">' + (cached ? 'No messages yet.' : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…') + '</div>'}
       </div>
+      <button class="m-scrollfab m-scrollfab-top" id="mScrollTopFab" style="display:none;" onclick="document.getElementById('mMsgArea').scrollTo({top:0,behavior:'smooth'})"><i class="fa-solid fa-chevron-up"></i></button>
       <button class="m-scrollfab" id="mScrollFab" style="display:none;" onclick="document.getElementById('mMsgArea').scrollTo({top:9e9,behavior:'smooth'})"><i class="fa-solid fa-chevron-down"></i></button>
       <div class="m-typing-area" id="mTypingArea"></div>
       ${_composerHTML('mGCE', `Message ${p.name||''}…`, 'sendGroup', `data-room="${p.room}" data-name="${x(p.name)}" data-color="${p.color||''}"`)}
@@ -1427,6 +1442,7 @@ async function _dm(p) {
       <div class="m-msgs" id="mDMArea">
         ${shellMsgs.length ? (()=>{ const sr=_loadReactionsCache(); const rmap=_replyMapCache[p.room]||{}; return shellMsgs.map(m=>_bubbleHTML(m,sr,160,rmap,p)).join(''); })() : `<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">${cached ? `Start a conversation with ${x(p.name)}` : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…'}</div>`}
       </div>
+      <button class="m-scrollfab m-scrollfab-top" id="mScrollTopFab" style="display:none;" onclick="document.getElementById('mDMArea').scrollTo({top:0,behavior:'smooth'})"><i class="fa-solid fa-chevron-up"></i></button>
       <button class="m-scrollfab" id="mScrollFab" style="display:none;" onclick="document.getElementById('mDMArea').scrollTo({top:9e9,behavior:'smooth'})"><i class="fa-solid fa-chevron-down"></i></button>
       <div class="m-typing-area" id="mTypingArea"></div>
       ${_composerHTML('mDCE', `Message ${p.name||''}…`, 'sendDM', `data-room="${p.room}" data-uid="${p.uid||''}" data-name="${x(p.name)}"`)}
@@ -2990,16 +3006,28 @@ function _wireScreen(screen, params, container) {
         if (area) {
             if (!params?.scrollTo) setTimeout(() => { area.scrollTop = area.scrollHeight; }, 80);
             const room = params?.room;
-            if (area) area.addEventListener('scroll', () => {
+            const topFab = _el('mScrollTopFab');
+            const _updateFabs = () => {
+                const nearBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 150;
+                const nearTop = area.scrollTop < 150;
+                const scrollable = area.scrollHeight - area.clientHeight > 240;
+                // Down arrow: visible whenever scrolled up from the bottom.
                 if (fab) {
-                    const nearBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 150;
                     if (nearBottom) { fab.style.display = 'none'; _scrollFabCount = 0; fab.innerHTML = '<i class="fa-solid fa-chevron-down"></i>'; }
+                    else if (scrollable) { fab.style.display = 'flex'; }
                 }
+                // Up arrow: visible whenever scrolled down from the top.
+                if (topFab) topFab.style.display = (!nearTop && scrollable) ? 'flex' : 'none';
+            };
+            if (area) area.addEventListener('scroll', () => {
+                _updateFabs();
                 // Load older messages when scrolled near the top (group + DM only)
                 if (room && (screen === 'groupChat' || screen === 'dm') && area.scrollTop < 60) {
                     _loadOlderMessages(areaId, room, screen);
                 }
             }, { passive:true });
+            // Reflect the initial position (e.g. when jumped to a mid-history message).
+            setTimeout(_updateFabs, 120);
         }
     }
     if (screen === 'taskDetail') {
@@ -3373,10 +3401,17 @@ function _avatarHTML(photoUrl, name, bg, cls='m-av') {
         `onerror="this.parentElement.innerHTML='${initials.replace(/'/g,"&#39;")}';this.parentElement.style.overflow='';"></div>`;
 }
 function _sentenceCase(s){ s=(s||'').trim(); return s ? s[0].toUpperCase()+s.slice(1).toLowerCase() : s; }
+// Normalize a DB timestamp to an unambiguous UTC instant: append Z when there is no
+// timezone marker, and use 'T' (Safari rejects the space form). Makes IST conversion
+// correct on ANY device timezone.
+function _normTs(ts) {
+    if (typeof ts !== 'string') return ts;
+    const hasTz = ts.indexOf('Z') !== -1 || /[+-]\d\d:?\d\d$/.test(ts);
+    return hasTz ? ts.replace(' ', 'T') : ts.replace(' ', 'T') + 'Z';
+}
 function _fmtIST(ts, withTime=true) {
     if (!ts) return '';
-    const utc = (ts.indexOf('Z')===-1 && ts.indexOf('+')===-1) ? ts+'Z' : ts;
-    const d = new Date(utc);
+    const d = new Date(_normTs(ts));
     if (isNaN(d)) return '';
     const opts = { day:'2-digit', month:'short', year:'2-digit', timeZone:'Asia/Kolkata' };
     if (withTime) { opts.hour = '2-digit'; opts.minute = '2-digit'; opts.hour12 = true; }
@@ -3389,7 +3424,7 @@ const _istFmt12 = new Intl.DateTimeFormat('en-IN',{hour:'2-digit',minute:'2-digi
 const _istFmtDate = new Intl.DateTimeFormat('en-IN',{day:'2-digit',month:'short',timeZone:'Asia/Kolkata'});
 function _ago(ts){
     if(!ts) return '';
-    const utc = (ts.indexOf('Z')===-1 && ts.indexOf('+')===-1) ? ts+'Z' : ts;
+    const utc = _normTs(ts);
     const d=(Date.now()-new Date(utc))/1000;
     const result = d<60 ? 'just now' : d<3600 ? Math.floor(d/60)+'m ago'
         : d<86400 ? Math.floor(d/3600)+'h ago'
@@ -3586,6 +3621,7 @@ function _injectCSS(){
   display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:20;
   -webkit-tap-highlight-color:transparent;}
 .m-scrollfab:active{opacity:.8;}
+.m-scrollfab-top{bottom:124px;}
 
 .m-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
 .m-reply-count{font-size:11.5px;font-weight:700;color:var(--accent,#6366f1);margin-top:6px;cursor:pointer;

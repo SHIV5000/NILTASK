@@ -552,7 +552,7 @@ function renderScoreCards(staff) {
                 <span style="font-size:19px;font-weight:900;color:${barColor};font-variant-numeric:tabular-nums;">${s.score!==null?s.score+'%':'—'}</span>
                 <span style="font-size:11px;color:var(--text-secondary);">overall</span>
               </div>
-              <div class="ma-bar"><i style="width:${Math.min(100,pct)}%;background:${barColor};"></i></div>
+              <div class="ma-pbar"><i style="width:${Math.min(100,pct)}%;background:${barColor};"></i></div>
             </div>
             <button class="ma-kebab" onclick='window.downloadStaffScorecard(${JSON.stringify(s).replace(/'/g,"&#39;")})' title="Download card"><i class="fa-solid fa-download"></i></button>
           </div>

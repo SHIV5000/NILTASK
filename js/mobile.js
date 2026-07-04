@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v61';
+const _MOB_VER = 'v62';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -220,6 +220,8 @@ window.initMobileApp = async function() {
     _initRealtime();
     // Deep-link: open a specific chat from a push tap (?room=…) or SW message.
     _openRoomFromUrl();
+    // Web Share Target: content shared into the app from the OS share sheet.
+    _handleShareTarget();
     try {
         navigator.serviceWorker?.addEventListener('message', (e) => {
             if (e.data?.type === 'open-room' && e.data.room) _openRoomByRoom(e.data.room);
@@ -2186,19 +2188,21 @@ async function _confirmReminder(mid) {
     window._closeSheet();
     _toast('Reminder set ✓ ⏰');
 }
-function _showForwardSheet(text) {
+function _showForwardSheet(text, opts={}) {
+    const title  = opts.title  || 'Forward to…';
+    const action = opts.action || 'doForward';
     const sheet = _el('mSheetInner');
     const others = _users.filter(u=>u.id!==_uid);
     sheet.innerHTML = `
       <div class="m-sheet-handle"></div>
-      <div class="m-sheet-title">Forward to…</div>
+      <div class="m-sheet-title">${x(title)}</div>
       <div style="max-height:50vh;overflow-y:auto;padding:0 8px 16px;">
         ${_customGroups.map(d=>`
-          <div class="m-sheet-row" data-action="doForward" data-room="${d.id}" data-text="${x(text)}">
+          <div class="m-sheet-row" data-action="${action}" data-room="${d.id}" data-text="${x(text)}">
             <span class="m-av sq" style="width:30px;height:30px;font-size:13px;background:${d.col};">${(d.name||'?')[0]}</span> ${x(d.name)}
           </div>`).join('')}
         ${others.map(u=>`
-          <div class="m-sheet-row" data-action="doForward" data-room="${_dmRoom(u.id)}" data-text="${x(text)}">
+          <div class="m-sheet-row" data-action="${action}" data-room="${_dmRoom(u.id)}" data-text="${x(text)}">
             <span class="m-av" style="width:30px;height:30px;font-size:12px;background:var(--accent);">${_init(u.full_name||u.email)}</span> ${x(u.full_name||u.email)}
           </div>`).join('')}
       </div>`;
@@ -2467,6 +2471,7 @@ async function _onSheetClick(e) {
         case 'confirmReminder': await _confirmReminder(a.id); break;
         case 'forwardMsg':  _showForwardSheet(a.text); break;
         case 'doForward':   await _doForward(a.room, a.text); break;
+        case 'doShareSend': await _doShareSend(a.room, a.text); break;
         case 'confirmSchedule': await _confirmSchedule(a.target, a.room); break;
         case 'bookmarkMsg': {
             const bms = JSON.parse(_lsGet('tf_bookmarks_'+_uid)||'[]');
@@ -3119,6 +3124,32 @@ async function _doForward(room, text) {
     });
     _toast(error ? 'Forward failed' : 'Message forwarded ✓', error?'err':'ok');
 }
+// Send content shared INTO the app from the OS share sheet, as a normal message.
+async function _doShareSend(room, text) {
+    window._closeSheet();
+    if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }
+    const { error } = await sb.from('messages').insert({
+        room_id:room, tenant_id:_tid, sender_id:_uid, text:`<p>${x(text)}</p>`, created_at:new Date().toISOString()
+    });
+    _toast(error ? 'Share failed' : 'Shared ✓', error?'err':'ok');
+}
+// Web Share Target: when the user picks this app from another app's share sheet,
+// the manifest routes here with ?share_title/?share_text/?share_url. Compose the
+// shared content and let the user pick a chat to send it into.
+function _handleShareTarget() {
+    try {
+        const q = new URLSearchParams(location.search);
+        const title = q.get('share_title') || '';
+        const text  = q.get('share_text')  || '';
+        const url   = q.get('share_url')   || '';
+        if (!title && !text && !url) return false;
+        history.replaceState({}, '', location.pathname);  // clear so back/refresh doesn't re-trigger
+        const shared = [title, text, url].filter(Boolean).join('\n').trim();
+        if (!shared) return false;
+        _showForwardSheet(shared, { title:'Share to…', action:'doShareSend' });
+        return true;
+    } catch (e) { return false; }
+}
 
 async function _mobTaskAction(taskId, action) {
     const { data: taskData } = await sb.from('tasks').select('*').eq('id',taskId).single();
@@ -3365,7 +3396,7 @@ function _injectCSS(){
   color:#fff;font-weight:700;font-size:10.5px;flex-shrink:0;}
 .m-bubble-row.snt{justify-content:flex-end;}
 .m-bubble-row.rcv{justify-content:flex-start;}
-.m-bubble{max-width:98%;padding:11px 14px;border-radius:12px;position:relative;
+.m-bubble{flex:1;min-width:0;max-width:100%;padding:12px 15px 13px;border-radius:14px;position:relative;
   font-size:16px;line-height:1.5;word-break:break-word;
   background:var(--card-bg,#fff);box-shadow:var(--card-shadow,0 2px 8px rgba(0,0,0,.07));
   border:1px solid var(--border-color,#e5e7eb);

@@ -12,7 +12,8 @@ function _autoLinkWeb(html) {
         return seg.replace(/(https?:\/\/[^\s<]+)/gi, (u) => {
             const mt = u.match(/^(.*?)([.,!?;:)\]]*)$/);
             const url = mt[1], tail = mt[2] || '';
-            return `<a href="https://link-pill.local/${encodeURIComponent(url + '|||' + url)}">${url}</a>${tail}`;
+            // Masked — the raw URL is hidden; renders as "Link · Click to open" (images preview).
+            return `<a href="https://link-pill.local/${encodeURIComponent('Link' + '|||' + url)}">Link</a>${tail}`;
         });
     }).join('');
 }
@@ -471,6 +472,15 @@ window.renderMessages = function(messages) {
             /<a\s+href="https:\/\/secure-file\.local\/([^"]+)"[^>]*>([^<]*)<\/a>/g,
             (match, path, anchorText) => {
                 const ext = (path.split('.').pop() || '').toLowerCase().split('?')[0];
+                // WhatsApp-style inline thumbnail for image attachments. Private-bucket
+                // signed URLs are async, so render a placeholder <img data-imgpath> and
+                // hydrate it after render (_hydrateSecureImages). Tap opens the full file.
+                if (['png','jpg','jpeg','gif','webp','bmp'].includes(ext)) {
+                    const safePath = path.replace(/'/g, '%27');
+                    return `<div style="margin:4px 0;cursor:pointer;" onclick="window.openSecureFile('${safePath}')">
+                        <img data-imgpath="${path.replace(/"/g,'%22')}" alt="image" loading="lazy"
+                            style="max-width:260px;max-height:240px;min-width:120px;min-height:90px;border-radius:12px;display:block;object-fit:cover;background:#f1f5f9;border:1px solid rgba(0,0,0,.08);"></div>`;
+                }
                 const nameRaw = anchorText.replace(/^📁\s*/, '').trim();
                 const sizeMatch = nameRaw.match(/\(([^)]+)\)$/);
                 const sizePart = sizeMatch ? sizeMatch[1] : '';
@@ -514,19 +524,21 @@ window.renderMessages = function(messages) {
                     const sepIdx  = decoded.indexOf('|||');
                     const name    = sepIdx > -1 ? decoded.substring(0, sepIdx) : (anchorText || decoded);
                     const url     = sepIdx > -1 ? decoded.substring(sepIdx + 3) : decoded;
-                    // Detect file vs web link
-                    const fileExts = /\.(pdf|doc|docx|xlsx|xls|ppt|pptx|zip|rar|png|jpg|jpeg|gif|mp4|mp3)$/i;
-                    const isFile   = fileExts.test(url.split('?')[0]);
-                    const label    = isFile ? 'Click to Download' : 'Click to Visit';
-                    const icon     = isFile ? 'fa-download' : 'fa-arrow-up-right-from-square';
-                    const safeUrl  = url.replace(/'/g, '%27');
+                    const safeUrl = url.replace(/'/g, '%27');
+                    // Image URL → inline preview; otherwise a masked "Link · Click to open" pill.
+                    if (/\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test(url.split('?')[0])) {
+                        return `<div style="margin:4px 0;cursor:pointer;" onclick="window.open('${safeUrl}','_blank')">
+                            <img src="${url}" alt="image" loading="lazy"
+                                style="max-width:260px;max-height:240px;border-radius:12px;display:block;object-fit:cover;border:1px solid rgba(0,0,0,.08);"></div>`;
+                    }
+                    const shown = name && name !== url ? name : 'Link';
                     return `<a href="javascript:void(0);"
                         onclick="window.open('${safeUrl}','_blank')"
                         title="${url}"
-                        style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;text-decoration:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,0.35);white-space:nowrap;vertical-align:middle;">
-                        <i class="fa-solid ${icon}" style="font-size:9px;"></i>
-                        <span>${name}</span>
-                        <span style="font-size:9px;opacity:0.75;border-left:1px solid rgba(255,255,255,0.35);padding-left:7px;margin-left:3px;">${label}</span>
+                        style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:700;text-decoration:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,0.35);white-space:nowrap;vertical-align:middle;">
+                        <i class="fa-solid fa-link" style="font-size:10px;"></i>
+                        <span>${shown}</span>
+                        <span style="font-size:9px;opacity:0.8;border-left:1px solid rgba(255,255,255,0.35);padding-left:7px;margin-left:3px;">Click to open</span>
                     </a>`;
                 } catch(e) {
                     return match; // fallback to original if decode fails
@@ -678,6 +690,23 @@ window.renderMessages = function(messages) {
     c.innerHTML = htmlParts.join('');
     if (mc2) requestAnimationFrame(() => mc2.classList.remove('no-anim'));
     if (typeof window.applyRBAC === 'function') window.applyRBAC();
+    window._hydrateSecureImages(c);
+};
+
+// Fill secure-file image thumbnails with signed URLs (private bucket) after render.
+window._hydrateSecureImages = async function(root) {
+    root = root || document.getElementById('messagesContainer');
+    if (!root) return;
+    const imgs = root.querySelectorAll('img[data-imgpath]:not([data-hydrated])');
+    for (const img of imgs) {
+        img.dataset.hydrated = '1';
+        const path = img.getAttribute('data-imgpath');
+        if (!path) continue;
+        try {
+            const { data } = await sb.storage.from('task-proofs').createSignedUrl(path, 3600);
+            if (data?.signedUrl) img.src = data.signedUrl;
+        } catch (e) {}
+    }
 };
 
 // ─── REACTION PICKER (body-appended, fixed position, never clipped) ──────────

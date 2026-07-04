@@ -167,7 +167,12 @@
     /* ══ MOBILE ADMIN APP SHELL (≤768px) ═══════════════════════════ */
     #adminMobile { display:none; }
     @media (max-width:768px) {
-      #adminMobile { display:flex; flex-direction:column; height:100vh; height:100dvh; background:var(--bg-body); }
+      /* Full-screen fixed overlay — mirrors the chat app's #mobileApp shell,
+         which renders correctly under the status bar on Android PWAs. Pinning
+         to the (status-bar-excluded) layout viewport keeps the top bar visible
+         instead of drawing behind the status bar. */
+      #adminMobile { position:fixed; inset:0; display:flex; flex-direction:column;
+        overflow:hidden; background:var(--bg-body); z-index:1; }
 
       /* App bar — broad, two-row layout so everything fits at any width.
          Row 1: school + role · user + theme/logout icons. Row 2: Chat/Admin toggle. */

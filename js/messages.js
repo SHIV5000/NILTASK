@@ -3,6 +3,20 @@ import logger from './utils/logger.js';
 
 // v1.58.0 - Edit/Forward/Delete, Reply+Reaction notifications, Broadcast reactions
 
+// Turn bare http(s):// URLs into link-pill anchors so posted naked links render as
+// clickable buttons — without touching URLs already inside an <a> tag.
+function _autoLinkWeb(html) {
+    if (!html) return html;
+    return html.split(/(<a\b[^>]*>[\s\S]*?<\/a>)/gi).map(seg => {
+        if (/^<a\b/i.test(seg)) return seg;
+        return seg.replace(/(https?:\/\/[^\s<]+)/gi, (u) => {
+            const mt = u.match(/^(.*?)([.,!?;:)\]]*)$/);
+            const url = mt[1], tail = mt[2] || '';
+            return `<a href="https://link-pill.local/${encodeURIComponent(url + '|||' + url)}">${url}</a>${tail}`;
+        });
+    }).join('');
+}
+
 window.sendMessage = async function() {
     // Check trial expiry
     if (window._trialExpired) {
@@ -13,17 +27,7 @@ window.sendMessage = async function() {
     text = text.replace(/^(<p><br><\/p>)+|(<p><br><\/p>)+$/g, '');
     if (!text) return;
 
-    // Block bare URL pasting — use the Link button instead
-    // Only block if no Quill-managed links already present in the HTML
-    const hasQuillLinks = text.includes('link-pill.local') || text.includes('secure-file.local') || text.includes('<a href=');
-    if (!hasQuillLinks) {
-        const plainText = window.stripHtml ? window.stripHtml(text) : text;
-        if (/https?:\/\/[^\s]{4,}/i.test(plainText)) {
-            window.showCenterToast('Please use the Link button to insert URLs', 'fa-solid fa-link', 'text-indigo-400');
-            return;
-        }
-    }
-
+    // Naked URLs are allowed — they are auto-linkified on render (see renderMessages).
     const sendBtn = document.getElementById('sendBtn');
     if (sendBtn) sendBtn.innerHTML = '<i class="ti ti-loader fa-spin text-lg"></i>';
 
@@ -461,8 +465,9 @@ window.renderMessages = function(messages) {
         const time = window.getISTTime(msg.created_at);
         const snippetText = window.getSnippet(msg.text);
 
-        // ── Transform secure-file links to styled file cards ────────────────────
-        let displayHtml = msg.text.replace(
+        // Auto-linkify bare URLs (posted as plain text) into link-pill anchors so they
+        // render as clickable buttons below — without touching existing <a> tags.
+        let displayHtml = _autoLinkWeb(msg.text).replace(
             /<a\s+href="https:\/\/secure-file\.local\/([^"]+)"[^>]*>([^<]*)<\/a>/g,
             (match, path, anchorText) => {
                 const ext = (path.split('.').pop() || '').toLowerCase().split('?')[0];

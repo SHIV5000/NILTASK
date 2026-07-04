@@ -223,6 +223,14 @@ window._toggleSearch = function() {
 };
 
 window.renderMainApp = async function() {
+    // On phones, hide the desktop #root BEFORE it paints — the mobile shell
+    // (mobile.js initMobileApp, called at the end of this function) builds its
+    // own UI. Without this, the full desktop chat renders first and flashes
+    // for a moment before the mobile layout takes over. Safe: this runs only
+    // post-login, so it never hides the login screen.
+    if (window.innerWidth <= 768) {
+        document.getElementById('root')?.style.setProperty('display', 'none', 'important');
+    }
     if (typeof window.applyTheme === 'function') window.applyTheme();
     const userNameDisplay = window.currentUser?.user_metadata?.full_name || window.currentUser?.email?.split('@')[0] || 'User';
 
@@ -302,7 +310,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.78.0 (v58) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.79.0 (v59) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 

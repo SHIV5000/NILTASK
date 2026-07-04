@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v64';
+const _MOB_VER = 'v65';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -1130,6 +1130,28 @@ function _bubbleHTML(m, reactionsMap, maxLen=150, replyMap={}, roomCtx={}) {
         </div>
       </div>`;
 }
+// WhatsApp-style file card for non-image attachments (icon + name + type). Takes the
+// tap-action attributes (openTaskFile/openFile) so it works for both bucket files and links.
+function _fileCardHTML(actionAttrs, name, ext) {
+    ext = (ext || '').toLowerCase().split('?')[0];
+    let icon='fa-file', col='#6b7280', label='File';
+    if (ext==='pdf'){icon='fa-file-pdf';col='#dc2626';label='PDF';}
+    else if (['doc','docx'].includes(ext)){icon='fa-file-word';col='#2563eb';label='Word';}
+    else if (['xls','xlsx','csv'].includes(ext)){icon='fa-file-excel';col='#16a34a';label='Excel';}
+    else if (['ppt','pptx'].includes(ext)){icon='fa-file-powerpoint';col='#ea580c';label='PowerPoint';}
+    else if (['zip','rar','7z'].includes(ext)){icon='fa-file-zipper';col='#7c3aed';label='Archive';}
+    else if (['mp4','mov','webm','mkv'].includes(ext)){icon='fa-file-video';col='#db2777';label='Video';}
+    else if (['mp3','wav','m4a','ogg'].includes(ext)){icon='fa-file-audio';col='#0891b2';label='Audio';}
+    else if (['txt','md'].includes(ext)){icon='fa-file-lines';col='#64748b';label='Text';}
+    return `<div class="m-file-card" ${actionAttrs} style="display:flex;align-items:center;gap:11px;background:var(--bg-sidebar,#f6f8fa);border:1px solid var(--border-color,#e5e7eb);border-radius:13px;padding:9px 11px;margin:4px 0;cursor:pointer;max-width:270px;">
+        <div style="width:40px;height:40px;border-radius:10px;background:${col}22;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="fa-solid ${icon}" style="color:${col};font-size:19px;"></i></div>
+        <div style="min-width:0;flex:1;">
+            <div style="font-size:13px;font-weight:700;color:var(--text-primary,#111);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${x(name)}</div>
+            <div style="font-size:10.5px;color:var(--text-secondary,#6b7280);font-weight:600;margin-top:1px;">${label} · Tap to open</div>
+        </div>
+        <i class="fa-solid fa-arrow-up-right-from-square" style="color:var(--text-secondary,#9ca3af);font-size:12px;flex-shrink:0;"></i>
+    </div>`;
+}
 // Turn bare http(s):// URLs (typed as plain text) into link-pill anchors so they
 // render as clickable pills / image previews — WITHOUT touching URLs already inside
 // an <a> tag (existing links, secure-file/link-pill schemes).
@@ -1140,7 +1162,9 @@ function _autoLink(html) {
         return seg.replace(/(https?:\/\/[^\s<]+)/gi, (u) => {
             const mt = u.match(/^(.*?)([.,!?;:)\]]*)$/);
             const url = mt[1], tail = mt[2] || '';
-            return `<a href="https://link-pill.local/${encodeURIComponent(url + '|||' + url)}">${url}</a>${tail}`;
+            // Masked label — the raw URL is hidden; the pill reads "Link · Click to open"
+            // (image URLs still render as a preview via the renderer's image branch).
+            return `<a href="https://link-pill.local/${encodeURIComponent('Link' + '|||' + url)}">Link</a>${tail}`;
         });
     }).join('');
 }
@@ -1163,9 +1187,8 @@ function _renderLinkPills(html) {
                         style="max-width:240px;max-height:230px;min-width:120px;min-height:84px;border-radius:12px;display:block;object-fit:cover;background:var(--bg-sidebar,#eef1f5);border:1px solid var(--border-color,#e5e7eb);">
                 </div>`;
             }
-            return `<button class="m-link-pill" data-action="openTaskFile" data-path="${p}"
-                style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;border:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,.35);white-space:nowrap;max-width:100%;overflow:hidden;">
-                <i class="fa-solid fa-paperclip" style="font-size:9px;flex-shrink:0;"></i><span style="overflow:hidden;text-overflow:ellipsis;">${x(name)}</span></button>`;
+            const ext = (clean.split('.').pop() || '');
+            return _fileCardHTML(`data-action="openTaskFile" data-path="${p}"`, name, ext);
         });
     return safe.replace(
         /<a\s+href="https:\/\/link-pill\.local\/([^"]+)"[^>]*>([^<]*)<\/a>/g,
@@ -1185,13 +1208,16 @@ function _renderLinkPills(html) {
                             onerror="this.parentElement.innerHTML='<button class=&quot;m-link-pill&quot; data-action=&quot;openFile&quot; data-url=&quot;${encodeURIComponent(safeUrl)}&quot; style=&quot;display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;border:none;cursor:pointer;&quot;><i class=&quot;fa-solid fa-image&quot; style=&quot;font-size:9px;&quot;></i><span>${x(name)}</span></button>'">
                     </div>`;
                 }
-                const isFile = fileExts.test(url.split('?')[0]);
-                const label  = isFile ? 'Download' : 'Visit';
-                const icon   = isFile ? 'fa-download' : 'fa-arrow-up-right-from-square';
+                // A file URL → rich file card; a plain web link → masked "Link · Click to open" pill.
+                if (fileExts.test(url.split('?')[0])) {
+                    const ext = (url.split('?')[0].split('.').pop() || '');
+                    return _fileCardHTML(`data-action="openFile" data-url="${encodeURIComponent(safeUrl)}"`, name || 'File', ext);
+                }
+                const shown = name && name !== url ? name : 'Link';
                 return `<button class="m-link-pill" data-action="openFile" data-url="${encodeURIComponent(safeUrl)}" title="${x(fixedUrl)}"
-                    style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;border:none;text-decoration:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,.35);white-space:nowrap;vertical-align:middle;max-width:100%;overflow:hidden;">
-                    <i class="fa-solid ${icon}" style="font-size:9px;flex-shrink:0;"></i><span style="overflow:hidden;text-overflow:ellipsis;">${x(name)}</span>
-                    <span style="font-size:9px;opacity:.75;border-left:1px solid rgba(255,255,255,.35);padding-left:7px;margin-left:3px;">${label}</span>
+                    style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:700;border:none;text-decoration:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,.35);white-space:nowrap;vertical-align:middle;max-width:100%;overflow:hidden;">
+                    <i class="fa-solid fa-link" style="font-size:10px;flex-shrink:0;"></i><span style="overflow:hidden;text-overflow:ellipsis;">${x(shown)}</span>
+                    <span style="font-size:9px;opacity:.8;border-left:1px solid rgba(255,255,255,.35);padding-left:7px;margin-left:3px;">Click to open</span>
                 </button>`;
             } catch(e) { return match; }
         }
@@ -1211,7 +1237,6 @@ function _composerHTML(ceId, placeholder, sendAction, sendData) {
       <div class="m-ce-wrap">
         ${showSchedule ? `<button class="m-cic" data-caction="schedule" data-target="${ceId}" ${expired?'disabled':''}><i class="fa-solid fa-clock"></i></button>` : ''}
         <div class="m-ce" id="${ceId}" contenteditable="${expired?'false':'true'}" data-placeholder="${x(expired ? 'Trial expired — contact developer to upgrade' : placeholder)}" style="${expired?'opacity:.5;':''}"></div>
-        <button class="m-cic" data-caction="link" data-target="${ceId}" ${expired?'disabled':''}><i class="fa-solid fa-link"></i></button>
         ${showUpload ? `<button class="m-cic" data-caction="attach" data-target="${ceId}" ${expired?'disabled':''}><i class="fa-solid fa-paperclip"></i></button>` : ''}
       </div>
       <button class="m-sendbtn" data-action="${sendAction}" data-target="${ceId}" ${sendData} ${expired?'disabled style="opacity:.4;"':''}>

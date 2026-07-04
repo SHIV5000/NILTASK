@@ -310,7 +310,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.84.0 (v64) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.85.0 (v65) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -391,7 +391,6 @@ window.renderMainApp = async function() {
                             <div class="flex-1 min-w-0 bg-transparent py-1">
                                 <div id="richEditor" class="w-full" style="color:var(--text-primary);"></div>
                             </div>
-                            <button onclick="window.openLinkModal('main')" class="p-2 transition-colors" title="Insert Link Pill" style="color:var(--text-secondary);"><i class="fa-solid fa-link text-[16px]"></i></button>
                             <button id="composerScheduleBtn" onclick="window.showScheduleModal()" class="p-2 transition-colors" title="Schedule" style="color:var(--text-secondary);"><i class="ti ti-clock text-xl"></i></button>
                             <button id="sendBtn" class="text-white rounded-lg shadow-md transition-colors h-[38px] w-[46px] flex items-center justify-center mb-0.5" style="background-color:var(--accent);"><i class="ti ti-send text-lg"></i></button>
                         </div>

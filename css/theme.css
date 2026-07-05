@@ -163,20 +163,21 @@
     --chat-pattern: none;
 }
 
-/* Ocean Teal — coastal green-blue */
+/* Ocean Teal RETIRED — the green palette tinted the whole UI + safe-area gutter.
+   Neutralized to the default light theme so any lingering saved value is harmless. */
 [data-theme="ocean-teal"] {
-    --bg-body: #ecfdf5;
-    --bg-sidebar: #f0fdfa;
-    --bg-chat: #d9f2e6;
-    --text-primary: #064e3b;
-    --text-secondary: #0d9488;
-    --accent: #0d9488;
-    --accent-hover: #0f766e;
-    --border-color: #a7f3d0;
-    --sent-bg: #d1f7e8;
+    --bg-body: #f0f2f5;
+    --bg-sidebar: #ffffff;
+    --bg-chat: #efeae2;
+    --text-primary: #111b21;
+    --text-secondary: #667781;
+    --accent: #4f46e5;
+    --accent-hover: #4338ca;
+    --border-color: #e9edef;
+    --sent-bg: #eef2ff;
     --received-bg: #ffffff;
     --card-bg: #ffffff;
-    --card-shadow: 0 2px 10px rgba(13,148,136,0.08);
+    --card-shadow: 0 2px 10px rgba(0,0,0,0.06);
     --accent-success: #16a34a;
     --accent-danger: #dc2626;
     --chat-pattern: none;

@@ -307,6 +307,11 @@ window.toggleThemePanel = function() {
 // ─── TOAST: Show a temporary centred notification toast ───────────────────────
 
 window.showCenterToast = function(msg, icon='fa-solid fa-check-circle', color='text-green-400') {
+    // On mobile, route to the single top toast so we never show two toasts at once.
+    if ((window.innerWidth <= 768) && window._mobToast) {
+        window._mobToast(window.stripHtml ? window.stripHtml(msg) : msg);
+        return;
+    }
     document.querySelectorAll('.center-toast').forEach(t => t.remove());
     const cleanMsg = window.stripHtml(msg);
     const t = document.createElement('div');

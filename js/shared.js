@@ -4,6 +4,10 @@ export const SUPABASE_URL = 'https://apfymygzwkzjhhgmtkaj.supabase.co';
 export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwZnlteWd6d2t6amhoZ210a2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5MjM5MTIsImV4cCI6MjA5NjQ5OTkxMn0.RiV6kDDeSq5ZIP68RGwtpLtqPALFloq23owoNm2aA-c';
 export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Single source of truth for the running build — stamped onto every warn/error
+// log row so the Live Log Monitor can tell which version a remote device runs.
+window.APP_VER = 'v74';
+
 // Define Global State
 window.currentUser = null;
 window.currentRoom = 'general'; 

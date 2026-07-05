@@ -74,11 +74,21 @@ class Logger {
 
         if (!this._sb) return; // not inited yet — localStorage only
 
+        let rowData = entry.data ? JSON.parse(entry.data) : null;
+        // Stamp warn/error rows with the running build version + device so remote
+        // diagnosis can distinguish "bug in v74" from "stale v68 PWA on iOS".
+        if (level === 'error' || level === 'warn') {
+            const base = (rowData && typeof rowData === 'object' && !Array.isArray(rowData))
+                ? rowData : (rowData != null ? { value: rowData } : {});
+            base._ver = window.APP_VER || '?';
+            base._ua  = (navigator.userAgent || '').slice(0, 160);
+            rowData = base;
+        }
         const row = {
             level,
             category,
             message,
-            data:       entry.data ? JSON.parse(entry.data) : null,
+            data:       rowData,
             tenant_id:  this._tenantId,
             user_id:    this._userId,
             session_id: SESSION_ID,
@@ -185,4 +195,22 @@ class Logger {
 
 const logger = new Logger();
 window.logger = logger;
+
+// ── Global capture — the two error channels that were previously invisible ──
+// 1. Unhandled promise rejections (most Supabase/async failures surface here).
+window.addEventListener('unhandledrejection', (e) => {
+    try {
+        const r = e.reason;
+        logger.error('UNHANDLED', r?.message || String(r), { stack: r?.stack?.slice(0, 800) });
+    } catch { /* never let the handler itself throw */ }
+});
+// 2. Uncaught synchronous errors, with source location (web pages had no listener).
+window.addEventListener('error', (e) => {
+    try {
+        if (!e?.message) return;
+        const where = e.filename ? `${e.filename.split('/').pop()}:${e.lineno}:${e.colno}` : '?';
+        logger.error('UNCAUGHT', e.message, { at: where, stack: e.error?.stack?.slice(0, 800) });
+    } catch { }
+});
+
 export default logger;

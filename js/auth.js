@@ -294,9 +294,11 @@ window.logout = async function() {
         Object.keys(localStorage).filter(k => k.startsWith(prefix)).forEach(k => localStorage.removeItem(k));
     }
     // Also clear known non-prefixed legacy keys
-    ['mpgs_avatar_'+window.currentUser?.id, 'mob_reactions', 'mob_msgs'].forEach(k => {
+    ['mpgs_avatar_'+window.currentUser?.id, 'mob_reactions', 'mob_msgs', 'mob_users_'].forEach(k => {
         Object.keys(localStorage).filter(lk => lk.startsWith(k)).forEach(lk => localStorage.removeItem(lk));
     });
+    // Clear the IndexedDB message caches too — they must not survive a user switch.
+    try { await window.LocalDB?.clearAll?.(); } catch (e) {}
     await sb.auth.signOut();
     // Clear tenant context then redirect to login
     // Use location.href so it works from any page (admin.html, index, etc.)

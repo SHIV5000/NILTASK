@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v74';
+const _MOB_VER = 'v75';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -251,7 +251,9 @@ window.initMobileApp = async function() {
     _buildShell();
     _initKeyboardHandling();
     _initImgHydration();
-    await _ctx();
+    // Hydrate the room-message mirror from IndexedDB in parallel with the
+    // context load — chats then open instantly with up to 150 cached messages.
+    await Promise.all([_ctx(), _hydrateRoomCaches()]);
     // Principals/admins get a toggle to the Admin Panel (permission known after _ctx).
     if (window.currentPermissions?.admin_panel) _el('mSBAdmin')?.style.setProperty('display','flex');
     await _navTo('home');
@@ -294,10 +296,25 @@ let _isOffline = !navigator.onLine;
 let _pendingRefresh = null;
 let _refreshGen = 0;
 
+// Per-room message cache: in-memory mirror (sync reads, no render stalls) +
+// write-through to IndexedDB via LocalDB (150 msgs/room, hydrated at boot) +
+// localStorage (50 msgs/room) as the always-available fallback.
+const _memRoomCache = {};
+async function _hydrateRoomCaches() {
+    try {
+        const map = await window.LocalDB?.allRooms?.();
+        if (map) for (const [rid, msgs] of Object.entries(map)) {
+            if (!_memRoomCache[rid]) _memRoomCache[rid] = msgs;
+        }
+    } catch (e) {}
+}
 function _saveRoomCache(roomId, msgs) {
+    _memRoomCache[roomId] = msgs.slice(-150);
     _lsSet('mob_msgs_'+roomId, JSON.stringify(msgs.slice(-50)));
+    window.LocalDB?.putRoom?.(roomId, _memRoomCache[roomId]);   // fire-and-forget
 }
 function _loadRoomCache(roomId) {
+    if (_memRoomCache[roomId]) return _memRoomCache[roomId];
     try { return JSON.parse(_lsGet('mob_msgs_'+roomId)||'null'); } catch { return null; }
 }
 function _loadReactionsCache() {
@@ -1411,7 +1428,7 @@ async function _groupChat(p) {
         <input id="mChatSearchInp" type="search" placeholder="Search messages…" style="width:100%;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;" oninput="window._filterChatMsgs(this.value,'mMsgArea')">
       </div>
       <div class="m-msgs" id="mMsgArea">
-        ${shellMsgs.length ? (()=>{ const sr=_loadReactionsCache(); const rmap=_replyMapCache[p.room]||{}; return shellMsgs.map(m=>_bubbleHTML(m,sr,140,rmap,p)).join(''); })() : '<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">' + (cached ? 'No messages yet.' : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…') + '</div>'}
+        ${shellMsgs.length ? (()=>{ const sr=_loadReactionsCache(); const rmap=_replyMapCache[p.room]||{}; return shellMsgs.map(m=>_bubbleHTML(m,sr,140,rmap,p)).join(''); })() : '<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">' + (cached ? 'No messages yet.' : '<div class="skel skel-bubble"></div><div class="skel skel-bubble r"></div><div class="skel skel-bubble"></div><div class="skel skel-bubble r"></div>') + '</div>'}
       </div>
       <button class="m-scrollfab m-scrollfab-top" id="mScrollTopFab" style="display:none;" onclick="document.getElementById('mMsgArea').scrollTo({top:0,behavior:'smooth'})"><i class="fa-solid fa-chevron-up"></i></button>
       <button class="m-scrollfab" id="mScrollFab" style="display:none;" onclick="document.getElementById('mMsgArea').scrollTo({top:9e9,behavior:'smooth'})"><i class="fa-solid fa-chevron-down"></i></button>
@@ -1513,7 +1530,7 @@ async function _dm(p) {
         <input id="mChatSearchInp" type="search" placeholder="Search messages…" style="width:100%;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;" oninput="window._filterChatMsgs(this.value,'mDMArea')">
       </div>
       <div class="m-msgs" id="mDMArea">
-        ${shellMsgs.length ? (()=>{ const sr=_loadReactionsCache(); const rmap=_replyMapCache[p.room]||{}; return shellMsgs.map(m=>_bubbleHTML(m,sr,160,rmap,p)).join(''); })() : `<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">${cached ? `Start a conversation with ${x(p.name)}` : '<i class="fa-solid fa-spinner" style="animation:spin .8s linear infinite;"></i> Loading…'}</div>`}
+        ${shellMsgs.length ? (()=>{ const sr=_loadReactionsCache(); const rmap=_replyMapCache[p.room]||{}; return shellMsgs.map(m=>_bubbleHTML(m,sr,160,rmap,p)).join(''); })() : `<div class="m-empty" style="color:var(--text-secondary);padding:40px;text-align:center;">${cached ? `Start a conversation with ${x(p.name)}` : '<div class="skel skel-bubble"></div><div class="skel skel-bubble r"></div><div class="skel skel-bubble"></div><div class="skel skel-bubble r"></div>'}</div>`}
       </div>
       <button class="m-scrollfab m-scrollfab-top" id="mScrollTopFab" style="display:none;" onclick="document.getElementById('mDMArea').scrollTo({top:0,behavior:'smooth'})"><i class="fa-solid fa-chevron-up"></i></button>
       <button class="m-scrollfab" id="mScrollFab" style="display:none;" onclick="document.getElementById('mDMArea').scrollTo({top:9e9,behavior:'smooth'})"><i class="fa-solid fa-chevron-down"></i></button>
@@ -3713,7 +3730,7 @@ function _injectCSS(){
   word-break:break-word;overflow-wrap:break-word;
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
 .m-divider{text-align:center;font-size:11px;color:var(--text-secondary);padding:8px 0;}
-.m-bubble-pending{opacity:.75;}
+.m-bubble-pending{opacity:.55;transition:opacity .3s ease;}
 .m-pending-indicator{display:flex;justify-content:flex-end;margin-top:4px;color:var(--text-secondary,#9ca3af);}
 @keyframes spin{to{transform:rotate(360deg);}}
 
@@ -3853,6 +3870,13 @@ function _injectCSS(){
 
 .m-empty{padding:40px 20px;text-align:center;color:var(--text-secondary,#6b7280);
   font-size:14.5px;line-height:1.7;}
+
+/* Shimmer skeleton placeholders — native-style loading instead of a spinner */
+.skel{background:linear-gradient(90deg,var(--bg-sidebar,#eef1f5) 25%,var(--border-color,#e2e6ee) 50%,var(--bg-sidebar,#eef1f5) 75%);
+  background-size:200% 100%;animation:skelShimmer 1.4s infinite linear;border-radius:12px;}
+@keyframes skelShimmer{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
+.skel-bubble{height:64px;margin:10px 12px;width:88%;}
+.skel-bubble.r{margin-left:auto;width:70%;height:48px;}
 
 /* ── v29 UX additions ─────────────────────────────────────────────── */
 

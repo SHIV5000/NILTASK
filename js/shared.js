@@ -6,7 +6,18 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Single source of truth for the running build — stamped onto every warn/error
 // log row so the Live Log Monitor can tell which version a remote device runs.
-window.APP_VER = 'v75';
+window.APP_VER = 'v76';
+
+// Single source of truth for "is this a mobile-app device?".
+// CRITICAL: main.js guards (`window.isMobileView?.()`) referenced this WITHOUT it
+// ever being defined — always undefined/falsy — so the web realtime handler ran
+// alongside the mobile one and DOUBLE-counted notifications (bell showed 2 for 1
+// message). Also treats touch-first TABLETS (coarse pointer, up to 1366px) as
+// mobile so tablets get the mobile app experience.
+window.isMobileView = function() {
+    return window.innerWidth <= 768 ||
+        (window.matchMedia?.('(pointer:coarse)')?.matches === true && window.innerWidth <= 1366);
+};
 
 // Define Global State
 window.currentUser = null;

@@ -228,7 +228,7 @@ window.renderMainApp = async function() {
     // own UI. Without this, the full desktop chat renders first and flashes
     // for a moment before the mobile layout takes over. Safe: this runs only
     // post-login, so it never hides the login screen.
-    if (window.innerWidth <= 768) {
+    if (window.isMobileView?.() ?? (window.innerWidth <= 768)) {
         document.getElementById('root')?.style.setProperty('display', 'none', 'important');
     }
     if (typeof window.applyTheme === 'function') window.applyTheme();
@@ -310,7 +310,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.95.0 (v75) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.96.0 (v76) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -831,7 +831,7 @@ window.renderMainApp = async function() {
 // ── MOBILE LAYOUT ──────────────────────────────────────────
 // Uses setProperty('important') to beat dynamic inline styles
 window.initMobile = function() {
-    const isMobile = window.innerWidth <= 768;
+    const isMobile = window.isMobileView?.() ?? (window.innerWidth <= 768);
     const leftSB  = document.getElementById('leftSidebar');
     const rightSB = document.getElementById('rightSidebar');
     const leftR   = document.getElementById('leftResizer');

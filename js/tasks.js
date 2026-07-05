@@ -305,7 +305,7 @@ window.loadTasksForPanel = async function() {
         .select('*, profiles(full_name, email)')
         .eq('tenant_id', window.currentTenantId)
         .in('task_id', ids)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: false });   // latest at top (matches mobile)
 
     const assigneesMap = {};
     if (assignees) assignees.forEach(a => {

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v76';
+const _MOB_VER = 'v77';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -100,8 +100,7 @@ function _onlineDot(uid) {
     const u = _users.find(u => u.id === uid);
     if (!u?.last_seen) return '';
     const diffMin = (Date.now() - new Date(u.last_seen).getTime()) / 60000;
-    if (diffMin < 3)  return '<span class="m-online-dot" style="background:#22c55e;"></span>';
-    if (diffMin < 30) return '<span class="m-online-dot" style="background:#fbbf24;"></span>';
+    if (diffMin < 3)  return '<span class="m-presence-ring"></span>';
     return '';
 }
 
@@ -232,6 +231,35 @@ function _initImgHydration() {
     } catch (e) {}
 }
 
+// ── Mobile theme: System (default) / Light / Dark ─────────────────────────
+// Uses theme.css's [data-theme="dark"] token set; 'system' follows the OS.
+function _applyMobTheme() {
+    let mode = 'system';
+    try { mode = localStorage.getItem('mob_theme') || 'system'; } catch (e) {}
+    const dark = mode === 'dark' ||
+        (mode === 'system' && window.matchMedia?.('(prefers-color-scheme: dark)')?.matches);
+    try {
+        if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+        else document.documentElement.removeAttribute('data-theme');
+    } catch (e) {}
+    const b = _el('mSBTheme');
+    if (b) {
+        const ic = { system:'fa-circle-half-stroke', light:'fa-sun', dark:'fa-moon' }[mode];
+        b.innerHTML = '<i class="fa-solid ' + ic + '"></i>';
+        b.title = 'Theme: ' + mode.charAt(0).toUpperCase() + mode.slice(1);
+    }
+}
+window._cycleMobTheme = function() {
+    const order = ['system', 'light', 'dark'];
+    let mode = 'system';
+    try { mode = localStorage.getItem('mob_theme') || 'system'; } catch (e) {}
+    const next = order[(order.indexOf(mode) + 1) % order.length];
+    try { localStorage.setItem('mob_theme', next); } catch (e) {}
+    _applyMobTheme();
+    _toast('Theme: ' + next.charAt(0).toUpperCase() + next.slice(1));
+};
+try { window.matchMedia?.('(prefers-color-scheme: dark)')?.addEventListener?.('change', () => _applyMobTheme()); } catch (e) {}
+
 window.initMobileApp = async function() {
     if (!(window.isMobileView?.() ?? (window.innerWidth <= MOB))) return;
     // Eruda is a heavy debug console (~100KB from CDN). Load it ONLY when explicitly
@@ -246,7 +274,7 @@ window.initMobileApp = async function() {
         document.head.appendChild(s);
     }
     _el('root')?.style.setProperty('display', 'none', 'important');
-    try { document.documentElement.removeAttribute('data-theme'); } catch (e) {}  // mobile = light only
+    _applyMobTheme();   // System (default) / Light / Dark — user-controlled from the top bar
     _injectCSS();
     _buildShell();
     _initKeyboardHandling();
@@ -280,6 +308,7 @@ window.initMobileApp = async function() {
             el.textContent = el.dataset.label + ' · ' + _ago(el.dataset.ts);
         });
         if (_uid) sb.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', _uid).then(() => {});
+        _ensureRealtimeAlive();   // heal silently-dead realtime channels
     }, 60000);
     window.addEventListener('resize', () => {
         const m = window.isMobileView?.() ?? (window.innerWidth <= MOB);
@@ -287,13 +316,31 @@ window.initMobileApp = async function() {
         if (m) _el('root')?.style.setProperty('display', 'none', 'important');
     }, { passive: true });
     // Native resume behavior: coming back from the background silently refreshes the
-    // unread badge (no visible re-render — the per-channel realtime reconnect already
-    // recovers live messages after a suspend).
+    // unread badge AND verifies the realtime channels are actually alive. Backgrounded
+    // sockets can die WITHOUT emitting CLOSED — replies/reactions then stop applying
+    // until a manual reopen. If any channel isn't 'joined', rebuild them.
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState !== 'visible') return;
         try { _refreshNotifBadge(); } catch (e) {}
+        _ensureRealtimeAlive();
     });
 };
+
+// Verify realtime health; silently rebuild the channels if the socket died quietly.
+function _ensureRealtimeAlive() {
+    try {
+        const dead = c => c && c.state !== 'joined' && c.state !== 'joining';
+        if (!_rtChannel || dead(_rtChannel) || dead(_bcChannel) || dead(_sharedBc)) {
+            _rtIntentionalClose = true;
+            try { if (_rtChannel) sb.removeChannel(_rtChannel); } catch (e) {}
+            try { if (_bcChannel) sb.removeChannel(_bcChannel); } catch (e) {}
+            try { if (_sharedBc)  sb.removeChannel(_sharedBc); } catch (e) {}
+            _rtChannel = null; _bcChannel = null; _sharedBc = null;
+            _rtIntentionalClose = false;
+            _initRealtime();
+        }
+    } catch (e) {}
+}
 
 let _isOffline = !navigator.onLine;
 let _pendingRefresh = null;
@@ -563,6 +610,7 @@ function _buildShell() {
         </div>
         <button class="m-sb-icon" id="mSBAdmin" title="Switch to Admin Panel" onclick="window.location.href='/admin.html'" style="display:none;color:var(--accent,#6366f1);"><i class="fa-solid fa-user-shield"></i></button>
         <button class="m-sb-icon" id="mSBLens" title="Search" onclick="window._toggleInlineSearch()"><i class="fa-solid fa-magnifying-glass"></i></button>
+        <button class="m-sb-icon" id="mSBTheme" title="Theme: System / Light / Dark" onclick="window._cycleMobTheme()"><i class="fa-solid fa-circle-half-stroke"></i></button>
         <button class="m-sb-icon" id="mSBDnd" title="Do Not Disturb" data-action="toggleDND" style="${(window._isDND?.())?'color:#ef4444;':''}">
           <i class="fa-solid ${(window._isDND?.())?'fa-volume-xmark':'fa-volume-high'}"></i>
         </button>
@@ -779,8 +827,7 @@ window.addEventListener('popstate', () => {
     }
 });
 async function _render(screen, params, dir='forward') {
-    // Mobile app is light-only — strip any dark/colored theme the web layer set.
-    try { document.documentElement.removeAttribute('data-theme'); } catch (e) {}
+    _applyMobTheme();   // keep the user's chosen mobile theme (web layer may have overwritten it)
     const stage = _el('mStage');
     if (!stage) return;
     const fns = {
@@ -825,7 +872,7 @@ async function _render(screen, params, dir='forward') {
 }
 function _scrollAndGlow(msgId, attempt=0) {
     const row = document.getElementById('row-'+msgId);
-    if (!row) { if (attempt<8) setTimeout(()=>_scrollAndGlow(msgId,attempt+1), 150); return; }
+    if (!row) { if (attempt<24) setTimeout(()=>_scrollAndGlow(msgId,attempt+1), 180); return; }  // ~4.3s window — covers cross-room loads
     const card = row.querySelector('.m-bubble') || row;
     row.scrollIntoView({ behavior:'smooth', block:'center' });
     setTimeout(() => card.classList.add('m-highlight'), 50);
@@ -1608,7 +1655,7 @@ async function _tasks() {
 async function _taskDetail(p) {
     const [{ data: ta }, { data: trails }] = await Promise.all([
         sb.from('task_assignees').select('*, tasks(*)').eq('task_id',p.id).eq('assignee_id',_uid).single(),
-        sb.from('task_trails').select('*').eq('task_id',p.id).order('created_at',{ascending:false}).limit(10),
+        sb.from('task_trails').select('*').eq('task_id',p.id).order('created_at',{ascending:false}).limit(30),
     ]);
     const t = ta?.tasks || {};
     const status = ta?.status || 'pending_ack';
@@ -1647,18 +1694,34 @@ async function _taskDetail(p) {
         ${needsProofWarning ? `<div style="font-size:12px;color:#b91c1c;text-align:center;">⚠️ This task requires proof before you can submit</div>` : ''}
         <button class="m-action-btn" style="background:#6366f1;" data-action="mobTaskAction" data-task="${p.id}" data-act="submit">
           <i class="fa-solid fa-paper-plane"></i> ${status==='needs_review'?'Resubmit':'Submit for Review'}
-        </button>` : ''}
+        </button>
+        <div style="display:flex;gap:10px;">
+          <button class="m-action-btn" style="background:#8b5cf6;flex:1;" data-action="taskDelegateSheet" data-task="${p.id}">
+            <i class="fa-solid fa-user-plus"></i> Delegate
+          </button>
+          <button class="m-action-btn" style="background:#64748b;flex:1;" data-action="taskTransferSheet" data-task="${p.id}">
+            <i class="fa-solid fa-right-left"></i> Transfer
+          </button>
+        </div>` : ''}
         ${status==='submitted' ? `<div class="m-empty" style="padding:12px;">Waiting for the task creator to review your submission.</div>` : ''}
         ${status==='accepted' ? `<div class="m-empty" style="padding:12px;">🎉 This task is complete — no further action needed.</div>` : ''}
       </div>
       ${(trails||[]).length ? `
       <div style="padding:4px 16px 16px;">
-        <div class="m-sl" style="padding:8px 0 6px;">Activity</div>
-        ${trails.map(tr => `
-          <div style="padding:8px 0;border-bottom:1px solid var(--border-color);font-size:15px;">
-            <div style="color:var(--text-secondary);font-size:11px;margin-bottom:2px;">${_ago(tr.created_at)}</div>
-            ${tr.action==='FILE' ? `<button class="m-file-link" data-action="openTaskFile" data-path="${x((tr.comment||'').split('|')[1]||'')}">📎 ${x((tr.comment||'').split('|')[0])} <i class="fa-solid fa-arrow-up-right-from-square"></i></button>` : x(tr.comment||'')}
-          </div>`).join('')}
+        <div class="m-sl" style="padding:8px 0 6px;">Task Trail — latest first</div>
+        ${trails.map(tr => {
+          const actLbl = { ACK:'Acknowledged', UPDATE:'Update', FILE:'File Attached', SUBMIT:'Submitted', ACCEPT:'Accepted', REWORK:'Rework Requested' }[tr.action] || (tr.action||'Update');
+          return `
+          <div style="padding:10px 0;border-bottom:1px solid var(--border-color);">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
+              <span style="font-size:12.5px;font-weight:800;color:var(--accent,#6366f1);">${x(_uname(tr.user_id))}</span>
+              <span style="font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;background:var(--bg-sidebar,#f1f5f9);border:1px solid var(--border-color,#e5e7eb);border-radius:20px;padding:2px 9px;color:var(--text-secondary,#6b7280);">${x(actLbl)}</span>
+              <span style="font-size:11px;color:var(--text-secondary,#9ca3af);margin-left:auto;">${_fmtIST(tr.created_at)}</span>
+            </div>
+            <div style="font-size:14.5px;line-height:1.5;">
+              ${tr.action==='FILE' ? `<button class="m-file-link" data-action="openTaskFile" data-path="${x((tr.comment||'').split('|')[1]||'')}">📎 ${x((tr.comment||'').split('|')[0])} <i class="fa-solid fa-arrow-up-right-from-square"></i></button>` : x(tr.comment||'')}
+            </div>
+          </div>`; }).join('')}
       </div>` : ''}
       <input type="file" id="mFileInput" style="display:none;" accept="image/*,application/pdf">
     </div>`;
@@ -2495,6 +2558,8 @@ async function _onShellClick(e) {
         case 'sendReply': await _doSendReply(a); break;
         case 'sendDM':    await _doSendDM(a); break;
 
+        case 'taskDelegateSheet': _showTaskReassignSheet(a.task, 'delegate'); break;
+        case 'taskTransferSheet': _showTaskReassignSheet(a.task, 'transfer'); break;
         case 'mobTaskAction':
             if (a.act === 'upload') { _pendingUploadTaskId = a.task; _el('mFileInput')?.click(); }
             else await _mobTaskAction(a.task, a.act);
@@ -2636,6 +2701,7 @@ async function _onSheetClick(e) {
     const a = el.dataset;
     switch (a.action) {
         case 'navMore': window._closeSheet(); await _navTo(a.screen); break;
+        case 'doTaskReassign': await _doTaskReassign(a.task, a.mode); break;
         case 'toggleMute': {
             const wasMuted = _lsGet('muted_'+a.room) === '1';
             _lsSet('muted_'+a.room, wasMuted ? '0' : '1');
@@ -2820,7 +2886,16 @@ function _initRealtime() {
         }, 3000);
         _updateTypingUI(r);
     };
+    // Group-message broadcast bridge — belt-and-suspenders alongside postgres_changes
+    // (de-duped by _seenMsgIds), so live delivery survives a flaky postgres channel.
+    // DMs are NEVER broadcast (tenant-wide channel would leak them past RLS).
+    const _hNewMessage = p => {
+        const m = p.payload;
+        if (!m || !m.id || m.room_id?.startsWith('dm_')) return;
+        _onNewMessage(m);
+    };
     _bcChannel = sb.channel('mobile-bc-'+_tid, { config: { broadcast: { self: false } } })
+        .on('broadcast', { event:'new_message' }, _hNewMessage)
         .on('broadcast', { event:'reaction' }, _hReaction)
         .on('broadcast', { event:'group_photo' }, _hGroupPhoto)
         .on('broadcast', { event:'typing' }, _hTyping)
@@ -2841,6 +2916,7 @@ function _initRealtime() {
     // Shared cross-platform channel (mobile ↔ web). self:false so we don't hear our own broadcasts.
     // Ignore src:'m' (own platform) — those are already delivered via the legacy mobile-bc channel.
     _sharedBc = sb.channel('taskflow-bc-'+_tid, { config: { broadcast: { self: false } } })
+        .on('broadcast', { event:'new_message' }, p => { if (p.payload?.src === 'm') return; _hNewMessage(p); })
         .on('broadcast', { event:'reaction' }, p => { if (p.payload?.src === 'm') return; _hReaction(p); })
         .on('broadcast', { event:'group_photo' }, p => { if (p.payload?.src === 'm') return; _hGroupPhoto(p); })
         .on('broadcast', { event:'typing' }, p => { if (p.payload?.src === 'm') return; _hTyping(p); })
@@ -2891,12 +2967,13 @@ function _renderBellBadge() {
         else nb.style.display = 'none';
     }
 }
-function _bumpBellBadge() { _bellCount++; _renderBellBadge(); }
-function _clearBellBadge() { _bellCount = 0; _renderBellBadge(); }
+function _bumpBellBadge() { _bellCount++; _renderBellBadge(); _updateAppBadge(); }
+function _clearBellBadge() { _bellCount = 0; _renderBellBadge(); _updateAppBadge(); }
 // App-icon unread badge (installed PWA) — total across all chats.
 function _updateAppBadge() {
     try {
-        const total = Object.values(window.unreadCounts || {}).reduce((a, b) => a + (b || 0), 0);
+        // Sync with the bell/activity badge — the app icon shows the same number.
+        const total = Math.max(_bellCount, Object.values(window.unreadCounts || {}).reduce((a, b) => a + (b || 0), 0));
         if (navigator.setAppBadge) {
             if (total > 0) navigator.setAppBadge(total); else navigator.clearAppBadge?.();
         }
@@ -3297,6 +3374,9 @@ async function _doSendGroup(a) {
     if (error) { _toast('Send failed: '+error.message,'err'); return; }
     window.playSound?.('message');
     _appendOwnMessage('mMsgArea', m);
+    // Broadcast bridge (group only, never DMs) so other devices get it live even
+    // if their postgres channel is flaky. Receivers de-dupe by message id.
+    _bcSend('new_message', m);
 }
 async function _doSendReply(a) {
     if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }
@@ -3315,6 +3395,7 @@ async function _doSendReply(a) {
     if (error) { _toast('Send failed: '+error.message,'err'); return; }
     window.playSound?.('message');
     _appendOwnMessage('mThreadArea', m, 160);
+    _bcSend('new_message', m);   // live-delivery bridge (replies too; de-duped)
     // Reflect the reply on the parent's "N replies" link (group view + cache) so it
     // shows under the parent immediately, without needing a reload.
     _replyMapCache[a.room] = _replyMapCache[a.room] || {};
@@ -3446,6 +3527,59 @@ async function _handleShareTarget() {
     } catch (e) { return false; }
 }
 
+// Delegate (adds a co-assignee) / Transfer (replaces you; reason mandatory) —
+// same lifecycle flow as the web taskAction implementation in js/tasks.js.
+function _showTaskReassignSheet(taskId, mode) {
+    const others = _users.filter(u => u.id !== _uid);
+    const sheet = _el('mSheetInner');
+    sheet.innerHTML = `
+      <div class="m-sheet-handle"></div>
+      <div class="m-sheet-title">${mode === 'delegate' ? '👤 Delegate task to…' : '🔁 Transfer task to…'}</div>
+      <div style="padding:0 16px 18px;display:flex;flex-direction:column;gap:11px;">
+        <select class="m-inp" id="mReassignSel">
+          <option value="">Select staff member…</option>
+          ${others.map(u => `<option value="${u.id}">${x(u.full_name || u.email)}</option>`).join('')}
+        </select>
+        ${mode === 'transfer' ? `<input class="m-inp" id="mReassignReason" placeholder="Reason (mandatory for transfer)">` : ''}
+        <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;">
+          ${mode === 'delegate'
+            ? 'Delegation ADDS the selected person to this task — you remain assigned.'
+            : 'Transfer moves this task to the selected person — you are removed. This cannot be undone.'}
+        </div>
+        <button class="m-action-btn" style="background:${mode==='delegate'?'#8b5cf6':'#64748b'};" data-action="doTaskReassign" data-task="${taskId}" data-mode="${mode}">
+          <i class="fa-solid ${mode==='delegate'?'fa-user-plus':'fa-right-left'}"></i> Confirm ${mode === 'delegate' ? 'Delegate' : 'Transfer'}
+        </button>
+      </div>`;
+    _openSheet();
+}
+async function _doTaskReassign(taskId, mode) {
+    const newAssignee = _el('mReassignSel')?.value;
+    const reason = _el('mReassignReason')?.value?.trim() || '';
+    if (!newAssignee) { _toast('Select a staff member first', 'err'); return; }
+    if (mode === 'transfer' && !reason) { _toast('Reason is mandatory for transfer', 'err'); return; }
+    window._closeSheet();
+    try {
+        const { data: t } = await sb.from('tasks').select('title, original_message_id').eq('id', taskId).single();
+        const title = t?.title || 'Task';
+        if (mode === 'transfer') {
+            await sb.from('task_assignees').delete().eq('task_id', taskId).eq('assignee_id', _uid).eq('tenant_id', _tid);
+        }
+        const { error } = await sb.from('task_assignees').insert({
+            task_id: taskId, assignee_id: newAssignee, tenant_id: _tid, status: 'pending_ack', state: 'pending'
+        });
+        if (error) { _toast((mode === 'delegate' ? 'Delegate' : 'Transfer') + ' failed: ' + error.message, 'err'); return; }
+        const notifs = [{ user_id: newAssignee, type: 'task', tenant_id: _tid, is_read: false, task_id: taskId,
+            message: (mode === 'delegate' ? '👤 Task Delegated to you: ' : '🔁 Task Transferred to you: ') + title }];
+        await sb.from('notifications').insert(notifs);
+        await sb.from('task_trails').insert({
+            task_id: taskId, user_id: _uid, tenant_id: _tid, action: 'UPDATE',
+            comment: mode === 'delegate' ? `Delegated task to ${_uname(newAssignee)}` : `Transferred task to ${_uname(newAssignee)} — ${reason}`
+        });
+        _toast(mode === 'delegate' ? 'Task delegated ✓' : 'Task transferred ✓');
+        if (mode === 'transfer') await _navTo('tasks', null, true);
+        else { const top = _stack[_stack.length-1]; if (top?.screen === 'taskDetail') await _render('taskDetail', top.params, 'forward'); }
+    } catch (e) { _toast('Action failed — try again', 'err'); }
+}
 async function _mobTaskAction(taskId, action) {
     const { data: taskData } = await sb.from('tasks').select('*').eq('id',taskId).single();
     if (!taskData) { _toast('Task not found','err'); return; }
@@ -3632,6 +3766,8 @@ function _injectCSS(){
   color:var(--text-secondary,#6b7280);padding:6px;flex-shrink:0;min-width:36px;min-height:36px;
   -webkit-tap-highlight-color:transparent;}
 .m-sb-icon:active{opacity:.6;}
+.m-presence-ring{position:absolute;inset:-3px;border:2.5px solid #10b981;border-radius:inherit;
+  border-radius:50%;pointer-events:none;box-shadow:0 0 6px rgba(16,185,129,.5);}
 .m-notif-badge{position:absolute;top:2px;right:2px;background:#ef4444;color:#fff;
   font-size:10px;font-weight:800;min-width:16px;height:16px;border-radius:8px;
   display:flex;align-items:center;justify-content:center;padding:0 4px;
@@ -3765,7 +3901,7 @@ function _injectCSS(){
 .af-empty{text-align:center;padding:48px 20px;color:var(--text-secondary,#94a3b8);}
 .af-empty .em{font-size:46px;margin-bottom:10px;}
 .af-empty .t{font-weight:700;font-size:16px;color:var(--text-secondary,#475569);}
-.mn-badge{position:absolute;top:-2px;right:8px;background:#dc2626;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:30px;border:2px solid var(--bg,#fff);}
+.mn-badge{position:absolute;top:2px;left:50%;margin-left:8px;right:auto;background:#dc2626;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:30px;border:2px solid var(--bg,#fff);}
 @keyframes af-up{0%{opacity:0;transform:translateY(10px);}100%{opacity:1;transform:translateY(0);}}
 @keyframes m-glow-pulse{
   0%   { background:color-mix(in srgb, var(--accent) 35%, var(--card-bg)); box-shadow:0 0 0 3px var(--accent); }

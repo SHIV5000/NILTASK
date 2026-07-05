@@ -238,6 +238,10 @@ window.THEME_LIST = [
 ];
 
 window.applyTheme = function() {
+    // Mobile devices manage their own theme (System/Light/Dark from the top bar).
+    // Applying the WEB theme here (e.g. ocean-teal) painted a green flash at boot
+    // and green borders on the login page before the mobile shell stripped it.
+    if (window.isMobileView?.()) { window._applyMobTheme?.(); return; }
     // 'light' has no data-theme attribute (it's the :root default) — every
     // other theme sets data-theme to its own id.
     if (window.currentTheme === 'light') document.documentElement.removeAttribute('data-theme');

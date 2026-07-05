@@ -6,7 +6,7 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Single source of truth for the running build — stamped onto every warn/error
 // log row so the Live Log Monitor can tell which version a remote device runs.
-window.APP_VER = 'v76';
+window.APP_VER = 'v77';
 
 // Single source of truth for "is this a mobile-app device?".
 // CRITICAL: main.js guards (`window.isMobileView?.()`) referenced this WITHOUT it

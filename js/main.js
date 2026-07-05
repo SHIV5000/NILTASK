@@ -310,7 +310,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.96.0 (v76) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.97.0 (v77) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -1076,7 +1076,7 @@ window.loadChatsList = async function() {
             <div class="relative flex-shrink-0">
                 <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm"
                     style="${u.avatar_url ? `background-image:url('${u.avatar_url}');background-size:cover;background-position:center;color:transparent;` : 'background:var(--accent);'}">${u.avatar_url ? '' : name.charAt(0).toUpperCase()}</div>
-                ${window.getPresenceStatus?.(u.last_seen)?.online ? `<span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2" style="background:#22c55e;border-color:var(--bg-sidebar);"></span>` : ''}
+                ${window.getPresenceStatus?.(u.last_seen)?.online ? `<span class="absolute rounded-full pointer-events-none" style="inset:-3px;border:2.5px solid #10b981;box-shadow:0 0 6px rgba(16,185,129,.5);"></span>` : ''}
                 ${unread > 0 ? `<span class="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full" style="background:#22c55e;"></span>
                     <span class="absolute -top-1 -right-1 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center" style="background:#22c55e;">${unread > 9 ? '9+' : unread}</span>` : ''}
             </div>

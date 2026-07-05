@@ -9,6 +9,25 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <script>
+      // Pre-paint theme guard: on mobile devices, never let the saved WEB theme
+      // (e.g. ocean-teal) color the first paint / login page — apply the user's
+      // mobile theme choice (system/light/dark) before any CSS renders.
+      (function () {
+        try {
+          var mob = window.innerWidth <= 768 ||
+            (window.matchMedia && matchMedia('(pointer:coarse)').matches && window.innerWidth <= 1366);
+          if (!mob) return;
+          var mode = localStorage.getItem('mob_theme') || 'system';
+          var dark = mode === 'dark' ||
+            (mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+          else document.documentElement.removeAttribute('data-theme');
+          // Mark so the web boot theme code knows mobile owns the attribute.
+          window.__mobThemeLock = true;
+        } catch (e) {}
+      })();
+    </script>
     <title>MPGS TaskFlow - Enterprise Chat</title>
 
     <script src="https://cdn.tailwindcss.com"></script>

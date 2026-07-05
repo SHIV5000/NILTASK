@@ -75,6 +75,15 @@ window.sendMessage = async function() {
     const { data: msgData } = await sb.from('messages').insert(payload).select().single();
     logger.logApi('messages.insert', { room: window.currentRoom }, performance.now() - _t0);
 
+    // Broadcast bridge (group messages only, never DMs — the tenant-wide channel
+    // would leak DM text): mobile devices apply this live even if their postgres
+    // realtime channel is flaky; receivers de-dupe by message id.
+    try {
+        if (msgData && !msgData.room_id?.startsWith('dm_') && window._sharedBroadcast) {
+            window._sharedBroadcast.send({ type:'broadcast', event:'new_message', payload:{ ...msgData, src:'w' } });
+        }
+    } catch(e) {}
+
     // ── Notify original author when someone replies to their message
     if (window.currentlyReplyingTo && msgData) {
         try {

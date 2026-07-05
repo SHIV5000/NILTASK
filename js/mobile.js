@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v75';
+const _MOB_VER = 'v76';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -233,7 +233,7 @@ function _initImgHydration() {
 }
 
 window.initMobileApp = async function() {
-    if (window.innerWidth > MOB) return;
+    if (!(window.isMobileView?.() ?? (window.innerWidth <= MOB))) return;
     // Eruda is a heavy debug console (~100KB from CDN). Load it ONLY when explicitly
     // debugging (?debug in the URL or localStorage.mobDebug='1') so it no longer taxes
     // every production launch.
@@ -273,13 +273,16 @@ window.initMobileApp = async function() {
     // Auto-refresh displayed timestamps every 60s + update last_seen heartbeat
     if (_tsInterval) clearInterval(_tsInterval);
     _tsInterval = setInterval(() => {
+        // Skip the tick while backgrounded — no DOM to update, and the last_seen
+        // heartbeat shouldn't burn network/battery when the app isn't visible.
+        if (document.visibilityState !== 'visible') return;
         document.querySelectorAll('.m-bmeta[data-ts]').forEach(el => {
             el.textContent = el.dataset.label + ' · ' + _ago(el.dataset.ts);
         });
         if (_uid) sb.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', _uid).then(() => {});
     }, 60000);
     window.addEventListener('resize', () => {
-        const m = window.innerWidth <= MOB;
+        const m = window.isMobileView?.() ?? (window.innerWidth <= MOB);
         _el('mobileApp')?.style.setProperty('display', m ? 'flex' : 'none', 'important');
         if (m) _el('root')?.style.setProperty('display', 'none', 'important');
     }, { passive: true });
@@ -351,6 +354,7 @@ async function _refreshUsers(tid) {
             _users = data;
             window.globalUsersCache = _users;
             _saveUsersCache(tid, _users);
+            try { localStorage.setItem('mob_users_ts_'+tid, String(Date.now())); } catch (e) {}
             // Only re-render if the visible data actually changed — avoids the launch
             // "flash twice" when the cached list already matches the server.
             if (_usersSig(data) !== before) {
@@ -402,13 +406,17 @@ async function _ctx() {
             if (cached?.length) {
                 _users = cached;
                 window.globalUsersCache = _users;
-                _refreshUsers(_tid);   // fire-and-forget hydrate (adds avatars, latest names)
+                // The full profiles fetch carries base64 avatars (~1MB). Refresh at
+                // most every 15 min — realtime events still deliver live changes.
+                const lastFetch = Number(localStorage.getItem('mob_users_ts_'+_tid) || 0);
+                if (Date.now() - lastFetch > 15*60*1000) _refreshUsers(_tid);
             } else {
                 try {
                     const { data } = await sb.from('profiles').select('*').eq('tenant_id',_tid).is('deleted_at',null);
                     _users = data || [];
                     window.globalUsersCache = _users;
                     _saveUsersCache(_tid, _users);
+                    try { localStorage.setItem('mob_users_ts_'+_tid, String(Date.now())); } catch (e) {}
                 } catch {
                     _users = window.globalUsersCache || [];
                 }
@@ -715,11 +723,22 @@ window._navTo = async function(screen, params, replace = false) {
         return;
     }
     if (_searchMode) window._toggleInlineSearch();
-    // Opening a chat marks it read — clear its unread badge (home re-reads this on back).
+    // Native tab semantics: switching between ROOT tabs is lateral, not stacked —
+    // otherwise hopping tabs ten times means pressing back ten times to exit.
+    const ROOT_TABS = ['home','activity','tasks','remind','settings'];
+    if (!replace && cur && ROOT_TABS.includes(cur.screen) && ROOT_TABS.includes(screen)) {
+        replace = true;
+    }
+    // Opening a chat marks it read — clear its unread badge, recompute the bell/
+    // activity badge from the REMAINING unread chats (sync across all surfaces),
+    // and persist "read" for this room's notifications so the DB poll agrees.
     if ((screen === 'groupChat' || screen === 'dm') && params?.room) {
         window.unreadCounts = window.unreadCounts || {};
         window.unreadCounts[params.room] = 0;
         _updateAppBadge();
+        _bellCount = _sumUnread();
+        _renderBellBadge();
+        _markRoomNotifsRead(params.room);
     }
     if (replace) _stack.pop();
     _stack.push({ screen, params });
@@ -2832,11 +2851,29 @@ function _initRealtime() {
     _refreshNotifBadge();
     // Realtime badge update already wired via postgres_changes INSERT on notifications — no polling needed
 }
+function _sumUnread() {
+    return Object.values(window.unreadCounts || {}).reduce((a, b) => a + (b || 0), 0);
+}
+// Persist "read" for a room the user just opened: notifications rows carry only a
+// message_id, so resolve the room's recent message ids first. Fire-and-forget —
+// keeps the DB in step so the badge poll can't resurrect a count the user has seen.
+async function _markRoomNotifsRead(room) {
+    try {
+        const { data: ms } = await sb.from('messages').select('id')
+            .eq('room_id', room).eq('tenant_id', _tid)
+            .order('created_at', { ascending:false }).limit(100);
+        const ids = (ms||[]).map(m => m.id);
+        if (!ids.length) return;
+        await sb.from('notifications').update({ is_read:true })
+            .eq('user_id', _uid).eq('is_read', false).in('message_id', ids);
+    } catch (e) {}
+}
 async function _refreshNotifBadge() {
     const { count } = await sb.from('notifications').select('*',{count:'exact',head:true}).eq('user_id',_uid).eq('tenant_id',_tid).eq('is_read',false);
-    // Use the larger of the DB count and our instant in-memory count, so the badge
-    // still shows even if the notifications INSERT is blocked by RLS.
-    _bellCount = Math.max(count || 0, _bellCount);
+    // Bell = larger of the DB unread count and the live per-chat unread sum.
+    // NOT ratcheted against the previous _bellCount — reading a chat marks its
+    // notifications read in the DB, and the bell must be able to go DOWN with it.
+    _bellCount = Math.max(count || 0, _sumUnread());
     _renderBellBadge();
 }
 // Render the bell badge from the in-memory count (instant, no DB dependency).
@@ -2866,7 +2903,7 @@ function _updateAppBadge() {
     } catch (e) { /* Badging API unsupported — ignore */ }
 }
 // Live-patch a single chat row's unread badge on the home list (no full re-render).
-function _patchHomeUnread(room) {
+function _patchHomeUnread(room, msg) {
     try {
         const el = document.querySelector('[data-room="' + room + '"]');
         const row = el ? (el.closest('.m-row') || (el.classList.contains('m-row') ? el : null)) : null;
@@ -2875,10 +2912,19 @@ function _patchHomeUnread(room) {
         const holder = row.querySelector('.m-unread-badge')?.parentElement
                     || row.querySelector('.m-chv')?.parentElement
                     || row.lastElementChild;
-        if (!holder) return;
-        holder.innerHTML = n > 0
+        if (holder) holder.innerHTML = n > 0
             ? `<span class="m-unread-badge">${n > 99 ? '99+' : n}</span>`
             : '<i class="fa-solid fa-chevron-right m-chv"></i>';
+        // Also patch the last-message preview so the list stays live without a
+        // full home re-render (which visibly flashed on every incoming message).
+        if (msg) {
+            const rs = row.querySelector('.m-rs');
+            if (rs) {
+                const sender = _users.find(u=>u.id===msg.sender_id);
+                const nm = sender ? (sender.full_name||sender.email?.split('@')[0]) : '';
+                rs.textContent = (nm ? nm+': ' : '') + _snip(msg.text, 60);
+            }
+        }
     } catch (e) {}
 }
 // Open a chat by room id (from a push deep-link).
@@ -2925,9 +2971,20 @@ async function _goToTask(taskId) {
     if (!taskId) { _toast('No task linked to this notification','err'); return; }
     await _navTo('taskDetail',{id:taskId});
 }
+// De-dupe: a message can arrive via BOTH postgres_changes and the shared broadcast
+// bridge. Without this, the bubble renders twice and every badge counts it twice.
+const _seenMsgIds = new Set();
+const _seenMsgOrder = [];
 async function _onNewMessage(m) {
+    if (!m) return;
+    if (m.id) {
+        if (_seenMsgIds.has(m.id)) return;                       // already handled
+        if (document.getElementById('row-'+m.id)) return;        // already rendered
+        _seenMsgIds.add(m.id); _seenMsgOrder.push(m.id);
+        if (_seenMsgOrder.length > 200) _seenMsgIds.delete(_seenMsgOrder.shift());
+    }
     if (m.tenant_id && m.tenant_id !== _tid) return;
-    if (!m || m.sender_id === _uid) return; // own sends are already shown by the post-send refresh
+    if (m.sender_id === _uid) return; // own sends are already shown by the post-send refresh
     // DM privacy guard — ignore DMs the current user is not a participant of (no toast/notif/render)
     if (m.room_id && m.room_id.startsWith('dm_')) {
         const parts = m.room_id.replace('dm_','').split('_');
@@ -2938,7 +2995,6 @@ async function _onNewMessage(m) {
     const inGroup  = top.screen==='groupChat' && m.room_id===top.params?.room && !m.parent_message_id;
     const inDM     = top.screen==='dm'        && m.room_id===top.params?.room;
     const inThread = top.screen==='thread'    && m.parent_message_id===top.params?.id;
-    console.log('[mob-rt] msg id='+m.id+' parent='+m.parent_message_id+' room='+m.room_id+' screen='+top.screen+' params='+JSON.stringify(top.params)+' inGroup='+inGroup+' inThread='+inThread);
     if (!inGroup && !inDM && !inThread) {
         // Update the reply indicator on the parent bubble if it's visible in the current chat.
         // Use the SAME clickable .m-thread-link element the renderer emits (not a separate div),
@@ -2965,8 +3021,7 @@ async function _onNewMessage(m) {
         window.unreadCounts[m.room_id] = (window.unreadCounts[m.room_id] || 0) + 1;
         _updateAppBadge();
         _bumpBellBadge();                       // live bell count (mSB), independent of DB
-        _patchHomeUnread(m.room_id);            // live badge on the chat-list row if visible
-        if (top.screen === 'home') { _render('home', null, 'forward'); }
+        _patchHomeUnread(m.room_id, m);         // live badge + preview on the chat-list row (no full re-render/flash)
 
         if (!m.parent_message_id) {
             const sender = _users.find(u=>u.id===m.sender_id);
@@ -3221,17 +3276,11 @@ function _pendingBubbleHTML(pendingId, text) {
       </div>
     </div>`;
 }
-// Debounce guard shared by the three send paths: a double-tap on the send button
-// must not insert the same message twice.
-let _sendBusy = false;
-function _sendGate() {
-    if (_sendBusy) return false;
-    _sendBusy = true;
-    setTimeout(() => { _sendBusy = false; }, 700);
-    return true;
-}
+// NOTE: no send debounce — the composer is cleared synchronously before the network
+// await, so a double-tap's second read sees an empty editor and returns at the
+// `if (!val) return` guard. A time gate here silently DROPPED fast consecutive
+// messages ("ok" then "bye" within 700ms) — that was real message loss.
 async function _doSendGroup(a) {
-    if (!_sendGate()) return;
     if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }
     const val = _ceHTML(a.target); if (!val) return;
     _ceClear(a.target);
@@ -3250,7 +3299,6 @@ async function _doSendGroup(a) {
     _appendOwnMessage('mMsgArea', m);
 }
 async function _doSendReply(a) {
-    if (!_sendGate()) return;
     if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }
     const val = _ceHTML(a.target); if (!val) return;
     _ceClear(a.target);
@@ -3294,7 +3342,6 @@ async function _doSendReply(a) {
     } catch(e) { /* non-fatal */ }
 }
 async function _doSendDM(a) {
-    if (!_sendGate()) return;
     if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }
     const val = _ceHTML(a.target); if (!val) return;
     _ceClear(a.target);

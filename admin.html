@@ -168,7 +168,7 @@
 
     /* ══ MOBILE ADMIN APP SHELL (≤768px) ═══════════════════════════ */
     #adminMobile { display:none; }
-    @media (max-width:768px) {
+    @media (max-width:768px), (pointer:coarse) and (max-width:1366px) {
       /* Full-screen fixed overlay — mirrors the chat app's #mobileApp shell,
          which renders correctly under the status bar on Android PWAs. Pinning
          to the (status-bar-excluded) layout viewport keeps the top bar visible

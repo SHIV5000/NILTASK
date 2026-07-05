@@ -43,7 +43,7 @@ function fmtLogin(ts) {
 })();
 
 // ≤768px gets the dedicated mobile app shell; desktop keeps the full panel.
-const IS_MOB = () => window.innerWidth <= 768;
+const IS_MOB = () => window.isMobileView?.() ?? (window.innerWidth <= 768);
 // Re-render the correct shell if the viewport crosses the breakpoint.
 let _admWasMob = IS_MOB();
 window.addEventListener('resize', () => {

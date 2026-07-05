@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#0b0e17">
+  <meta name="theme-color" content="#4F46E5">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -15,27 +15,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./css/theme.css">
   <style>
-    /* ══ Dark / cyan reskin — overrides theme.css tokens for the whole admin panel
-       (desktop + mobile shell). All admin components read these variables, so this
-       one block restyles the entire surface to the approved reference theme. ══ */
-    :root, html[data-theme="light"], html[data-theme="dark"] {
-      --bg-body:#0b0e17;
-      --bg-sidebar:#131a2b;
-      --bg-card:#1e293b;
-      --border-color:rgba(255,255,255,.09);
-      --text-primary:#f1f5f9;
-      --text-secondary:#94a3b8;
-      --accent:#06b6d4;
-    }
-    html, body { background:#0b0e17; color:#f1f5f9; }
-    /* Dark ink on the cyan accent for legible contrast on primary controls */
-    .btn-accent, .ma-seg button.on { color:#04222a !important; }
-    .ma-seg button.on { box-shadow:0 0 14px rgba(6,182,212,.4) !important; }
-    /* Tune the light red danger/error chips for the dark ground */
-    .btn-danger { background:rgba(239,68,68,.14); color:#fca5a5; border-color:rgba(239,68,68,.3); }
-    .btn-danger:hover { background:rgba(239,68,68,.24); }
-    .err-msg { background:rgba(239,68,68,.12); color:#fca5a5; border-color:rgba(239,68,68,.3); }
-
+    /* Admin uses the SAME theme.css tokens as the main app (mobile + web), so it
+       always matches whichever theme the user runs — no separate admin palette. */
     body { font-family:'Inter',sans-serif; background:var(--bg-body); overflow-x:hidden; }
 
     /* ── School badge ── */

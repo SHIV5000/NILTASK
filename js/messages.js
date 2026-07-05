@@ -163,7 +163,7 @@ window.sendMessage = async function() {
                         const url     = sepIdx > -1 ? decoded.substring(sepIdx+3) : decoded;
                         const safeUrl = url.replace(/'/g,'%27');
                         if (/\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test(url.split('?')[0])) {
-                            return `<div style="margin:4px 0;cursor:pointer;" onclick="window.open('${safeUrl}','_blank')"><img src="${url}" alt="image" loading="lazy" style="max-width:260px;max-height:240px;border-radius:12px;display:block;object-fit:cover;border:1px solid rgba(0,0,0,.08);"></div>`;
+                            return `<div style="margin:4px 0;cursor:pointer;" onclick="window.open('${safeUrl}','_blank')"><img src="${url}" alt="image" loading="lazy" style="width:100%;max-width:380px;max-height:380px;border-radius:12px;display:block;object-fit:cover;border:1px solid rgba(0,0,0,.08);"></div>`;
                         }
                         const shown = name && name !== url ? name : 'Link';
                         return `<a href="javascript:void(0);" onclick="window.open('${safeUrl}','_blank')" title="${url}" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:700;text-decoration:none;cursor:pointer;margin:2px 0;box-shadow:0 2px 8px rgba(99,102,241,0.35);white-space:nowrap;vertical-align:middle;"><i class="fa-solid fa-link" style="font-size:10px;"></i><span>${shown}</span><span style="font-size:9px;opacity:0.8;border-left:1px solid rgba(255,255,255,0.35);padding-left:7px;margin-left:3px;">Click to open</span></a>`;
@@ -482,7 +482,7 @@ window.renderMessages = function(messages) {
                     const safePath = path.replace(/'/g, '%27');
                     return `<div style="margin:4px 0;cursor:pointer;" onclick="window.openSecureFile('${safePath}')">
                         <img data-imgpath="${path.replace(/"/g,'%22')}" alt="image" loading="lazy"
-                            style="max-width:260px;max-height:240px;min-width:120px;min-height:90px;border-radius:12px;display:block;object-fit:cover;background:#f1f5f9;border:1px solid rgba(0,0,0,.08);"></div>`;
+                            style="width:100%;max-width:380px;max-height:380px;min-height:120px;border-radius:12px;display:block;object-fit:cover;background:#f1f5f9;border:1px solid rgba(0,0,0,.08);"></div>`;
                 }
                 const nameRaw = anchorText.replace(/^📁\s*/, '').trim();
                 const sizeMatch = nameRaw.match(/\(([^)]+)\)$/);
@@ -532,7 +532,7 @@ window.renderMessages = function(messages) {
                     if (/\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test(url.split('?')[0])) {
                         return `<div style="margin:4px 0;cursor:pointer;" onclick="window.open('${safeUrl}','_blank')">
                             <img src="${url}" alt="image" loading="lazy"
-                                style="max-width:260px;max-height:240px;border-radius:12px;display:block;object-fit:cover;border:1px solid rgba(0,0,0,.08);"></div>`;
+                                style="width:100%;max-width:380px;max-height:380px;border-radius:12px;display:block;object-fit:cover;border:1px solid rgba(0,0,0,.08);"></div>`;
                     }
                     const shown = name && name !== url ? name : 'Link';
                     return `<a href="javascript:void(0);"

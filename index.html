@@ -96,6 +96,43 @@
 </head>
 <body class="antialiased overflow-hidden">
 
+    <!-- Boot splash (Instagram-style): paints INSTANTLY before any JS/CSS loads,
+         covers the entire boot (no flashes of any kind), fades out when the app
+         signals ready via window._hideSplash() — with a hard safety timeout. -->
+    <div id="bootSplash" style="position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;
+        align-items:center;justify-content:center;gap:18px;background:linear-gradient(160deg,#312e81 0%,#4f46e5 55%,#6d28d9 100%);
+        transition:opacity .45s ease;">
+      <div style="width:92px;height:92px;border-radius:26px;background:rgba(255,255,255,.14);
+          display:flex;align-items:center;justify-content:center;box-shadow:0 10px 40px rgba(0,0,0,.35);
+          backdrop-filter:blur(4px);">
+        <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          <path d="M8 9h8M8 13h5"/>
+        </svg>
+      </div>
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#fff;
+          font-size:26px;font-weight:800;letter-spacing:.18em;">NILTASK</div>
+      <div style="position:absolute;bottom:42px;display:flex;flex-direction:column;align-items:center;gap:10px;">
+        <div style="width:22px;height:22px;border:2.5px solid rgba(255,255,255,.25);border-top-color:#fff;
+            border-radius:50%;animation:bootspin .8s linear infinite;"></div>
+        <div style="color:rgba(255,255,255,.55);font-size:10.5px;font-weight:600;letter-spacing:.22em;
+            font-family:-apple-system,BlinkMacSystemFont,sans-serif;">NOTED FOR ACTION</div>
+      </div>
+    </div>
+    <style>@keyframes bootspin{to{transform:rotate(360deg)}}</style>
+    <script>
+      // App calls this when its first screen is painted; safety timeout guarantees
+      // the splash NEVER traps the user even if boot code fails.
+      window._hideSplash = function () {
+        var s = document.getElementById('bootSplash');
+        if (!s || s.dataset.hiding) return;
+        s.dataset.hiding = '1';
+        s.style.opacity = '0';
+        setTimeout(function () { s.remove(); }, 500);
+      };
+      setTimeout(function () { window._hideSplash(); }, 6000);
+    </script>
+
     <div id="root" class="h-screen flex overflow-hidden"></div>
     <div id="pdf-generation-container" style="display:none;"></div>
 

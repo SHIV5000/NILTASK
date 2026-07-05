@@ -327,6 +327,7 @@ window.ensureProfile = async function() {
 // ─── RENDER AUTH SCREEN ─────────────────────────────────────────
 window.renderAuthScreen = function() {
     if (typeof window.applyTheme === 'function') window.applyTheme();
+    window._hideSplash?.();   // login screen is the destination — drop the boot splash
     document.getElementById('root').innerHTML = `
     <div class="min-h-screen w-full flex items-center justify-center" style="background-color:var(--bg-body);">
         <div class="modal-content p-10 rounded-3xl shadow-2xl w-full max-w-md mx-4" style="background-color:var(--bg-sidebar);">

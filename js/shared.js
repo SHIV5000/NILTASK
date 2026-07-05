@@ -6,7 +6,29 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Single source of truth for the running build — stamped onto every warn/error
 // log row so the Live Log Monitor can tell which version a remote device runs.
-window.APP_VER = 'v77';
+window.APP_VER = 'v78';
+
+// ── Stale-build self-healing ────────────────────────────────────────────────
+// Android's installed PWA can keep serving an old cached build for a full extra
+// launch (stale-while-revalidate) — or indefinitely if a SW install ever failed.
+// Compare the RUNNING build against the server's version.json (cache-bypassed);
+// on mismatch, purge caches and reload once. iOS was updating fine; this makes
+// Android converge on every deploy too.
+(async () => {
+    try {
+        const res = await fetch('/version.json?ts=' + Date.now(), { cache: 'no-store' });
+        if (!res.ok) return;
+        const { v } = await res.json();
+        if (v && v !== window.APP_VER && !sessionStorage.getItem('ver_healed_' + v)) {
+            sessionStorage.setItem('ver_healed_' + v, '1');   // one attempt per version — no loops
+            const keys = await caches.keys();
+            await Promise.all(keys.filter(k => k !== 'share-inbox').map(k => caches.delete(k)));
+            const reg = await navigator.serviceWorker?.getRegistration?.();
+            try { await reg?.update(); } catch (e) {}
+            location.reload();
+        }
+    } catch (e) { /* offline — run with what we have */ }
+})();
 
 // Single source of truth for "is this a mobile-app device?".
 // CRITICAL: main.js guards (`window.isMobileView?.()`) referenced this WITHOUT it

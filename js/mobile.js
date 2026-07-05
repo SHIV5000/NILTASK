@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v80';
+const _MOB_VER = 'v81';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -241,6 +241,12 @@ function _applyMobTheme() {
     try {
         if (dark) document.documentElement.setAttribute('data-theme', 'dark');
         else document.documentElement.removeAttribute('data-theme');
+        // Keep the gutter lock in sync (kills the ocean-teal green margin, both modes).
+        const appbg = dark ? '#000000' : '#f0f2f5';
+        document.documentElement.style.background = appbg;
+        if (document.body) document.body.style.background = appbg;
+        const lock = document.getElementById('mobBgLock');
+        if (lock) lock.textContent = 'html,body{background:' + appbg + ' !important;margin:0 !important;}';
     } catch (e) {}
     const b = _el('mSBTheme');
     if (b) {
@@ -673,7 +679,10 @@ function _buildShell() {
     app.addEventListener('pointerleave', _onPressEnd);
     app.addEventListener('pointercancel', _onPressEnd);
     app.addEventListener('pointermove', _onPressMove, { passive:true });
-    app.addEventListener('touchmove', _onPressEnd, { passive:true });
+    // NOTE: do NOT cancel the long-press on raw touchmove — a resting finger emits
+    // touchmove constantly, which killed the 550ms hold before it could fire (the
+    // "no menu" bug). Movement is governed by _onPressMove (14px tolerance) instead.
+    // Only a real scroll of the message list cancels the press.
     app.addEventListener('scroll', _onPressEnd, { passive:true, capture:true });
     document.addEventListener('selectionchange', _onSelectionChange);
     // Suppress native copy/cut/paste toolbar when our format bar is active

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v69';
+const _MOB_VER = 'v70';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -596,26 +596,35 @@ function _buildShell() {
         _bcSend('typing', { room, uid:_uid, name:_uname(_uid) });
     });
 
-    // Swipe-right-to-reply gesture
+    // Swipe-right-to-reply gesture. Direction-locking: the first ~10px of movement
+    // decides horizontal vs vertical; once locked horizontal, a natural finger arc
+    // (dy up to 40px) no longer cancels the swipe — this is what made it feel
+    // unresponsive before (any 15px of vertical drift aborted the gesture).
+    let _swipeLocked = null;   // null=undecided, 'h'=horizontal (reply), 'v'=vertical (scroll)
     app.addEventListener('touchstart', e => {
         const row = e.target.closest('.m-bubble-row');
         if (!row || !row.id.startsWith('row-')) return;
         _swipeStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-        _swipeRow = row; _swipeTriggered = false;
+        _swipeRow = row; _swipeTriggered = false; _swipeLocked = null;
     }, { passive: true });
     app.addEventListener('touchmove', e => {
         if (!_swipeStart || !_swipeRow) return;
         const dx = e.touches[0].clientX - _swipeStart.x;
         const dy = Math.abs(e.touches[0].clientY - _swipeStart.y);
-        if (dy > 15) { _swipeRow.style.transform = ''; _swipeRow = null; return; }
-        if (dx > 5 && dx <= 80) {
+        if (_swipeLocked === null && (Math.abs(dx) > 10 || dy > 10)) {
+            _swipeLocked = (dx > 0 && dx >= dy) ? 'h' : 'v';
+        }
+        if (_swipeLocked === 'v' || (dy > 40 && !_swipeTriggered)) {
+            _swipeRow.style.transform = ''; _swipeRow = null; _swipeLocked = null; return;
+        }
+        if (_swipeLocked === 'h' && dx > 0) {
             _swipeRow.style.transform = `translateX(${Math.min(dx, 70)}px)`;
             _swipeRow.style.transition = 'none';
-            _swipeTriggered = dx > 55;
+            _swipeTriggered = dx > 45;
         }
     }, { passive: true });
-    app.addEventListener('touchend', () => {
-        if (!_swipeRow) return;
+    const _swipeEnd = () => {
+        if (!_swipeRow) { _swipeStart = null; _swipeLocked = null; return; }
         _swipeRow.style.transition = 'transform .2s ease';
         _swipeRow.style.transform = '';
         if (_swipeTriggered) {
@@ -626,8 +635,10 @@ function _buildShell() {
             const room = top?.params?.room||''; const rname = top?.params?.name||''; const rcol = top?.params?.color||'';
             _navTo('thread',{id:msgId,text:btext,sender:bmeta,time:'',room,rname,rcol});
         }
-        _swipeRow = null; _swipeStart = null; _swipeTriggered = false;
-    });
+        _swipeRow = null; _swipeStart = null; _swipeTriggered = false; _swipeLocked = null;
+    };
+    app.addEventListener('touchend', _swipeEnd);
+    app.addEventListener('touchcancel', _swipeEnd);
 
     const lensInp = _el('mSBSearchInp');
     let st;
@@ -911,10 +922,14 @@ function _fmtDateTime(ds){ try { const d=new Date(ds); return _istFmtDate.format
 async function _activity() {
     const filter = window._afFilter || 'all';
     const senderFilter = window._afSender || '';
-    // Opening the feed marks it "seen" (clears the Activity tab badge + bell badge).
+    // Opening the feed marks it "seen" (clears the Activity tab badge + bell badge)
+    // AND the per-chat unread badges on the home list — the user has now seen
+    // everything the feed lists, so individual group/DM counts reset too.
     try { localStorage.setItem('activity_seen_ts', new Date().toISOString()); } catch(e){}
     _el('mnActBadge')?.style.setProperty('display','none');
     _clearBellBadge();
+    window.unreadCounts = {};
+    _updateAppBadge();
 
     const { data: notifs } = await sb.from('notifications')
         .select('id,type,message,message_id,task_id,created_at,is_read')
@@ -3588,7 +3603,7 @@ function _injectCSS(){
   color:#fff;font-weight:700;font-size:10.5px;flex-shrink:0;}
 .m-bubble-row.snt{justify-content:flex-end;}
 .m-bubble-row.rcv{justify-content:flex-start;}
-.m-bubble{max-width:90%;min-width:0;padding:12px 15px 13px;border-radius:14px;position:relative;
+.m-bubble{width:90%;max-width:90%;min-width:0;padding:12px 15px 13px;border-radius:14px;position:relative;
   font-size:16px;line-height:1.5;word-break:break-word;
   background:var(--card-bg,#fff);box-shadow:var(--card-shadow,0 2px 8px rgba(0,0,0,.07));
   border:1px solid var(--border-color,#e5e7eb);

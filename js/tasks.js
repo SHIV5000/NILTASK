@@ -501,8 +501,9 @@ window.loadTasksForPanel = async function() {
             });
         }
 
-        const trailRows = trlList.map(t => {
-            const tName = window.toSentenceCase((t.profiles?.full_name || t.profiles?.email || 'System').split('@')[0]);
+        const trailRows = trlList.map((t, _ti) => {
+            // Serial number: latest-first list, newest = highest number
+            const tName = '#' + (trlList.length - _ti) + ' · ' + window.toSentenceCase((t.profiles?.full_name || t.profiles?.email || 'System').split('@')[0]);
             const tTime = window.getISTTime(t.created_at);
             let content = '';
             if (t.action === 'FILE') {

@@ -310,7 +310,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.99.0 (v79) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.0.0 (v80) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -818,7 +818,20 @@ window.renderMainApp = async function() {
 
     if (typeof window.initResizers === 'function') window.initResizers();
     if (typeof window.loadChatsList === 'function') window.loadChatsList();
-    window._hideSplash?.();   // web shell painted — drop the boot splash
+    // Live presence on desktop: refresh last_seen every 60s and re-render the list.
+    if (!window._presenceTimer) window._presenceTimer = setInterval(async () => {
+        if (document.visibilityState !== 'visible' || window.isMobileView?.()) return;
+        try {
+            const { data } = await sb.from('profiles').select('id,last_seen').eq('tenant_id', window.currentTenantId);
+            (data||[]).forEach(p => { const u = window.globalUsersCache.find(x=>x.id===p.id); if (u) u.last_seen = p.last_seen; });
+            window.loadChatsList?.();
+        } catch (e) {}
+    }, 60000);
+    // Drop the splash here ONLY on desktop. On mobile this point is reached while
+    // the mobile shell is still building — hiding here exposed an intermediate
+    // frame (the reported flash between splash and app). Mobile hides the splash
+    // itself after its home screen is fully painted (initMobileApp).
+    if (!window.isMobileView?.()) window._hideSplash?.();
     if (typeof window.loadMessages === 'function') window.loadMessages().then?.(() => {
         if (typeof window.applyRBAC === 'function') window.applyRBAC();
     });
@@ -1064,7 +1077,9 @@ window.loadChatsList = async function() {
 
     html += `<div class="sidebar-section-label px-4 py-2 mt-4 text-[10px] font-black tracking-widest uppercase" style="color:var(--text-secondary);">Staff Members</div>`;
 
-    window.globalUsersCache.filter(u => u.id !== window.currentUser.id).forEach(u => {
+    window.globalUsersCache.filter(u => u.id !== window.currentUser.id)
+        .slice().sort((a, b) => (a.full_name || a.email || '').localeCompare(b.full_name || b.email || ''))
+        .forEach(u => {
         const name = (typeof window.toSentenceCase === 'function') ? window.toSentenceCase(u.full_name || u.email.split('@')[0]) : (u.full_name || u.email.split('@')[0]);
         // Use canonical DM room ID so both sides match
         const dmRoomId = typeof window.getDmRoomId === 'function' ? window.getDmRoomId(u.id) : 'dm_' + u.id;
@@ -1077,7 +1092,7 @@ window.loadChatsList = async function() {
             <div class="relative flex-shrink-0">
                 <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm"
                     style="${u.avatar_url ? `background-image:url('${u.avatar_url}');background-size:cover;background-position:center;color:transparent;` : 'background:var(--accent);'}">${u.avatar_url ? '' : name.charAt(0).toUpperCase()}</div>
-                ${window.getPresenceStatus?.(u.last_seen)?.online ? `<span class="absolute rounded-full pointer-events-none" style="inset:-3px;border:2.5px solid #10b981;box-shadow:0 0 6px rgba(16,185,129,.5);"></span>` : ''}
+                ${window.getPresenceStatus?.(u.last_seen)?.online ? `<span class="presence-dot absolute rounded-full pointer-events-none" style="bottom:-2px;right:-2px;width:13px;height:13px;background:#10b981;border:2.5px solid var(--bg-sidebar);box-shadow:0 0 5px rgba(16,185,129,.6);"></span>` : ''}
                 ${unread > 0 ? `<span class="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full" style="background:#22c55e;"></span>
                     <span class="absolute -top-1 -right-1 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center" style="background:#22c55e;">${unread > 9 ? '9+' : unread}</span>` : ''}
             </div>

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v79';
+const _MOB_VER = 'v80';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -100,7 +100,7 @@ function _onlineDot(uid) {
     const u = _users.find(u => u.id === uid);
     if (!u?.last_seen) return '';
     const diffMin = (Date.now() - new Date(u.last_seen).getTime()) / 60000;
-    if (diffMin < 3)  return '<span class="m-presence-ring"></span>';
+    if (diffMin < 3)  return '<span class="m-presence-dot"></span>';
     return '';
 }
 
@@ -310,6 +310,7 @@ window.initMobileApp = async function() {
         });
         if (_uid) sb.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', _uid).then(() => {});
         _ensureRealtimeAlive();   // heal silently-dead realtime channels
+        _users.forEach(u => { if (u.id !== _uid) _onPresenceUpdate(u); });   // age-out stale dots
     }, 60000);
     window.addEventListener('resize', () => {
         const m = window.isMobileView?.() ?? (window.innerWidth <= MOB);
@@ -676,7 +677,22 @@ function _buildShell() {
     app.addEventListener('scroll', _onPressEnd, { passive:true, capture:true });
     document.addEventListener('selectionchange', _onSelectionChange);
     // Suppress native copy/cut/paste toolbar when our format bar is active
-    document.addEventListener('contextmenu', e => { if (e.target.closest('.m-ce')) e.preventDefault(); }, true);
+    document.addEventListener('contextmenu', e => {
+        if (e.target.closest('.m-ce')) { e.preventDefault(); return; }
+        const row = e.target.closest('.m-bubble-row');
+        if (row && row.id.startsWith('row-')) {
+            e.preventDefault();
+            // Fallback trigger: some devices deliver contextmenu instead of completing
+            // the pointer-hold — open the same message action sheet.
+            const id = row.id.replace('row-','');
+            const me = row.classList.contains('snt');
+            const text = row.querySelector('.m-btext')?.textContent || '';
+            const time = row.dataset.time || '';
+            const params = _stack[_stack.length-1]?.params || {};
+            window._showMsgActions({ id, text, me, time, room: params.room||'', rname: params.name||'', rcol: params.color||'' });
+            navigator.vibrate?.(35);
+        }
+    }, true);
 
     // Broadcast typing indicator on input in any chat composer
     app.addEventListener('input', e => {
@@ -1610,16 +1626,25 @@ async function _dm(p) {
 }
 
 async function _tasks() {
-    const { data } = await sb.from('task_assignees')
-        .select('status, tasks!inner(id,title,priority,deadline,created_at,require_proof,assigned_by)')
-        .eq('assignee_id',_uid).eq('tenant_id',_tid)
-        .order('created_at',{ascending:false,foreignTable:'tasks'}).limit(50);
-
-    const taskIds = (data||[]).map(r=>r.tasks.id);
-    let assigneeMap = {};
-    if (taskIds.length) {
-        const { data: allAssignees } = await sb.from('task_assignees').select('task_id,assignee_id').eq('tenant_id', _tid).in('task_id', taskIds);
-        (allAssignees||[]).forEach(a => { (assigneeMap[a.task_id] = assigneeMap[a.task_id]||[]).push(_uname(a.assignee_id)); });
+    // Offline-first: serve the cached task list when the network is unavailable,
+    // refresh the cache on every successful load.
+    let data = null, assigneeMap = {};
+    try {
+        const res = await sb.from('task_assignees')
+            .select('status, tasks!inner(id,title,priority,deadline,created_at,require_proof,assigned_by)')
+            .eq('assignee_id',_uid).eq('tenant_id',_tid)
+            .order('created_at',{ascending:false,foreignTable:'tasks'}).limit(50);
+        data = res.data;
+        const taskIds = (data||[]).map(r=>r.tasks.id);
+        if (taskIds.length) {
+            const { data: allAssignees } = await sb.from('task_assignees').select('task_id,assignee_id').eq('tenant_id', _tid).in('task_id', taskIds);
+            (allAssignees||[]).forEach(a => { (assigneeMap[a.task_id] = assigneeMap[a.task_id]||[]).push(_uname(a.assignee_id)); });
+        }
+        if (data) window.LocalDB?.kvSet?.('tasks_cache_'+_uid, { data, assigneeMap, ts: Date.now() });
+    } catch (e) { /* offline — fall through to cache */ }
+    if (!data) {
+        const cached = await window.LocalDB?.kvGet?.('tasks_cache_'+_uid);
+        if (cached?.data) { data = cached.data; assigneeMap = cached.assigneeMap || {}; }
     }
 
     const stMap = { pending_ack:{bg:'#fef9c3',fg:'#854d0e',lbl:'⏳ Needs Ack'},
@@ -1713,11 +1738,12 @@ async function _taskDetail(p) {
       ${(trails||[]).length ? `
       <div style="padding:4px 16px 16px;">
         <div class="m-sl" style="padding:8px 0 6px;">Task Trail — latest first</div>
-        ${trails.map(tr => {
+        ${trails.map((tr, _ti) => {
           const actLbl = { ACK:'Acknowledged', UPDATE:'Update', FILE:'File Attached', SUBMIT:'Submitted', ACCEPT:'Accepted', REWORK:'Rework Requested' }[tr.action] || (tr.action||'Update');
           return `
           <div style="padding:10px 0;border-bottom:1px solid var(--border-color);">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
+              <span style="font-size:11px;font-weight:800;color:var(--text-secondary,#9ca3af);">#${trails.length - _ti}</span>
               <span style="font-size:12.5px;font-weight:800;color:var(--accent,#6366f1);">${x(_uname(tr.user_id))}</span>
               <span style="font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;background:var(--bg-sidebar,#f1f5f9);border:1px solid var(--border-color,#e5e7eb);border-radius:20px;padding:2px 9px;color:var(--text-secondary,#6b7280);">${x(actLbl)}</span>
               <span style="font-size:11px;color:var(--text-secondary,#9ca3af);margin-left:auto;">${_fmtIST(tr.created_at)}</span>
@@ -2459,7 +2485,7 @@ function _showForwardSheet(text, opts={}) {
     const title  = opts.title  || 'Forward to…';
     const action = opts.action || 'doForward';
     const sheet = _el('mSheetInner');
-    const others = _users.filter(u=>u.id!==_uid);
+    const others = _users.filter(u=>u.id!==_uid).slice().sort((a,b)=>(a.full_name||a.email||'').localeCompare(b.full_name||b.email||''));
     sheet.innerHTML = `
       <div class="m-sheet-handle"></div>
       <div class="m-sheet-title">${x(title)}</div>
@@ -2491,7 +2517,7 @@ window._openThemeSheet = function() {
 
 function _showConvertTask(msgId, text) {
     const sheet = _el('mSheetInner');
-    const others = _users.filter(u=>u.id!==_uid);
+    const others = _users.filter(u=>u.id!==_uid).slice().sort((a,b)=>(a.full_name||a.email||'').localeCompare(b.full_name||b.email||''));
     sheet.innerHTML = `
       <div class="m-sheet-handle"></div>
       <div class="m-sheet-title">Convert to Task</div>
@@ -2793,7 +2819,8 @@ function _onPressStart(e) {
 }
 function _onPressMove(e) {
     if (!_pressTimer) return;
-    if (Math.abs(e.clientX-_pressX) > 6 || Math.abs(e.clientY-_pressY) > 6) {
+    // 14px tolerance — a resting fingertip drifts a few px; 6px killed most presses.
+    if (Math.abs(e.clientX-_pressX) > 14 || Math.abs(e.clientY-_pressY) > 14) {
         clearTimeout(_pressTimer); _pressTimer = null;
     }
 }
@@ -2838,6 +2865,7 @@ function _initRealtime() {
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => _onNewMessage(p.new))
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'task_assignees', filter:`tenant_id=eq.${_tid}` }, p => _onTaskAssigneeUpdate(p.new))
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`user_id=eq.${_uid}` }, () => _refreshNotifBadge())
+        .on('postgres_changes', { event:'UPDATE', schema:'public', table:'profiles', filter:`tenant_id=eq.${_tid}` }, p => _onPresenceUpdate(p.new))
         .subscribe(status => {
             console.log('[mob-rt] channel status='+status);
             if (status === 'SUBSCRIBED') {
@@ -2930,6 +2958,19 @@ function _initRealtime() {
         });
     _refreshNotifBadge();
     // Realtime badge update already wired via postgres_changes INSERT on notifications — no polling needed
+}
+// Live presence: update the cached user + patch the dot on any visible row.
+function _onPresenceUpdate(row) {
+    if (!row?.id) return;
+    const u = _users.find(x => x.id === row.id);
+    if (u && row.last_seen) u.last_seen = row.last_seen;
+    document.querySelectorAll('[data-uid="' + row.id + '"]').forEach(el => {
+        const holder = el.querySelector('div[style*="position:relative"]');
+        if (!holder) return;
+        holder.querySelector('.m-presence-dot')?.remove();
+        const html = _onlineDot(row.id);
+        if (html) holder.insertAdjacentHTML('beforeend', html);
+    });
 }
 function _sumUnread() {
     return Object.values(window.unreadCounts || {}).reduce((a, b) => a + (b || 0), 0);
@@ -3749,7 +3790,7 @@ function _injectCSS(){
 .m-msgs,.mScr,.mScr-inner,#mSheetInner{overscroll-behavior:contain;}
 
 #mSB{display:flex;align-items:center;gap:6px;
-  padding:10px 12px;flex-shrink:0;position:relative;
+  padding:calc(10px + env(safe-area-inset-top,0px)) 12px 10px;flex-shrink:0;position:relative;
   background:var(--bg-sidebar,#f6f8fa);border-bottom:1px solid var(--border-color,#e5e7eb);}
 .m-sb-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;cursor:pointer;}
 .m-sb-user{font-size:16.5px;font-weight:700;color:var(--text-primary,#111);
@@ -3770,8 +3811,9 @@ function _injectCSS(){
   color:var(--text-secondary,#6b7280);padding:6px;flex-shrink:0;min-width:36px;min-height:36px;
   -webkit-tap-highlight-color:transparent;}
 .m-sb-icon:active{opacity:.6;}
-.m-presence-ring{position:absolute;inset:-3px;border:2.5px solid #10b981;border-radius:inherit;
-  border-radius:50%;pointer-events:none;box-shadow:0 0 6px rgba(16,185,129,.5);}
+.m-presence-dot{position:absolute;bottom:-1px;right:-1px;width:14px;height:14px;border-radius:50%;
+  background:#10b981;border:2.5px solid var(--bg-body,#fff);pointer-events:none;
+  box-shadow:0 0 5px rgba(16,185,129,.6);}
 .m-notif-badge{position:absolute;top:2px;right:2px;background:#ef4444;color:#fff;
   font-size:10px;font-weight:800;min-width:16px;height:16px;border-radius:8px;
   display:flex;align-items:center;justify-content:center;padding:0 4px;
@@ -3809,7 +3851,7 @@ function _injectCSS(){
 .mn-btn:active{opacity:.6;}
 .mn-btn i{transition:transform .2s;}
 
-.m-hdr{display:flex;align-items:center;gap:10px;padding:11px 16px;flex-shrink:0;
+.m-hdr{display:flex;align-items:center;gap:10px;padding:calc(11px + env(safe-area-inset-top,0px)) 16px 11px;flex-shrink:0;
   background:var(--bg-sidebar,#f6f8fa);border-bottom:1px solid var(--border-color,#e5e7eb);}
 .m-hdr-plain{padding:14px 16px;}
 .m-back{background:var(--bg-body,#fff);border:1.5px solid var(--border-color,#e5e7eb);

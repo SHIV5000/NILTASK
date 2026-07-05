@@ -6,7 +6,7 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Single source of truth for the running build — stamped onto every warn/error
 // log row so the Live Log Monitor can tell which version a remote device runs.
-window.APP_VER = 'v74';
+window.APP_VER = 'v75';
 
 // Define Global State
 window.currentUser = null;

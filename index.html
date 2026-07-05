@@ -87,6 +87,11 @@
         auth.js MUST come before main.js (defines renderAuthScreen / signIn / logout).
         main.js MUST be last (runs the boot sequence).
     -->
+    <!-- Local storage engine: Dexie (IndexedDB) + the LocalDB wrapper. Classic
+         scripts so window.LocalDB exists before any module runs; the app degrades
+         to its localStorage fallback if either fails to load (e.g. offline first boot). -->
+    <script src="https://unpkg.com/dexie@3.2.7/dist/dexie.min.js"></script>
+    <script src="./js/db.js"></script>
     <script type="module" src="./js/shared.js"></script>
     <script type="module" src="./js/auth.js"></script>
     <script type="module" src="./js/rbac.js"></script>

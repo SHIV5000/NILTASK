@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v67';
+const _MOB_VER = 'v68';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -646,7 +646,19 @@ window._confirmLogout = async function() {
     window.location.href = '/';
 };
 
+function _sameParams(a, b) {
+    a = a || {}; b = b || {};
+    return (a.room||'')===(b.room||'') && (a.id||'')===(b.id||'') && (a.uid||'')===(b.uid||'') && (a.filter||'')===(b.filter||'');
+}
 window._navTo = async function(screen, params, replace = false) {
+    // Native-app feel: tapping the tab/screen you're already on does nothing instead
+    // of re-rendering and flashing the screen. (Scroll the list back to top instead.)
+    const cur = _stack[_stack.length-1];
+    if (!replace && cur && cur.screen === screen && _sameParams(cur.params, params)) {
+        const sc = _el('mStage')?.querySelector('.mScr, .m-msgs, .ma-body');
+        if (sc) sc.scrollTo({ top:0, behavior:'smooth' });
+        return;
+    }
     if (_searchMode) window._toggleInlineSearch();
     // Opening a chat marks it read — clear its unread badge (home re-reads this on back).
     if ((screen === 'groupChat' || screen === 'dm') && params?.room) {
@@ -898,6 +910,11 @@ async function _activity() {
         .select('id,type,message,message_id,task_id,created_at,is_read')
         .eq('user_id',_uid).eq('tenant_id',_tid)
         .order('created_at',{ascending:false}).limit(80);
+
+    // Persist "read" in the DB so the 60s badge poll (_refreshNotifBadge) doesn't
+    // resurrect the count after the user has already seen the feed.
+    const _unreadIds = (notifs||[]).filter(n=>!n.is_read).map(n=>n.id);
+    if (_unreadIds.length) { sb.from('notifications').update({is_read:true}).in('id',_unreadIds).then(()=>{}); }
 
     // Enrich message-type notifications with a sender name (join messages on id).
     const senderById = {};
@@ -1306,10 +1323,15 @@ async function _groupChat(p) {
             if (myGen !== _refreshGen) { return; }
             const area = document.getElementById('mMsgArea');
             if (area) {
-                // Preserve any live-appended rows (realtime/optimistic) not in DB result
+                // Preserve only genuinely NEWER live rows (realtime/optimistic) that the
+                // latest-50 fetch hasn't caught yet. Rows OLDER than the newest DB message
+                // (e.g. ones paginated in via scroll-up) must NOT be re-appended at the
+                // bottom — that's what made older messages show below the latest.
                 const dbIds = new Set(msgs.map(m=>m.id));
-                const liveRows = [...area.querySelectorAll('[id^="row-"]')]
+                const newestDbTs = msgs.length ? msgs[msgs.length-1].created_at : '';
+                const liveRows = [...area.querySelectorAll('.m-bubble-row[id^="row-"]')]
                     .filter(el => !dbIds.has(el.id.replace('row-','')))
+                    .filter(el => (el.querySelector('.m-bmeta[data-ts]')?.dataset.ts || '') > newestDbTs)
                     .map(el => el.outerHTML);
                 area.innerHTML = msgs.map(m=>_bubbleHTML(m,reactionsMap,140,replyMap,p)).join('') || '<div class="m-empty">No messages yet. Send the first one!</div>';
                 liveRows.forEach(html => area.insertAdjacentHTML('beforeend', html));
@@ -1407,8 +1429,10 @@ async function _dm(p) {
             const area = document.getElementById('mDMArea');
             if (area) {
                 const dbIds2 = new Set(msgs.map(m=>m.id));
-                const liveRows2 = [...area.querySelectorAll('[id^="row-"]')]
+                const newestDbTs2 = msgs.length ? msgs[msgs.length-1].created_at : '';
+                const liveRows2 = [...area.querySelectorAll('.m-bubble-row[id^="row-"]')]
                     .filter(el => !dbIds2.has(el.id.replace('row-','')))
+                    .filter(el => (el.querySelector('.m-bmeta[data-ts]')?.dataset.ts || '') > newestDbTs2)
                     .map(el => el.outerHTML);
                 area.innerHTML = msgs.map(m=>_bubbleHTML(m,reactionsMap,160,replyMap,p)).join('') || `<div class="m-empty">Start a conversation with ${x(p.name)}</div>`;
                 liveRows2.forEach(html => area.insertAdjacentHTML('beforeend', html));
@@ -1752,20 +1776,19 @@ async function _settings() {
         <input type="file" id="mMyPhotoInput" style="display:none;" accept="image/*">
       </div>
 
-      ${window.canSeeGroupGear?.() ? `
-      <div class="m-sl">ADMINISTRATION</div>
-      <div style="padding:0 16px 8px;">
-        <div class="m-row" data-action="navGroupMgmt" style="cursor:pointer;padding:12px 0;">
-          <div style="width:36px;height:36px;border-radius:10px;background:#7c3aed18;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-            <i class="fa-solid fa-people-group" style="color:#7c3aed;font-size:16px;"></i>
-          </div>
-          <div class="m-ri"><div class="m-rn">Group Management</div><div class="m-rs">Create, edit, archive groups &amp; members</div></div>
-          <i class="fa-solid fa-chevron-right" style="color:var(--text-secondary);font-size:12px;"></i>
-        </div>
-      </div>` : ''}
+      <!-- 1 · PROFILE -->
+      <div class="m-sl">PROFILE</div>
+      <div style="padding:0 16px;display:flex;flex-direction:column;gap:12px;">
+        <div class="m-field"><label class="m-label">Full Name</label>
+          <input class="m-inp" id="sName" value="${x(p?.full_name||'')}" placeholder="Your name"></div>
+        <div class="m-field"><label class="m-label">Designation</label>
+          <input class="m-inp" id="sDesig" value="${x(p?.designation||'')}" placeholder="Your designation"></div>
+        <div class="m-field"><label class="m-label">Department</label>
+          <input class="m-inp" id="sDept" value="${x(p?.department||'')}" placeholder="Your department"></div>
+      </div>
 
-
-      <div class="m-sl">NOTIFICATIONS</div>
+      <!-- 2 · NOTIFICATION SETTINGS -->
+      <div class="m-sl">NOTIFICATION SETTINGS</div>
       <div style="padding:0 16px 8px;">
         <div class="m-detail-row"><span class="m-detail-lbl">Status</span><span class="m-detail-val">${permLabel}</span></div>
         <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;padding:4px 0 10px;">
@@ -1785,20 +1808,19 @@ async function _settings() {
         </button>
       </div>
 
-      <div class="m-sl">PROFILE</div>
-      <div style="padding:0 16px;display:flex;flex-direction:column;gap:12px;">
-        <div class="m-field"><label class="m-label">Full Name</label>
-          <input class="m-inp" id="sName" value="${x(p?.full_name||'')}" placeholder="Your name"></div>
-        <div class="m-field"><label class="m-label">Designation</label>
-          <input class="m-inp" id="sDesig" value="${x(p?.designation||'')}" placeholder="Your designation"></div>
-        <div class="m-field"><label class="m-label">Department</label>
-          <input class="m-inp" id="sDept" value="${x(p?.department||'')}" placeholder="Your department"></div>
+      <!-- 3 · BUTTONS -->
+      <div class="m-sl">ACTIONS</div>
+      <div style="padding:0 16px 8px;display:flex;flex-direction:column;gap:12px;">
         <button class="m-action-btn" style="background:#6366f1;" data-action="saveProfile">
           <i class="fa-solid fa-save"></i> Save Profile
         </button>
         <button class="m-action-btn" style="background:transparent;color:var(--text-secondary);border:1px solid var(--border-color);" data-action="changePassword">
           <i class="fa-solid fa-key"></i> Change Password
         </button>
+        ${window.canSeeGroupGear?.() ? `
+        <button class="m-action-btn" style="background:#7c3aed;" data-action="navGroupMgmt">
+          <i class="fa-solid fa-people-group"></i> Group Management
+        </button>` : ''}
         <button class="m-action-btn" style="background:#ef4444;" data-action="confirmLogout">
           <i class="fa-solid fa-right-from-bracket"></i> Sign Out
         </button>
@@ -3441,6 +3463,8 @@ function _toast(msg, type='ok'){
     clearTimeout(t._timer);
     t._timer = setTimeout(()=>t.className='', 2500);
 }
+// Expose so the shared web toast can route here on mobile (single toast, at top).
+window._mobToast = _toast;
 
 function _injectCSS(){
     if(_el('mCSS')) return;
@@ -3607,6 +3631,7 @@ function _injectCSS(){
   60%  { background:color-mix(in srgb, var(--accent) 22%, var(--card-bg)); box-shadow:0 0 0 2px var(--accent); }
   100% { background:var(--card-bg); box-shadow:none; }
 }
+.m-link-pill{white-space:normal!important;word-break:break-word;max-width:100%;height:auto!important;text-align:left;}
 .m-btext{font-size:18px;line-height:1.55;color:var(--text-primary,#111);
   word-break:break-word;overflow-wrap:break-word;
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
@@ -3740,10 +3765,11 @@ function _injectCSS(){
 .m-sheet-row:active{background:var(--bg-sidebar,#f6f8fa);}
 .m-sheet-row i{width:24px;text-align:center;font-size:18px;}
 
-#mToast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
-  padding:10px 20px;border-radius:24px;font-size:13.5px;font-weight:600;
+#mToast{position:fixed;top:calc(env(safe-area-inset-top,0px) + 72px);left:50%;transform:translateX(-50%);
+  padding:11px 20px;border-radius:16px;font-size:14px;font-weight:600;
   color:#fff;z-index:11000;opacity:0;transition:opacity .2s;pointer-events:none;
-  white-space:nowrap;}
+  white-space:normal;max-width:88vw;text-align:center;line-height:1.4;
+  box-shadow:0 6px 22px rgba(0,0,0,.28);}
 .toast-ok{background:#16a34a;opacity:1!important;}
 .toast-err{background:#ef4444;opacity:1!important;}
 

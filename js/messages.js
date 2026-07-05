@@ -586,7 +586,11 @@ window.renderMessages = function(messages) {
             <div class="replies-wrap" id="rw-${msg.id}" style="display:flex;flex-direction:column;gap:2px;">
               <div class="replies-label"><i class="ti ti-git-branch"></i>Replies</div>
               ${replies[msg.id].map((r, idx) => {
-                  const rName = window.toSentenceCase(r.profiles?.full_name || r.profiles?.email.split('@')[0] || 'Unknown');
+                  // Resolve the reply sender from the global users cache when the row's
+                  // profiles join is missing — otherwise it renders as "Unknown".
+                  const _ru = (window.globalUsersCache||[]).find(u=>u.id===r.sender_id);
+                  const rName = (r.sender_id===window.currentUser?.id) ? 'You'
+                      : window.toSentenceCase(r.profiles?.full_name || _ru?.full_name || _ru?.email?.split('@')[0] || r.profiles?.email?.split('@')[0] || 'Unknown');
                   const rTime = window.getISTTime(r.created_at);
                   const rDisplayHtml = r.text.replace(/href="https:\/\/secure-file\.local\/([^"]+)"/g,
                       `href="javascript:void(0);" onclick="window.openSecureFile('$1'); return false;" class="text-blue-600 underline font-medium"`);

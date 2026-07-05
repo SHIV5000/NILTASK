@@ -209,7 +209,7 @@ window.sendMessage = async function() {
 };
 
 window.loadMessages = async function() {
-    const PAGE = 50;
+    const PAGE = 30;
     const cacheKey = 'msgcache_' + window.currentRoom;
 
     // Reset render-dedup key so a new room always gets a fresh render
@@ -385,7 +385,7 @@ window._loadOlderMsgs = async function() {
         loader.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="color:var(--text-secondary);font-size:11px;"></i><span style="font-size:11px;color:var(--text-secondary);margin-left:6px;">Loading older messages…</span>';
     }
 
-    const PAGE = 50;
+    const PAGE = 30;
     const { data: olderRaw } = await sb.from('messages')
         .select('*')
         .eq('room_id', window.currentRoom)

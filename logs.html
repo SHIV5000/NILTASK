@@ -146,6 +146,9 @@
     <select id="fSchool" onchange="renderTable()">
       <option value="all">All schools</option>
     </select>
+    <select id="fUser" onchange="renderTable()">
+      <option value="all">All users</option>
+    </select>
     <span class="count-badge" id="countBadge"></span>
   </div>
 
@@ -274,6 +277,32 @@ async function loadSchoolMap() {
     rebuildSchoolDropdown();
 }
 
+// ── USER MAP (user_id -> name/email, for the user filter) ──
+const userMap = {};
+async function resolveUsers() {
+    const ids = [...new Set(allLogs.map(l => l.user_id).filter(Boolean))]
+        .filter(id => !userMap[id]);
+    if (!ids.length) { rebuildUserDropdown(); return; }
+    const { data } = await sb.from('profiles').select('id, full_name, email').in('id', ids);
+    (data || []).forEach(p => { userMap[p.id] = p.full_name || p.email || p.id.slice(0,8)+'…'; });
+    ids.forEach(id => { if (!userMap[id]) userMap[id] = id.slice(0,8)+'…'; });
+    rebuildUserDropdown();
+}
+function rebuildUserDropdown() {
+    const sel = document.getElementById('fUser');
+    const cur = sel.value;
+    const ids = [...new Set(allLogs.map(l => l.user_id).filter(Boolean))];
+    sel.innerHTML = '<option value="all">All users</option>';
+    ids.map(id => [id, userMap[id] || id.slice(0,8)+'…'])
+       .sort((a,b) => a[1].localeCompare(b[1]))
+       .forEach(([id, name]) => {
+           const opt = document.createElement('option');
+           opt.value = id; opt.textContent = name;
+           if (id === cur) opt.selected = true;
+           sel.appendChild(opt);
+       });
+}
+
 function rebuildSchoolDropdown() {
     const sel = document.getElementById('fSchool');
     const cur = sel.value;
@@ -297,6 +326,7 @@ window.loadLogs = async function() {
     if (error) { toast('Load error: ' + error.message, 'red'); return; }
     allLogs = data || [];
     rebuildCatDropdown();
+    resolveUsers();
     renderTable();
 };
 
@@ -314,6 +344,7 @@ function startLive() {
             allLogs.unshift(p.new);
             if (allLogs.length > 2000) allLogs.pop();
             rebuildCatDropdown();
+            if (p.new.user_id && !userMap[p.new.user_id]) resolveUsers();
             renderTable(true);
         })
         .subscribe();
@@ -343,11 +374,13 @@ function filtered() {
     const level   = document.getElementById('fLevel').value;
     const cat     = document.getElementById('fCat').value;
     const school  = document.getElementById('fSchool').value;
+    const user    = document.getElementById('fUser').value;
 
     return allLogs.filter(l => {
         if (level  !== 'all' && l.level     !== level)     return false;
         if (cat    !== 'all' && l.category  !== cat)       return false;
         if (school !== 'all' && l.tenant_id !== school)    return false;
+        if (user   !== 'all' && l.user_id   !== user)      return false;
         if (search) {
             const h = (l.message||'') + ' ' + (l.data ? JSON.stringify(l.data) : '');
             if (!h.toLowerCase().includes(search)) return false;

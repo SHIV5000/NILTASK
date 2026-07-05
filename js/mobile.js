@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v72';
+const _MOB_VER = 'v73';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -1264,7 +1264,7 @@ function _renderLinkPills(html) {
                 const preSrc = _imgUrlCache[p] ? ` src="${x(_imgUrlCache[p])}"` : '';
                 return `<div class="m-img-preview" data-action="openTaskFile" data-path="${p}" style="cursor:pointer;margin:4px 0;">
                     <img data-imgpath="${p}"${preSrc} alt="${x(name)}" loading="lazy"
-                        style="max-width:240px;max-height:230px;min-width:120px;min-height:84px;border-radius:12px;display:block;object-fit:cover;background:var(--bg-sidebar,#eef1f5);border:1px solid var(--border-color,#e5e7eb);">
+                        style="width:100%;max-height:340px;min-height:140px;border-radius:12px;display:block;object-fit:cover;background:var(--bg-sidebar,#eef1f5);border:1px solid var(--border-color,#e5e7eb);">
                 </div>`;
             }
             const ext = (clean.split('.').pop() || '');
@@ -1284,7 +1284,7 @@ function _renderLinkPills(html) {
                 const safeUrl = fixedUrl.replace(/'/g, '%27');
                 if (imgExts.test(url.split('?')[0])) {
                     return `<div class="m-img-preview" data-action="openFile" data-url="${encodeURIComponent(safeUrl)}" style="cursor:pointer;margin:4px 0;">
-                        <img src="${x(fixedUrl)}" alt="${x(name)}" style="max-width:220px;max-height:200px;border-radius:10px;display:block;object-fit:cover;" loading="lazy"
+                        <img src="${x(fixedUrl)}" alt="${x(name)}" style="width:100%;max-height:340px;border-radius:12px;display:block;object-fit:cover;" loading="lazy"
                             onerror="this.parentElement.innerHTML='<button class=&quot;m-link-pill&quot; data-action=&quot;openFile&quot; data-url=&quot;${encodeURIComponent(safeUrl)}&quot; style=&quot;display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);color:#fff;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;border:none;cursor:pointer;&quot;><i class=&quot;fa-solid fa-image&quot; style=&quot;font-size:9px;&quot;></i><span>${x(name)}</span></button>'">
                     </div>`;
                 }

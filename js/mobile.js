@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v71';
+const _MOB_VER = 'v72';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -40,6 +40,7 @@ function _bcSend(event, payload) {
     try { _sharedBc?.send({ type:'broadcast', event, payload:{ ...payload, src:'m' } }); } catch {}
 }
 let _notifPoll = null;
+let _navGen = 0;   // render-race guard (see _render)
 let _swipeStart = null, _swipeRow = null, _swipeTriggered = false;
 let _searchMode = false;
 let _customGroups = [];
@@ -264,9 +265,11 @@ window.initMobileApp = async function() {
             if (e.data?.type === 'open-room' && e.data.room) _openRoomByRoom(e.data.room);
         });
     } catch (e) {}
+    if (_notifFallbackInterval) clearInterval(_notifFallbackInterval);
     _notifFallbackInterval = setInterval(_refreshNotifBadge, 60000);
     _showOfflineBanner(_isOffline);
     // Auto-refresh displayed timestamps every 60s + update last_seen heartbeat
+    if (_tsInterval) clearInterval(_tsInterval);
     _tsInterval = setInterval(() => {
         document.querySelectorAll('.m-bmeta[data-ts]').forEach(el => {
             el.textContent = el.dataset.label + ' · ' + _ago(el.dataset.ts);
@@ -278,6 +281,13 @@ window.initMobileApp = async function() {
         _el('mobileApp')?.style.setProperty('display', m ? 'flex' : 'none', 'important');
         if (m) _el('root')?.style.setProperty('display', 'none', 'important');
     }, { passive: true });
+    // Native resume behavior: coming back from the background silently refreshes the
+    // unread badge (no visible re-render — the per-channel realtime reconnect already
+    // recovers live messages after a suspend).
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState !== 'visible') return;
+        try { _refreshNotifBadge(); } catch (e) {}
+    });
 };
 
 let _isOffline = !navigator.onLine;
@@ -572,7 +582,14 @@ function _buildShell() {
             setTimeout(() => e.target.scrollIntoView({ block:'center', behavior:'smooth' }), 300);
         }
     });
-    app.addEventListener('click', _onShellClick);
+    // A thrown error inside any tap action must never leave the shell wedged —
+    // catch, log, and surface a soft toast instead of dying silently.
+    app.addEventListener('click', (e) => {
+        Promise.resolve(_onShellClick(e)).catch(err => {
+            console.error('[mob] action failed:', err?.message || err);
+            _toast('Something went wrong — try again', 'err');
+        });
+    });
     app.addEventListener('pointerdown', _onPressStart);
     app.addEventListener('pointerup', _onPressEnd);
     app.addEventListener('pointerleave', _onPressEnd);
@@ -737,7 +754,11 @@ async function _render(screen, params, dir='forward') {
         groupChat: _groupChat, thread: _thread,
         dm: _dm, taskDetail: _taskDetail, remindEdit: _remindEdit, scheduledEdit: _scheduledEdit, notifications: _notifications,
     };
+    // Render-race guard: if the user navigates again while this screen's data is
+    // still loading, the SLOWER older render must not overwrite the newer screen.
+    const myNavGen = ++_navGen;
     const html = await (fns[screen]?.(params) || Promise.resolve('<div style="padding:40px;text-align:center;">Coming soon</div>'));
+    if (myNavGen !== _navGen) return;
     const scr  = document.createElement('div');
     const slideClass = screen === 'thread'
         ? (dir==='back' ? 'slide-down' : 'slide-up')
@@ -3183,7 +3204,17 @@ function _pendingBubbleHTML(pendingId, text) {
       </div>
     </div>`;
 }
+// Debounce guard shared by the three send paths: a double-tap on the send button
+// must not insert the same message twice.
+let _sendBusy = false;
+function _sendGate() {
+    if (_sendBusy) return false;
+    _sendBusy = true;
+    setTimeout(() => { _sendBusy = false; }, 700);
+    return true;
+}
 async function _doSendGroup(a) {
+    if (!_sendGate()) return;
     if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }
     const val = _ceHTML(a.target); if (!val) return;
     _ceClear(a.target);
@@ -3202,6 +3233,7 @@ async function _doSendGroup(a) {
     _appendOwnMessage('mMsgArea', m);
 }
 async function _doSendReply(a) {
+    if (!_sendGate()) return;
     if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }
     const val = _ceHTML(a.target); if (!val) return;
     _ceClear(a.target);
@@ -3245,6 +3277,7 @@ async function _doSendReply(a) {
     } catch(e) { /* non-fatal */ }
 }
 async function _doSendDM(a) {
+    if (!_sendGate()) return;
     if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }
     const val = _ceHTML(a.target); if (!val) return;
     _ceClear(a.target);
@@ -3501,7 +3534,17 @@ function _injectCSS(){
 #mobileApp{position:fixed;inset:0;display:flex;flex-direction:column;
   background:var(--bg-body,#fff);color:var(--text-primary,#111);
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-  z-index:9999;overflow:hidden;}
+  z-index:9999;overflow:hidden;
+  /* Native-app feel: no double-tap zoom, no pull-to-refresh page reload,
+     no rubber-band overscroll chaining, no grey tap flash. */
+  touch-action:manipulation;overscroll-behavior:none;
+  -webkit-tap-highlight-color:transparent;}
+/* UI chrome (nav, headers, buttons, list rows) must not be text-selectable —
+   selecting a tab label on long-press reads as "web page", not native app. */
+#mobileApp button,#mNav,.m-hdr,.m-row,.mn-lbl,.m-sl,.m-sheet-row,.m-htitle,
+.m-sb-info,.af-card,.m-chip{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+/* Inner scrollers must not chain overscroll to the page. */
+.m-msgs,.mScr,.mScr-inner,#mSheetInner{overscroll-behavior:contain;}
 
 #mSB{display:flex;align-items:center;gap:6px;
   padding:10px 12px;flex-shrink:0;position:relative;

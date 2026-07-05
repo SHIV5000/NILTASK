@@ -2,7 +2,7 @@
  * TaskFlow Service Worker — enables PWA install prompt on Android/Chrome
  * Caches core app shell for offline-capable experience
  */
-const CACHE   = 'taskflow-v70';
+const CACHE   = 'taskflow-v71';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -25,6 +25,7 @@ const PRECACHE = [
   '/manifest.json',
   '/favicon.svg',
   '/icons/notif.png',
+  '/icons/badge-96.png',
 ];
 
 // Install — cache core files
@@ -130,7 +131,7 @@ self.addEventListener('push', e => {
     await self.registration.showNotification(data.title || 'TaskFlow', {
       body,
       icon:    '/icons/notif.png',
-      badge:   '/icons/notif.png',
+      badge:   '/icons/badge-96.png',
       vibrate: [200, 100, 200],
       tag,
       renotify: true,

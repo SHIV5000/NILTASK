@@ -6,7 +6,7 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Single source of truth for the running build — stamped onto every warn/error
 // log row so the Live Log Monitor can tell which version a remote device runs.
-window.APP_VER = 'v78';
+window.APP_VER = 'v79';
 
 // ── Stale-build self-healing ────────────────────────────────────────────────
 // Android's installed PWA can keep serving an old cached build for a full extra

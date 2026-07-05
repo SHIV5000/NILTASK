@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v78';
+const _MOB_VER = 'v79';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -4120,48 +4120,50 @@ function _injectCSS(){
 .m-notif-dot{position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;
   background:#ef4444;border:2px solid var(--bg-sidebar,#f6f8fa);}
 
-/* ══ WHATSAPP-GRADE DARK THEME (mobile shell) ═══════════════════════════════
-   Exact WhatsApp dark palette: ground #0b141a, surfaces #1f2c34, sent bubble
-   #005c4b, text #e9edef / #8696a0, hairlines #2a3942, accent teal #00a884.
-   The token override cascades to every component that reads the CSS vars;
-   explicit rules below fix each hardcoded light color. */
+/* ══ DARK THEME — Instagram-calibre, NILTASK identity ═══════════════════════
+   Instagram dark structure (true-black ground #000, #121212/#1e1e1e surfaces,
+   #f5f5f5/#a8a8a8 text, #262626 hairlines) with our own indigo accent — unique,
+   fully legible, zero eye strain (no pure-white blocks, muted secondaries). */
 html[data-theme="dark"] #mobileApp{
-  --bg-body:#0b141a; --bg-sidebar:#1f2c34; --card-bg:#1f2c34; --bg:#1f2c34;
-  --border-color:#2a3942; --border:#2a3942; --surface:#2a3942;
-  --text-primary:#e9edef; --text-secondary:#8696a0; --text:#e9edef;
-  --accent:#00a884; --card-shadow:none;
-  background:#0b141a; color:#e9edef;}
-html[data-theme="dark"] .m-msgs{background:#0b141a;}
-html[data-theme="dark"] .m-bubble{background:#1f2c34;border-color:#2a3942;box-shadow:none;}
-html[data-theme="dark"] .m-bubble.snt{background:#005c4b;border-color:#025144;border-left-color:#00a884;}
-html[data-theme="dark"] .m-btext,html[data-theme="dark"] .m-ce{color:#e9edef;}
-html[data-theme="dark"] .m-bmeta,html[data-theme="dark"] .m-edited{color:#8696a0;}
-html[data-theme="dark"] .m-ce-wrap{background:#2a3942;border-color:#2a3942;}
-html[data-theme="dark"] .m-ce:empty:before{color:#8696a0;}
-html[data-theme="dark"] .m-composer{background:#1f2c34;border-top-color:#2a3942;}
-html[data-theme="dark"] .m-cic{color:#8696a0;}
-html[data-theme="dark"] .m-sendbtn{background:#00a884;}
-html[data-theme="dark"] #mToast{background:rgba(32,44,51,.96);color:#e9edef;border-color:rgba(255,255,255,.14);}
-html[data-theme="dark"] #mToast.toast-err{color:#f87171;border-color:rgba(248,113,113,.4);}
-html[data-theme="dark"] .m-chip{background:#2a3942;border-color:#3b4a54;color:#e9edef;}
-html[data-theme="dark"] .m-chip.mine{background:#0e3d33;border-color:#00a884;}
-html[data-theme="dark"] .m-back{background:#1f2c34;border-color:#2a3942;color:#00a884;box-shadow:none;}
-html[data-theme="dark"] .m-scrollfab{background:#1f2c34;border-color:#2a3942;color:#00a884;}
-html[data-theme="dark"] .m-thread-parent{background:#16242c;border-left-color:#00a884;}
-html[data-theme="dark"] .m-thread-link{background:rgba(0,168,132,.12);border-color:rgba(0,168,132,.35);color:#00d9a5;}
-html[data-theme="dark"] .m-file-card{background:#1f2c34!important;border-color:#2a3942!important;}
+  --bg-body:#000000; --bg-sidebar:#121212; --card-bg:#1e1e1e; --bg:#121212;
+  --border-color:#262626; --border:#262626; --surface:#1e1e1e;
+  --text-primary:#f5f5f5; --text-secondary:#a8a8a8; --text:#f5f5f5;
+  --accent:#8b9dff; --card-shadow:none;
+  background:#000; color:#f5f5f5;}
+html[data-theme="dark"] .m-msgs{background:#000;}
+html[data-theme="dark"] .m-bubble{background:#1e1e1e;border-color:#262626;box-shadow:none;}
+html[data-theme="dark"] .m-bubble.snt{background:#232a4d;border-color:#2e3763;border-left-color:#8b9dff;}
+html[data-theme="dark"] .m-btext,html[data-theme="dark"] .m-ce{color:#f5f5f5;}
+html[data-theme="dark"] .m-bmeta,html[data-theme="dark"] .m-edited{color:#a8a8a8;}
+html[data-theme="dark"] .m-ce-wrap{background:#1e1e1e;border-color:#333;}
+html[data-theme="dark"] .m-ce:empty:before{color:#8a8a8a;}
+html[data-theme="dark"] .m-composer{background:#121212;border-top-color:#262626;}
+html[data-theme="dark"] .m-cic{color:#a8a8a8;}
+html[data-theme="dark"] .m-sendbtn{background:#5b6cff;}
+html[data-theme="dark"] #mToast{background:rgba(30,30,30,.97);color:#f5f5f5;border-color:rgba(255,255,255,.12);}
+html[data-theme="dark"] #mToast.toast-err{color:#ff7b7b;border-color:rgba(255,123,123,.4);}
+html[data-theme="dark"] .m-chip{background:#1e1e1e;border-color:#333;color:#f5f5f5;}
+html[data-theme="dark"] .m-chip.mine{background:#232a4d;border-color:#8b9dff;}
+html[data-theme="dark"] .m-back{background:#121212;border-color:#262626;color:#8b9dff;box-shadow:none;}
+html[data-theme="dark"] .m-scrollfab{background:#1e1e1e;border-color:#333;color:#8b9dff;}
+html[data-theme="dark"] .m-thread-parent{background:#15182b;border-left-color:#8b9dff;}
+html[data-theme="dark"] .m-thread-link{background:rgba(139,157,255,.12);border-color:rgba(139,157,255,.35);color:#a9b7ff;}
+html[data-theme="dark"] .m-file-card{background:#1e1e1e!important;border-color:#262626!important;}
 html[data-theme="dark"] .m-inp,html[data-theme="dark"] select.m-inp,html[data-theme="dark"] input.m-inp{
-  background:#2a3942;border-color:#3b4a54;color:#e9edef;}
-html[data-theme="dark"] .skel{background:linear-gradient(90deg,#1f2c34 25%,#2a3942 50%,#1f2c34 75%);background-size:200% 100%;}
-html[data-theme="dark"] #mSheetInner{background:#1f2c34;color:#e9edef;}
-html[data-theme="dark"] .m-sheet-row:active{background:#2a3942;}
-html[data-theme="dark"] .m-fmt-popup{background:#111b21;}
-html[data-theme="dark"] .m-img-preview img{background:#2a3942;border-color:#2a3942;}
-html[data-theme="dark"] .af-feed{background:#0b141a;}
-html[data-theme="dark"] .af-card{background:#1f2c34;border-color:#2a3942;color:#e9edef;}
-html[data-theme="dark"] .af-select{background-color:#2a3942;border-color:#3b4a54;color:#e9edef;}
-html[data-theme="dark"] .m-notif-dot{border-color:#1f2c34;}
-html[data-theme="dark"] .mn-badge{border-color:#1f2c34;}
+  background:#1e1e1e;border-color:#333;color:#f5f5f5;}
+html[data-theme="dark"] .skel{background:linear-gradient(90deg,#161616 25%,#242424 50%,#161616 75%);background-size:200% 100%;}
+html[data-theme="dark"] #mSheetInner{background:#121212;color:#f5f5f5;}
+html[data-theme="dark"] .m-sheet-row:active{background:#1e1e1e;}
+html[data-theme="dark"] .m-fmt-popup{background:#000;}
+html[data-theme="dark"] .m-img-preview img{background:#1e1e1e;border-color:#262626;}
+html[data-theme="dark"] .af-feed{background:#000;}
+html[data-theme="dark"] .af-card{background:#121212;border-color:#262626;color:#f5f5f5;}
+html[data-theme="dark"] .af-select{background-color:#1e1e1e;border-color:#333;color:#f5f5f5;}
+html[data-theme="dark"] .af-pill{background:#1e1e1e;color:#a8a8a8;}
+html[data-theme="dark"] .af-pill.active{background:#f5f5f5;color:#000;}
+html[data-theme="dark"] .m-notif-dot{border-color:#121212;}
+html[data-theme="dark"] .mn-badge{border-color:#121212;}
+html[data-theme="dark"] .m-link-pill{box-shadow:none;}
 `;
     document.head.appendChild(s);
 }

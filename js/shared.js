@@ -6,7 +6,14 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Single source of truth for the running build — stamped onto every warn/error
 // log row so the Live Log Monitor can tell which version a remote device runs.
-window.APP_VER = 'v81';
+window.APP_VER = 'v82';
+
+// Retire the green 'ocean-teal' theme entirely — it tinted the whole UI (and the
+// safe-area gutter) green. Reset anyone still on it BEFORE ui-core reads the value.
+try {
+    if (localStorage.getItem('theme') === 'ocean-teal') localStorage.setItem('theme', 'light');
+    if (localStorage.getItem('adminTheme') === 'ocean-teal') localStorage.removeItem('adminTheme');
+} catch (e) {}
 
 // ── Stale-build self-healing ────────────────────────────────────────────────
 // Android's installed PWA can keep serving an old cached build for a full extra

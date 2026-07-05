@@ -231,7 +231,6 @@ window.THEME_LIST = [
     { id: 'soft-slate',   label: 'Slate',    swatch: '#64748b' },
     { id: 'sky-breeze',   label: 'Sky',      swatch: '#0ea5e9' },
     { id: 'warm-neutral', label: 'Warm',     swatch: '#b45309' },
-    { id: 'ocean-teal',   label: 'Ocean',    swatch: '#0d9488' },
     { id: 'dark',         label: 'Dark',     swatch: '#2f81f7' },
     { id: 'sober-dark',   label: 'Sober',    swatch: '#5a5a5a' },
     { id: 'midnight',     label: 'Midnight', swatch: '#7c6df0' },

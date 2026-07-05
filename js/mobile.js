@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v77';
+const _MOB_VER = 'v78';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -285,6 +285,7 @@ window.initMobileApp = async function() {
     // Principals/admins get a toggle to the Admin Panel (permission known after _ctx).
     if (window.currentPermissions?.admin_panel) _el('mSBAdmin')?.style.setProperty('display','flex');
     await _navTo('home');
+    window._hideSplash?.();   // first screen painted — drop the boot splash
     _initRealtime();
     // Deep-link: open a specific chat from a push tap (?room=…) or SW message.
     _openRoomFromUrl();
@@ -324,6 +325,9 @@ window.initMobileApp = async function() {
         try { _refreshNotifBadge(); } catch (e) {}
         _ensureRealtimeAlive();
     });
+    // Android fires these where visibilitychange is sometimes missed — same healing.
+    window.addEventListener('focus',  () => _ensureRealtimeAlive(), { passive:true });
+    window.addEventListener('online', () => _ensureRealtimeAlive(), { passive:true });
 };
 
 // Verify realtime health; silently rebuild the channels if the socket died quietly.
@@ -4115,6 +4119,49 @@ function _injectCSS(){
 /* Notification unread dot */
 .m-notif-dot{position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;
   background:#ef4444;border:2px solid var(--bg-sidebar,#f6f8fa);}
+
+/* ══ WHATSAPP-GRADE DARK THEME (mobile shell) ═══════════════════════════════
+   Exact WhatsApp dark palette: ground #0b141a, surfaces #1f2c34, sent bubble
+   #005c4b, text #e9edef / #8696a0, hairlines #2a3942, accent teal #00a884.
+   The token override cascades to every component that reads the CSS vars;
+   explicit rules below fix each hardcoded light color. */
+html[data-theme="dark"] #mobileApp{
+  --bg-body:#0b141a; --bg-sidebar:#1f2c34; --card-bg:#1f2c34; --bg:#1f2c34;
+  --border-color:#2a3942; --border:#2a3942; --surface:#2a3942;
+  --text-primary:#e9edef; --text-secondary:#8696a0; --text:#e9edef;
+  --accent:#00a884; --card-shadow:none;
+  background:#0b141a; color:#e9edef;}
+html[data-theme="dark"] .m-msgs{background:#0b141a;}
+html[data-theme="dark"] .m-bubble{background:#1f2c34;border-color:#2a3942;box-shadow:none;}
+html[data-theme="dark"] .m-bubble.snt{background:#005c4b;border-color:#025144;border-left-color:#00a884;}
+html[data-theme="dark"] .m-btext,html[data-theme="dark"] .m-ce{color:#e9edef;}
+html[data-theme="dark"] .m-bmeta,html[data-theme="dark"] .m-edited{color:#8696a0;}
+html[data-theme="dark"] .m-ce-wrap{background:#2a3942;border-color:#2a3942;}
+html[data-theme="dark"] .m-ce:empty:before{color:#8696a0;}
+html[data-theme="dark"] .m-composer{background:#1f2c34;border-top-color:#2a3942;}
+html[data-theme="dark"] .m-cic{color:#8696a0;}
+html[data-theme="dark"] .m-sendbtn{background:#00a884;}
+html[data-theme="dark"] #mToast{background:rgba(32,44,51,.96);color:#e9edef;border-color:rgba(255,255,255,.14);}
+html[data-theme="dark"] #mToast.toast-err{color:#f87171;border-color:rgba(248,113,113,.4);}
+html[data-theme="dark"] .m-chip{background:#2a3942;border-color:#3b4a54;color:#e9edef;}
+html[data-theme="dark"] .m-chip.mine{background:#0e3d33;border-color:#00a884;}
+html[data-theme="dark"] .m-back{background:#1f2c34;border-color:#2a3942;color:#00a884;box-shadow:none;}
+html[data-theme="dark"] .m-scrollfab{background:#1f2c34;border-color:#2a3942;color:#00a884;}
+html[data-theme="dark"] .m-thread-parent{background:#16242c;border-left-color:#00a884;}
+html[data-theme="dark"] .m-thread-link{background:rgba(0,168,132,.12);border-color:rgba(0,168,132,.35);color:#00d9a5;}
+html[data-theme="dark"] .m-file-card{background:#1f2c34!important;border-color:#2a3942!important;}
+html[data-theme="dark"] .m-inp,html[data-theme="dark"] select.m-inp,html[data-theme="dark"] input.m-inp{
+  background:#2a3942;border-color:#3b4a54;color:#e9edef;}
+html[data-theme="dark"] .skel{background:linear-gradient(90deg,#1f2c34 25%,#2a3942 50%,#1f2c34 75%);background-size:200% 100%;}
+html[data-theme="dark"] #mSheetInner{background:#1f2c34;color:#e9edef;}
+html[data-theme="dark"] .m-sheet-row:active{background:#2a3942;}
+html[data-theme="dark"] .m-fmt-popup{background:#111b21;}
+html[data-theme="dark"] .m-img-preview img{background:#2a3942;border-color:#2a3942;}
+html[data-theme="dark"] .af-feed{background:#0b141a;}
+html[data-theme="dark"] .af-card{background:#1f2c34;border-color:#2a3942;color:#e9edef;}
+html[data-theme="dark"] .af-select{background-color:#2a3942;border-color:#3b4a54;color:#e9edef;}
+html[data-theme="dark"] .m-notif-dot{border-color:#1f2c34;}
+html[data-theme="dark"] .mn-badge{border-color:#1f2c34;}
 `;
     document.head.appendChild(s);
 }

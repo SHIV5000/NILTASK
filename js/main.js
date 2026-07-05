@@ -310,7 +310,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.97.0 (v77) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v1.98.0 (v78) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -818,6 +818,7 @@ window.renderMainApp = async function() {
 
     if (typeof window.initResizers === 'function') window.initResizers();
     if (typeof window.loadChatsList === 'function') window.loadChatsList();
+    window._hideSplash?.();   // web shell painted — drop the boot splash
     if (typeof window.loadMessages === 'function') window.loadMessages().then?.(() => {
         if (typeof window.applyRBAC === 'function') window.applyRBAC();
     });

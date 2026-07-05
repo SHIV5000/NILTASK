@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v68';
+const _MOB_VER = 'v69';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -197,13 +197,23 @@ function _initKeyboardHandling() {
 
 // Fill an image-preview placeholder with a signed URL from the private bucket
 // (mirrors _openTaskFile's path handling). Runs once per <img data-imgpath>.
+// A per-path signed-URL cache ensures re-renders reuse the SAME url string so the
+// browser serves it from its HTTP cache instead of re-downloading — no more flashing
+// while scrolling / on _pendingRefresh.
+const _imgUrlCache = {};
 function _signImg(img) {
-    if (!img || img.dataset.hydrated) return;
+    if (!img) return;
     const path = img.getAttribute('data-imgpath');
     if (!path) return;
+    if (_imgUrlCache[path]) {
+        img.dataset.hydrated = '1';
+        if (img.getAttribute('src') !== _imgUrlCache[path]) img.src = _imgUrlCache[path];
+        return;
+    }
+    if (img.dataset.hydrated) return;
     img.dataset.hydrated = '1';
     sb.storage.from('task-proofs').createSignedUrl(path, 3600)
-        .then(({ data }) => { if (data?.signedUrl) img.src = data.signedUrl; })
+        .then(({ data }) => { if (data?.signedUrl) { _imgUrlCache[path] = data.signedUrl; img.src = data.signedUrl; } })
         .catch(() => {});
 }
 // Watch the shell for any image previews added by any render path and hydrate them.
@@ -1213,8 +1223,11 @@ function _renderLinkPills(html) {
             // the hydration observer fill in .src after render. Tap opens the full file.
             const clean = String(path).split('?')[0];
             if (/\.(png|jpe?g|gif|webp|bmp)$/i.test(clean)) {
+                // Reuse the cached signed URL if we already have one so the image doesn't
+                // reload (flash) on re-render/scroll.
+                const preSrc = _imgUrlCache[p] ? ` src="${x(_imgUrlCache[p])}"` : '';
                 return `<div class="m-img-preview" data-action="openTaskFile" data-path="${p}" style="cursor:pointer;margin:4px 0;">
-                    <img data-imgpath="${p}" alt="${x(name)}" loading="lazy"
+                    <img data-imgpath="${p}"${preSrc} alt="${x(name)}" loading="lazy"
                         style="max-width:240px;max-height:230px;min-width:120px;min-height:84px;border-radius:12px;display:block;object-fit:cover;background:var(--bg-sidebar,#eef1f5);border:1px solid var(--border-color,#e5e7eb);">
                 </div>`;
             }
@@ -1306,11 +1319,11 @@ async function _groupChat(p) {
                 .select('id,text,sender_id,created_at,updated_at,parent_message_id')
                 .eq('room_id',p.room).eq('tenant_id',_tid)
                 .is('deleted_at',null).is('parent_message_id',null)
-                .order('created_at',{ascending:false}).limit(50);
+                .order('created_at',{ascending:false}).limit(30);
             if (!rawMsgs) return;
             const msgs = rawMsgs.reverse();  // oldest → newest for display
             _oldestTs[p.room] = msgs[0]?.created_at || null;
-            _allLoaded[p.room] = rawMsgs.length < 50;
+            _allLoaded[p.room] = rawMsgs.length < 30;
             _saveRoomCache(p.room, msgs);
             const msgIds = msgs.map(m=>m.id);
             const [reactionsMap, replyData] = await Promise.all([
@@ -1411,11 +1424,11 @@ async function _dm(p) {
                 .select('id,text,sender_id,created_at,updated_at,parent_message_id')
                 .eq('room_id',p.room).eq('tenant_id',_tid)
                 .is('deleted_at',null).is('parent_message_id',null)
-                .order('created_at',{ascending:false}).limit(50);
+                .order('created_at',{ascending:false}).limit(30);
             if (!rawMsgs) return;
             const msgs = rawMsgs.reverse();  // oldest → newest for display
             _oldestTs[p.room] = msgs[0]?.created_at || null;
-            _allLoaded[p.room] = rawMsgs.length < 50;
+            _allLoaded[p.room] = rawMsgs.length < 30;
             _saveRoomCache(p.room, msgs);
             const msgIds = msgs.map(m=>m.id);
             const [reactionsMap, replyData] = await Promise.all([
@@ -3575,13 +3588,19 @@ function _injectCSS(){
   color:#fff;font-weight:700;font-size:10.5px;flex-shrink:0;}
 .m-bubble-row.snt{justify-content:flex-end;}
 .m-bubble-row.rcv{justify-content:flex-start;}
-.m-bubble{flex:1;min-width:0;max-width:100%;padding:12px 15px 13px;border-radius:14px;position:relative;
+.m-bubble{max-width:90%;min-width:0;padding:12px 15px 13px;border-radius:14px;position:relative;
   font-size:16px;line-height:1.5;word-break:break-word;
   background:var(--card-bg,#fff);box-shadow:var(--card-shadow,0 2px 8px rgba(0,0,0,.07));
   border:1px solid var(--border-color,#e5e7eb);
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
-.m-bubble.snt{border-left:4px solid var(--accent,#6366f1);border-right-width:1px;}
-.m-bubble.rcv{border-right:4px solid var(--accent,#6366f1);border-left-width:1px;}
+/* Sent = tinted + right-aligned + rounded on the left; Received = white + left-aligned.
+   Together with the row alignment this makes who-sent-what obvious at a glance. */
+.m-bubble.snt{background:color-mix(in srgb,var(--accent,#6366f1) 12%,#fff);
+  border-color:color-mix(in srgb,var(--accent,#6366f1) 22%,transparent);
+  border-left:4px solid var(--accent,#6366f1);border-right-width:1px;
+  border-radius:14px 14px 4px 14px;}
+.m-bubble.rcv{border-right:4px solid var(--accent,#6366f1);border-left-width:1px;
+  border-radius:14px 14px 14px 4px;}
 .m-bmeta{font-size:12.5px;font-weight:600;color:var(--text-secondary,#6b7280);margin-bottom:4px;}
 .m-edited{font-size:10px;font-weight:400;color:var(--text-secondary,#9ca3af);font-style:italic;margin-left:3px;}
 .m-highlight{animation:m-glow-pulse 3s ease-out;}
@@ -3767,11 +3786,12 @@ function _injectCSS(){
 
 #mToast{position:fixed;top:calc(env(safe-area-inset-top,0px) + 72px);left:50%;transform:translateX(-50%);
   padding:11px 20px;border-radius:16px;font-size:14px;font-weight:600;
-  color:#fff;z-index:11000;opacity:0;transition:opacity .2s;pointer-events:none;
+  color:#1f2937;z-index:11000;opacity:0;transition:opacity .2s;pointer-events:none;
   white-space:normal;max-width:88vw;text-align:center;line-height:1.4;
-  box-shadow:0 6px 22px rgba(0,0,0,.28);}
-.toast-ok{background:#16a34a;opacity:1!important;}
-.toast-err{background:#ef4444;opacity:1!important;}
+  background:rgba(255,255,255,.92);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  border:1px solid rgba(0,0,0,.08);box-shadow:0 6px 22px rgba(0,0,0,.18);}
+.toast-ok{opacity:1!important;}
+.toast-err{opacity:1!important;color:#b91c1c;border-color:rgba(239,68,68,.35);}
 
 .m-empty{padding:40px 20px;text-align:center;color:var(--text-secondary,#6b7280);
   font-size:14.5px;line-height:1.7;}

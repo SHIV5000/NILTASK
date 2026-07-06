@@ -20,6 +20,31 @@ class Logger {
         this._pending   = [];
         this._timer     = null;
         this._inited    = false;
+        this._ip        = null;              // filled once at init (best-effort)
+        this._meta      = this._deviceMeta();
+    }
+
+    // ── Parse device / OS / browser from the user-agent (best-effort) ──────
+    _deviceMeta() {
+        const ua = navigator.userAgent || '';
+        let os = 'Unknown', device = 'Desktop', browser = 'Unknown';
+        if (/Windows NT/.test(ua))       os = 'Windows';
+        else if (/iPhone|iPad|iPod/.test(ua)) os = 'iOS';
+        else if (/Android/.test(ua))     os = 'Android';
+        else if (/Mac OS X/.test(ua))    os = 'macOS';
+        else if (/Linux/.test(ua))       os = 'Linux';
+        if (/iPad|Tablet/.test(ua) || (/Android/.test(ua) && !/Mobile/.test(ua))) device = 'Tablet';
+        else if (/Mobi|iPhone|Android/.test(ua)) device = 'Mobile';
+        if (/Edg\//.test(ua))            browser = 'Edge';
+        else if (/OPR\/|Opera/.test(ua)) browser = 'Opera';
+        else if (/SamsungBrowser/.test(ua)) browser = 'Samsung Internet';
+        else if (/Chrome\//.test(ua))    browser = 'Chrome';
+        else if (/Firefox\//.test(ua))   browser = 'Firefox';
+        else if (/Safari\//.test(ua))    browser = 'Safari';
+        const standalone = (window.matchMedia?.('(display-mode: standalone)')?.matches) ||
+                           window.navigator.standalone === true;
+        return { os, device, browser, pwa: !!standalone,
+                 screen: `${window.screen?.width||0}x${window.screen?.height||0}` };
     }
 
     // ── Called on every page boot after tenant context loads ──────
@@ -48,6 +73,22 @@ class Logger {
 
         // Periodic flush for long-running sessions
         this._timer = setInterval(() => this.flush(), FLUSH_MS);
+
+        // Best-effort public IP (client can't read it directly). Non-fatal: if the
+        // request is blocked (offline / CSP / ad-blocker) we simply log without it.
+        // Then emit ONE session-metadata row so every session has a device/os/ip
+        // record to join against — keeps per-row payloads small.
+        (async () => {
+            try {
+                const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
+                if (r.ok) this._ip = (await r.json())?.ip || null;
+            } catch { /* blocked — carry on without IP */ }
+            this.info('SESSION', 'session start', {
+                ...this._meta, ip: this._ip, ver: window.APP_VER || '?',
+                ua: (navigator.userAgent || '').slice(0, 200),
+            });
+            this.flush();
+        })();
     }
 
     // ── Core log method ────────────────────────────────────────────
@@ -82,6 +123,8 @@ class Logger {
                 ? rowData : (rowData != null ? { value: rowData } : {});
             base._ver = window.APP_VER || '?';
             base._ua  = (navigator.userAgent || '').slice(0, 160);
+            base._dev = `${this._meta.device}/${this._meta.os}/${this._meta.browser}${this._meta.pwa ? '/PWA' : ''}`;
+            if (this._ip) base._ip = this._ip;
             rowData = base;
         }
         const row = {

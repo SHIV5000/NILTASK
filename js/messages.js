@@ -847,8 +847,12 @@ window.applyReaction = async function(msgId, value, type) {
             localStorage.setItem(lsKey, JSON.stringify(myRx));
         } catch(e) {}
         // Delete only this user's row
-        try { await sb.from('reactions').delete()
-                .eq('message_id', msgId).eq('value', value).eq('user_id', window.currentUser.id).eq('tenant_id', window.currentTenantId); } catch(e) {}
+        window.logger?.logReact('remove', { msg: msgId, val: value });
+        try {
+            const dres = await sb.from('reactions').delete()
+                .eq('message_id', msgId).eq('value', value).eq('user_id', window.currentUser.id).eq('tenant_id', window.currentTenantId);
+            window.logger?.sb('reactions.delete', dres, { msg: msgId, val: value });
+        } catch(e) { window.logger?.logError?.(e, { at:'web reaction delete' }); }
         // Sync local cache
         if (window.reactionsCache?.[msgId]) {
             window.reactionsCache[msgId] = window.reactionsCache[msgId].filter(
@@ -895,12 +899,14 @@ window.applyReaction = async function(msgId, value, type) {
         }
     } catch(e) {}
     // Persist to reactions table (upsert handles unique constraint conflicts)
+    window.logger?.logReact('add', { msg: msgId, val: value, type });
     try {
-        await sb.from('reactions').upsert({
+        const ures = await sb.from('reactions').upsert({
             message_id:msgId, user_id:window.currentUser.id,
             tenant_id:window.currentTenantId, value, type, count:1
         }, { onConflict: 'message_id,user_id,value' });
-    } catch(e) {}
+        window.logger?.sb('reactions.upsert', ures, { msg: msgId, val: value });
+    } catch(e) { window.logger?.logError?.(e, { at:'web reaction upsert' }); }
 };
 
 // DOM-only update — called by applyReaction and can be called by real-time subscription

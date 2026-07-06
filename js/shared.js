@@ -6,7 +6,7 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Single source of truth for the running build — stamped onto every warn/error
 // log row so the Live Log Monitor can tell which version a remote device runs.
-window.APP_VER = 'v82';
+window.APP_VER = 'v83';
 
 // Retire the green 'ocean-teal' theme entirely — it tinted the whole UI (and the
 // safe-area gutter) green. Reset anyone still on it BEFORE ui-core reads the value.
@@ -28,11 +28,14 @@ try {
         const { v } = await res.json();
         if (v && v !== window.APP_VER && !sessionStorage.getItem('ver_healed_' + v)) {
             sessionStorage.setItem('ver_healed_' + v, '1');   // one attempt per version — no loops
+            // NUCLEAR: delete every cache AND fully unregister the service worker, so a
+            // stubborn stale build (old cached mobile.js/theme.css that never took an
+            // update) cannot survive. Next load installs a clean SW + fresh files.
             const keys = await caches.keys();
             await Promise.all(keys.filter(k => k !== 'share-inbox').map(k => caches.delete(k)));
-            const reg = await navigator.serviceWorker?.getRegistration?.();
-            try { await reg?.update(); } catch (e) {}
-            location.reload();
+            const regs = await navigator.serviceWorker?.getRegistrations?.() || [];
+            await Promise.all(regs.map(r => r.unregister().catch(() => {})));
+            location.reload(true);
         }
     } catch (e) { /* offline — run with what we have */ }
 })();

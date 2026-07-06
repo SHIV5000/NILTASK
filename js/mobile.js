@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v85';
+const _MOB_VER = 'v86';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -1237,14 +1237,18 @@ async function _toggleReaction(msgId, value, type, isMine=false) {
     console.log('[mob-react] _toggleReaction msgId='+msgId+' value='+value+' type='+type+' isMine='+isMine+' _uid='+_uid+' _tid='+_tid);
     if (!_uid || !_tid) { console.log('[mob-react] ABORTED: no uid/tid'); return; }
     const isDelete = isMine;
-    let error;
+    window.logger?.logReact(isDelete ? 'remove' : 'add', { msg: msgId, val: value, type });
+    let error, res;
     if (isDelete) {
-        ({ error } = await sb.from('reactions').delete().eq('message_id',msgId).eq('value',value).eq('user_id',_uid).eq('tenant_id',_tid));
+        res = await sb.from('reactions').delete().eq('message_id',msgId).eq('value',value).eq('user_id',_uid).eq('tenant_id',_tid);
+        error = res.error;
         console.log('[mob-react] deleted reaction error='+error?.message);
     } else {
-        ({ error } = await sb.from('reactions').insert({ message_id:msgId, user_id:_uid, tenant_id:_tid, value, type }));
+        res = await sb.from('reactions').insert({ message_id:msgId, user_id:_uid, tenant_id:_tid, value, type });
+        error = res.error;
         console.log('[mob-react] inserted reaction error='+error?.message);
     }
+    window.logger?.sb(isDelete ? 'reactions.delete' : 'reactions.insert', res, { msg: msgId, val: value });
     if (error) { _toast('Could not save reaction: '+error.message, 'err'); return; }
     // Persist to localStorage cache (own reaction)
     _saveReactionEntry(msgId, value, type, _uid, isDelete);
@@ -1260,13 +1264,16 @@ async function _toggleReaction(msgId, value, type, isMine=false) {
                 if (msg && msg.sender_id && msg.sender_id !== _uid) {
                     const me = _users.find(u=>u.id===_uid);
                     const myName = me ? (me.full_name || me.email?.split('@')[0]) : 'Someone';
-                    await sb.from('notifications').insert({
+                    const nres = await sb.from('notifications').insert({
                         user_id: msg.sender_id, type:'reaction',
                         message: `${value} ${myName} reacted to your message`,
                         message_id: msgId, tenant_id:_tid, is_read:false
                     });
+                    // Surface RLS-blocked notification inserts (silent failure class).
+                    window.logger?.sb('notifications.insert[reaction]', nres, { to: msg.sender_id, msg: msgId });
+                    window.logger?.logNotif('react→author', { to: msg.sender_id, ok: !nres.error });
                 }
-            } catch(e) { /* non-fatal */ }
+            } catch(e) { window.logger?.logError?.(e, { at:'reactNotify' }); }
         })();
     }
     await _refreshChips(msgId, { value, type, isDelete });
@@ -2923,7 +2930,7 @@ function _initRealtime() {
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`user_id=eq.${_uid}` }, () => _refreshNotifBadge())
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'profiles', filter:`tenant_id=eq.${_tid}` }, p => _onPresenceUpdate(p.new))
         .subscribe(status => {
-            console.log('[mob-rt] channel status='+status);
+            console.log('[mob-rt] channel status='+status); window.logger?.logRt('mobile-rt', status);
             if (status === 'SUBSCRIBED') {
                 if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
                 _rtBackoff = 4000;   // healthy again — reset backoff to base
@@ -2934,6 +2941,11 @@ function _initRealtime() {
     // Shared broadcast handlers — attached to BOTH the legacy mobile channel and the
     // cross-platform 'taskflow-bc' channel so mobile ↔ web sync live (v33).
     const _hReaction = p => {
+        // Diagnostic: log EVERY reaction broadcast received (before the guards) so a
+        // log dump shows whether group members actually receive reaction events.
+        const rowHere = p.payload?.message_id ? !!document.getElementById('row-'+p.payload.message_id) : false;
+        window.logger?.logReact('recv', { msg: p.payload?.message_id, val: p.payload?.value,
+            from: p.payload?.user_id, del: !!p.payload?.isDelete, rowOnScreen: rowHere });
         if (p.payload && p.payload.tenant_id && p.payload.tenant_id !== _tid) return;
         if (p.payload && p.payload.user_id === _uid) return;  // ignore own echo (shared channel)
         _onReactionChange(p.payload, p.payload?.isDelete ? 'DELETE' : 'INSERT');
@@ -2998,7 +3010,7 @@ function _initRealtime() {
             }
         })
         .subscribe(status => {
-            console.log('[mob-rt] bc channel status='+status);
+            console.log('[mob-rt] bc channel status='+status); window.logger?.logRt('mobile-bc', status);
             if (status === 'SUBSCRIBED' && _rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
             if ((status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') && !_rtIntentionalClose) _scheduleRtReconnect();
         });
@@ -3010,7 +3022,7 @@ function _initRealtime() {
         .on('broadcast', { event:'group_photo' }, p => { if (p.payload?.src === 'm') return; _hGroupPhoto(p); })
         .on('broadcast', { event:'typing' }, p => { if (p.payload?.src === 'm') return; _hTyping(p); })
         .subscribe(status => {
-            console.log('[mob-rt] shared bc status='+status);
+            console.log('[mob-rt] shared bc status='+status); window.logger?.logRt('shared-bc', status);
             if ((status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') && !_rtIntentionalClose) _scheduleRtReconnect();
         });
     _refreshNotifBadge();
@@ -3493,8 +3505,11 @@ async function _doSendReply(a) {
         const q = _getOfflineQueue(); q.push({ pendingId:pid, payload }); _saveOfflineQueue(q);
         return;
     }
-    const { data: m, error } = await sb.from('messages').insert(payload).select().single();
+    const _rres = await sb.from('messages').insert(payload).select().single();
+    const { data: m, error } = _rres;
+    window.logger?.sb('messages.insert[reply]', _rres, { room:a.room, parent:a.pid });
     if (error) { _toast('Send failed: '+error.message,'err'); return; }
+    window.logger?.logReply('send', { id:m.id, room:a.room, parent:a.pid });
     window.playSound?.('message');
     _appendOwnMessage('mThreadArea', m, 160);
     _bcSend('new_message', m);   // live-delivery bridge (replies too; de-duped)
@@ -3516,13 +3531,15 @@ async function _doSendReply(a) {
         if (parent && parent.sender_id && parent.sender_id !== _uid) {
             const me = _users.find(u=>u.id===_uid);
             const myName = me ? (me.full_name||me.email?.split('@')[0]) : 'Someone';
-            await sb.from('notifications').insert({
+            const nres = await sb.from('notifications').insert({
                 user_id: parent.sender_id, type:'reply',
                 message: `↩ ${myName} replied: ${_snip(val.replace(/<[^>]*>/g,''), 80)}`,
                 message_id: m.id, tenant_id:_tid, is_read:false
             });
+            window.logger?.sb('notifications.insert[reply]', nres, { to: parent.sender_id });
+            window.logger?.logNotif('reply→author', { to: parent.sender_id, ok: !nres.error });
         }
-    } catch(e) { /* non-fatal */ }
+    } catch(e) { window.logger?.logError?.(e, { at:'replyNotify' }); }
 }
 async function _doSendDM(a) {
     if (window._trialExpired) { _toast('Trial expired — contact developer to upgrade','err'); return; }

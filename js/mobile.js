@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v83';
+const _MOB_VER = 'v84';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -2851,13 +2851,30 @@ function _onSelectionChange() {
     popup.style.left = Math.min(Math.max(8, rect.left), window.innerWidth-150) + 'px';
 }
 
+// Exponential backoff so a flaky signal doesn't produce a tight 5s reconnect loop
+// (which fights Supabase's own transport recovery and churns the connection).
+// Grows 4s → 8s → 16s → 32s → cap 60s, with ±30% jitter; reset to base on a
+// successful SUBSCRIBED (see _rtChannel callback).
+let _rtBackoff = 4000;
+const _RT_BACKOFF_MAX = 60000;
 function _scheduleRtReconnect() {
     if (_rtReconnectTimer) return;
     _rtWasErrored = true;
-    _toast('Reconnecting…', 'info');
-    console.log('[mob-rt] scheduling reconnect in 5s');
+    const jitter = _rtBackoff * (0.7 + Math.random() * 0.6);   // ±30%
+    const delay = Math.round(jitter);
+    // Only announce the first drop, not every retry — avoids toast spam on weak signal.
+    if (_rtBackoff === 4000) _toast('Reconnecting…', 'info');
+    console.log('[mob-rt] scheduling reconnect in ' + delay + 'ms (backoff ' + _rtBackoff + ')');
+    _rtBackoff = Math.min(_rtBackoff * 2, _RT_BACKOFF_MAX);     // grow for next time
     _rtReconnectTimer = setTimeout(async () => {
         _rtReconnectTimer = null;
+        // If the SDK's own recovery already brought the primary channel back while we
+        // waited, skip the disruptive teardown entirely.
+        if (_rtChannel && _rtChannel.state === 'joined' &&
+            _bcChannel?.state === 'joined' && _sharedBc?.state === 'joined') {
+            console.log('[mob-rt] channels healthy on wake — skipping reconnect');
+            return;
+        }
         console.log('[mob-rt] reconnecting…');
         _rtIntentionalClose = true;
         if (_rtChannel) { try { await sb.removeChannel(_rtChannel); } catch {} _rtChannel = null; }
@@ -2865,7 +2882,7 @@ function _scheduleRtReconnect() {
         if (_sharedBc) { try { await sb.removeChannel(_sharedBc); } catch {} _sharedBc = null; }
         _rtIntentionalClose = false;
         _initRealtime();
-    }, 5000);
+    }, delay);
 }
 function _initRealtime() {
     if (!_tid) { console.error('[mob-rt] Cannot init realtime without tenant_id'); return; }
@@ -2879,9 +2896,10 @@ function _initRealtime() {
             console.log('[mob-rt] channel status='+status);
             if (status === 'SUBSCRIBED') {
                 if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
+                _rtBackoff = 4000;   // healthy again — reset backoff to base
                 if (_rtWasErrored) { _rtWasErrored = false; _toast('Connected ✓'); }
             }
-            if ((status === 'CHANNEL_ERROR' || status === 'CLOSED') && !_rtIntentionalClose) _scheduleRtReconnect();
+            if ((status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') && !_rtIntentionalClose) _scheduleRtReconnect();
         });
     // Shared broadcast handlers — attached to BOTH the legacy mobile channel and the
     // cross-platform 'taskflow-bc' channel so mobile ↔ web sync live (v33).
@@ -2952,7 +2970,7 @@ function _initRealtime() {
         .subscribe(status => {
             console.log('[mob-rt] bc channel status='+status);
             if (status === 'SUBSCRIBED' && _rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
-            if ((status === 'CHANNEL_ERROR' || status === 'CLOSED') && !_rtIntentionalClose) _scheduleRtReconnect();
+            if ((status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') && !_rtIntentionalClose) _scheduleRtReconnect();
         });
     // Shared cross-platform channel (mobile ↔ web). self:false so we don't hear our own broadcasts.
     // Ignore src:'m' (own platform) — those are already delivered via the legacy mobile-bc channel.
@@ -2963,7 +2981,7 @@ function _initRealtime() {
         .on('broadcast', { event:'typing' }, p => { if (p.payload?.src === 'm') return; _hTyping(p); })
         .subscribe(status => {
             console.log('[mob-rt] shared bc status='+status);
-            if ((status === 'CHANNEL_ERROR' || status === 'CLOSED') && !_rtIntentionalClose) _scheduleRtReconnect();
+            if ((status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') && !_rtIntentionalClose) _scheduleRtReconnect();
         });
     _refreshNotifBadge();
     // Realtime badge update already wired via postgres_changes INSERT on notifications — no polling needed

@@ -310,7 +310,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.0.6 (v86) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.0.7 (v87) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -1283,7 +1283,7 @@ window.startSubscriptions = async function() {
                             const msg    = incomingRoom.startsWith('dm_')
                                 ? '💬 ' + name + ': ' + text
                                 : name + ' in ' + room + ': ' + text;
-                            await sb.from('notifications').insert({
+                            const nres = await sb.from('notifications').insert({
                                 user_id:    window.currentUser.id,
                                 type:       'message',
                                 message:    msg,
@@ -1291,8 +1291,9 @@ window.startSubscriptions = async function() {
                                 tenant_id:  window.currentTenantId,
                                 is_read:    false
                             });
+                            window.logger?.sb('notifications.insert[message]', nres, { msg: p.new.id });
                         }
-                    } catch(e) { /* notification insert failed — non-fatal */ }
+                    } catch(e) { window.logger?.logError?.(e, { at:'web msg notification' }); }
                     // Increment badge instantly — no DB read needed
                     window._incrementBellBadge?.();
                 }

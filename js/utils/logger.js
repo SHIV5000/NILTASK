@@ -154,12 +154,39 @@ class Logger {
 
     logApi(endpoint, params, duration) {
         this.info('API', duration != null ? `${endpoint} (${Math.round(duration)}ms)` : endpoint, params);
+        // Surface slow queries as warnings (immediate insert + version stamp) so
+        // delays are diagnosable from the server logs without console captures.
+        if (duration != null && duration > 1500) {
+            this.warn('SLOW', `${endpoint} took ${Math.round(duration)}ms`, params);
+        }
     }
     logRealtime(event, payload) { this.info('REALTIME', event, payload); }
     logAction(action, data)     { this.info('ACTION',   action,  data);  }
     logError(error, context) {
         const msg = error?.message || String(error);
         this._log('error', 'ERROR', msg, { context, stack: error?.stack });
+    }
+
+    // ── Feature-specific diagnostics (reactions / replies / notifications) ──
+    logReact(op, data)  { this.info('REACT', op, data); }
+    logReply(op, data)  { this.info('REPLY', op, data); }
+    logNotif(op, data)  { this.info('NOTIF', op, data); }
+    // Realtime channel lifecycle — WARN on the failure states so reconnect storms
+    // land in the server logs (immediate insert), INFO on healthy transitions.
+    logRt(channel, status, data) {
+        const bad = status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED';
+        this._log(bad ? 'warn' : 'info', 'RT', `${channel}=${status}`, data);
+    }
+    // Uniform Supabase result logger — call after any insert/select/upsert/delete
+    // to surface SILENT failures (e.g. RLS-blocked notification inserts). No-op on
+    // success unless a duration is worth recording. Returns the error for chaining.
+    sb(op, result, ctx) {
+        const error = result?.error;
+        if (error) {
+            this.error('SUPABASE', `${op}: ${error.message}`,
+                { code: error.code, details: error.details, hint: error.hint, ...ctx });
+        }
+        return error || null;
     }
 
     // ── Diagnose — call window.logger.diagnose() from DevTools ───
@@ -211,6 +238,25 @@ window.addEventListener('error', (e) => {
         const where = e.filename ? `${e.filename.split('/').pop()}:${e.lineno}:${e.colno}` : '?';
         logger.error('UNCAUGHT', e.message, { at: where, stack: e.error?.stack?.slice(0, 800) });
     } catch { }
+});
+// 3. Mirror console.error / console.warn to the server logs so anything printed
+//    anywhere (our code OR a library) is diagnosable from a log dump — not just
+//    the device console. The original console methods still run (dev sees them).
+//    console.log is intentionally NOT mirrored (too high-volume / costly).
+['error', 'warn'].forEach((lvl) => {
+    const orig = console[lvl] ? console[lvl].bind(console) : () => {};
+    console[lvl] = (...args) => {
+        try {
+            const msg = args.map(a => {
+                if (a instanceof Error) return a.message + (a.stack ? ' | ' + a.stack.slice(0, 300) : '');
+                if (typeof a === 'object') { try { return JSON.stringify(a).slice(0, 500); } catch { return String(a); } }
+                return String(a);
+            }).join(' ').slice(0, 900);
+            // Skip the logger's own failure prints to avoid an infinite loop.
+            if (msg && !msg.startsWith('[Logger]')) logger._log(lvl === 'warn' ? 'warn' : 'error', 'CONSOLE', msg);
+        } catch { /* never let interception throw */ }
+        orig(...args);
+    };
 });
 
 export default logger;

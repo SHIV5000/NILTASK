@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v84';
+const _MOB_VER = 'v85';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -1250,6 +1250,25 @@ async function _toggleReaction(msgId, value, type, isMine=false) {
     _saveReactionEntry(msgId, value, type, _uid, isDelete);
     // Broadcast to all users via dedicated broadcast channel (bypasses RLS on postgres_changes)
     _bcSend('reaction', { message_id:msgId, value, type, user_id:_uid, tenant_id:_tid, isDelete });
+    // Notify the message author that someone reacted (only on ADD, never on remove,
+    // and never for reacting to your own message). Mirrors the reply-notify path so
+    // the bell + Activity feed surface reactions like a standard chat app.
+    if (!isDelete) {
+        (async () => {
+            try {
+                const { data: msg } = await sb.from('messages').select('sender_id').eq('id', msgId).single();
+                if (msg && msg.sender_id && msg.sender_id !== _uid) {
+                    const me = _users.find(u=>u.id===_uid);
+                    const myName = me ? (me.full_name || me.email?.split('@')[0]) : 'Someone';
+                    await sb.from('notifications').insert({
+                        user_id: msg.sender_id, type:'reaction',
+                        message: `${value} ${myName} reacted to your message`,
+                        message_id: msgId, tenant_id:_tid, is_read:false
+                    });
+                }
+            } catch(e) { /* non-fatal */ }
+        })();
+    }
     await _refreshChips(msgId, { value, type, isDelete });
 }
 async function _refreshChips(msgId, optimistic) {
@@ -1279,7 +1298,18 @@ async function _refreshChips(msgId, optimistic) {
     const html = _chipsHTML(msgId, map);
     console.log('[mob-react] chipsHTML length='+(html?.length||0));
     if (existingEl) existingEl.outerHTML = html || '';
-    else if (html) row.querySelector('.m-bubble')?.insertAdjacentHTML('beforeend', html);
+    else if (html) {
+        // Insert the chips in the SAME spot the canonical renderer uses (right after
+        // .m-btext), not appended past the status row, so the live view matches a
+        // re-entry exactly.
+        const btext = row.querySelector('.m-btext');
+        if (btext) btext.insertAdjacentHTML('afterend', html);
+        else row.querySelector('.m-bubble')?.insertAdjacentHTML('beforeend', html);
+    }
+    // The new chip makes the bubble taller; if the reacted message sits at the bottom
+    // of the list, the chip can land BEHIND the composer (in the DOM but not visible —
+    // which is why it only showed after leaving and re-entering). Reveal it if hidden.
+    row.scrollIntoView({ block: 'nearest' });
     console.log('[mob-react] DOM patched');
 }
 

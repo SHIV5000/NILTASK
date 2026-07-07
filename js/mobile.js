@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v91';
+const _MOB_VER = 'v92';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -1214,6 +1214,17 @@ async function _fetchReactions(msgIds) {
     return map;
 }
 const TAG_COLORS = { 'Thank You':'#16a34a','Noted':'#2563eb','Copied':'#7c3aed','Yes Sir':'#ea580c','Yes Madam':'#db2777' };
+// Patch just the reaction chips of one already-rendered row from a reactions map
+// (no DB call, no scroll) — used by the anti-flash path when the message set is
+// unchanged on a background refresh.
+function _refreshChipsFromMap(msgId, reactionsMap) {
+    const row = document.getElementById('row-'+msgId);
+    if (!row) return;
+    const html = _chipsHTML(msgId, reactionsMap);
+    const existing = row.querySelector('.m-chips');
+    if (existing) { if (existing.outerHTML !== html) existing.outerHTML = html || ''; }
+    else if (html) { const bt = row.querySelector('.m-btext'); if (bt) bt.insertAdjacentHTML('afterend', html); }
+}
 function _chipsHTML(msgId, reactionsMap) {
     const list = (reactionsMap||{})[msgId] || [];
     if (!list.length) return '';
@@ -1527,13 +1538,22 @@ async function _groupChat(p) {
                 // bottom — that's what made older messages show below the latest.
                 const dbIds = new Set(msgs.map(m=>m.id));
                 const newestDbTs = msgs.length ? msgs[msgs.length-1].created_at : '';
-                const liveRows = [...area.querySelectorAll('.m-bubble-row[id^="row-"]')]
-                    .filter(el => !dbIds.has(el.id.replace('row-','')))
-                    .filter(el => (el.querySelector('.m-bmeta[data-ts]')?.dataset.ts || '') > newestDbTs)
-                    .map(el => el.outerHTML);
-                area.innerHTML = msgs.map(m=>_bubbleHTML(m,reactionsMap,140,replyMap,p)).join('') || '<div class="m-empty">No messages yet. Send the first one!</div>';
-                liveRows.forEach(html => area.insertAdjacentHTML('beforeend', html));
-                area.scrollTop = area.scrollHeight;
+                // Anti-flash: if the cached shell already rendered EXACTLY these rows in
+                // the same order, don't wholesale-replace innerHTML (that repaint is the
+                // "flash with lag" on open). Just refresh reaction chips in place.
+                const shownIds = [...area.querySelectorAll('.m-bubble-row[id^="row-"]')].map(el => el.id.replace('row-',''));
+                const sameSet = shownIds.length === msgs.length && shownIds.every((id,i) => id === msgs[i].id);
+                if (sameSet) {
+                    msgs.forEach(m => _refreshChipsFromMap(m.id, reactionsMap));
+                } else {
+                    const liveRows = [...area.querySelectorAll('.m-bubble-row[id^="row-"]')]
+                        .filter(el => !dbIds.has(el.id.replace('row-','')))
+                        .filter(el => (el.querySelector('.m-bmeta[data-ts]')?.dataset.ts || '') > newestDbTs)
+                        .map(el => el.outerHTML);
+                    area.innerHTML = msgs.map(m=>_bubbleHTML(m,reactionsMap,140,replyMap,p)).join('') || '<div class="m-empty">No messages yet. Send the first one!</div>';
+                    liveRows.forEach(html => area.insertAdjacentHTML('beforeend', html));
+                    area.scrollTop = area.scrollHeight;
+                }
             }
         } catch {}
     };
@@ -1628,13 +1648,21 @@ async function _dm(p) {
             if (area) {
                 const dbIds2 = new Set(msgs.map(m=>m.id));
                 const newestDbTs2 = msgs.length ? msgs[msgs.length-1].created_at : '';
-                const liveRows2 = [...area.querySelectorAll('.m-bubble-row[id^="row-"]')]
-                    .filter(el => !dbIds2.has(el.id.replace('row-','')))
-                    .filter(el => (el.querySelector('.m-bmeta[data-ts]')?.dataset.ts || '') > newestDbTs2)
-                    .map(el => el.outerHTML);
-                area.innerHTML = msgs.map(m=>_bubbleHTML(m,reactionsMap,160,replyMap,p)).join('') || `<div class="m-empty">Start a conversation with ${x(p.name)}</div>`;
-                liveRows2.forEach(html => area.insertAdjacentHTML('beforeend', html));
-                area.scrollTop = area.scrollHeight;
+                // Anti-flash (see group path): skip the wholesale repaint when the shell
+                // already shows exactly these rows.
+                const shownIds2 = [...area.querySelectorAll('.m-bubble-row[id^="row-"]')].map(el => el.id.replace('row-',''));
+                const sameSet2 = shownIds2.length === msgs.length && shownIds2.every((id,i) => id === msgs[i].id);
+                if (sameSet2) {
+                    msgs.forEach(m => _refreshChipsFromMap(m.id, reactionsMap));
+                } else {
+                    const liveRows2 = [...area.querySelectorAll('.m-bubble-row[id^="row-"]')]
+                        .filter(el => !dbIds2.has(el.id.replace('row-','')))
+                        .filter(el => (el.querySelector('.m-bmeta[data-ts]')?.dataset.ts || '') > newestDbTs2)
+                        .map(el => el.outerHTML);
+                    area.innerHTML = msgs.map(m=>_bubbleHTML(m,reactionsMap,160,replyMap,p)).join('') || `<div class="m-empty">Start a conversation with ${x(p.name)}</div>`;
+                    liveRows2.forEach(html => area.insertAdjacentHTML('beforeend', html));
+                    area.scrollTop = area.scrollHeight;
+                }
             }
         } catch {}
     };
@@ -2359,7 +2387,11 @@ async function _groupMgmt() {
     </div>`;
 }
 
-function _openSheet()  { _el('mSheet')?.classList.add('open'); }
+function _openSheet()  {
+    const el = _el('mSheet');
+    window.logger?.logAction('openSheet', { found: !!el, theme: document.documentElement.getAttribute('data-theme') || 'light' });
+    el?.classList.add('open');
+}
 window._closeSheet = () => _el('mSheet')?.classList.remove('open');
 
 window._showMsgActions = function(params) {
@@ -2853,6 +2885,7 @@ function _onPressStart(e) {
     _pressX = e.clientX; _pressY = e.clientY;
     _pressTimer = setTimeout(() => {
         _pressTimer = null;
+        window.logger?.logAction('longpress-fire', { theme: document.documentElement.getAttribute('data-theme') || 'light' });
         const id = row.id.replace('row-','');
         const me = row.classList.contains('snt');
         const text = row.querySelector('.m-btext')?.textContent || '';
@@ -3869,7 +3902,7 @@ function _injectCSS(){
 .m-sb-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;cursor:pointer;}
 .m-sb-user{font-size:16.5px;font-weight:700;color:var(--text-primary,#111);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.m-sb-school-card{font-size:10.5px;font-weight:700;letter-spacing:.03em;
+.m-sb-school-card{font-size:13px;font-weight:700;letter-spacing:.03em;
   color:var(--accent,#6366f1);background:linear-gradient(145deg,var(--bg-body,#fff),var(--bg-sidebar,#eef0f3));
   border:1px solid var(--border-color,#e5e7eb);border-radius:8px;
   padding:3px 9px;display:inline-block;width:fit-content;

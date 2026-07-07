@@ -6,7 +6,7 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Single source of truth for the running build — stamped onto every warn/error
 // log row so the Live Log Monitor can tell which version a remote device runs.
-window.APP_VER = 'v90';
+window.APP_VER = 'v91';
 
 // Retire the green 'ocean-teal' theme entirely — it tinted the whole UI (and the
 // safe-area gutter) green. Reset anyone still on it BEFORE ui-core reads the value.
@@ -43,6 +43,15 @@ try {
         const healedKey = 'ver_healed_v';
         if (v && v !== window.APP_VER && localStorage.getItem(healedKey) !== v) {
             localStorage.setItem(healedKey, v);   // one attempt per version, forever
+            // Paint a full-screen indigo cover BEFORE reloading so the convergence
+            // reload shows the brand splash colour, never a blink of the old (green)
+            // build during unload. Matches the #bootSplash gradient in index.html.
+            try {
+                const c = document.createElement('div');
+                c.style.cssText = 'position:fixed;inset:0;z-index:2147483647;' +
+                    'background:linear-gradient(160deg,#312e81 0%,#4f46e5 55%,#6d28d9 100%);';
+                (document.body || document.documentElement).appendChild(c);
+            } catch (e) {}
             const keys = await caches.keys();
             await Promise.all(keys.filter(k => k !== 'share-inbox').map(k => caches.delete(k)));
             const regs = await navigator.serviceWorker?.getRegistrations?.() || [];

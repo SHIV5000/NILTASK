@@ -226,14 +226,11 @@ window.goToMessage = async function(messageId, notifId, roomId) {
 // ─── THEME: 8-theme system (light, soft-slate, sky-breeze, warm-neutral, ───
 // ─── ocean-teal, dark, sober-dark, midnight) — VER 2.0 ──────────────────────
 
+// Two professional indigo themes only — Light and Dark, identical across
+// desktop / tablet / mobile. (The old multi-theme palettes were retired.)
 window.THEME_LIST = [
-    { id: 'light',        label: 'Light',    swatch: '#800020' },
-    { id: 'soft-slate',   label: 'Slate',    swatch: '#64748b' },
-    { id: 'sky-breeze',   label: 'Sky',      swatch: '#0ea5e9' },
-    { id: 'warm-neutral', label: 'Warm',     swatch: '#b45309' },
-    { id: 'dark',         label: 'Dark',     swatch: '#2f81f7' },
-    { id: 'sober-dark',   label: 'Sober',    swatch: '#5a5a5a' },
-    { id: 'midnight',     label: 'Midnight', swatch: '#7c6df0' },
+    { id: 'light', label: 'Indigo Light', swatch: '#4f46e5' },
+    { id: 'dark',  label: 'Indigo Dark',  swatch: '#8b9dff' },
 ];
 
 window.applyTheme = function() {

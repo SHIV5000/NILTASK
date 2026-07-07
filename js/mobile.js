@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v94';
+const _MOB_VER = 'v95';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];

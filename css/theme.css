@@ -461,42 +461,42 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
    STRICT GITHUB DARK MODE OVERRIDES
 ========================================= */
 
-[data-theme="dark"], [data-theme="midnight"] .bg-white { background-color: var(--bg-sidebar) !important; color: var(--text-primary) !important; }
-[data-theme="dark"], [data-theme="midnight"] .bg-gray-50 { background-color: var(--bg-body) !important; color: var(--text-primary) !important; }
-[data-theme="dark"], [data-theme="midnight"] .text-gray-800, [data-theme="dark"], [data-theme="midnight"] .text-gray-700 { color: var(--text-primary) !important; }
-[data-theme="dark"], [data-theme="midnight"] .text-gray-500 { color: var(--text-secondary) !important; }
-[data-theme="dark"], [data-theme="midnight"] .border-gray-200, [data-theme="dark"], [data-theme="midnight"] .border-gray-300 { border-color: var(--border-color) !important; }
+[data-theme="dark"] .bg-white { background-color: var(--bg-sidebar) !important; color: var(--text-primary) !important; }
+[data-theme="dark"] .bg-gray-50 { background-color: var(--bg-body) !important; color: var(--text-primary) !important; }
+[data-theme="dark"] .text-gray-800, [data-theme="dark"] .text-gray-700 { color: var(--text-primary) !important; }
+[data-theme="dark"] .text-gray-500 { color: var(--text-secondary) !important; }
+[data-theme="dark"] .border-gray-200, [data-theme="dark"] .border-gray-300 { border-color: var(--border-color) !important; }
 
-[data-theme="dark"], [data-theme="midnight"] .bubble.sent { color: var(--text-primary); border-color: var(--border-color); }
-[data-theme="dark"], [data-theme="midnight"] .bubble.rcvd { color: var(--text-primary); border-color: var(--border-color); }
-[data-theme="dark"], [data-theme="midnight"] .b-footer { border-top-color: var(--border-color); }
-[data-theme="dark"], [data-theme="midnight"] .b-header { border-bottom-color: var(--border-color); }
-[data-theme="dark"], [data-theme="midnight"] .chat-shell { background: transparent; }
+[data-theme="dark"] .bubble.sent { color: var(--text-primary); border-color: var(--border-color); }
+[data-theme="dark"] .bubble.rcvd { color: var(--text-primary); border-color: var(--border-color); }
+[data-theme="dark"] .b-footer { border-top-color: var(--border-color); }
+[data-theme="dark"] .b-header { border-bottom-color: var(--border-color); }
+[data-theme="dark"] .chat-shell { background: transparent; }
 
-[data-theme="dark"], [data-theme="midnight"] .b-avatar.sent-av { background: var(--accent); color: #ffffff; }
-[data-theme="dark"], [data-theme="midnight"] .b-avatar.rcvd-av { background: var(--border-color); color: var(--text-primary); }
+[data-theme="dark"] .b-avatar.sent-av { background: var(--accent); color: #ffffff; }
+[data-theme="dark"] .b-avatar.rcvd-av { background: var(--border-color); color: var(--text-primary); }
 
-[data-theme="dark"], [data-theme="midnight"] .bubble.sent .b-name,
-[data-theme="dark"], [data-theme="midnight"] .bubble.sent .b-subject,
-[data-theme="dark"], [data-theme="midnight"] .bubble.rcvd .b-name,
-[data-theme="dark"], [data-theme="midnight"] .b-tick,
-[data-theme="dark"], [data-theme="midnight"] .reply-name,
-[data-theme="dark"], [data-theme="midnight"] .reply-badge { color: var(--accent); }
+[data-theme="dark"] .bubble.sent .b-name,
+[data-theme="dark"] .bubble.sent .b-subject,
+[data-theme="dark"] .bubble.rcvd .b-name,
+[data-theme="dark"] .b-tick,
+[data-theme="dark"] .reply-name,
+[data-theme="dark"] .reply-badge { color: var(--accent); }
 
-[data-theme="dark"], [data-theme="midnight"] .dot-btn:hover,
-[data-theme="dark"], [data-theme="midnight"] .dd-item:hover,
-[data-theme="dark"], [data-theme="midnight"] .act-btn:hover { background: rgba(47, 129, 247, 0.15); color: var(--accent); }
-[data-theme="dark"], [data-theme="midnight"] .e-add:hover { border-color: var(--accent); color: var(--accent); }
+[data-theme="dark"] .dot-btn:hover,
+[data-theme="dark"] .dd-item:hover,
+[data-theme="dark"] .act-btn:hover { background: rgba(47, 129, 247, 0.15); color: var(--accent); }
+[data-theme="dark"] .e-add:hover { border-color: var(--accent); color: var(--accent); }
 
-[data-theme="dark"], [data-theme="midnight"] .act-btn.bookmarked {
+[data-theme="dark"] .act-btn.bookmarked {
     background: var(--accent); color: #ffffff !important;
     box-shadow: none; border: 1px solid var(--accent-hover); transform: translateY(-1px);
 }
 
-[data-theme="dark"], [data-theme="midnight"] .e-chip { background: #21262d; border-color: var(--border-color); color: var(--text-primary); }
-[data-theme="dark"], [data-theme="midnight"] .bubble.sent .e-chip { background: #161b22; border-color: var(--border-color); color: var(--text-secondary); }
+[data-theme="dark"] .e-chip { background: #21262d; border-color: var(--border-color); color: var(--text-primary); }
+[data-theme="dark"] .bubble.sent .e-chip { background: #161b22; border-color: var(--border-color); color: var(--text-secondary); }
 
-[data-theme="dark"], [data-theme="midnight"] .reply-badge { background: rgba(47, 129, 247, 0.15); }
+[data-theme="dark"] .reply-badge { background: rgba(47, 129, 247, 0.15); }
 [data-theme="dark"] .b-divider, [data-theme="midnight"] .b-divider { background: var(--border-color); }
 [data-theme="dark"] .replies-label, [data-theme="midnight"] .replies-label { color: var(--text-secondary); }
 [data-theme="dark"] .reply-item, [data-theme="midnight"] .reply-item { border-left: 2px solid var(--border-color); }
@@ -517,7 +517,7 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 [data-theme="dark"] #tasksPanel .text-gray-500, [data-theme="midnight"] #tasksPanel .text-gray-500 {
     color: var(--text-secondary) !important;
 }
-/* FIX: every rule below previously used `[data-theme="dark"], [data-theme="midnight"] #tasksPanel …`.
+/* FIX: every rule below previously used `[data-theme="dark"] #tasksPanel …`.
    The comma made `[data-theme="dark"]` a STANDALONE selector matching <html>, so in
    dark theme the whole page got a #tasksPanel button's green background
    (var(--accent-success)) + a border — the recurring "green screen / margin" that

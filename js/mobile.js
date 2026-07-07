@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v88';
+const _MOB_VER = 'v89';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -242,7 +242,7 @@ function _applyMobTheme() {
         if (dark) document.documentElement.setAttribute('data-theme', 'dark');
         else document.documentElement.removeAttribute('data-theme');
         // Keep the gutter lock in sync (kills the ocean-teal green margin, both modes).
-        const appbg = dark ? '#0f1020' : '#eef0f8';
+        const appbg = dark ? '#000000' : '#eef0f8';
         document.documentElement.style.background = appbg;
         if (document.body) document.body.style.background = appbg;
         const lock = document.getElementById('mobBgLock');
@@ -4241,44 +4241,44 @@ function _injectCSS(){
    #f5f5f5/#a8a8a8 text, #262626 hairlines) with our own indigo accent — unique,
    fully legible, zero eye strain (no pure-white blocks, muted secondaries). */
 html[data-theme="dark"] #mobileApp{
-  --bg-body:#0f1020; --bg-sidebar:#16182b; --card-bg:#1c1e34; --bg:#16182b;
-  --border-color:#262a45; --border:#262a45; --surface:#1c1e34;
-  --text-primary:#e7e8f5; --text-secondary:#a0a3c0; --text:#e7e8f5;
+  --bg-body:#000000; --bg-sidebar:#121212; --card-bg:#1e1e1e; --bg:#121212;
+  --border-color:#262626; --border:#262626; --surface:#1e1e1e;
+  --text-primary:#f5f5f5; --text-secondary:#a8a8a8; --text:#f5f5f5;
   --accent:#8b9dff; --card-shadow:none;
-  background:#0f1020; color:#e7e8f5;}
-html[data-theme="dark"] .m-msgs{background:#0f1020;}
-html[data-theme="dark"] .m-bubble{background:#1c1e34;border-color:#262a45;box-shadow:none;}
+  background:#000000; color:#f5f5f5;}
+html[data-theme="dark"] .m-msgs{background:#000000;}
+html[data-theme="dark"] .m-bubble{background:#1e1e1e;border-color:#262626;box-shadow:none;}
 html[data-theme="dark"] .m-bubble.snt{background:#232a4d;border-color:#2e3763;border-left-color:#8b9dff;}
-html[data-theme="dark"] .m-btext,html[data-theme="dark"] .m-ce{color:#e7e8f5;}
-html[data-theme="dark"] .m-bmeta,html[data-theme="dark"] .m-edited{color:#a0a3c0;}
-html[data-theme="dark"] .m-ce-wrap{background:#1c1e34;border-color:#2e3358;}
+html[data-theme="dark"] .m-btext,html[data-theme="dark"] .m-ce{color:#f5f5f5;}
+html[data-theme="dark"] .m-bmeta,html[data-theme="dark"] .m-edited{color:#a8a8a8;}
+html[data-theme="dark"] .m-ce-wrap{background:#1e1e1e;border-color:#333;}
 html[data-theme="dark"] .m-ce:empty:before{color:#8a8a8a;}
-html[data-theme="dark"] .m-composer{background:#16182b;border-top-color:#262a45;}
-html[data-theme="dark"] .m-cic{color:#a0a3c0;}
+html[data-theme="dark"] .m-composer{background:#121212;border-top-color:#262626;}
+html[data-theme="dark"] .m-cic{color:#a8a8a8;}
 html[data-theme="dark"] .m-sendbtn{background:#5b6cff;}
-html[data-theme="dark"] #mToast{background:rgba(30,30,30,.97);color:#e7e8f5;border-color:rgba(255,255,255,.12);}
+html[data-theme="dark"] #mToast{background:rgba(30,30,30,.97);color:#f5f5f5;border-color:rgba(255,255,255,.12);}
 html[data-theme="dark"] #mToast.toast-err{color:#ff7b7b;border-color:rgba(255,123,123,.4);}
-html[data-theme="dark"] .m-chip{background:#1c1e34;border-color:#2e3358;color:#e7e8f5;}
+html[data-theme="dark"] .m-chip{background:#1e1e1e;border-color:#333;color:#f5f5f5;}
 html[data-theme="dark"] .m-chip.mine{background:#232a4d;border-color:#8b9dff;}
-html[data-theme="dark"] .m-back{background:#16182b;border-color:#262a45;color:#8b9dff;box-shadow:none;}
-html[data-theme="dark"] .m-scrollfab{background:#1c1e34;border-color:#2e3358;color:#8b9dff;}
-html[data-theme="dark"] .m-thread-parent{background:#16182b;border-left-color:#8b9dff;}
+html[data-theme="dark"] .m-back{background:#121212;border-color:#262626;color:#8b9dff;box-shadow:none;}
+html[data-theme="dark"] .m-scrollfab{background:#1e1e1e;border-color:#333;color:#8b9dff;}
+html[data-theme="dark"] .m-thread-parent{background:#121212;border-left-color:#8b9dff;}
 html[data-theme="dark"] .m-thread-link{background:rgba(139,157,255,.12);border-color:rgba(139,157,255,.35);color:#a9b7ff;}
-html[data-theme="dark"] .m-file-card{background:#1c1e34!important;border-color:#262a45!important;}
+html[data-theme="dark"] .m-file-card{background:#1e1e1e!important;border-color:#262626!important;}
 html[data-theme="dark"] .m-inp,html[data-theme="dark"] select.m-inp,html[data-theme="dark"] input.m-inp{
-  background:#1c1e34;border-color:#2e3358;color:#e7e8f5;}
-html[data-theme="dark"] .skel{background:linear-gradient(90deg,#15172a 25%,#232645 50%,#15172a 75%);background-size:200% 100%;}
-html[data-theme="dark"] #mSheetInner{background:#16182b;color:#e7e8f5;}
-html[data-theme="dark"] .m-sheet-row:active{background:#1c1e34;}
-html[data-theme="dark"] .m-fmt-popup{background:#0f1020;}
-html[data-theme="dark"] .m-img-preview img{background:#1c1e34;border-color:#262a45;}
-html[data-theme="dark"] .af-feed{background:#0f1020;}
-html[data-theme="dark"] .af-card{background:#16182b;border-color:#262a45;color:#e7e8f5;}
-html[data-theme="dark"] .af-select{background-color:#1c1e34;border-color:#2e3358;color:#e7e8f5;}
-html[data-theme="dark"] .af-pill{background:#1c1e34;color:#a0a3c0;}
-html[data-theme="dark"] .af-pill.active{background:#e7e8f5;color:#0f1020;}
-html[data-theme="dark"] .m-notif-dot{border-color:#16182b;}
-html[data-theme="dark"] .mn-badge{border-color:#16182b;}
+  background:#1e1e1e;border-color:#333;color:#f5f5f5;}
+html[data-theme="dark"] .skel{background:linear-gradient(90deg,#161616 25%,#242424 50%,#161616 75%);background-size:200% 100%;}
+html[data-theme="dark"] #mSheetInner{background:#121212;color:#f5f5f5;}
+html[data-theme="dark"] .m-sheet-row:active{background:#1e1e1e;}
+html[data-theme="dark"] .m-fmt-popup{background:#000000;}
+html[data-theme="dark"] .m-img-preview img{background:#1e1e1e;border-color:#262626;}
+html[data-theme="dark"] .af-feed{background:#000000;}
+html[data-theme="dark"] .af-card{background:#121212;border-color:#262626;color:#f5f5f5;}
+html[data-theme="dark"] .af-select{background-color:#1e1e1e;border-color:#333;color:#f5f5f5;}
+html[data-theme="dark"] .af-pill{background:#1e1e1e;color:#a8a8a8;}
+html[data-theme="dark"] .af-pill.active{background:#f5f5f5;color:#000000;}
+html[data-theme="dark"] .m-notif-dot{border-color:#121212;}
+html[data-theme="dark"] .mn-badge{border-color:#121212;}
 html[data-theme="dark"] .m-link-pill{box-shadow:none;}
 `;
     document.head.appendChild(s);

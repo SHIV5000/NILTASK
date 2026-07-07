@@ -335,8 +335,8 @@ window.renderAuthScreen = function() {
                 <div style="width:52px;height:52px;border-radius:14px;background:var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
                     <i class="fa-solid fa-comments" style="color:#fff;font-size:20px;"></i>
                 </div>
-                <h1 class="text-2xl font-bold" style="color:var(--text-primary);">MPGS TaskFlow</h1>
-                <p class="text-sm mt-1" style="color:var(--text-secondary);">Enterprise Communication Portal</p>
+                <h1 class="text-2xl font-bold" style="color:var(--text-primary);">Noted For Action</h1>
+                <p class="text-sm mt-1" style="color:var(--text-secondary);">Chat · Task · Accountability</p>
             </div>
 
             <div class="space-y-4">

@@ -28,20 +28,21 @@
      if anything regresses.
    ============================================================ */
 
+/* ── INDIGO LIGHT (default) — professional, matches the indigo splash ───────── */
 :root {
-    --bg-body: #f0f2f5;
-    --bg-sidebar: rgba(255, 255, 255, 0.95);
-    --bg-chat: #efeae2;
-    --text-primary: #0f172a;
-    --text-secondary: #5b6e8c;
-    --accent: #800000;
-    --accent-hover: #660000;
-    --border-color: rgba(134, 150, 160, 0.15);
-    --chat-pattern: url("https://www.transparenttextures.com/patterns/cubes.png");
-    --sent-bg: #fff0f0; 
+    --bg-body: #eef0f8;
+    --bg-sidebar: #ffffff;
+    --bg-chat: #f4f5fb;
+    --text-primary: #1e2130;
+    --text-secondary: #6b7186;
+    --accent: #4f46e5;
+    --accent-hover: #4338ca;
+    --border-color: #e3e5f0;
+    --chat-pattern: none;
+    --sent-bg: #eef2ff;
     --received-bg: #ffffff;
     --card-bg: #ffffff;
-    --card-shadow: 0 2px 10px rgba(0,0,0,0.07);
+    --card-shadow: 0 2px 10px rgba(79,70,229,0.07);
     --badge-pending-bg: #fef9c3;  --badge-pending-text: #854d0e;
     --badge-progress-bg: #dbeafe; --badge-progress-text: #1e40af;
     --badge-review-bg: #ffedd5;   --badge-review-text: #9a3412;
@@ -52,23 +53,23 @@
     --badge-low-bg: #dcfce7;      --badge-low-text: #166534;
 }
 
-/* Strict GitHub Dark Palette (Original Dark) */
+/* ── INDIGO DARK — deep indigo-black ground, light-indigo accent (no eye strain) */
 [data-theme="dark"] {
-    --bg-body: #0d1117;
-    --bg-sidebar: #010409;
-    --bg-chat: #0d1117;
-    --text-primary: #e6edf3;
-    --text-secondary: #8d96a0;
-    --border-color: #30363d;
-    --accent: #2f81f7;
-    --accent-hover: #1f6feb;
-    --sent-bg: #161b22; 
-    --received-bg: #0d1117;
+    --bg-body: #0f1020;
+    --bg-sidebar: #16182b;
+    --bg-chat: #0f1020;
+    --text-primary: #e7e8f5;
+    --text-secondary: #a0a3c0;
+    --border-color: #262a45;
+    --accent: #8b9dff;
+    --accent-hover: #a5b4ff;
+    --sent-bg: #2b2f57;
+    --received-bg: #1a1c30;
     --chat-pattern: none;
-    --accent-success: #238636;
-    --accent-danger: #da3633;
-    --card-bg: #161b22;
-    --card-shadow: 0 2px 10px rgba(0,0,0,0.45);
+    --accent-success: #4ade80;
+    --accent-danger: #f87171;
+    --card-bg: #1c1e34;
+    --card-shadow: 0 2px 12px rgba(0,0,0,0.45);
     --badge-pending-bg: #3d2e1a;  --badge-pending-text: #fbbf24;
     --badge-progress-bg: #1a2a3d; --badge-progress-text: #60a5fa;
     --badge-review-bg: #3d2a1a;   --badge-review-text: #fb923c;

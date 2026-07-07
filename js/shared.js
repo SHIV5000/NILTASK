@@ -6,13 +6,21 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Single source of truth for the running build — stamped onto every warn/error
 // log row so the Live Log Monitor can tell which version a remote device runs.
-window.APP_VER = 'v87';
+window.APP_VER = 'v88';
 
 // Retire the green 'ocean-teal' theme entirely — it tinted the whole UI (and the
 // safe-area gutter) green. Reset anyone still on it BEFORE ui-core reads the value.
+// Collapse to the two professional indigo themes (Light + Dark). Any retired
+// theme migrates to the nearest of the two BEFORE ui-core reads the value, so a
+// saved 'midnight'/'ocean-teal'/etc never resurfaces.
 try {
-    if (localStorage.getItem('theme') === 'ocean-teal') localStorage.setItem('theme', 'light');
-    if (localStorage.getItem('adminTheme') === 'ocean-teal') localStorage.removeItem('adminTheme');
+    const DARKISH = ['dark', 'sober-dark', 'midnight'];
+    const t = localStorage.getItem('theme');
+    if (t && t !== 'light' && t !== 'dark') {
+        localStorage.setItem('theme', DARKISH.includes(t) ? 'dark' : 'light');
+    }
+    const at = localStorage.getItem('adminTheme');
+    if (at && at !== 'light' && at !== 'dark') localStorage.removeItem('adminTheme');
 } catch (e) {}
 
 // ── Stale-build self-healing ────────────────────────────────────────────────

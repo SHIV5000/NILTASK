@@ -1,7 +1,7 @@
 {
-  "name": "TaskFlow — School Communication",
-  "short_name": "TaskFlow",
-  "description": "Chat + Task = Accountability. School communication platform.",
+  "name": "Noted For Action",
+  "short_name": "Noted For Action",
+  "description": "Noted For Action — Chat + Task = Accountability for schools.",
   "id": "/",
   "start_url": "/",
   "scope": "/",
@@ -10,11 +10,36 @@
   "theme_color": "#4F46E5",
   "orientation": "portrait-primary",
   "icons": [
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/icon-192-maskable.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "/icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
-    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192-maskable.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
   ],
   "screenshots": [
     {
@@ -50,7 +75,16 @@
       "files": [
         {
           "name": "share_files",
-          "accept": ["image/*", "application/pdf", "text/*", ".pdf", ".doc", ".docx", ".xls", ".xlsx"]
+          "accept": [
+            "image/*",
+            "application/pdf",
+            "text/*",
+            ".pdf",
+            ".doc",
+            ".docx",
+            ".xls",
+            ".xlsx"
+          ]
         }
       ]
     }
@@ -60,9 +94,18 @@
       "name": "Open Chat",
       "short_name": "Chat",
       "url": "/",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ],
-  "categories": ["education", "productivity", "business"],
+  "categories": [
+    "education",
+    "productivity",
+    "business"
+  ],
   "lang": "en-IN"
 }

@@ -310,7 +310,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.1.6 (v96) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.1.7 (v97) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 

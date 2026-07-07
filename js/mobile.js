@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v96';
+const _MOB_VER = 'v97';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -2967,7 +2967,14 @@ function _initRealtime() {
             if (status === 'SUBSCRIBED') {
                 if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
                 _rtBackoff = 4000;   // healthy again — reset backoff to base
-                if (_rtWasErrored) { _rtWasErrored = false; _toast('Connected ✓'); }
+                if (_rtWasErrored) {
+                    _rtWasErrored = false; _toast('Connected ✓');
+                    // CATCH-UP: broadcasts (reactions/replies) sent while we were
+                    // disconnected are NOT replayed, so re-sync the open chat from the
+                    // DB. This is the automatic version of the manual refresh users had
+                    // to do after a channel flap. Anti-flash keeps it invisible if nothing changed.
+                    try { _pendingRefresh?.(); } catch (e) {}
+                }
             }
             if ((status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') && !_rtIntentionalClose) _scheduleRtReconnect();
         });
@@ -3311,7 +3318,15 @@ async function _onReactionChange(r, eventType) {
     const existingEl = row.querySelector('.m-chips');
     const html = _chipsHTML(r.message_id, map);
     if (existingEl) existingEl.outerHTML = html || '';
-    else if (html) row.querySelector('.m-bubble')?.insertAdjacentHTML('beforeend', html);
+    else if (html) {
+        // Same canonical placement + reveal as the sender path (v92): insert after
+        // .m-btext (not past the status row) and scroll into view if the new chip
+        // pushed the bubble below the fold.
+        const bt = row.querySelector('.m-btext');
+        if (bt) bt.insertAdjacentHTML('afterend', html);
+        else row.querySelector('.m-bubble')?.insertAdjacentHTML('beforeend', html);
+    }
+    row.scrollIntoView({ block: 'nearest' });
     // Persist to localStorage so it survives reload
     _saveReactionEntry(r.message_id, r.value, r.type, r.user_id, isDelete);
 }

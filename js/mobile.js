@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v96';
+const _MOB_VER = 'v98';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -316,7 +316,7 @@ window.initMobileApp = async function() {
         });
         if (_uid) sb.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', _uid).then(() => {});
         _ensureRealtimeAlive();   // heal silently-dead realtime channels
-        _users.forEach(u => { if (u.id !== _uid) _onPresenceUpdate(u); });   // age-out stale dots
+        _refreshPresence();       // re-fetch everyone's last_seen so online dots stay live even if realtime flapped
     }, 60000);
     window.addEventListener('resize', () => {
         const m = window.isMobileView?.() ?? (window.innerWidth <= MOB);
@@ -2967,7 +2967,15 @@ function _initRealtime() {
             if (status === 'SUBSCRIBED') {
                 if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
                 _rtBackoff = 4000;   // healthy again — reset backoff to base
-                if (_rtWasErrored) { _rtWasErrored = false; _toast('Connected ✓'); }
+                if (_rtWasErrored) {
+                    _rtWasErrored = false; _toast('Connected ✓');
+                    // CATCH-UP: broadcasts (reactions/replies) sent while we were
+                    // disconnected are NOT replayed, so re-sync the open chat from the
+                    // DB. This is the automatic version of the manual refresh users had
+                    // to do after a channel flap. Anti-flash keeps it invisible if nothing changed.
+                    try { _pendingRefresh?.(); } catch (e) {}
+                    _refreshPresence();   // missed profile UPDATEs during the gap — re-sync dots
+                }
             }
             if ((status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') && !_rtIntentionalClose) _scheduleRtReconnect();
         });
@@ -3060,6 +3068,19 @@ function _initRealtime() {
         });
     _refreshNotifBadge();
     // Realtime badge update already wired via postgres_changes INSERT on notifications — no polling needed
+}
+// Poll everyone's last_seen (lightweight) and re-render presence dots. Realtime
+// profile UPDATEs keep dots live when the channel is up, but on this school's
+// flaky WiFi the channel drops often and those updates are missed — so other
+// users' green dots vanished after 3 min and never came back. This re-fetch (on
+// the 60s heartbeat + on realtime recovery) keeps them accurate regardless.
+async function _refreshPresence() {
+    if (!_tid || document.visibilityState !== 'visible') return;
+    try {
+        const { data } = await sb.from('profiles').select('id,last_seen').eq('tenant_id', _tid);
+        if (!data) return;
+        data.forEach(r => { if (r.id !== _uid) _onPresenceUpdate(r); });
+    } catch (e) { /* offline — dots age out on their own */ }
 }
 // Live presence: update the cached user + patch the dot on any visible row.
 function _onPresenceUpdate(row) {
@@ -3311,7 +3332,15 @@ async function _onReactionChange(r, eventType) {
     const existingEl = row.querySelector('.m-chips');
     const html = _chipsHTML(r.message_id, map);
     if (existingEl) existingEl.outerHTML = html || '';
-    else if (html) row.querySelector('.m-bubble')?.insertAdjacentHTML('beforeend', html);
+    else if (html) {
+        // Same canonical placement + reveal as the sender path (v92): insert after
+        // .m-btext (not past the status row) and scroll into view if the new chip
+        // pushed the bubble below the fold.
+        const bt = row.querySelector('.m-btext');
+        if (bt) bt.insertAdjacentHTML('afterend', html);
+        else row.querySelector('.m-bubble')?.insertAdjacentHTML('beforeend', html);
+    }
+    row.scrollIntoView({ block: 'nearest' });
     // Persist to localStorage so it survives reload
     _saveReactionEntry(r.message_id, r.value, r.type, r.user_id, isDelete);
 }

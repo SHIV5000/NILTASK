@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v97';
+const _MOB_VER = 'v98';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -316,7 +316,7 @@ window.initMobileApp = async function() {
         });
         if (_uid) sb.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', _uid).then(() => {});
         _ensureRealtimeAlive();   // heal silently-dead realtime channels
-        _users.forEach(u => { if (u.id !== _uid) _onPresenceUpdate(u); });   // age-out stale dots
+        _refreshPresence();       // re-fetch everyone's last_seen so online dots stay live even if realtime flapped
     }, 60000);
     window.addEventListener('resize', () => {
         const m = window.isMobileView?.() ?? (window.innerWidth <= MOB);
@@ -2974,6 +2974,7 @@ function _initRealtime() {
                     // DB. This is the automatic version of the manual refresh users had
                     // to do after a channel flap. Anti-flash keeps it invisible if nothing changed.
                     try { _pendingRefresh?.(); } catch (e) {}
+                    _refreshPresence();   // missed profile UPDATEs during the gap — re-sync dots
                 }
             }
             if ((status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') && !_rtIntentionalClose) _scheduleRtReconnect();
@@ -3067,6 +3068,19 @@ function _initRealtime() {
         });
     _refreshNotifBadge();
     // Realtime badge update already wired via postgres_changes INSERT on notifications — no polling needed
+}
+// Poll everyone's last_seen (lightweight) and re-render presence dots. Realtime
+// profile UPDATEs keep dots live when the channel is up, but on this school's
+// flaky WiFi the channel drops often and those updates are missed — so other
+// users' green dots vanished after 3 min and never came back. This re-fetch (on
+// the 60s heartbeat + on realtime recovery) keeps them accurate regardless.
+async function _refreshPresence() {
+    if (!_tid || document.visibilityState !== 'visible') return;
+    try {
+        const { data } = await sb.from('profiles').select('id,last_seen').eq('tenant_id', _tid);
+        if (!data) return;
+        data.forEach(r => { if (r.id !== _uid) _onPresenceUpdate(r); });
+    } catch (e) { /* offline — dots age out on their own */ }
 }
 // Live presence: update the cached user + patch the dot on any visible row.
 function _onPresenceUpdate(row) {

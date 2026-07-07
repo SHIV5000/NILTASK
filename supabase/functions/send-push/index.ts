@@ -62,15 +62,42 @@ Deno.serve(async (req) => {
       .from('profiles').select('full_name,email').eq('id', senderId).maybeSingle();
     const senderName = sp?.full_name || sp?.email?.split('@')[0] || 'Someone';
     const text = (m.text || '').replace(/<[^>]*>/g, '').trim().slice(0, 120) || '📎 Attachment';
+    const isDMroom = room.startsWith('dm_');
+    const isReply = !!m.parent_message_id;
 
     // Friendly title: DM → sender's name; group → "Sender · GroupName" (not the raw room id).
     let title = senderName;
-    if (!room.startsWith('dm_')) {
+    let groupName = '';
+    if (!isDMroom) {
       const { data: rs } = await supabase
         .from('room_settings').select('name')
         .eq('room_id', room).eq('tenant_id', tenantId).maybeSingle();
-      const groupName = rs?.name || room.replace(/^grp_/, '').replace(/_[a-z0-9]+$/, '').replace(/_/g, ' ');
+      groupName = rs?.name || room.replace(/^grp_/, '').replace(/_[a-z0-9]+$/, '').replace(/_/g, ' ');
       title = `${senderName} · ${groupName}`;
+    }
+
+    // ── Server-authoritative in-app notifications (bell + Activity feed) ──────
+    // Create a notifications row for EVERY recipient here (service role bypasses
+    // RLS), so the feed/bell is correct whether the recipient is online, offline,
+    // or mid-reconnect — instead of relying on the client to self-insert only
+    // when it happens to receive the realtime event. Deduped by (user_id,
+    // message_id) via a unique index (upsert ignore-on-conflict).
+    const snippet = text.slice(0, 80);
+    const notifRows = recipientIds.map((uid) => ({
+      user_id: uid,
+      type: isReply ? 'reply' : 'message',
+      message: isReply
+        ? `↩ ${senderName} replied: ${snippet}`
+        : (isDMroom ? `💬 ${senderName}: ${snippet}` : `${senderName} in ${groupName}: ${snippet}`),
+      message_id: m.id,
+      tenant_id: tenantId,
+      is_read: false,
+    }));
+    try {
+      await supabase.from('notifications')
+        .upsert(notifRows, { onConflict: 'user_id,message_id', ignoreDuplicates: true });
+    } catch (e) {
+      console.log('send-push notif insert error', (e as any)?.message);
     }
     const payload = JSON.stringify({
       title, body: text, tag: room, room,

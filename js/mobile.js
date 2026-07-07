@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v98';
+const _MOB_VER = 'v99';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -1301,12 +1301,13 @@ async function _refreshChips(msgId, optimistic) {
     if (optimistic) {
         console.log('[mob-react] merging optimistic isDelete='+optimistic.isDelete+' onto db result len='+(map[msgId]?.length||0));
         const list = [...(map[msgId] || [])];
+        const oUid = optimistic.user_id || _uid;   // receiver path passes the reactor's id
         if (!optimistic.isDelete) {
-            if (!list.some(r => r.value === optimistic.value && r.user_id === _uid))
-                list.push({ message_id:msgId, value:optimistic.value, type:optimistic.type, user_id:_uid });
+            if (!list.some(r => r.value === optimistic.value && r.user_id === oUid))
+                list.push({ message_id:msgId, value:optimistic.value, type:optimistic.type, user_id:oUid });
         } else {
             for (let i = list.length-1; i >= 0; i--) {
-                if (list[i].value === optimistic.value && list[i].user_id === _uid) { list.splice(i,1); break; }
+                if (list[i].value === optimistic.value && list[i].user_id === oUid) { list.splice(i,1); break; }
             }
         }
         if (list.length) map = { [msgId]: list };
@@ -2975,6 +2976,7 @@ function _initRealtime() {
                     // to do after a channel flap. Anti-flash keeps it invisible if nothing changed.
                     try { _pendingRefresh?.(); } catch (e) {}
                     _refreshPresence();   // missed profile UPDATEs during the gap — re-sync dots
+                    _refreshNotifBadge(); // missed notification INSERTs — re-sync bell/activity badge
                 }
             }
             if ((status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') && !_rtIntentionalClose) _scheduleRtReconnect();
@@ -3311,38 +3313,16 @@ async function _onNewMessage(m) {
 }
 async function _onReactionChange(r, eventType) {
     if (!r || !r.message_id) return;
-    // RLS prevents SELECT of other users' reactions — use payload directly for DOM patch
-    const row = document.getElementById('row-'+r.message_id);
-    if (!row) return;
+    if (!document.getElementById('row-'+r.message_id)) return;   // message not on screen
     const isDelete = eventType === 'DELETE';
-    // Collect current DOM chip state
-    const domReactions = [];
-    row.querySelectorAll('.m-chip').forEach(btn => {
-        domReactions.push({ message_id:r.message_id, value:btn.dataset.value, type:btn.dataset.type,
-            user_id: (btn.dataset.mine === '1' || btn.classList.contains('mine')) ? _uid : (btn.dataset.otherId || 'other') });
-    });
-    if (isDelete) {
-        const idx = domReactions.findIndex(d => d.value === r.value && d.user_id === r.user_id);
-        if (idx > -1) domReactions.splice(idx, 1);
-    } else {
-        const alreadyThere = domReactions.find(d => d.value === r.value && d.user_id === r.user_id);
-        if (!alreadyThere) domReactions.push({ message_id:r.message_id, value:r.value, type:r.type, user_id:r.user_id });
-    }
-    const map = domReactions.length ? { [r.message_id]: domReactions } : {};
-    const existingEl = row.querySelector('.m-chips');
-    const html = _chipsHTML(r.message_id, map);
-    if (existingEl) existingEl.outerHTML = html || '';
-    else if (html) {
-        // Same canonical placement + reveal as the sender path (v92): insert after
-        // .m-btext (not past the status row) and scroll into view if the new chip
-        // pushed the bubble below the fold.
-        const bt = row.querySelector('.m-btext');
-        if (bt) bt.insertAdjacentHTML('afterend', html);
-        else row.querySelector('.m-bubble')?.insertAdjacentHTML('beforeend', html);
-    }
-    row.scrollIntoView({ block: 'nearest' });
-    // Persist to localStorage so it survives reload
+    // Persist to the local cache first so the DB-backed renderer definitely has the
+    // incoming reaction even if the DB row hasn't propagated to our read yet.
     _saveReactionEntry(r.message_id, r.value, r.type, r.user_id, isDelete);
+    // Render through the SAME reliable path the sender uses (re-fetch from DB +
+    // cache, canonical placement, scroll-into-view). This replaced a fragile
+    // DOM-reconstruction that mis-rendered on the receiver (web was instant,
+    // mobile/tab needed a manual refresh).
+    await _refreshChips(r.message_id, { value:r.value, type:r.type, isDelete, user_id:r.user_id });
 }
 async function _onTaskAssigneeUpdate(row) {
     if (row.tenant_id && row.tenant_id !== _tid) return;
@@ -4209,7 +4189,7 @@ function _injectCSS(){
 #mSheet{position:fixed;inset:0;background:rgba(0,0,0,0);z-index:10000;
   pointer-events:none;transition:background .25s;display:flex;align-items:flex-end;}
 #mSheet.open{background:rgba(0,0,0,.45);pointer-events:all;}
-#mSheetInner{width:100%;background:var(--bg-body,#fff);
+#mSheetInner{position:absolute;left:0;right:0;bottom:0;width:100%;background:var(--bg-body,#fff);
   border-radius:22px 22px 0 0;max-height:85vh;max-height:85dvh;overflow-y:auto;
   transform:translateY(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);
   padding-bottom:env(safe-area-inset-bottom,0);}

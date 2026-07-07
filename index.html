@@ -104,6 +104,262 @@
     }
   </style>
 </head>
+
+
+
+
+    <!-- ============================================ -->
+<!-- PERMANENT INSTALL BUTTON (always visible)    -->
+<!-- ============================================ -->
+
+<style>
+  /* ── Permanent install button (small, always visible) ── */
+  .pwa-permanent-install {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 16px;
+    margin-bottom: 12px;
+    background: var(--bg3, #21262d);
+    border-radius: 8px;
+    border: 1px solid var(--border, #30363d);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text, #e6edf3);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+    width: 100%;
+    max-width: 320px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .pwa-permanent-install:hover {
+    background: var(--border, #30363d);
+  }
+  .pwa-permanent-install i {
+    font-size: 18px;
+    color: var(--accent-h, #2ea043);
+  }
+  .pwa-permanent-install .platform-label {
+    font-weight: 400;
+    color: var(--text2, #8b949e);
+    font-size: 12px;
+  }
+  /* Hide if installed */
+  .pwa-permanent-install.hidden {
+    display: none;
+  }
+
+  /* ── (The big banner CSS from previous solution remains) ── */
+  /* ... but we'll keep it here as well for completeness ... */
+
+  /* (Include the banner styles from the previous answer) */
+  .pwa-install-banner { ... } /* we'll just reference it */
+</style>
+
+<!-- ─── PERMANENT INSTALL BUTTON ─── -->
+<div class="pwa-permanent-install" id="pwaPermanentInstall">
+  <i class="fa-solid fa-download" id="permIcon"></i>
+  <span id="permText">Install App</span>
+  <span class="platform-label" id="permPlatform">(Android)</span>
+</div>
+
+<!-- ─── BIG BANNER (dismissible) ─── -->
+<!-- (Include the big banner HTML from the previous answer) -->
+<!-- I'll include it again for completeness -->
+<div class="pwa-install-banner" id="pwaInstallBanner" style="display:none;">
+  <button class="pwa-install-close" id="pwaCloseBanner">✕</button>
+  <div class="pwa-install-content">
+    <div class="icon-text">
+      <i class="fa-solid fa-mobile-screen-button"></i>
+      <span id="pwaBannerTitle">
+        Get the App
+        <small>Install for the best experience</small>
+      </span>
+    </div>
+    <button class="pwa-install-btn" id="pwaMainActionBtn">
+      <i class="fa-solid fa-download" id="pwaBtnIcon"></i>
+      <span id="pwaBtnText">Install App</span>
+    </button>
+    <div class="pwa-ios-guide" id="pwaIosGuide">
+      <div class="step"><span class="num">1</span><span class="icon"><i class="fa-solid fa-square-arrow-up"></i></span><span>Tap the <strong>Share</strong> button</span></div>
+      <div class="step"><span class="num">2</span><span class="icon"><i class="fa-solid fa-house-chimney"></i></span><span>Scroll and tap <strong>"Add to Home Screen"</strong></span></div>
+      <div class="step"><span class="num">3</span><span class="icon"><i class="fa-solid fa-check"></i></span><span>Tap <strong>"Add"</strong> to confirm</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    'use strict';
+
+    // ─── DOM refs ──────────────────────────────────────────────
+    const permBtn = document.getElementById('pwaPermanentInstall');
+    const permIcon = document.getElementById('permIcon');
+    const permText = document.getElementById('permText');
+    const permPlatform = document.getElementById('permPlatform');
+
+    const banner = document.getElementById('pwaInstallBanner');
+    const closeBtn = document.getElementById('pwaCloseBanner');
+    const mainBtn = document.getElementById('pwaMainActionBtn');
+    const btnText = document.getElementById('pwaBtnText');
+    const btnIcon = document.getElementById('pwaBtnIcon');
+    const bannerTitle = document.getElementById('pwaBannerTitle');
+    const iosGuide = document.getElementById('pwaIosGuide');
+
+    // ─── Detect platform ──────────────────────────────────────
+    const ua = navigator.userAgent;
+    const isAndroid = /android/i.test(ua);
+    const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+    // ─── If already installed, hide everything ────────────────
+    if (isStandalone) {
+      if (banner) banner.style.display = 'none';
+      if (permBtn) permBtn.classList.add('hidden');
+      return;
+    }
+
+    // ─── Dismiss banner (7 days) ─────────────────────────────
+    function dismissBanner() {
+      if (banner) banner.style.display = 'none';
+      try {
+        localStorage.setItem('pwa_banner_dismissed', Date.now().toString());
+      } catch (_) {}
+    }
+
+    // ─── Check if banner was dismissed recently ──────────────
+    function isDismissed() {
+      try {
+        const val = localStorage.getItem('pwa_banner_dismissed');
+        if (!val) return false;
+        const diff = Date.now() - parseInt(val, 10);
+        return diff < 7 * 24 * 60 * 60 * 1000;
+      } catch (_) { return false; }
+    }
+
+    // ─── Show banner only if not dismissed ───────────────────
+    if (!isDismissed()) {
+      if (banner) banner.style.display = 'block';
+    } else {
+      if (banner) banner.style.display = 'none';
+    }
+
+    // ─── Close button for banner ─────────────────────────────
+    if (closeBtn) {
+      closeBtn.addEventListener('click', dismissBanner);
+    }
+
+    // ─── Shared action function (used by both buttons) ──────
+    function triggerInstall() {
+      if (isAndroid) {
+        // Android logic (from previous code)
+        if (window.deferredPrompt) {
+          // Use the stored prompt
+          window.deferredPrompt.prompt();
+          window.deferredPrompt.userChoice.then(result => {
+            if (result.outcome === 'accepted') {
+              dismissBanner();
+              if (permBtn) permBtn.classList.add('hidden');
+            }
+            window.deferredPrompt = null;
+          });
+        } else {
+          // Fallback: show instruction
+          alert('Tap the "Install" button in your browser\'s address bar.');
+        }
+      } else if (isIOS) {
+        // Toggle the iOS guide
+        iosGuide.classList.toggle('show');
+        if (iosGuide.classList.contains('show')) {
+          iosGuide.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      } else {
+        // Desktop – open the app in browser
+        window.location.href = '/';
+      }
+    }
+
+    // ─── Set up permanent button ─────────────────────────────
+    if (permBtn) {
+      if (isAndroid) {
+        permIcon.className = 'fa-solid fa-download';
+        permText.textContent = 'Install App';
+        permPlatform.textContent = '(Android)';
+        // Listen for the beforeinstallprompt to store it
+        window.addEventListener('beforeinstallprompt', (e) => {
+          e.preventDefault();
+          window.deferredPrompt = e;
+          permIcon.className = 'fa-solid fa-download';
+          permText.textContent = 'Install App';
+          permPlatform.textContent = '(Chrome)';
+        });
+        // If no prompt after 3s, change text
+        setTimeout(() => {
+          if (!window.deferredPrompt) {
+            permText.textContent = 'Install App';
+            permPlatform.textContent = '(Open in Chrome)';
+          }
+        }, 3000);
+      } else if (isIOS) {
+        permIcon.className = 'fa-solid fa-plus-circle';
+        permText.textContent = 'Add to Home Screen';
+        permPlatform.textContent = '(iOS)';
+      } else {
+        permIcon.className = 'fa-solid fa-arrow-up-right-from-square';
+        permText.textContent = 'Open in Browser';
+        permPlatform.textContent = '(Desktop)';
+      }
+
+      // Click handler for permanent button
+      permBtn.addEventListener('click', triggerInstall);
+    }
+
+    // ─── Set up big banner button ────────────────────────────
+    if (mainBtn) {
+      mainBtn.addEventListener('click', triggerInstall);
+    }
+
+    // ─── Update banner button text for Android if prompt fires later ──
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      window.deferredPrompt = e;
+      if (banner) {
+        bannerTitle.innerHTML = 'Get the App <small>Tap to install instantly</small>';
+        btnText.textContent = 'Install App';
+        btnIcon.className = 'fa-solid fa-download';
+        mainBtn.disabled = false;
+      }
+      if (permBtn) {
+        permText.textContent = 'Install App';
+        permIcon.className = 'fa-solid fa-download';
+        permPlatform.textContent = '(Chrome)';
+      }
+    });
+
+    // ─── Detect install and hide everything ──────────────────
+    window.addEventListener('appinstalled', () => {
+      dismissBanner();
+      if (permBtn) permBtn.classList.add('hidden');
+    });
+
+  })();
+</script>
+
+
+
+    
+
+
+
+
+
+
+
+
+    
 <body class="antialiased overflow-hidden">
 
     <!-- Boot splash (Instagram-style): paints INSTANTLY before any JS/CSS loads,

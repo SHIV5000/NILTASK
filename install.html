@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Install NILTASK</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        :root {
+            --bg: #0d1117;
+            --bg2: #161b22;
+            --bg3: #21262d;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text2: #8b949e;
+            --accent: #238636;
+            --accent-h: #2ea043;
+            --blue: #388bfd;
+            --orange: #e3b341;
+            --radius: 12px;
+        }
+        [data-theme="light"] {
+            --bg: #f6f8fa;
+            --bg2: #ffffff;
+            --bg3: #f0f2f5;
+            --border: #d0d7de;
+            --text: #1f2328;
+            --text2: #656d76;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 420px;
+            width: 100%;
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 32px 24px;
+            text-align: center;
+        }
+        .logo {
+            font-size: 48px;
+            color: var(--accent-h);
+            margin-bottom: 12px;
+        }
+        h1 {
+            font-size: 24px;
+            font-weight: 900;
+            margin-bottom: 4px;
+        }
+        .subtitle {
+            color: var(--text2);
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+        .install-btn {
+            width: 100%;
+            padding: 14px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 18px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background .2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .install-btn:hover {
+            background: var(--accent-h);
+        }
+        .install-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .ios-guide {
+            display: none;
+            background: var(--bg3);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-top: 16px;
+            text-align: left;
+        }
+        .ios-guide.active {
+            display: block;
+        }
+        .ios-guide h3 {
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        .ios-guide ol {
+            padding-left: 20px;
+            font-size: 13px;
+            color: var(--text2);
+            line-height: 1.8;
+        }
+        .ios-guide ol li strong {
+            color: var(--text);
+        }
+        .qr-section {
+            display: none;
+            margin-top: 16px;
+            padding: 16px;
+            background: var(--bg3);
+            border-radius: var(--radius);
+        }
+        .qr-section.active {
+            display: block;
+        }
+        .qr-section img {
+            width: 200px;
+            height: 200px;
+            border-radius: 8px;
+            background: #fff;
+            padding: 8px;
+        }
+        .qr-section p {
+            font-size: 13px;
+            color: var(--text2);
+            margin-top: 8px;
+        }
+        .status {
+            font-size: 13px;
+            color: var(--text2);
+            margin-top: 12px;
+            padding: 8px;
+            border-radius: 6px;
+            background: var(--bg3);
+            display: none;
+        }
+        .status.show {
+            display: block;
+        }
+        .status.success {
+            color: var(--accent-h);
+            border-left: 3px solid var(--accent-h);
+        }
+        .status.error {
+            color: #f85149;
+            border-left: 3px solid #f85149;
+        }
+        .footer {
+            margin-top: 20px;
+            font-size: 12px;
+            color: var(--text2);
+            border-top: 1px solid var(--border);
+            padding-top: 16px;
+        }
+        .footer a {
+            color: var(--blue);
+            text-decoration: none;
+        }
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        .spinner {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .theme-toggle {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            color: var(--text);
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Theme Toggle -->
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+        <i class="fa-solid fa-moon" id="themeIcon"></i>
+    </button>
+
+    <div class="container">
+        <!-- Logo -->
+        <div class="logo">📝</div>
+        <h1>NILTASK</h1>
+        <p class="subtitle">Install the app for the best experience</p>
+
+        <!-- Install Button (Android/Desktop) -->
+        <button class="install-btn" id="installBtn" style="display:none;">
+            <i class="fa-solid fa-download"></i>
+            Install NILTASK
+        </button>
+
+        <!-- iOS Guide -->
+        <div class="ios-guide" id="iosGuide">
+            <h3><i class="fa-brands fa-apple" style="color:var(--text2);"></i> iOS Installation</h3>
+            <ol>
+                <li>Tap the <strong>Share</strong> button <i class="fa-solid fa-square-arrow-up" style="color:var(--blue);"></i> (square with arrow)</li>
+                <li>Scroll down and tap <strong>"Add to Home Screen"</strong></li>
+                <li>Tap <strong>"Add"</strong> in the top right corner</li>
+                <li>You'll find NILTASK on your home screen!</li>
+            </ol>
+            <div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:6px;font-size:12px;color:var(--text2);">
+                <i class="fa-solid fa-lightbulb" style="color:var(--orange);"></i>
+                Tip: This is the only way to install apps on iPhone.
+            </div>
+        </div>
+
+        <!-- QR Code Section (Desktop) -->
+        <div class="qr-section" id="qrSection">
+            <p style="font-size:13px;font-weight:600;margin-bottom:8px;">
+                <i class="fa-solid fa-qrcode" style="color:var(--blue);"></i>
+                Scan with your phone
+            </p>
+            <img id="qrCodeImage" src="" alt="QR Code">
+            <p>Scan this QR code with your phone's camera to install NILTASK instantly.</p>
+        </div>
+
+        <!-- Status Message -->
+        <div class="status" id="statusMessage"></div>
+
+        <!-- Footer -->
+        <div class="footer">
+            Already have the app? <a href="/">Open NILTASK</a>
+        </div>
+    </div>
+
+    <script>
+        // ── THEME TOGGLE ──────────────────────────────────────
+        function toggleTheme() {
+            const html = document.documentElement;
+            const isLight = html.getAttribute('data-theme') === 'light';
+            html.setAttribute('data-theme', isLight ? '' : 'light');
+            localStorage.setItem('installTheme', isLight ? 'dark' : 'light');
+            const icon = document.getElementById('themeIcon');
+            icon.className = isLight ? 'fa-solid fa-moon' : 'fa-solid fa-sun';
+        }
+
+        // Load saved theme
+        (function() {
+            const saved = localStorage.getItem('installTheme');
+            if (saved === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+                document.getElementById('themeIcon').className = 'fa-solid fa-sun';
+            }
+        })();
+
+        // ── DETECT PLATFORM ────────────────────────────────────
+        const ua = navigator.userAgent;
+        const isAndroid = /android/i.test(ua);
+        const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+        const isDesktop = !isAndroid && !isIOS;
+
+        // ── GET DEVICE INFO ────────────────────────────────────
+        function getDeviceInfo() {
+            let os = 'unknown';
+            let osVersion = '';
+            if (/android/i.test(ua)) {
+                os = 'Android';
+                const match = ua.match(/Android\s([\d.]+)/);
+                osVersion = match ? match[1] : '';
+            } else if (isIOS) {
+                os = 'iOS';
+                const match = ua.match(/OS\s([\d_]+)/);
+                osVersion = match ? match[1].replace(/_/g, '.') : '';
+            } else if (/Windows/i.test(navigator.platform)) {
+                os = 'Windows';
+            } else if (/Mac/i.test(navigator.platform)) {
+                os = 'macOS';
+            } else if (/Linux/i.test(navigator.platform)) {
+                os = 'Linux';
+            }
+
+            let browser = 'unknown';
+            let browserVersion = '';
+            if (/Chrome/i.test(ua) && !/Edg/i.test(ua)) {
+                browser = 'Chrome';
+                const match = ua.match(/Chrome\/([\d.]+)/);
+                browserVersion = match ? match[1] : '';
+            } else if (/Safari/i.test(ua) && !/Chrome/i.test(ua)) {
+                browser = 'Safari';
+                const match = ua.match(/Version\/([\d.]+)/);
+                browserVersion = match ? match[1] : '';
+            } else if (/Firefox/i.test(ua)) {
+                browser = 'Firefox';
+                const match = ua.match(/Firefox\/([\d.]+)/);
+                browserVersion = match ? match[1] : '';
+            } else if (/Edg/i.test(ua)) {
+                browser = 'Edge';
+                const match = ua.match(/Edg\/([\d.]+)/);
+                browserVersion = match ? match[1] : '';
+            }
+
+            return {
+                os_name: os,
+                os_version: osVersion,
+                browser_name: browser,
+                browser_version: browserVersion,
+                screen_width: window.screen?.width || window.innerWidth,
+                screen_height: window.screen?.height || window.innerHeight,
+            };
+        }
+
+        // ── TRACK INSTALL ──────────────────────────────────────
+        async function trackInstall(method, tenantId = null) {
+            try {
+                const deviceInfo = getDeviceInfo();
+                const payload = {
+                    user_id: null,
+                    tenant_id: tenantId,
+                    ...deviceInfo,
+                    install_method: method,
+                    is_first_open: localStorage.getItem('niltask_first_open') !== 'false',
+                    referrer: document.referrer || null,
+                };
+
+                const response = await fetch(
+                    'https://apfymygzwkzjhhgmtkaj.supabase.co/functions/v1/track-install',
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    }
+                );
+                const result = await response.json();
+                console.log('📊 Install tracked:', result);
+            } catch (error) {
+                console.error('❌ Failed to track install:', error);
+            }
+        }
+
+        // ── INSTALL BUTTON LOGIC ──────────────────────────────
+        let deferredPrompt = null;
+
+        // Show install button for Android/Desktop
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+
+            const btn = document.getElementById('installBtn');
+            btn.style.display = 'flex';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-download"></i> Install NILTASK';
+
+            console.log('📱 Install prompt available');
+        });
+
+        // Install button click handler
+        document.getElementById('installBtn').addEventListener('click', async () => {
+            if (!deferredPrompt) {
+                showStatus('Install prompt not available. Try opening this page in Chrome.', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('installBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner spinner"></i> Installing...';
+
+            try {
+                deferredPrompt.prompt();
+                const result = await deferredPrompt.userChoice;
+                deferredPrompt = null;
+
+                if (result.outcome === 'accepted') {
+                    showStatus('✅ NILTASK installed successfully!', 'success');
+                    trackInstall('pwa_prompt');
+                } else {
+                    showStatus('Installation was cancelled. You can try again.', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fa-solid fa-download"></i> Install NILTASK';
+                }
+            } catch (error) {
+                console.error('Install error:', error);
+                showStatus('Something went wrong. Please try again.', 'error');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-download"></i> Install NILTASK';
+            }
+        });
+
+        // ── TRACK APP INSTALLED ────────────────────────────────
+        window.addEventListener('appinstalled', () => {
+            console.log('📱 PWA installed!');
+            trackInstall('pwa_prompt');
+            showStatus('✅ NILTASK installed successfully!', 'success');
+        });
+
+        // ── iOS: Show guide ────────────────────────────────────
+        if (isIOS) {
+            document.getElementById('iosGuide').classList.add('active');
+            // Check if already in standalone mode
+            if (window.navigator.standalone) {
+                showStatus('✅ NILTASK is already installed on your device!', 'success');
+                trackInstall('ios_add_to_home');
+            } else {
+                // Track that iOS user visited install page
+                trackInstall('ios_visit');
+            }
+        }
+
+        // ── Desktop: Show QR code ──────────────────────────────
+        if (isDesktop) {
+            document.getElementById('qrSection').classList.add('active');
+
+            // Generate QR code using API
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(window.location.origin + '/?install=true')}`;
+            document.getElementById('qrCodeImage').src = qrUrl;
+
+            // Track desktop visit
+            trackInstall('desktop_visit');
+        }
+
+        // ── Android: Check if already installed ────────────────
+        if (isAndroid) {
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+            if (isStandalone) {
+                showStatus('✅ NILTASK is already installed on your device!', 'success');
+                trackInstall('android_standalone');
+                document.getElementById('installBtn').style.display = 'none';
+            }
+        }
+
+        // ── CHECK FIRST OPEN ──────────────────────────────────
+        (function checkFirstOpen() {
+            const key = 'niltask_first_open';
+            if (localStorage.getItem(key) === null) {
+                localStorage.setItem(key, 'false');
+                // Track first open if not already tracked by install event
+                if (!window.navigator.standalone && !window.matchMedia('(display-mode: standalone)').matches) {
+                    trackInstall('first_open');
+                }
+            }
+        })();
+
+        // ── SHOW STATUS ────────────────────────────────────────
+        function showStatus(message, type = 'success') {
+            const el = document.getElementById('statusMessage');
+            el.textContent = message;
+            el.className = 'status show ' + type;
+        }
+
+        // ── CHECK FOR INSTALL PARAMETER ────────────────────────
+        (function checkInstallParam() {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('install') === 'true') {
+                console.log('🔍 Install parameter detected');
+                // Try to trigger install automatically on Android
+                if (isAndroid && deferredPrompt) {
+                    // Show a small delay to let the page load
+                    setTimeout(() => {
+                        document.getElementById('installBtn').click();
+                    }, 1000);
+                }
+            }
+        })();
+
+        // ── ANALYTICS: Log platform ────────────────────────────
+        console.log('📊 Platform detected:', {
+            isAndroid,
+            isIOS,
+            isDesktop,
+            ua: ua,
+            standalone: window.navigator.standalone,
+            displayMode: window.matchMedia('(display-mode: standalone)').matches ? 'standalone' : 'browser'
+        });
+    </script>
+
+</body>
+</html>

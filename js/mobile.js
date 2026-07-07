@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v101';
+const _MOB_VER = 'v102';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -4234,7 +4234,7 @@ function _injectCSS(){
 #mSheet{position:fixed;inset:0;background:rgba(0,0,0,0);z-index:10000;
   pointer-events:none;transition:background .25s;display:flex;align-items:flex-end;}
 #mSheet.open{background:rgba(0,0,0,.45);pointer-events:all;}
-#mSheetInner{position:absolute;left:0;right:0;bottom:0;width:100%;background:var(--bg-body,#fff);
+#mSheetInner{width:100%;margin-top:auto;background:var(--bg-body,#fff);
   border-radius:22px 22px 0 0;max-height:85vh;max-height:85dvh;overflow-y:auto;
   transform:translateY(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);
   padding-bottom:env(safe-area-inset-bottom,0);}

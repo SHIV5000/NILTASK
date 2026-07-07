@@ -19,39 +19,65 @@
         .logo { font-size: 48px; color: var(--accent-h); margin-bottom: 12px; }
         h1 { font-size: 24px; font-weight: 900; margin-bottom: 4px; }
         .subtitle { color: var(--text2); font-size: 14px; margin-bottom: 24px; }
+
+        /* ── Install Button ── */
         .install-btn { width: 100%; padding: 14px; background: var(--accent); color: #fff; border: none; border-radius: var(--radius); font-size: 18px; font-weight: 700; cursor: pointer; transition: background .2s; display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px; }
         .install-btn:hover { background: var(--accent-h); }
         .install-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .retry-btn { background: var(--bg3); border: 1px solid var(--border); color: var(--text); padding: 10px; border-radius: var(--radius); font-size: 14px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 8px; transition: background .2s; }
-        .retry-btn:hover { background: var(--border); }
+        .install-btn.hidden { display: none; }
+
+        /* ── Status Message ── */
         .status { font-size: 13px; padding: 10px; border-radius: 6px; margin-top: 12px; display: none; }
         .status.show { display: block; }
         .status.success { color: var(--accent-h); background: rgba(35,134,54,.1); border-left: 3px solid var(--accent-h); }
         .status.error { color: #f85149; background: rgba(248,81,73,.1); border-left: 3px solid #f85149; }
         .status.info { color: var(--blue); background: rgba(56,139,253,.1); border-left: 3px solid var(--blue); }
-        .manual-guide { background: var(--bg3); border-radius: var(--radius); padding: 16px; margin-top: 16px; text-align: left; font-size: 13px; color: var(--text2); line-height: 1.6; display: none; }
+        .status.warning { color: var(--orange); background: rgba(227,179,65,.1); border-left: 3px solid var(--orange); }
+
+        /* ── Manual Guide (Primary on Android) ── */
+        .manual-guide { background: var(--bg3); border-radius: var(--radius); padding: 20px; margin-top: 16px; text-align: left; font-size: 13px; color: var(--text2); line-height: 1.6; display: none; }
         .manual-guide.active { display: block; }
-        .manual-guide h3 { font-size: 14px; margin-bottom: 8px; color: var(--text); }
-        .manual-guide .step { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+        .manual-guide h3 { font-size: 15px; margin-bottom: 12px; color: var(--text); }
+        .manual-guide .step { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
         .manual-guide .step:last-child { border-bottom: none; }
-        .manual-guide .step .num { width: 24px; height: 24px; background: var(--accent); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+        .manual-guide .step .num { width: 28px; height: 28px; background: var(--accent); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+        .manual-guide .step .icon { font-size: 20px; width: 30px; text-align: center; flex-shrink: 0; }
         .manual-guide .step strong { color: var(--text); }
-        .manual-guide .icon { font-size: 18px; width: 30px; text-align: center; flex-shrink: 0; }
+        .manual-guide .tip { margin-top: 12px; padding: 10px; background: var(--bg); border-radius: 6px; font-size: 12px; color: var(--text2); border-left: 3px solid var(--orange); }
+
+        /* ── Why this appears ── */
+        .why-section { background: var(--bg3); border-radius: var(--radius); padding: 14px 16px; margin-top: 12px; font-size: 12px; color: var(--text2); text-align: left; border-left: 3px solid var(--blue); display: none; }
+        .why-section.active { display: block; }
+        .why-section strong { color: var(--text); }
+
+        /* ── iOS Guide ── */
         .ios-guide { display: none; background: var(--bg3); border-radius: var(--radius); padding: 20px; margin-top: 16px; text-align: left; }
         .ios-guide.active { display: block; }
         .ios-guide h3 { font-size: 14px; margin-bottom: 8px; }
         .ios-guide ol { padding-left: 20px; font-size: 13px; color: var(--text2); line-height: 1.8; }
+
+        /* ── Desktop QR ── */
         .qr-section { display: none; margin-top: 16px; padding: 16px; background: var(--bg3); border-radius: var(--radius); }
         .qr-section.active { display: block; }
         .qr-section img { width: 200px; height: 200px; border-radius: 8px; background: #fff; padding: 8px; }
         .qr-section p { font-size: 13px; color: var(--text2); margin-top: 8px; }
+
+        /* ── Footer ── */
         .footer { margin-top: 20px; font-size: 12px; color: var(--text2); border-top: 1px solid var(--border); padding-top: 16px; }
         .footer a { color: var(--blue); text-decoration: none; }
-        .theme-toggle { position: fixed; top: 16px; right: 16px; background: var(--bg2); border: 1px solid var(--border); border-radius: 50%; width: 40px; height: 40px; color: var(--text); font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .footer a:hover { text-decoration: underline; }
+
+        .theme-toggle { position: fixed; top: 16px; right: 16px; background: var(--bg2); border: 1px solid var(--border); border-radius: 50%; width: 40px; height: 40px; color: var(--text); font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 100; }
         .spinner { display: inline-block; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .debug { font-size: 11px; color: var(--text2); margin-top: 12px; padding: 8px; background: var(--bg3); border-radius: 4px; text-align: left; font-family: monospace; overflow-wrap: break-word; display: none; }
-        .debug.active { display: block; }
+
+        /* ── Responsive ── */
+        @media (max-width: 480px) {
+            .container { padding: 24px 16px; }
+            .logo { font-size: 36px; }
+            h1 { font-size: 20px; }
+            .install-btn { font-size: 16px; padding: 12px; }
+        }
     </style>
 </head>
 <body>
@@ -63,44 +89,52 @@
         <h1>NILTASK</h1>
         <p class="subtitle">Install the app for the best experience</p>
 
-        <!-- Install Button (always visible) -->
-        <button class="install-btn" id="installBtn">
+        <!-- Install Button (hidden on Android if prompt not available) -->
+        <button class="install-btn hidden" id="installBtn">
             <i class="fa-solid fa-download"></i> Install NILTASK
-        </button>
-
-        <!-- Retry Button (hidden initially) -->
-        <button class="retry-btn" id="retryBtn" style="display:none;">
-            <i class="fa-solid fa-rotate"></i> Retry Install
         </button>
 
         <!-- Status Message -->
         <div class="status" id="statusMessage"></div>
 
-        <!-- Manual Guide for Android (fallback) -->
-        <div class="manual-guide" id="manualGuide">
-            <h3><i class="fa-brands fa-android" style="color:var(--accent-h);"></i> How to Install Manually</h3>
+        <!-- ─── MANUAL GUIDE (ALWAYS SHOWN ON ANDROID) ─── -->
+        <div class="manual-guide active" id="manualGuide">
+            <h3><i class="fa-brands fa-android" style="color:var(--accent-h);"></i> Add NILTASK to Your Home Screen</h3>
+
             <div class="step">
                 <span class="num">1</span>
                 <span class="icon">⋮</span>
-                <span>Tap the <strong>three-dot menu</strong> (top right)</span>
+                <span>Tap the <strong>three-dot menu</strong> (top-right of your browser)</span>
             </div>
+
             <div class="step">
                 <span class="num">2</span>
                 <span class="icon">⬇️</span>
                 <span>Select <strong>"Add to Home Screen"</strong> or <strong>"Install App"</strong></span>
             </div>
+
             <div class="step">
                 <span class="num">3</span>
                 <span class="icon">✅</span>
                 <span>Tap <strong>"Add"</strong> or <strong>"Install"</strong> to confirm</span>
             </div>
-            <p style="margin-top:8px;font-size:12px;color:var(--text2);">
-                <i class="fa-solid fa-lightbulb" style="color:var(--orange);"></i>
-                This works on all Android browsers (Chrome, Firefox, Samsung Internet, etc.).
-            </p>
+
+            <div class="tip">
+                <i class="fa-solid fa-check-circle" style="color:var(--accent-h);"></i>
+                That's it! You'll find NILTASK on your home screen like a regular app.
+            </div>
         </div>
 
-        <!-- iOS Guide -->
+        <!-- ─── WHY THIS APPEARS ─── -->
+        <div class="why-section active" id="whySection">
+            <strong>💡 Why am I seeing this?</strong>
+            <div style="margin-top:6px;">
+                Your browser <span id="browserName">(unknown)</span> doesn't support one-tap app install.
+                The steps above work on <strong>all Android browsers</strong> and take just a few seconds.
+            </div>
+        </div>
+
+        <!-- ─── IOS GUIDE ─── -->
         <div class="ios-guide" id="iosGuide">
             <h3><i class="fa-brands fa-apple" style="color:var(--text2);"></i> iOS Installation</h3>
             <ol>
@@ -110,7 +144,7 @@
             </ol>
         </div>
 
-        <!-- Desktop QR -->
+        <!-- ─── DESKTOP QR ─── -->
         <div class="qr-section" id="qrSection">
             <p style="font-size:13px;font-weight:600;margin-bottom:8px;">
                 <i class="fa-solid fa-qrcode" style="color:var(--blue);"></i> Scan with your phone
@@ -118,9 +152,6 @@
             <img id="qrCodeImage" src="" alt="QR Code">
             <p>Scan this QR code with your phone's camera to install NILTASK.</p>
         </div>
-
-        <!-- Debug Info -->
-        <div class="debug" id="debugInfo"></div>
 
         <div class="footer">
             Already have the app? <a href="/">Open NILTASK</a>
@@ -150,90 +181,110 @@
         const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
         const isDesktop = !isAndroid && !isIOS;
 
+        // ── DETECT BROWSER ─────────────────────────────────────
+        let browserName = 'Unknown';
+        if (/Chrome/i.test(ua) && !/Edg/i.test(ua)) browserName = 'Chrome';
+        else if (/Safari/i.test(ua) && !/Chrome/i.test(ua)) browserName = 'Safari';
+        else if (/Firefox/i.test(ua)) browserName = 'Firefox';
+        else if (/Edg/i.test(ua)) browserName = 'Edge';
+        else if (/SamsungBrowser/i.test(ua)) browserName = 'Samsung Internet';
+
         const installBtn = document.getElementById('installBtn');
-        const retryBtn = document.getElementById('retryBtn');
         const statusMsg = document.getElementById('statusMessage');
         const manualGuide = document.getElementById('manualGuide');
         const iosGuide = document.getElementById('iosGuide');
         const qrSection = document.getElementById('qrSection');
-        const debugInfo = document.getElementById('debugInfo');
+        const whySection = document.getElementById('whySection');
 
         let deferredPrompt = null;
-        let promptAttempted = false;
 
         function showStatus(msg, type = 'info') {
             statusMsg.textContent = msg;
             statusMsg.className = 'status show ' + type;
         }
 
-        // ── SHOW DEBUG ──────────────────────────────────────────
-        function showDebug(msg) {
-            debugInfo.classList.add('active');
-            debugInfo.innerHTML += `<div>${new Date().toLocaleTimeString()} - ${msg}</div>`;
-            console.log(msg);
-        }
-
-        // ── ANDROID: Show button and guide ────────────────────
+        // ─── ANDROID LOGIC ──────────────────────────────────────
         if (isAndroid) {
-            installBtn.style.display = 'flex';
-            installBtn.disabled = false;
-            installBtn.innerHTML = '<i class="fa-solid fa-download"></i> Install NILTASK';
-            showDebug('Android detected');
+            // Update browser name in why section
+            document.getElementById('browserName').textContent = browserName;
 
             // Check if already installed
             if (window.matchMedia('(display-mode: standalone)').matches) {
                 showStatus('✅ NILTASK is already installed!', 'success');
-                installBtn.style.display = 'none';
-                showDebug('App already installed (standalone mode)');
+                manualGuide.classList.remove('active');
+                whySection.classList.remove('active');
+                installBtn.classList.add('hidden');
+            } else {
+                // Show the manual guide immediately (it's already active by default)
+                showStatus('📱 Follow the steps below to install NILTASK.', 'info');
+
+                // If Chrome, try to show the install button too
+                if (browserName === 'Chrome') {
+                    installBtn.classList.remove('hidden');
+                    installBtn.disabled = false;
+                    installBtn.innerHTML = '<i class="fa-solid fa-download"></i> Install NILTASK';
+                    showStatus('Tap "Install" for one-tap install, or follow the steps below.', 'info');
+                }
+
+                // Listen for beforeinstallprompt (only works in Chrome)
+                window.addEventListener('beforeinstallprompt', (e) => {
+                    e.preventDefault();
+                    deferredPrompt = e;
+                    installBtn.classList.remove('hidden');
+                    installBtn.disabled = false;
+                    installBtn.innerHTML = '<i class="fa-solid fa-download"></i> Install NILTASK';
+                    showStatus('Tap "Install" to add NILTASK to your home screen.', 'info');
+                    console.log('📱 beforeinstallprompt captured');
+                });
+
+                // If Chrome but still no prompt after 5s, hide the button (manual guide is already visible)
+                if (browserName === 'Chrome') {
+                    setTimeout(() => {
+                        if (!deferredPrompt && !window.matchMedia('(display-mode: standalone)').matches) {
+                            installBtn.classList.add('hidden');
+                            showStatus('💡 One-tap install not available. Use the steps below.', 'warning');
+                            console.log('⏰ No beforeinstallprompt after 5s on Chrome');
+                        }
+                    }, 5000);
+                }
+
+                // Log platform info
+                console.log('📱 Android - Browser:', browserName);
             }
 
-            // Listen for install prompt
-            window.addEventListener('beforeinstallprompt', (e) => {
-                e.preventDefault();
-                deferredPrompt = e;
-                promptAttempted = false;
-                showDebug('✅ beforeinstallprompt captured!');
-                showStatus('Tap "Install" to add NILTASK to your home screen.', 'info');
-                installBtn.disabled = false;
-                installBtn.innerHTML = '<i class="fa-solid fa-download"></i> Install NILTASK';
-                retryBtn.style.display = 'none';
-            });
-
-            // If no prompt after 3s, show manual guide
-            setTimeout(() => {
-                if (!deferredPrompt && !window.matchMedia('(display-mode: standalone)').matches) {
-                    showDebug('⏰ No prompt after 3s – showing manual guide');
-                    manualGuide.classList.add('active');
-                    showStatus('💡 Install prompt not available. Use the manual guide below.', 'info');
-                    installBtn.innerHTML = '<i class="fa-solid fa-circle-info"></i> Install not available? Try manual';
-                    retryBtn.style.display = 'block';
-                }
-            }, 3000);
-
         } else if (isIOS) {
+            // ─── IOS ──────────────────────────────────────────
             iosGuide.classList.add('active');
-            installBtn.style.display = 'none';
-            showDebug('iOS detected');
+            manualGuide.classList.remove('active');
+            whySection.classList.remove('active');
+            installBtn.classList.add('hidden');
+
             if (window.navigator.standalone) {
                 showStatus('✅ NILTASK is already installed!', 'success');
             } else {
                 showStatus('📱 Follow the steps below to install.', 'info');
             }
+
         } else if (isDesktop) {
+            // ─── DESKTOP ──────────────────────────────────────
             qrSection.classList.add('active');
+            manualGuide.classList.remove('active');
+            whySection.classList.remove('active');
+            installBtn.classList.add('hidden');
+
             const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(window.location.origin + '/?install=true')}`;
             document.getElementById('qrCodeImage').src = qrUrl;
-            installBtn.style.display = 'none';
             showStatus('📱 Scan the QR code with your phone to install.', 'info');
-            showDebug('Desktop detected – showing QR code');
         }
 
-        // ── INSTALL BUTTON CLICK ──────────────────────────────
+        // ─── INSTALL BUTTON CLICK ──────────────────────────────
         installBtn.addEventListener('click', async () => {
             if (!deferredPrompt) {
+                // If no prompt, show manual guide
                 manualGuide.classList.add('active');
-                showStatus('💡 Install prompt not available. Please use the manual guide.', 'info');
-                showDebug('Install button clicked but deferredPrompt is null');
+                whySection.classList.add('active');
+                installBtn.classList.add('hidden');
+                showStatus('💡 One-tap not available. Use the steps above.', 'warning');
                 return;
             }
 
@@ -247,38 +298,23 @@
 
                 if (result.outcome === 'accepted') {
                     showStatus('✅ NILTASK installed successfully!', 'success');
-                    installBtn.style.display = 'none';
+                    installBtn.classList.add('hidden');
                     manualGuide.classList.remove('active');
-                    showDebug('User accepted install');
+                    whySection.classList.remove('active');
                 } else {
                     showStatus('Installation cancelled. You can try again.', 'error');
                     installBtn.disabled = false;
                     installBtn.innerHTML = '<i class="fa-solid fa-download"></i> Install NILTASK';
-                    showDebug('User dismissed install');
                 }
             } catch (error) {
                 console.error(error);
-                showStatus('Something went wrong. Please try the manual guide.', 'error');
+                showStatus('Something went wrong. Please use the steps above.', 'error');
                 manualGuide.classList.add('active');
-                installBtn.disabled = false;
-                installBtn.innerHTML = '<i class="fa-solid fa-download"></i> Install NILTASK';
-                showDebug('Error during install: ' + error.message);
+                installBtn.classList.add('hidden');
             }
         });
 
-        // ── RETRY BUTTON ──────────────────────────────────────
-        retryBtn.addEventListener('click', () => {
-            showDebug('Retry button clicked – reloading prompt');
-            // Try to trigger the prompt again by simulating a user gesture
-            if (deferredPrompt) {
-                installBtn.click();
-            } else {
-                // Reload the page to see if prompt fires this time
-                location.reload();
-            }
-        });
-
-        // ── TRACK INSTALL (optional) ──────────────────────────
+        // ─── TRACK INSTALL ──────────────────────────────────────
         async function trackInstall(method) {
             try {
                 await fetch('https://apfymygzwkzjhhgmtkaj.supabase.co/functions/v1/track-install', {
@@ -288,25 +324,25 @@
                         user_id: null,
                         tenant_id: null,
                         os_name: isAndroid ? 'Android' : isIOS ? 'iOS' : 'Desktop',
+                        browser_name: browserName,
                         install_method: method,
                         is_first_open: true,
                         referrer: document.referrer || null,
                     })
                 });
-            } catch(e) {}
+            } catch(e) { console.error('Track error:', e); }
         }
 
         window.addEventListener('appinstalled', () => {
             trackInstall('pwa_prompt');
             showStatus('✅ NILTASK installed!', 'success');
-            showDebug('appinstalled event fired');
         });
 
         if (isAndroid && !window.matchMedia('(display-mode: standalone)').matches) {
             trackInstall('android_visit');
         }
 
-        // ── FIRST OPEN ─────────────────────────────────────────
+        // ─── FIRST OPEN ─────────────────────────────────────────
         (function() {
             if (localStorage.getItem('niltask_first_open') === null) {
                 localStorage.setItem('niltask_first_open', 'false');
@@ -316,12 +352,14 @@
             }
         })();
 
-        // ── AUTO-TRIGGER INSTALL IF ?install=true ──────────────
+        // ─── AUTO-TRIGGER INSTALL IF ?install=true ──────────────
         (function() {
             const params = new URLSearchParams(window.location.search);
             if (params.get('install') === 'true' && isAndroid && !window.matchMedia('(display-mode: standalone)').matches) {
                 setTimeout(() => {
-                    installBtn.click();
+                    if (!installBtn.classList.contains('hidden')) {
+                        installBtn.click();
+                    }
                 }, 1500);
             }
         })();

@@ -981,46 +981,72 @@ window.loadMetrics = async function() {
     alertText.textContent = 'Fetching metrics...';
     alertText.style.color = 'var(--text2)';
 
-    try {
-        // Get the session token
-        const { data: { session } } = await sb.auth.getSession();
-        if (!session) {
-            throw new Error('You are not logged in. Please refresh the page.');
-        }
+    console.log('🔍 [loadMetrics] Starting...');
 
-        // Call the edge function
-        const resp = await fetch('https://apfymygzwkzjhhgmtkaj.supabase.co/functions/v1/get-metrics', {
+    try {
+        // STEP 1: Get session
+        console.log('🔍 [loadMetrics] Getting session...');
+        const { data: { session }, error: sessionError } = await sb.auth.getSession();
+        if (sessionError) {
+            console.error('❌ [loadMetrics] Session error:', sessionError);
+            throw new Error('Session error: ' + sessionError.message);
+        }
+        if (!session) {
+            console.error('❌ [loadMetrics] No session found');
+            throw new Error('Not logged in. Please refresh and login again.');
+        }
+        console.log('✅ [loadMetrics] Session found for user:', session.user.email);
+
+        // STEP 2: Build fetch URL and headers
+        const url = 'https://apfymygzwkzjhhgmtkaj.supabase.co/functions/v1/get-metrics';
+        const headers = {
+            'Authorization': 'Bearer ' + session.access_token,
+            'Content-Type': 'application/json',
+        };
+        console.log('🔍 [loadMetrics] Fetching URL:', url);
+        console.log('🔍 [loadMetrics] Headers:', headers);
+
+        // STEP 3: Make the fetch call
+        console.log('🔍 [loadMetrics] Sending request...');
+        const resp = await fetch(url, {
             method: 'GET',
-            headers: {
-                'Authorization': 'Bearer ' + session.access_token,
-                'Content-Type': 'application/json',
-            }
+            headers: headers,
         });
 
-        // If the function doesn't exist (404), show a helpful message
+        console.log('🔍 [loadMetrics] Response status:', resp.status, resp.statusText);
+        console.log('🔍 [loadMetrics] Response headers:', [...resp.headers.entries()]);
+
+        // STEP 4: Handle HTTP errors
         if (resp.status === 404) {
+            console.error('❌ [loadMetrics] Function not found (404)');
             throw new Error('The "get-metrics" edge function is not deployed. Please deploy it from your Supabase dashboard.');
         }
 
         if (!resp.ok) {
             const errText = await resp.text();
+            console.error('❌ [loadMetrics] HTTP error response body:', errText);
             throw new Error(`HTTP ${resp.status}: ${errText || 'Unknown error'}`);
         }
 
+        // STEP 5: Parse JSON
         const data = await resp.json();
-        if (data.error) throw new Error(data.error);
+        console.log('✅ [loadMetrics] Received data:', data);
 
-        // ... rest of the code (update stats, bars, alerts) as before ...
+        if (data.error) {
+            console.error('❌ [loadMetrics] Function returned error:', data.error);
+            throw new Error('Function error: ' + data.error);
+        }
 
-        // Update stat numbers
+        // STEP 6: Update UI
         const m = data.metrics;
+        console.log('🔍 [loadMetrics] Metrics object:', m);
+
         document.getElementById('m_db').textContent = m.db_size_gb?.toFixed(2) ?? '0.00';
         document.getElementById('m_storage').textContent = m.storage_gb?.toFixed(2) ?? '0.00';
         document.getElementById('m_realtime').textContent = (m.realtime_messages_month ?? 0).toLocaleString();
         document.getElementById('m_conn').textContent = m.realtime_connections ?? 0;
         document.getElementById('m_mau').textContent = (m.auth_mau ?? 0).toLocaleString();
 
-        // Update bars
         setBar('m_db_bar', m.db_size_gb ?? 0, data.limits.db_size_gb);
         setBar('m_storage_bar', m.storage_gb ?? 0, data.limits.storage_gb);
         setBar('m_realtime_bar', m.realtime_messages_month ?? 0, data.limits.realtime_messages_month);
@@ -1042,10 +1068,14 @@ window.loadMetrics = async function() {
             alertText.textContent = alerts[0] || '✅ All systems healthy!';
         }
 
+        console.log('✅ [loadMetrics] UI updated successfully.');
+
     } catch (e) {
+        console.error('❌ [loadMetrics] CATCH block error:', e);
         alertText.textContent = '❌ ' + e.message;
         alertText.style.color = 'var(--red)';
-        console.error('Metrics fetch error:', e);
+        // Also show the error in a toast for visibility
+        toast('Metrics error: ' + e.message, 'red');
     }
 };
 
@@ -1059,11 +1089,9 @@ function setBar(id, value, limit) {
     } else if (percent > 70) {
         el.style.background = 'var(--orange)';
     } else {
-        // Remove inline background so CSS class takes over
         el.style.background = '';
     }
 }
-
 // ── TOAST ─────────────────────────────────────────────────────
 function toast(msg, type = 'green') {
     const el = document.getElementById('devToast');

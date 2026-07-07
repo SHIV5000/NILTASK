@@ -497,60 +497,66 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 [data-theme="dark"], [data-theme="midnight"] .bubble.sent .e-chip { background: #161b22; border-color: var(--border-color); color: var(--text-secondary); }
 
 [data-theme="dark"], [data-theme="midnight"] .reply-badge { background: rgba(47, 129, 247, 0.15); }
-[data-theme="dark"], [data-theme="midnight"] .b-divider { background: var(--border-color); }
-[data-theme="dark"], [data-theme="midnight"] .replies-label { color: var(--text-secondary); }
-[data-theme="dark"], [data-theme="midnight"] .reply-item { border-left: 2px solid var(--border-color); }
-[data-theme="dark"], [data-theme="midnight"] .reply-num { background: var(--border-color); color: var(--text-primary); }
+[data-theme="dark"] .b-divider, [data-theme="midnight"] .b-divider { background: var(--border-color); }
+[data-theme="dark"] .replies-label, [data-theme="midnight"] .replies-label { color: var(--text-secondary); }
+[data-theme="dark"] .reply-item, [data-theme="midnight"] .reply-item { border-left: 2px solid var(--border-color); }
+[data-theme="dark"] .reply-num, [data-theme="midnight"] .reply-num { background: var(--border-color); color: var(--text-primary); }
 
 /* Task Panel GitHub Normalizer */
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .bg-white,
-[data-theme="dark"], [data-theme="midnight"] .task-card { 
-    background-color: #161b22 !important; 
+[data-theme="dark"] #tasksPanel .bg-white, [data-theme="midnight"] #tasksPanel .bg-white,
+[data-theme="dark"] .task-card,           [data-theme="midnight"] .task-card {
+    background-color: #161b22 !important;
     border-color: var(--border-color) !important;
 }
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .text-gray-900,
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .text-gray-800,
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .text-gray-700 { 
-    color: var(--text-primary) !important; 
+[data-theme="dark"] #tasksPanel .text-gray-900, [data-theme="midnight"] #tasksPanel .text-gray-900,
+[data-theme="dark"] #tasksPanel .text-gray-800, [data-theme="midnight"] #tasksPanel .text-gray-800,
+[data-theme="dark"] #tasksPanel .text-gray-700, [data-theme="midnight"] #tasksPanel .text-gray-700 {
+    color: var(--text-primary) !important;
 }
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .text-gray-600,
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .text-gray-500 { 
-    color: var(--text-secondary) !important; 
-}
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel i {
-    color: var(--text-secondary);
-}
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .bg-indigo-50,
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .bg-blue-50,
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .bg-green-50,
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .bg-red-50,
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .bg-yellow-50,
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .bg-orange-50,
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .bg-purple-50 {
-    background-color: #21262d !important; 
-    border: 1px solid var(--border-color) !important; 
-    color: var(--text-primary) !important; 
-    box-shadow: none !important;
-}
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .bg-indigo-50 i,
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .bg-blue-50 i,
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .bg-green-50 i,
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .bg-red-50 i,
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .bg-yellow-50 i,
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .bg-orange-50 i,
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .bg-purple-50 i {
+[data-theme="dark"] #tasksPanel .text-gray-600, [data-theme="midnight"] #tasksPanel .text-gray-600,
+[data-theme="dark"] #tasksPanel .text-gray-500, [data-theme="midnight"] #tasksPanel .text-gray-500 {
     color: var(--text-secondary) !important;
 }
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .text-red-600,
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .text-red-700 { color: var(--accent-danger) !important; }
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .text-green-700,
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel .text-green-800 { color: var(--accent-success) !important; }
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel button.bg-blue-600 {
-    background-color: var(--accent-success) !important; 
+/* FIX: every rule below previously used `[data-theme="dark"], [data-theme="midnight"] #tasksPanel …`.
+   The comma made `[data-theme="dark"]` a STANDALONE selector matching <html>, so in
+   dark theme the whole page got a #tasksPanel button's green background
+   (var(--accent-success)) + a border — the recurring "green screen / margin" that
+   also hid the long-press menu. Each theme is now correctly prefixed onto #tasksPanel. */
+[data-theme="dark"] #tasksPanel i,
+[data-theme="midnight"] #tasksPanel i {
+    color: var(--text-secondary);
+}
+[data-theme="dark"] #tasksPanel .bg-indigo-50, [data-theme="midnight"] #tasksPanel .bg-indigo-50,
+[data-theme="dark"] #tasksPanel .bg-blue-50,   [data-theme="midnight"] #tasksPanel .bg-blue-50,
+[data-theme="dark"] #tasksPanel .bg-green-50,  [data-theme="midnight"] #tasksPanel .bg-green-50,
+[data-theme="dark"] #tasksPanel .bg-red-50,    [data-theme="midnight"] #tasksPanel .bg-red-50,
+[data-theme="dark"] #tasksPanel .bg-yellow-50, [data-theme="midnight"] #tasksPanel .bg-yellow-50,
+[data-theme="dark"] #tasksPanel .bg-orange-50, [data-theme="midnight"] #tasksPanel .bg-orange-50,
+[data-theme="dark"] #tasksPanel .bg-purple-50, [data-theme="midnight"] #tasksPanel .bg-purple-50 {
+    background-color: #21262d !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-primary) !important;
+    box-shadow: none !important;
+}
+[data-theme="dark"] #tasksPanel .bg-indigo-50 i, [data-theme="midnight"] #tasksPanel .bg-indigo-50 i,
+[data-theme="dark"] #tasksPanel .bg-blue-50 i,   [data-theme="midnight"] #tasksPanel .bg-blue-50 i,
+[data-theme="dark"] #tasksPanel .bg-green-50 i,  [data-theme="midnight"] #tasksPanel .bg-green-50 i,
+[data-theme="dark"] #tasksPanel .bg-red-50 i,    [data-theme="midnight"] #tasksPanel .bg-red-50 i,
+[data-theme="dark"] #tasksPanel .bg-yellow-50 i, [data-theme="midnight"] #tasksPanel .bg-yellow-50 i,
+[data-theme="dark"] #tasksPanel .bg-orange-50 i, [data-theme="midnight"] #tasksPanel .bg-orange-50 i,
+[data-theme="dark"] #tasksPanel .bg-purple-50 i, [data-theme="midnight"] #tasksPanel .bg-purple-50 i {
+    color: var(--text-secondary) !important;
+}
+[data-theme="dark"] #tasksPanel .text-red-600,   [data-theme="midnight"] #tasksPanel .text-red-600,
+[data-theme="dark"] #tasksPanel .text-red-700,   [data-theme="midnight"] #tasksPanel .text-red-700 { color: var(--accent-danger) !important; }
+[data-theme="dark"] #tasksPanel .text-green-700, [data-theme="midnight"] #tasksPanel .text-green-700,
+[data-theme="dark"] #tasksPanel .text-green-800, [data-theme="midnight"] #tasksPanel .text-green-800 { color: var(--accent-success) !important; }
+[data-theme="dark"] #tasksPanel button.bg-blue-600, [data-theme="midnight"] #tasksPanel button.bg-blue-600 {
+    background-color: var(--accent-success) !important;
     border-color: rgba(240, 246, 252, 0.1) !important;
     color: #ffffff !important;
 }
-[data-theme="dark"], [data-theme="midnight"] #tasksPanel button.bg-blue-600:hover { background-color: #2ea043 !important; }
+[data-theme="dark"] #tasksPanel button.bg-blue-600:hover, [data-theme="midnight"] #tasksPanel button.bg-blue-600:hover { background-color: #2ea043 !important; }
 
 /* =========================================
    SOBER DARK MODE OVERRIDES

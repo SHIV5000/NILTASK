@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v99';
+const _MOB_VER = 'v101';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -3276,7 +3276,7 @@ async function _onNewMessage(m) {
             const dept = _findGroup(m.room_id);
             const isDM = m.room_id?.startsWith('dm_');
             const roomLabel = dept ? dept.name : (isDM ? 'a direct message' : 'a group');
-            if (!(window._isDND?.())) _toast(`${name} — ${roomLabel}: ${_snip(m.text,50)}`);
+            if (!(window._isDND?.())) _showHeadsUp(m, name, isDM, dept);
             // Write a notification row so the notifications list is populated (dedup by message_id)
             try {
                 const { count } = await sb.from('notifications').select('id',{count:'exact',head:true})
@@ -3886,6 +3886,51 @@ function _toast(msg, type='ok'){
 // Expose so the shared web toast can route here on mobile (single toast, at top).
 window._mobToast = _toast;
 
+// WhatsApp-style heads-up banner: slides down from the top for a moment when a
+// message arrives while the app is OPEN (the OS push only fires when closed).
+// Shows avatar + sender + snippet, taps through to the chat, auto-dismisses.
+let _headsUpTimer = null;
+function _showHeadsUp(m, name, isDM, dept) {
+    // Don't interrupt if the user is already viewing that exact chat.
+    const top = _stack[_stack.length-1];
+    if (top && top.params?.room === m.room_id) return;
+    let el = _el('mHeadsUp');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'mHeadsUp';
+        document.getElementById('mobileApp')?.appendChild(el) || document.body.appendChild(el);
+    }
+    const sender = _users.find(u => u.id === m.sender_id);
+    const avatar = isDM
+        ? _avatarHTML(sender?.avatar_url, name, 'var(--accent)', 'm-av-sm')
+        : _avatarHTML(_lsGet('dept_photo_'+m.room_id) || dept?.photo, dept?.name || name, dept?.col || 'var(--accent)', 'm-av-sm sq');
+    const line1 = isDM ? x(name) : `${x(name)} · ${x(dept?.name || 'Group')}`;
+    el.innerHTML =
+        `<div class="m-hu-ico">${avatar}</div>
+         <div class="m-hu-txt"><div class="m-hu-title">${line1}</div>
+           <div class="m-hu-body">${x(_snip(m.text, 90))}</div></div>`;
+    // Tap → open the chat.
+    el.onclick = () => {
+        _dismissHeadsUp();
+        if (isDM) {
+            const other = m.room_id.replace('dm_','').split('_').find(id => id !== _uid);
+            _navTo('dm', { room: m.room_id, uid: other, name });
+        } else {
+            _navTo('groupChat', { room: m.room_id, name: dept?.name || name, color: dept?.col || '#6366f1' });
+        }
+    };
+    // Slide in, then auto-dismiss after ~4s.
+    requestAnimationFrame(() => el.classList.add('show'));
+    try { window.playSound?.('message'); } catch(e){}   // playSound respects the sound setting
+    try { navigator.vibrate?.(15); } catch(e){}
+    clearTimeout(_headsUpTimer);
+    _headsUpTimer = setTimeout(_dismissHeadsUp, 4200);
+}
+function _dismissHeadsUp() {
+    const el = _el('mHeadsUp');
+    if (el) el.classList.remove('show');
+}
+
 function _injectCSS(){
     if(_el('mCSS')) return;
     const s=document.createElement('style'); s.id='mCSS';
@@ -4212,6 +4257,22 @@ function _injectCSS(){
   border:1px solid rgba(0,0,0,.08);box-shadow:0 6px 22px rgba(0,0,0,.18);}
 .toast-ok{opacity:1!important;}
 .toast-err{opacity:1!important;color:#b91c1c;border-color:rgba(239,68,68,.35);}
+
+/* WhatsApp-style heads-up notification banner (in-app, app open) */
+#mHeadsUp{position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:10px;right:10px;
+  z-index:11500;display:flex;align-items:center;gap:11px;padding:10px 13px;
+  background:var(--card-bg,#fff);border:1px solid var(--border-color,#e5e7eb);
+  border-radius:16px;box-shadow:0 8px 26px rgba(0,0,0,.22);
+  transform:translateY(-140%);opacity:0;transition:transform .32s cubic-bezier(.2,.8,.2,1),opacity .25s;
+  cursor:pointer;-webkit-tap-highlight-color:transparent;max-width:560px;margin:0 auto;}
+#mHeadsUp.show{transform:translateY(0);opacity:1;}
+#mHeadsUp .m-hu-ico{flex-shrink:0;}
+#mHeadsUp .m-hu-txt{min-width:0;flex:1;}
+#mHeadsUp .m-hu-title{font-size:13.5px;font-weight:700;color:var(--text-primary,#111);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#mHeadsUp .m-hu-body{font-size:13px;color:var(--text-secondary,#667781);margin-top:1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+html[data-theme="dark"] #mHeadsUp{background:#1e1e1e;border-color:#333;}
 
 .m-empty{padding:40px 20px;text-align:center;color:var(--text-secondary,#6b7280);
   font-size:14.5px;line-height:1.7;}

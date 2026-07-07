@@ -984,39 +984,50 @@ window.loadMetrics = async function() {
     try {
         // Get the session token
         const { data: { session } } = await sb.auth.getSession();
-        if (!session) throw new Error('Not logged in');
+        if (!session) {
+            throw new Error('You are not logged in. Please refresh the page.');
+        }
 
-        // Call the edge function using the provided URL
+        // Call the edge function
         const resp = await fetch('https://apfymygzwkzjhhgmtkaj.supabase.co/functions/v1/get-metrics', {
+            method: 'GET',
             headers: {
-                'Authorization': 'Bearer ' + session.access_token
+                'Authorization': 'Bearer ' + session.access_token,
+                'Content-Type': 'application/json',
             }
         });
 
+        // If the function doesn't exist (404), show a helpful message
+        if (resp.status === 404) {
+            throw new Error('The "get-metrics" edge function is not deployed. Please deploy it from your Supabase dashboard.');
+        }
+
         if (!resp.ok) {
             const errText = await resp.text();
-            throw new Error(`HTTP ${resp.status}: ${errText}`);
+            throw new Error(`HTTP ${resp.status}: ${errText || 'Unknown error'}`);
         }
 
         const data = await resp.json();
         if (data.error) throw new Error(data.error);
 
-        const m = data.metrics;
+        // ... rest of the code (update stats, bars, alerts) as before ...
+
         // Update stat numbers
-        document.getElementById('m_db').textContent = m.db_size_gb.toFixed(2);
-        document.getElementById('m_storage').textContent = m.storage_gb.toFixed(2);
-        document.getElementById('m_realtime').textContent = m.realtime_messages_month.toLocaleString();
-        document.getElementById('m_conn').textContent = m.realtime_connections;
-        document.getElementById('m_mau').textContent = m.auth_mau.toLocaleString();
+        const m = data.metrics;
+        document.getElementById('m_db').textContent = m.db_size_gb?.toFixed(2) ?? '0.00';
+        document.getElementById('m_storage').textContent = m.storage_gb?.toFixed(2) ?? '0.00';
+        document.getElementById('m_realtime').textContent = (m.realtime_messages_month ?? 0).toLocaleString();
+        document.getElementById('m_conn').textContent = m.realtime_connections ?? 0;
+        document.getElementById('m_mau').textContent = (m.auth_mau ?? 0).toLocaleString();
 
-        // Update progress bars
-        setBar('m_db_bar', m.db_size_gb, data.limits.db_size_gb);
-        setBar('m_storage_bar', m.storage_gb, data.limits.storage_gb);
-        setBar('m_realtime_bar', m.realtime_messages_month, data.limits.realtime_messages_month);
-        setBar('m_conn_bar', m.realtime_connections, data.limits.realtime_connections);
-        setBar('m_mau_bar', m.auth_mau, data.limits.auth_mau);
+        // Update bars
+        setBar('m_db_bar', m.db_size_gb ?? 0, data.limits.db_size_gb);
+        setBar('m_storage_bar', m.storage_gb ?? 0, data.limits.storage_gb);
+        setBar('m_realtime_bar', m.realtime_messages_month ?? 0, data.limits.realtime_messages_month);
+        setBar('m_conn_bar', m.realtime_connections ?? 0, data.limits.realtime_connections);
+        setBar('m_mau_bar', m.auth_mau ?? 0, data.limits.auth_mau);
 
-        // Update alerts
+        // Alerts
         const alerts = data.alerts || ['✅ All systems healthy!'];
         const alertBox = document.getElementById('metricsAlerts');
         const hasWarning = alerts.some(a => a.includes('⚠️'));
@@ -1032,7 +1043,7 @@ window.loadMetrics = async function() {
         }
 
     } catch (e) {
-        alertText.textContent = '❌ Error: ' + e.message;
+        alertText.textContent = '❌ ' + e.message;
         alertText.style.color = 'var(--red)';
         console.error('Metrics fetch error:', e);
     }
@@ -1043,23 +1054,13 @@ function setBar(id, value, limit) {
     if (!el) return;
     const percent = Math.min((value / limit) * 100, 100);
     el.style.width = percent + '%';
-    // Change color to red if over 90%
     if (percent > 90) {
         el.style.background = 'var(--red)';
     } else if (percent > 70) {
-        // If already red, keep red, else set to orange
-        if (el.style.background !== 'var(--red)') {
-            el.style.background = 'var(--orange)';
-        }
+        el.style.background = 'var(--orange)';
     } else {
-        // Reset to default class colors (handled by CSS)
-        // Remove inline background so class takes over
+        // Remove inline background so CSS class takes over
         el.style.background = '';
-        // Force class re-application by re-setting class
-        // But we defined green/blue/purple/orange classes. Let's just trust the class.
-        // However, if we set inline bg, it overrides class. So we remove inline.
-        // We'll just set the class again.
-        // The class is already there, we just remove inline background.
     }
 }
 

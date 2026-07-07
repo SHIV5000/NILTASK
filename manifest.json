@@ -1,7 +1,7 @@
 {
-  "name": "TaskFlow — School Communication",
-  "short_name": "TaskFlow",
-  "description": "Chat + Task = Accountability. School communication platform.",
+  "name": "NILTASK — Noted For Action",
+  "short_name": "NILTASK",
+  "description": "NILTASK — Noted For Action. Chat + Task = Accountability for schools.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

@@ -253,8 +253,8 @@ window.renderMainApp = async function() {
 
                 <!-- A+B: School branding + actions row -->
                 <div style="padding:12px 14px 0;border-bottom:1px solid var(--border-color);background:var(--bg-sidebar);">
-                    <div style="font-family:'Inter',system-ui,sans-serif;font-size:10px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#9b2c2c;margin-bottom:3px;text-shadow:0 1px 0 rgba(255,255,255,0.6),0 -1px 0 rgba(0,0,0,0.12);">Noted For Action</div>
-                    <div style="font-family:Georgia,'Times New Roman',serif;font-size:17px;font-weight:700;color:#7f1d1d;letter-spacing:0.01em;line-height:1.2;margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:1px 1px 0 rgba(0,0,0,0.18),2px 2px 0 rgba(0,0,0,0.09),0 1px 5px rgba(127,29,29,0.22);" title="${window.escapeHtml(window.currentSchoolName || 'My School')}">${window.escapeHtml(window.currentSchoolName || 'My School')}</div>
+                    <div style="font-family:'Inter',system-ui,sans-serif;font-size:10px;font-weight:800;letter-spacing:0.18em;text-transform:uppercase;color:var(--accent,#4f46e5);margin-bottom:3px;">NILTASK · Noted For Action</div>
+                    <div style="font-family:'Inter',system-ui,sans-serif;font-size:17px;font-weight:700;color:var(--text-primary,#1e2130);letter-spacing:0.01em;line-height:1.2;margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${window.escapeHtml(window.currentSchoolName || 'My School')}">${window.escapeHtml(window.currentSchoolName || 'My School')}</div>
                     <div style="display:flex;align-items:center;gap:5px;padding-bottom:8px;">
                     ${window.canCreateGroup?.() !== false ? `
                     <button onclick="window.openNewGroupModal()" title="Create Department"
@@ -310,7 +310,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.1.2 (v92) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.1.3 (v93) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 

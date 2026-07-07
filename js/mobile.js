@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v92';
+const _MOB_VER = 'v93';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -773,7 +773,7 @@ window._toggleInlineSearch = function() {
     else { _el('mSBResults').innerHTML=''; _el('mSBResults').classList.remove('open'); }
 };
 window._confirmLogout = async function() {
-    if (!confirm('Sign out of TaskFlow?')) return;
+    if (!confirm('Sign out of NILTASK?')) return;
     if (_tsInterval) clearInterval(_tsInterval);
     if (_notifFallbackInterval) { clearInterval(_notifFallbackInterval); _notifFallbackInterval = null; }
     if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
@@ -2044,7 +2044,7 @@ async function _settings() {
       <div style="padding:0 16px 8px;">
         <div class="m-detail-row"><span class="m-detail-lbl">Status</span><span class="m-detail-val">${permLabel}</span></div>
         <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;padding:4px 0 10px;">
-          When enabled, you'll get a phone notification (with sound + vibration) for new messages and task updates — even if TaskFlow isn't open on screen.
+          When enabled, you'll get a phone notification (with sound + vibration) for new messages and task updates — even if NILTASK isn't open on screen.
         </div>
         ${permState !== 'granted' ? `<button class="m-action-btn" style="background:#6366f1;" data-action="enablePush">
           <i class="fa-solid fa-bell"></i> Enable notifications on this device

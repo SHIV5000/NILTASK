@@ -310,7 +310,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.2.2 (v102) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.2.3 (v103) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -1268,33 +1268,10 @@ window.startSubscriptions = async function() {
                     if (typeof window.triggerMessageNotification === 'function')
                         window.triggerMessageNotification(p.new);
 
-                    // ── Insert into notifications table (powers the bell badge) ──
-                    // Deduplicate by message_id to prevent double entries
-                    try {
-                        const { count } = await sb.from('notifications')
-                            .select('id', { count: 'exact', head: true })
-                            .eq('user_id', window.currentUser.id)
-                            .eq('message_id', p.new.id);
-                        if (!count) {
-                            const sender = window.globalUsersCache?.find(u => u.id === p.new.sender_id);
-                            const name   = window.toSentenceCase?.(sender?.full_name || sender?.email?.split('@')[0] || 'Someone') || 'Someone';
-                            const room   = window.getRoomDisplayName?.(incomingRoom) || incomingRoom;
-                            const text   = (window.stripHtml?.(p.new.text) || '').substring(0, 80);
-                            const msg    = incomingRoom.startsWith('dm_')
-                                ? '💬 ' + name + ': ' + text
-                                : name + ' in ' + room + ': ' + text;
-                            const nres = await sb.from('notifications').insert({
-                                user_id:    window.currentUser.id,
-                                type:       'message',
-                                message:    msg,
-                                message_id: p.new.id,
-                                tenant_id:  window.currentTenantId,
-                                is_read:    false
-                            });
-                            window.logger?.sb('notifications.insert[message]', nres, { msg: p.new.id });
-                        }
-                    } catch(e) { window.logger?.logError?.(e, { at:'web msg notification' }); }
-                    // Increment badge instantly — no DB read needed
+                    // The notifications ROW is now created server-side by the send-push
+                    // edge function (reliable regardless of who is online) — see
+                    // plan.md Phase 1. We only bump the badge locally for instant feedback;
+                    // the realtime notifications INSERT sub reconciles with the DB.
                     window._incrementBellBadge?.();
                 }
                 if (typeof window.loadChatsList === 'function') window.loadChatsList();

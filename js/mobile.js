@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v102';
+const _MOB_VER = 'v103';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -3277,20 +3277,11 @@ async function _onNewMessage(m) {
             const isDM = m.room_id?.startsWith('dm_');
             const roomLabel = dept ? dept.name : (isDM ? 'a direct message' : 'a group');
             if (!(window._isDND?.())) _showHeadsUp(m, name, isDM, dept);
-            // Write a notification row so the notifications list is populated (dedup by message_id)
-            try {
-                const { count } = await sb.from('notifications').select('id',{count:'exact',head:true})
-                    .eq('user_id',_uid).eq('message_id',m.id);
-                if (!count) {
-                    const snippet = _snip(m.text, 80);
-                    const msg = isDM ? `💬 ${name}: ${snippet}` : `${name} in ${roomLabel}: ${snippet}`;
-                    await sb.from('notifications').insert({
-                        user_id:_uid, type:'message', message:msg,
-                        message_id:m.id, tenant_id:_tid, is_read:false
-                    });
-                    await _refreshNotifBadge();
-                }
-            } catch(e) { /* non-fatal */ }
+            // The notifications ROW is now created server-side by the send-push edge
+            // function (reliable for online/offline/reconnect) — see plan.md Phase 1.
+            // Just refresh the DB-backed badge; the realtime notifications INSERT sub
+            // also fires _refreshNotifBadge when the server row lands.
+            _refreshNotifBadge();
         }
         return;
     }

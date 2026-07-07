@@ -48,14 +48,14 @@
     .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
     .err { color:var(--red); font-size:13px; margin-top:8px; text-align:center; display:none; }
 
-    .dev-wrap { max-width:100%; margin:0 auto; padding:20px 24px; }
+    .dev-wrap { max-width:1200px; margin:0 auto; padding:20px 24px; }
 
     .topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; padding-bottom:16px; border-bottom:1px solid var(--border); flex-wrap:wrap; gap:12px; }
     .topbar-left { display:flex; align-items:center; gap:12px; }
     .dev-badge { background:var(--accent); color:#fff; font-size:11px; font-weight:800; padding:2px 8px; border-radius:4px; letter-spacing:.06em; }
     .topbar h1 { font-size:18px; font-weight:800; }
-    .topbar-right { display:flex; align-items:center; gap:10px; }
-    .btn-sm { padding:7px 14px; border-radius:var(--radius); font-size:13px; font-weight:700; cursor:pointer; border:1px solid var(--border); background:var(--bg3); color:var(--text); transition:.2s; }
+    .topbar-right { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .btn-sm { padding:7px 14px; border-radius:var(--radius); font-size:13px; font-weight:700; cursor:pointer; border:1px solid var(--border); background:var(--bg3); color:var(--text); transition:.2s; white-space:nowrap; }
     .btn-sm:hover { border-color:var(--text2); }
     .btn-danger-sm { background:rgba(248,81,73,.12); color:var(--red); border-color:rgba(248,81,73,.3); }
     .btn-danger-sm:hover { background:rgba(248,81,73,.2); }
@@ -155,7 +155,6 @@
       .stat { border:1px solid #ccc; }
     }
 
-    /* ── Metric bar styles ── */
     .bar-track {
       margin-top: 6px;
       height: 5px;
@@ -174,7 +173,13 @@
     .bar-fill.orange { background: var(--orange); }
     .bar-fill.red { background: var(--red); }
 
-    .stat-mini { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-family:'Inter',sans-serif; color:var(--text2); }
+    /* table styles for school-wise */
+    .metrics-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .metrics-table th { padding:8px 10px; text-align:center; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text2); border-bottom:2px solid var(--border); position:sticky; top:0; background:var(--bg2); }
+    .metrics-table td { padding:8px 10px; border-bottom:1px solid var(--border); text-align:center; }
+    .metrics-table tr:hover td { background:var(--bg3); }
+    .metrics-table .school-name-col { text-align:left; font-weight:600; }
+    .metrics-table .status-pill { display:inline-block; font-size:10px; font-weight:700; padding:2px 9px; border-radius:20px; }
   </style>
 </head>
 <body>
@@ -280,6 +285,7 @@
 
     <!-- Monitoring panel -->
     <div class="tab-panel" id="tab-metrics">
+        <!-- Global metrics -->
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
             <div>
                 <h2 style="font-size:15px;font-weight:700;margin:0 0 3px;">📊 Supabase Resource Usage</h2>
@@ -326,6 +332,27 @@
             <i class="fa-solid fa-circle-info" style="color:var(--blue);"></i> 
             If any bar turns <span style="color:var(--red);font-weight:700;">red</span>, you are over 90% usage. Consider upgrading your Supabase plan or optimizing.
         </div>
+
+        <!-- School-wise Usage Table -->
+        <div style="margin-top:24px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+            <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                <div>
+                    <h3 style="font-size:13px;font-weight:700;margin:0;">
+                        <i class="fa-solid fa-school" style="color:var(--blue);margin-right:8px;"></i>
+                        School-wise Usage
+                    </h3>
+                    <span style="font-size:11px;color:var(--text2);">Per-school metrics from your database</span>
+                </div>
+                <button class="btn-sm" onclick="loadSchoolMetrics()">
+                    <i class="fa-solid fa-rotate"></i> Refresh
+                </button>
+            </div>
+            <div id="schoolMetricsTable" style="overflow-x:auto;padding:12px;">
+                <div style="text-align:center;padding:20px;color:var(--text2);">
+                    <i class="fa-solid fa-spinner fa-spin"></i> Loading school metrics...
+                </div>
+            </div>
+        </div>
     </div>
 
   </div><!-- /dev-wrap -->
@@ -362,6 +389,7 @@ window.devLogin = async function() {
         document.getElementById('loginWrap').style.display   = 'none';
         document.getElementById('consoleWrap').style.display = 'block';
         await loadSchools();
+        // Load school metrics if monitoring tab is active (it will be loaded on first click)
 
     } catch(e) {
         err.textContent = e.message;
@@ -727,7 +755,10 @@ window.showTab = function(name) {
     document.querySelector(`.tab[onclick*="${name}"]`).classList.add('active');
     document.getElementById(`tab-${name}`).classList.add('active');
     if (name === 'roles' && !window._rolesLoaded) loadRoles();
-    if (name === 'metrics') loadMetrics();
+    if (name === 'metrics') {
+        loadMetrics();          // load global metrics
+        loadSchoolMetrics();    // load school-wise table
+    }
 };
 
 // ── PERMISSION DEFINITIONS ─────────────────────────────────────
@@ -984,7 +1015,6 @@ window.loadMetrics = async function() {
     console.log('🔍 [loadMetrics] Starting...');
 
     try {
-        // STEP 1: Get session
         console.log('🔍 [loadMetrics] Getting session...');
         const { data: { session }, error: sessionError } = await sb.auth.getSession();
         if (sessionError) {
@@ -997,7 +1027,6 @@ window.loadMetrics = async function() {
         }
         console.log('✅ [loadMetrics] Session found for user:', session.user.email);
 
-        // STEP 2: Build fetch URL and headers
         const url = 'https://apfymygzwkzjhhgmtkaj.supabase.co/functions/v1/get-metrics';
         const headers = {
             'Authorization': 'Bearer ' + session.access_token,
@@ -1006,7 +1035,6 @@ window.loadMetrics = async function() {
         console.log('🔍 [loadMetrics] Fetching URL:', url);
         console.log('🔍 [loadMetrics] Headers:', headers);
 
-        // STEP 3: Make the fetch call
         console.log('🔍 [loadMetrics] Sending request...');
         const resp = await fetch(url, {
             method: 'GET',
@@ -1016,7 +1044,6 @@ window.loadMetrics = async function() {
         console.log('🔍 [loadMetrics] Response status:', resp.status, resp.statusText);
         console.log('🔍 [loadMetrics] Response headers:', [...resp.headers.entries()]);
 
-        // STEP 4: Handle HTTP errors
         if (resp.status === 404) {
             console.error('❌ [loadMetrics] Function not found (404)');
             throw new Error('The "get-metrics" edge function is not deployed. Please deploy it from your Supabase dashboard.');
@@ -1028,7 +1055,6 @@ window.loadMetrics = async function() {
             throw new Error(`HTTP ${resp.status}: ${errText || 'Unknown error'}`);
         }
 
-        // STEP 5: Parse JSON
         const data = await resp.json();
         console.log('✅ [loadMetrics] Received data:', data);
 
@@ -1037,7 +1063,6 @@ window.loadMetrics = async function() {
             throw new Error('Function error: ' + data.error);
         }
 
-        // STEP 6: Update UI
         const m = data.metrics;
         console.log('🔍 [loadMetrics] Metrics object:', m);
 
@@ -1053,7 +1078,6 @@ window.loadMetrics = async function() {
         setBar('m_conn_bar', m.realtime_connections ?? 0, data.limits.realtime_connections);
         setBar('m_mau_bar', m.auth_mau ?? 0, data.limits.auth_mau);
 
-        // Alerts
         const alerts = data.alerts || ['✅ All systems healthy!'];
         const alertBox = document.getElementById('metricsAlerts');
         const hasWarning = alerts.some(a => a.includes('⚠️'));
@@ -1074,7 +1098,6 @@ window.loadMetrics = async function() {
         console.error('❌ [loadMetrics] CATCH block error:', e);
         alertText.textContent = '❌ ' + e.message;
         alertText.style.color = 'var(--red)';
-        // Also show the error in a toast for visibility
         toast('Metrics error: ' + e.message, 'red');
     }
 };
@@ -1092,6 +1115,84 @@ function setBar(id, value, limit) {
         el.style.background = '';
     }
 }
+
+// ── LOAD SCHOOL-WISE METRICS ──────────────────────────────────
+window.loadSchoolMetrics = async function() {
+    const container = document.getElementById('schoolMetricsTable');
+    container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);"><i class="fa-solid fa-spinner fa-spin"></i> Loading school data...</div>';
+
+    try {
+        // Use the existing RPC to get all schools
+        const { data: schools, error } = await sb.rpc('dev_get_all_schools');
+        if (error) throw new Error(error.message);
+
+        const schoolsData = Array.isArray(schools) ? schools : JSON.parse(schools || '[]');
+
+        if (!schoolsData.length) {
+            container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);">No schools found.</div>';
+            return;
+        }
+
+        // Sort by message count (most active first)
+        schoolsData.sort((a, b) => (b.message_count || 0) - (a.message_count || 0));
+
+        let tableHTML = `
+            <table class="metrics-table">
+                <thead>
+                    <tr>
+                        <th style="text-align:left;">School</th>
+                        <th>Users</th>
+                        <th>Messages</th>
+                        <th>Tasks</th>
+                        <th>Staff</th>
+                        <th>Storage</th>
+                        <th>Status</th>
+                        <th>Last Activity</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        schoolsData.forEach(s => {
+            const statusPillClass = {
+                active: 'pill-green',
+                trial: 'pill-blue',
+                expired: 'pill-orange',
+                suspended: 'pill-red'
+            }[s.status] || 'pill-gray';
+
+            const storageGB = ((s.storage_mb || 0) / 1024).toFixed(2);
+
+            tableHTML += `
+                <tr>
+                    <td class="school-name-col">${esc(s.school_name)}</td>
+                    <td>${s.user_count || 0}</td>
+                    <td>${(s.message_count || 0).toLocaleString()}</td>
+                    <td>${s.task_count || 0}</td>
+                    <td>${s.staff_count || 0}</td>
+                    <td>${storageGB} GB</td>
+                    <td><span class="pill ${statusPillClass}">${s.status.toUpperCase()}</span></td>
+                    <td style="font-size:11px;color:var(--text2);">${devFmtLogin(s.last_activity)}</td>
+                </tr>
+            `;
+        });
+
+        tableHTML += `
+                </tbody>
+            </table>
+            <div style="font-size:11px;color:var(--text2);padding:10px 0 4px;">
+                Showing ${schoolsData.length} schools · Sorted by most messages
+            </div>
+        `;
+
+        container.innerHTML = tableHTML;
+
+    } catch (e) {
+        container.innerHTML = `<div style="text-align:center;padding:20px;color:var(--red);">❌ Error loading school metrics: ${e.message}</div>`;
+        console.error('School metrics error:', e);
+    }
+};
+
 // ── TOAST ─────────────────────────────────────────────────────
 function toast(msg, type = 'green') {
     const el = document.getElementById('devToast');
@@ -1115,11 +1216,12 @@ function esc(str) {
 }
 window.esc = esc;
 
-// Auto-refresh metrics every 60 seconds if the tab is open
+// ── AUTO-REFRESH METRICS ──────────────────────────────────────
 setInterval(() => {
     const metricsTab = document.getElementById('tab-metrics');
     if (metricsTab && metricsTab.classList.contains('active')) {
         loadMetrics();
+        loadSchoolMetrics();
     }
 }, 60000);
 

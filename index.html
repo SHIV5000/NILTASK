@@ -1,669 +1,270 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>NILTASK — School Staff Communication</title>
+    <meta charset="UTF-8">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#312e81">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <script>
+      // Pre-paint theme guard: on mobile devices, never let the saved WEB theme
+      // (e.g. ocean-teal) color the first paint / login page — apply the user's
+      // mobile theme choice (system/light/dark) before any CSS renders.
+      (function () {
+        try {
+          var mob = window.innerWidth <= 768 ||
+            (window.matchMedia && matchMedia('(pointer:coarse)').matches && window.innerWidth <= 1366);
+          if (!mob) return;
+          var mode = localStorage.getItem('mob_theme') || 'system';
+          var dark = mode === 'dark' ||
+            (mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+          else document.documentElement.removeAttribute('data-theme');
+          // Mark so the web boot theme code knows mobile owns the attribute.
+          window.__mobThemeLock = true;
+          // GREEN GUTTER FIX (definitive): the saved web theme (ocean-teal) tints the
+          // <body> background green (#ecfdf5), which shows through the safe-area gutter
+          // around the fixed app as a thin margin. Force html+body to the app color on
+          // mobile with !important — independent of whatever theme var resolves to.
+          var appbg = dark ? '#000000' : '#eef0f8';
+          document.documentElement.style.background = appbg;
+          var _bl = document.createElement('style');
+          _bl.id = 'mobBgLock';
+          _bl.textContent = 'html,body{background:' + appbg + ' !important;margin:0 !important;}';
+          document.head.appendChild(_bl);
+        } catch (e) {}
+      })();
+    </script>
+    <title>Noted For Action</title>
 
-  <!-- Google Font + Font Awesome -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,600&display=swap" rel="stylesheet">
 
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <!-- Quill JS and html2pdf are lazy-loaded on demand (see main.js / tasks.js) -->
+
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="./css/theme.css">
+  <link rel="stylesheet" href="./css/mobile.css">
   <style>
-    /* ── Reset & Variables ── */
-    *,
-    *::before,
-    *::after {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
+    /* ── GLOBAL FONT: Inter — no other font anywhere in the app ── */
+    html, body, input, select, textarea, button, h1, h2, h3, h4, h5, h6,
+    p, span, div, td, th, label, a, li {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
+    /* Inlined from css/mobile-app.css — that external file kept being served
+       with the wrong MIME type (text/plain instead of text/css) in
+       production despite the file content and routing config both looking
+       correct, and repeated attempts to diagnose it via Vercel's config
+       didn't resolve it. Inlining removes the failure mode entirely: an
+       inline <style> block can never have a content-type or static-file-
+       routing problem, regardless of what's happening server-side. */
 
-    :root {
-      --bg: #0d1117;
-      --bg2: #161b22;
-      --bg3: #21262d;
-      --border: #30363d;
-      --text: #e6edf3;
-      --text2: #8b949e;
-      --accent: #238636;
-      --accent-h: #2ea043;
-      --blue: #388bfd;
-      --purple: #a371f7;
-      --orange: #e3b341;
-      --red: #f85149;
-      --radius: 12px;
-      --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-    }
+    /* IMPORTANT: do not add a blanket "#root{display:none}" media-query rule
+       here. #root is also where the LOGIN FORM renders (see auth.js) — a
+       rule that hides #root on any mobile-width viewport hides the login
+       screen itself before the user has even logged in, with nothing else
+       on screen to replace it (mobile.js's UI only gets built *after* a
+       successful login). That exact bug shipped once already and made the
+       app unusable on mobile until login. The correct, safely-scoped fix
+       lives in mobile.js's initMobileApp(): #root is hidden via JS only at
+       the instant mobile.js actually takes over (i.e. only post-login),
+       which can't block the login screen. */
 
-    [data-theme="light"] {
-      --bg: #f6f8fa;
-      --bg2: #ffffff;
-      --bg3: #f0f2f5;
-      --border: #d0d7de;
-      --text: #1f2328;
-      --text2: #656d76;
-      --shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
-    }
-
-    html,
-    body {
-      height: 100%;
-    }
-
-    body {
-      font-family: 'Inter', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      min-height: 100vh;
-    }
-
-    /* ── Login Card ── */
-    .login-wrap {
-      width: 100%;
-      max-width: 400px;
-    }
-
-    .login-card {
-      background: var(--bg2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 32px 28px;
-      box-shadow: var(--shadow);
-    }
-
-    .login-logo {
-      text-align: center;
-      margin-bottom: 28px;
-    }
-
-    .login-logo i {
-      font-size: 40px;
-      color: var(--accent-h);
-    }
-
-    .login-logo h1 {
-      font-size: 24px;
-      font-weight: 900;
-      margin-top: 8px;
-    }
-
-    .login-logo p {
-      color: var(--text2);
-      font-size: 13px;
-      margin-top: 4px;
-    }
-
-    /* ── Form Fields ── */
-    .field {
-      margin-bottom: 14px;
-    }
-
-    .field label {
-      display: block;
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--text2);
-      margin-bottom: 5px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .field input {
-      width: 100%;
-      padding: 10px 14px;
-      background: var(--bg3);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      color: var(--text);
-      font-size: 14px;
-      outline: none;
-      transition: border-color 0.2s;
-      font-family: 'Inter', sans-serif;
-    }
-
-    .field input:focus {
-      border-color: var(--blue);
-    }
-
-    /* ── Button ── */
-    .btn-primary {
-      width: 100%;
-      padding: 12px;
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      border-radius: var(--radius);
-      font-size: 15px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: background 0.2s;
-      font-family: 'Inter', sans-serif;
-    }
-
-    .btn-primary:hover {
-      background: var(--accent-h);
-    }
-
-    .btn-primary:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .err {
-      color: var(--red);
-      font-size: 13px;
-      margin-top: 8px;
-      text-align: center;
+    /* These banners were missing CSS entirely at one point, so they had no
+       default-hidden state and rendered unconditionally on every page load
+       regardless of the platform-detection JS below (beforeinstallprompt /
+       isIOS) — invisible before only because #mobileApp's z-index happened
+       to cover it. Explicitly hidden until JS adds .show. */
+    #pwaInstallBanner, #iosInstallHint {
       display: none;
-    }
-
-    /* ─── FIXED INSTALL BUTTON (bottom-right) ─── */
-    .fixed-install-btn {
       position: fixed;
-      bottom: 24px;
-      right: 24px;
-      z-index: 9998;
-      width: 60px;
-      height: 60px;
-      border-radius: 50%;
-      background: var(--accent);
+      left: 12px; right: 12px;
+      z-index: 10500;
+      border-radius: 14px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.18);
+    }
+    #pwaInstallBanner.show, #iosInstallHint.show { display: flex; align-items: center; gap: 10px; }
+    #pwaInstallBanner {
+      bottom: 16px;
+      background: var(--bg-body, #fff);
+      padding: 12px 14px;
+    }
+    #iosInstallHint {
+      top: 16px;
+      background: #111;
       color: #fff;
-      border: none;
-      font-size: 26px;
-      cursor: pointer;
-      box-shadow: 0 4px 20px rgba(35, 134, 54, 0.4);
-      transition: all 0.2s ease;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .fixed-install-btn:hover {
-      transform: scale(1.08);
-      background: var(--accent-h);
-      box-shadow: 0 6px 28px rgba(35, 134, 54, 0.5);
-    }
-
-    .fixed-install-btn .badge {
-      position: absolute;
-      top: -4px;
-      right: -4px;
-      background: var(--blue);
-      color: #fff;
-      font-size: 10px;
-      font-weight: 700;
-      padding: 2px 6px;
-      border-radius: 20px;
-      min-width: 20px;
-      text-align: center;
-    }
-
-    /* ─── INSTALL MODAL ─── */
-    .install-modal-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.65);
-      backdrop-filter: blur(4px);
-      z-index: 9999;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-
-    .install-modal-overlay.show {
-      display: flex;
-    }
-
-    .install-modal {
-      background: var(--bg2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 32px 28px;
-      max-width: 400px;
-      width: 100%;
-      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
-      animation: modalPop 0.25s ease;
-    }
-
-    @keyframes modalPop {
-      0% {
-        transform: scale(0.9);
-        opacity: 0;
-      }
-      100% {
-        transform: scale(1);
-        opacity: 1;
-      }
-    }
-
-    .install-modal .modal-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 16px;
-    }
-
-    .install-modal .modal-header h2 {
-      font-size: 18px;
-      font-weight: 800;
-    }
-
-    .install-modal .modal-header h2 i {
-      color: var(--accent-h);
-      margin-right: 8px;
-    }
-
-    .install-modal .modal-close {
-      background: transparent;
-      border: none;
-      color: var(--text2);
-      font-size: 22px;
-      cursor: pointer;
-      padding: 4px 8px;
-    }
-
-    .install-modal .modal-close:hover {
-      color: var(--text);
-    }
-
-    .install-modal .modal-subtitle {
-      color: var(--text2);
+      padding: 12px 16px;
       font-size: 13px;
-      margin-bottom: 20px;
-    }
-
-    /* ── Platform Options ── */
-    .platform-options {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .platform-option {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      padding: 14px 18px;
-      background: var(--bg3);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      cursor: pointer;
-      transition: all 0.2s;
-      text-decoration: none;
-      color: var(--text);
-    }
-
-    .platform-option:hover {
-      background: var(--border);
-      transform: translateX(4px);
-    }
-
-    .platform-option .icon {
-      font-size: 28px;
-      width: 44px;
-      text-align: center;
-      flex-shrink: 0;
-    }
-
-    .platform-option .icon.android {
-      color: #3ddc84;
-    }
-    .platform-option .icon.ios {
-      color: #555555;
-    }
-
-    .platform-option .info {
-      flex: 1;
-    }
-
-    .platform-option .info strong {
-      display: block;
-      font-size: 15px;
-    }
-
-    .platform-option .info small {
-      color: var(--text2);
-      font-size: 12px;
-    }
-
-    .platform-option .arrow {
-      color: var(--text2);
-      font-size: 14px;
-    }
-
-    /* ─── iOS Steps (shown inside modal) ─── */
-    .ios-steps {
-      display: none;
-      margin-top: 16px;
-      padding: 16px;
-      background: var(--bg3);
-      border-radius: var(--radius);
-      text-align: left;
-    }
-
-    .ios-steps.show {
-      display: block;
-    }
-
-    .ios-steps .step {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 6px 0;
-      border-bottom: 1px solid var(--border);
-      font-size: 13px;
-      color: var(--text2);
-      line-height: 1.5;
-    }
-
-    .ios-steps .step:last-child {
-      border-bottom: none;
-    }
-
-    .ios-steps .step .num {
-      width: 24px;
-      height: 24px;
-      background: var(--blue);
-      color: #fff;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12px;
-      font-weight: 700;
-      flex-shrink: 0;
-    }
-
-    .ios-steps .step .step-icon {
-      font-size: 18px;
-      width: 28px;
-      text-align: center;
-      flex-shrink: 0;
-    }
-
-    .ios-steps .step strong {
-      color: var(--text);
-    }
-
-    /* ─── Responsive ─── */
-    @media (max-width: 480px) {
-      .login-card {
-        padding: 24px 16px;
-      }
-      .fixed-install-btn {
-        bottom: 16px;
-        right: 16px;
-        width: 54px;
-        height: 54px;
-        font-size: 22px;
-      }
-      .install-modal {
-        padding: 24px 16px;
-      }
-      .platform-option {
-        padding: 12px 14px;
-      }
-      .platform-option .icon {
-        font-size: 22px;
-        width: 36px;
-      }
-    }
-
-    @media (max-width: 380px) {
-      .fixed-install-btn {
-        bottom: 12px;
-        right: 12px;
-        width: 48px;
-        height: 48px;
-        font-size: 18px;
-      }
     }
   </style>
 </head>
-<body>
+<body class="antialiased overflow-hidden">
 
-  <!-- ─── LOGIN CARD ─── -->
-  <div class="login-wrap">
-    <div class="login-card">
-
-      <!-- Logo -->
-      <div class="login-logo">
-        <i class="fa-regular fa-pen-to-square"></i>
-        <h1>NILTASK</h1>
-        <p>School Staff Communication</p>
+    <!-- Boot splash (Instagram-style): paints INSTANTLY before any JS/CSS loads,
+         covers the entire boot (no flashes of any kind), fades out when the app
+         signals ready via window._hideSplash() — with a hard safety timeout. -->
+    <div id="bootSplash" style="position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;
+        align-items:center;justify-content:center;gap:18px;background:linear-gradient(160deg,#312e81 0%,#4f46e5 55%,#6d28d9 100%);
+        transition:opacity .45s ease;">
+      <div style="width:92px;height:92px;border-radius:26px;background:rgba(255,255,255,.14);
+          display:flex;align-items:center;justify-content:center;box-shadow:0 10px 40px rgba(0,0,0,.35);
+          backdrop-filter:blur(4px);">
+        <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          <path d="M8 9h8M8 13h5"/>
+        </svg>
       </div>
-
-      <!-- Login Form -->
-      <form id="loginForm">
-        <div class="field">
-          <label><i class="fa-regular fa-envelope"></i> Email</label>
-          <input type="email" id="loginEmail" placeholder="staff@school.edu" autocomplete="email" required />
-        </div>
-
-        <div class="field">
-          <label><i class="fa-regular fa-lock"></i> Password</label>
-          <input type="password" id="loginPassword" placeholder="Enter your password" autocomplete="current-password" required />
-        </div>
-
-        <div class="err" id="loginError"></div>
-
-        <button type="submit" class="btn-primary" id="loginBtn">
-          <i class="fa-regular fa-arrow-right-to-bracket"></i> Sign In
-        </button>
-      </form>
-
-      <!-- Footer -->
-      <div style="margin-top: 16px; font-size: 12px; color: var(--text2); text-align: center;">
-        <span>New school? Contact your administrator for credentials.</span>
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#fff;
+          font-size:26px;font-weight:800;letter-spacing:.14em;text-align:center;">Noted For Action</div>
+      <div style="position:absolute;bottom:42px;display:flex;flex-direction:column;align-items:center;gap:10px;">
+        <div style="width:22px;height:22px;border:2.5px solid rgba(255,255,255,.25);border-top-color:#fff;
+            border-radius:50%;animation:bootspin .8s linear infinite;"></div>
+        <div style="color:rgba(255,255,255,.55);font-size:10.5px;font-weight:600;letter-spacing:.22em;
+            font-family:-apple-system,BlinkMacSystemFont,sans-serif;">CHAT · TASK · ACCOUNTABILITY</div>
       </div>
-
     </div>
-  </div>
+    <style>@keyframes bootspin{to{transform:rotate(360deg)}}</style>
+    <script>
+      // App calls this when its first screen is painted; safety timeout guarantees
+      // the splash NEVER traps the user even if boot code fails.
+      window._hideSplash = function () {
+        var s = document.getElementById('bootSplash');
+        if (!s || s.dataset.hiding) return;
+        s.dataset.hiding = '1';
+        s.style.opacity = '0';
+        setTimeout(function () { s.remove(); }, 500);
+      };
+      setTimeout(function () { window._hideSplash(); }, 6000);
+    </script>
 
-  <!-- ─── FIXED INSTALL BUTTON (bottom-right) ─── -->
-  <button class="fixed-install-btn" id="fixedInstallBtn" title="Install NILTASK">
-    <i class="fa-solid fa-download"></i>
+    <div id="root" class="h-screen flex overflow-hidden"></div>
+    <div id="pdf-generation-container" style="display:none;"></div>
+
+    <!--
+        LOAD ORDER — each file is a self-contained ES module.
+        All functions go on window.* so there is no export/import between them.
+        shared.js MUST be first (exports 'sb').
+        auth.js MUST come before main.js (defines renderAuthScreen / signIn / logout).
+        main.js MUST be last (runs the boot sequence).
+    -->
+    <!-- Local storage engine: Dexie (IndexedDB) + the LocalDB wrapper. Classic
+         scripts so window.LocalDB exists before any module runs; the app degrades
+         to its localStorage fallback if either fails to load (e.g. offline first boot). -->
+    <script src="https://unpkg.com/dexie@3.2.7/dist/dexie.min.js"></script>
+    <script src="./js/db.js"></script>
+    <script type="module" src="./js/shared.js"></script>
+    <script type="module" src="./js/auth.js"></script>
+    <script type="module" src="./js/rbac.js"></script>
+    <script type="module" src="./js/ui-core.js"></script>
+    <script type="module" src="./js/ui-panels.js"></script>
+    <script type="module" src="./js/ui-feed.js"></script>
+    <script type="module" src="./js/ui-settings.js"></script>
+    <script type="module" src="./js/messages.js"></script>
+    <script type="module" src="./js/tasks.js"></script>
+    <script type="module" src="./js/main.js"></script>
+
+<script type="module" src="./js/notifications.js"></script>
+<script type="module" src="./js/mobile.js"></script>
+
+<script type="module">
+// ── Logger: global error capture ─────────────────────────
+import logger from './js/utils/logger.js';
+window.onerror = function(message, source, lineno, colno, error) {
+  logger.logError(error || new Error(message), { source, lineno, colno });
+  return false;
+};
+window.addEventListener('unhandledrejection', function(event) {
+  logger.logError(event.reason || 'Unhandled rejection', {});
+});
+</script>
+<script>
+// ── Service Worker registration ───────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js')
+    .then(reg => { try { reg.update(); } catch (e) {} })
+    .catch(() => {});
+  // When a new service worker takes control, reload once so the fresh
+  // HTML/JS is used immediately (self-heals stuck cached builds).
+  let _swReloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (_swReloaded) return; _swReloaded = true; window.location.reload();
+  });
+}
+
+// ── Android/Chrome: capture install prompt ────────────────
+let _installPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  _installPrompt = e;
+  if (!sessionStorage.getItem('pwa_dismissed')) {
+    setTimeout(() => {
+      document.getElementById('pwaInstallBanner')?.classList.add('show');
+    }, 5000);
+  }
+});
+
+window.installPWA = async () => {
+  const b = document.getElementById('pwaInstallBanner');
+  if (_installPrompt) {
+    _installPrompt.prompt();
+    await _installPrompt.userChoice;
+    _installPrompt = null;
+    b?.classList.remove('show');
+  }
+};
+
+window.dismissInstall = () => {
+  document.getElementById('pwaInstallBanner')?.classList.remove('show');
+  document.getElementById('iosInstallHint')?.classList.remove('show');
+  sessionStorage.setItem('pwa_dismissed', '1');
+};
+
+// ── iOS Safari: show manual instruction ──────────────────
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+           && !window.MSStream;
+const isInApp = window.navigator.standalone === true;
+if (isIOS && !isInApp && !sessionStorage.getItem('pwa_dismissed')) {
+  setTimeout(() => {
+    document.getElementById('iosInstallHint')?.classList.add('show');
+    setTimeout(() => {
+      document.getElementById('iosInstallHint')?.classList.remove('show');
+    }, 7000);
+  }, 4000);
+}
+
+window.addEventListener('appinstalled', () => {
+  document.getElementById('pwaInstallBanner')?.classList.remove('show');
+  _installPrompt = null;
+});
+</script>
+
+<!-- Android install banner -->
+<div id="pwaInstallBanner">
+  <div style="width:36px;height:36px;border-radius:9px;background:var(--accent,#6366f1);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+    <i class="fa-solid fa-comments" style="color:#fff;font-size:14px;"></i>
+  </div>
+  <div style="flex:1;min-width:0;">
+    <div style="font-size:13px;font-weight:700;color:var(--text-primary,#111);">Install Noted For Action</div>
+    <div style="font-size:11px;color:var(--text-secondary,#666);">Works offline · No app store needed</div>
+  </div>
+  <button onclick="window.installPWA()" style="background:var(--accent,#6366f1);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">
+    <i class="fa-solid fa-download"></i> Install
   </button>
+  <button onclick="window.dismissInstall()" style="background:none;border:none;color:var(--text-secondary,#666);cursor:pointer;font-size:20px;padding:4px 6px;flex-shrink:0;line-height:1;">×</button>
+</div>
 
-  <!-- ─── INSTALL MODAL ─── -->
-  <div class="install-modal-overlay" id="installModal">
-    <div class="install-modal">
-      <!-- Header -->
-      <div class="modal-header">
-        <h2><i class="fa-solid fa-mobile-screen-button"></i> Install App</h2>
-        <button class="modal-close" id="closeModalBtn">✕</button>
-      </div>
-      <p class="modal-subtitle">Choose your device to get the best experience.</p>
-
-      <!-- Platform Options -->
-      <div class="platform-options">
-        <!-- Android Option -->
-        <div class="platform-option" id="androidInstallBtn">
-          <div class="icon android"><i class="fa-brands fa-android"></i></div>
-          <div class="info">
-            <strong>Android</strong>
-            <small>Install like a native app</small>
-          </div>
-          <div class="arrow"><i class="fa-solid fa-chevron-right"></i></div>
-        </div>
-
-        <!-- iOS Option -->
-        <div class="platform-option" id="iosInstallBtn">
-          <div class="icon ios"><i class="fa-brands fa-apple"></i></div>
-          <div class="info">
-            <strong>iPhone / iPad</strong>
-            <small>Add to Home Screen</small>
-          </div>
-          <div class="arrow"><i class="fa-solid fa-chevron-right"></i></div>
-        </div>
-      </div>
-
-      <!-- iOS Steps (hidden by default) -->
-      <div class="ios-steps" id="iosSteps">
-        <div class="step">
-          <span class="num">1</span>
-          <span class="step-icon"><i class="fa-solid fa-square-arrow-up"></i></span>
-          <span>Tap the <strong>Share</strong> button <i class="fa-solid fa-square-arrow-up" style="color:var(--blue);"></i> (bottom of screen)</span>
-        </div>
-        <div class="step">
-          <span class="num">2</span>
-          <span class="step-icon"><i class="fa-solid fa-house-chimney"></i></span>
-          <span>Scroll down and tap <strong>"Add to Home Screen"</strong></span>
-        </div>
-        <div class="step">
-          <span class="num">3</span>
-          <span class="step-icon"><i class="fa-solid fa-check"></i></span>
-          <span>Tap <strong>"Add"</strong> in the top-right corner</span>
-        </div>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- ─── JAVASCRIPT ─── -->
-  <script>
-    // ─── DOM refs ──────────────────────────────────────────────
-    const fixedBtn = document.getElementById('fixedInstallBtn');
-    const modal = document.getElementById('installModal');
-    const closeModalBtn = document.getElementById('closeModalBtn');
-    const androidBtn = document.getElementById('androidInstallBtn');
-    const iosBtn = document.getElementById('iosInstallBtn');
-    const iosSteps = document.getElementById('iosSteps');
-
-    // ─── Open Modal ──────────────────────────────────────────
-    fixedBtn.addEventListener('click', () => {
-      modal.classList.add('show');
-      iosSteps.classList.remove('show'); // hide iOS steps when opening
-    });
-
-    // ─── Close Modal ──────────────────────────────────────────
-    function closeModal() {
-      modal.classList.remove('show');
-      iosSteps.classList.remove('show');
-    }
-
-    closeModalBtn.addEventListener('click', closeModal);
-
-    // Click outside modal to close
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) closeModal();
-    });
-
-    // ─── Android: Trigger Install ────────────────────────────
-    let deferredPrompt = null;
-
-    // Store the beforeinstallprompt event
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-      console.log('📱 Install prompt captured');
-    });
-
-    androidBtn.addEventListener('click', async () => {
-      if (!deferredPrompt) {
-        // No prompt available – show fallback
-        alert(
-          'Install prompt not available.\n\n' +
-          'Please open this page in Chrome and tap the menu (⋮) → "Add to Home Screen".'
-        );
-        return;
-      }
-
-      // Show the native install prompt
-      try {
-        const result = await deferredPrompt.prompt();
-        deferredPrompt = null;
-        if (result.outcome === 'accepted') {
-          closeModal();
-        }
-      } catch (error) {
-        console.error('Install error:', error);
-        alert('Something went wrong. Please try again.');
-      }
-    });
-
-    // ─── iOS: Show Steps ──────────────────────────────────────
-    iosBtn.addEventListener('click', () => {
-      iosSteps.classList.toggle('show');
-      // If showing, scroll it into view
-      if (iosSteps.classList.contains('show')) {
-        setTimeout(() => {
-          iosSteps.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }, 100);
-      }
-    });
-
-    // ─── Detect if already installed → hide button ──────────
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
-      window.navigator.standalone === true;
-
-    if (isStandalone) {
-      fixedBtn.style.display = 'none';
-    }
-
-    // ─── Login Form Handler ──────────────────────────────────
-    document.getElementById('loginForm').addEventListener('submit', async function(e) {
-      e.preventDefault();
-
-      const email = document.getElementById('loginEmail').value.trim();
-      const password = document.getElementById('loginPassword').value;
-      const errorEl = document.getElementById('loginError');
-      const btn = document.getElementById('loginBtn');
-
-      errorEl.style.display = 'none';
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Signing in...';
-
-      // --- your actual login logic here ---
-      // This is a placeholder – replace with your real auth call
-      try {
-        // Example: await supabase.auth.signInWithPassword({ email, password });
-        console.log('Login attempt:', email);
-        // Simulate login
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        // window.location.href = '/dashboard';
-      } catch (err) {
-        errorEl.textContent = 'Invalid email or password. Please try again.';
-        errorEl.style.display = 'block';
-      } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fa-regular fa-arrow-right-to-bracket"></i> Sign In';
-      }
-    });
-
-    // ─── Enter key to submit ──────────────────────────────────
-    document.getElementById('loginPassword').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') document.getElementById('loginForm').dispatchEvent(new Event('submit'));
-    });
-
-    // ─── Theme toggle (optional) ──────────────────────────────
-    // You can add a theme toggle button if you want.
-    // For now, it follows system preference.
-    (function() {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const savedTheme = localStorage.getItem('theme');
-      if (savedTheme) {
-        document.documentElement.setAttribute('data-theme', savedTheme);
-      } else if (prefersDark) {
-        document.documentElement.setAttribute('data-theme', 'dark');
-      } else {
-        document.documentElement.setAttribute('data-theme', 'light');
-      }
-    })();
-
-    console.log('📱 NILTASK install button ready.');
-    console.log('Platform:', {
-      isAndroid: /android/i.test(navigator.userAgent),
-      isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent),
-      isStandalone: isStandalone,
-    });
-  </script>
+<!-- iOS install hint (auto-hides after 7s) -->
+<div id="iosInstallHint">
+  <i class="fa-solid fa-share-from-square"></i>
+  Tap Share → "Add to Home Screen" to install
+  <button onclick="window.dismissInstall()" style="background:none;border:none;color:#fff;cursor:pointer;font-size:16px;margin-left:8px;">×</button>
+</div>
 
 </body>
 </html>

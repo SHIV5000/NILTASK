@@ -253,7 +253,7 @@ window.renderMainApp = async function() {
 
                 <!-- A+B: School branding + actions row -->
                 <div style="padding:12px 14px 0;border-bottom:1px solid var(--border-color);background:var(--bg-sidebar);">
-                    <div style="font-family:'Inter',system-ui,sans-serif;font-size:10px;font-weight:800;letter-spacing:0.18em;text-transform:uppercase;color:var(--accent,#4f46e5);margin-bottom:3px;">NILTASK · Noted For Action</div>
+                    <div style="font-family:'Inter',system-ui,sans-serif;font-size:10px;font-weight:800;letter-spacing:0.18em;text-transform:uppercase;color:var(--accent,#4f46e5);margin-bottom:3px;">Noted For Action</div>
                     <div style="font-family:'Inter',system-ui,sans-serif;font-size:17px;font-weight:700;color:var(--text-primary,#1e2130);letter-spacing:0.01em;line-height:1.2;margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${window.escapeHtml(window.currentSchoolName || 'My School')}">${window.escapeHtml(window.currentSchoolName || 'My School')}</div>
                     <div style="display:flex;align-items:center;gap:5px;padding-bottom:8px;">
                     ${window.canCreateGroup?.() !== false ? `
@@ -310,7 +310,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.1.3 (v93) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.1.4 (v94) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 

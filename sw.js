@@ -2,7 +2,7 @@
  * TaskFlow Service Worker — enables PWA install prompt on Android/Chrome
  * Caches core app shell for offline-capable experience
  */
-const CACHE   = 'taskflow-v93';
+const CACHE   = 'taskflow-v94';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -130,7 +130,7 @@ self.addEventListener('push', e => {
     } catch(e) {}
     const body = count > 1 ? (count + ' new messages') : (data.body || 'New message');
     try { if (self.navigator?.setAppBadge) await self.navigator.setAppBadge(); } catch(e) {}
-    await self.registration.showNotification(data.title || 'NILTASK', {
+    await self.registration.showNotification(data.title || 'Noted For Action', {
       body,
       icon:    '/icons/notif.png',
       badge:   '/icons/badge-96.png',

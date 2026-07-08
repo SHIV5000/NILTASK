@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v116';
+const _MOB_VER = 'v117';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -913,7 +913,7 @@ async function _render(screen, params, dir='forward') {
         marks: _bookmarks, scheduled: _scheduled,
         settings: _settings, dashboard: _dashboard, groupMgmt: _groupMgmt,
         groupChat: _groupChat, thread: _thread,
-        dm: _dm, taskDetail: _taskDetail, remindEdit: _remindEdit, scheduledEdit: _scheduledEdit, notifications: _notifications,
+        dm: _dm, taskDetail: _taskDetail, remindEdit: _remindEdit, scheduledEdit: _scheduledEdit,
     };
     // Render-race guard: if the user navigates again while this screen's data is
     // still loading, the SLOWER older render must not overwrite the newer screen.
@@ -2080,71 +2080,6 @@ async function _remindEdit(p) {
     </div>`;
 }
 
-async function _notifications() {
-    // Scope by user_id ONLY (Phase 4.1) — notifications are per-user, and
-    // server-created rows' tenant_id didn't always match, which starved this list
-    // while the badge (user_id only) counted them. All notification reads now agree.
-    const { data } = await sb.from('notifications').select('*').eq('user_id',_uid).order('created_at',{ascending:false}).limit(50);
-    const iconMap = {reminder:'fa-stopwatch',task:'fa-clipboard-check',message:'fa-comment',general:'fa-bell'};
-    const colorMap = {reminder:'#a855f7',task:'#3b82f6',message:'#22c55e',general:'#f59e0b'};
-
-    const hasUnread = (data||[]).some(d=>!d.is_read);
-    // Mark all as read silently
-    const unreadIds = (data||[]).filter(d=>!d.is_read).map(d=>d.id);
-    _clearBellBadge();   // opening the notifications screen clears the unread badge
-    if (unreadIds.length) {
-        sb.from('notifications').update({is_read:true}).in('id',unreadIds).then(()=>_refreshNotifBadge());
-    }
-
-    // Group by date (IST)
-    const nowIST = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Kolkata'}));
-    const todayStr = nowIST.toDateString();
-    const yestDate = new Date(nowIST); yestDate.setDate(yestDate.getDate()-1);
-    const yestStr  = yestDate.toDateString();
-    const groups = { Today:[], Yesterday:[], Earlier:[] };
-    (data||[]).forEach(d => {
-        const dt = new Date(new Date(d.created_at).toLocaleString('en-US',{timeZone:'Asia/Kolkata'}));
-        if (dt.toDateString() === todayStr)       groups.Today.push(d);
-        else if (dt.toDateString() === yestStr)   groups.Yesterday.push(d);
-        else                                       groups.Earlier.push(d);
-    });
-
-    const renderItems = items => items.map(d => {
-        const tp = d.type || 'general';
-        const ic = iconMap[tp] || 'fa-bell', co = colorMap[tp] || '#f59e0b';
-        const action = tp === 'task' ? 'goToTaskNotif' : 'goToMsgNotif';
-        return `
-        <div class="m-row" data-action="${action}" data-mid="${d.message_id||''}" data-tid="${d.task_id||''}" style="${d.is_read?'opacity:.65;':''}">
-          <div class="m-av" style="background:${co};border-radius:12px;position:relative;">
-            <i class="fa-solid ${ic}" style="font-size:16px;color:#fff;"></i>
-            ${!d.is_read ? '<span class="m-notif-dot"></span>' : ''}
-          </div>
-          <div class="m-ri">
-            <div class="m-rn" style="${!d.is_read?'font-weight:700;':''}">${x(_snip(d.message,70))}</div>
-            <div class="m-rs">${_fmtIST(d.created_at)}</div>
-          </div>
-        </div>`; }).join('');
-
-    const renderGroup = (label, items) => !items.length ? '' :
-        `<div class="m-notif-day">${label}</div>${renderItems(items)}`;
-
-    const hasAny = groups.Today.length || groups.Yesterday.length || groups.Earlier.length;
-    return `<div class="mScr-inner">
-      <div class="m-hdr m-hdr-plain">
-        <div class="m-htitle">Notifications</div>
-        ${hasUnread ? `<button class="m-hdr-action" onclick="window._markAllNotifsRead()">Mark all read</button>` : ''}
-      </div>
-      ${hasAny
-          ? renderGroup('Today',groups.Today)+renderGroup('Yesterday',groups.Yesterday)+renderGroup('Earlier',groups.Earlier)
-          : '<div class="m-empty">All caught up! 🎉</div>'}
-    </div>`;
-}
-window._markAllNotifsRead = async () => {
-    _clearBellBadge();
-    await sb.from('notifications').update({is_read:true}).eq('user_id',_uid).eq('tenant_id',_tid).eq('is_read',false);
-    _refreshNotifBadge();
-    _render('notifications');
-};
 async function _bookmarks() {
     const bms = JSON.parse(_lsGet('tf_bookmarks_'+_uid)||'[]');
     return `<div class="mScr-inner">
@@ -2903,8 +2838,9 @@ async function _onShellClick(e) {
         }
         case 'markAllRead': {
             try {
+                // user_id only (Phase 4.1) — consistent with the feed/badge reads.
                 await sb.from('notifications').update({ is_read:true })
-                    .eq('user_id',_uid).eq('tenant_id',_tid).eq('is_read',false);
+                    .eq('user_id',_uid).eq('is_read',false);
             } catch(e){}
             _clearBellBadge();
             await _refreshNotifBadge();

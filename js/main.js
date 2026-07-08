@@ -310,7 +310,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.4.3 (v123) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.4.4 (v124) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -1572,11 +1572,23 @@ window.startSubscriptions = async function() {
 
     // ── Seed the bell badge from existing unread notifications on load ──
     // (_bellCount starts at 0 and is only incremented, so pre-existing unread would never show.)
-    try {
-        // Shared canonical count (Phase 7.4) — user_id only, matches mobile + feed.
-        const count = await window.NFA_unreadCount(sb, window.currentUser.id);
-        if (count > 0) window._setBellBadge?.(count);
-    } catch(e) { /* non-fatal */ }
+    const _webRefreshBell = async () => {
+        try {
+            const count = await window.NFA_unreadCount(sb, window.currentUser.id);   // shared canonical count
+            window._setBellBadge?.(count);
+        } catch (e) { /* non-fatal */ }
+    };
+    await _webRefreshBell();
+
+    // Re-sync the bell when the tab regains focus (web had no visibilitychange
+    // listener, so the count could sit stale after the tab was backgrounded and
+    // realtime events were throttled/missed). Mirrors the mobile shell.
+    if (!window._webVisWired) {
+        window._webVisWired = true;
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') _webRefreshBell();
+        });
+    }
 
     // ── Presence heartbeat (v33) — mirror mobile so web users show as online in DM headers ──
     if (!window._webHeartbeat) {

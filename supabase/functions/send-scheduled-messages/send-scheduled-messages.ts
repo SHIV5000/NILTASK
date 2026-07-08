@@ -56,6 +56,15 @@ serve(async (req) => {
 
   if (scheduled?.length) {
     await Promise.all(scheduled.map(async (m) => {
+      // ATOMIC CLAIM (prevents double-send when a 1-min cron overlaps itself):
+      // flip pending → processing conditionally. If another concurrent run already
+      // claimed this row, the conditional update matches 0 rows and we skip it.
+      const { data: claimed } = await supabase.from('scheduled_messages')
+        .update({ status: 'processing' })
+        .eq('id', m.id).eq('status', 'pending')
+        .select('id');
+      if (!claimed?.length) return;   // already taken by an overlapping invocation
+
       // FIXED: tenant_id was missing here. The messages table requires it
       // (multi-tenant isolation), so this insert was almost certainly
       // failing a NOT NULL constraint on every single scheduled message —

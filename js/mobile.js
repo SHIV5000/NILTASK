@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v111';
+const _MOB_VER = 'v112';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -3963,7 +3963,7 @@ async function _openTaskFile(path) {
     window.open(data.signedUrl, '_blank');
 }
 async function _cancelScheduled(id) {
-    await sb.from('scheduled_messages').delete().eq('id',id).eq('tenant_id',_tid);
+    await sb.from('scheduled_messages').delete().eq('id',id).eq('sender_id',_uid).eq('tenant_id',_tid);
     _toast('Scheduled message cancelled'); _navTo('scheduled',null,true);
 }
 async function _saveScheduled(id) {

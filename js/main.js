@@ -310,7 +310,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.2.6 (v106) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.2.7 (v107) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -1339,6 +1339,14 @@ window.startSubscriptions = async function() {
             logger.logRealtime('msg:INSERT', { id: p.new?.id, room: p.new?.room_id });
             const incomingRoom = p.new.room_id;
             const isMine = p.new.sender_id === window.currentUser?.id;
+
+            // @mention: alert the current user distinctly if this message mentions them.
+            if (!isMine && p.new.text && p.new.text.includes('data-uid="' + window.currentUser?.id + '"')) {
+                const sndr = window.globalUsersCache?.find(u => u.id === p.new.sender_id);
+                const snm = window.toSentenceCase?.(sndr?.full_name || sndr?.email?.split('@')[0] || 'Someone') || 'Someone';
+                try { window.playSound?.('message'); } catch (e) {}
+                window.showCenterToast(`📣 ${window.escapeHtml(snm)} mentioned you`, 'fa-solid fa-at', 'text-indigo-400');
+            }
 
             if (incomingRoom === window.currentRoom) {
                 // Skip full reload for own messages — optimistic row already in DOM

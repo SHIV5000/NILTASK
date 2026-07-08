@@ -18,7 +18,7 @@
 | 4 | Correctness — tenant-filter + escape consistency | [x] | v115 | ✅ code-only |
 | 5 | Realtime resilience + UX polish | [x] | v116 | ✅ 5.1/5.4 deferred |
 | 6 | Dead code & abandoned-feature cleanup | [x] | v117 | ✅ code-only |
-| 7 | (Long-term) shared web/mobile render-query core | [ ] | — | — |
+| 7 | (Long-term) shared web/mobile render-query core | [~] | v119 | 7.1–7.2 done; 7.3–7.5 pending |
 
 ---
 
@@ -131,13 +131,17 @@
 ## PHASE 7 — SHARED RENDER/QUERY CORE  🏗️ (long-term, optional)
 **Goal:** stop web/mobile divergence at the root (the cause of the recurring "works on web not mobile" class).
 
-### Tasks
-- [ ] **7.1** Extract shared query builders (feed, reactions, notifications) into `js/core/` consumed by BOTH shells.
-- [ ] **7.2** Migrate one feature end-to-end (Activity feed is the natural first — already aligned) to the shared core as the pattern.
-- [ ] **7.3** Roll remaining features onto the core incrementally.
+### Sub-steps (scoped small & independently verifiable — approach A)
+- [x] **7.1** Shared **activity-feed core** `js/core/feed.js` (`window.NFA_buildActivity`): fetch+merge+dedup+normalize, resolver-injected. **Mobile** `_activity` wired to it (behavior identical to v111). ✔ v118
+- [x] **7.2** **Web** feed (`ui-feed.js _loadActivityFeed`) wired to the same core; web-specific bits (dismissed-set/src/click/bell) applied in the mapping; removed dead `_afCat`. Feed pipeline now lives in ONE file — exit criterion met. ✔ v119
+- [ ] **7.3** Shared **reactions** query core (`js/core/reactions.js`); wire both shells' batch reaction fetch + toggle.
+- [ ] **7.4** Shared **notifications badge** count query; wire mobile `_refreshNotifBadge` + web `_setBellBadge` initial count.
+- [ ] **7.5** Incremental inline-`onclick` → event-delegation sweep (the Phase 4.2 carry-over) — a few files per pass, each verified.
 
-### ✅ EXIT CRITERIA
-- A query change for the feed touches ONE file and both shells reflect it.
+### ✅ EXIT CRITERIA (per sub-step)
+- 7.2: a change to the feed query touches ONLY `js/core/feed.js` and both shells reflect it.
+- 7.3/7.4: reaction/badge query lives in one file; both shells consume it.
+- 7.5: no `onclick="…${userData}…"` with unescaped data remains (grep-clean).
 
 ---
 

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v124';
+const _MOB_VER = 'v125';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -3437,6 +3437,15 @@ async function _onNewMessage(m) {
     }
 }
 async function _onReactionChange(r, eventType) {
+    // DIAGNOSTIC (authoritative, correct selector): records whether the reaction
+    // event was DELIVERED, whether the payload carried a message_id (null ⇒ RLS
+    // blocked the payload / DELETE without replica-identity-full), and whether the
+    // row is on screen (row-<id>). A log dump now distinguishes delivery vs RLS vs
+    // render without guessing.
+    try { window.logger?.logReact?.('pg-recv', {
+        et: eventType, hasMid: !!r?.message_id,
+        rowFound: !!(r?.message_id && document.getElementById('row-'+r.message_id)),
+    }); } catch (e) {}
     if (!r || !r.message_id) return;
     if (!document.getElementById('row-'+r.message_id)) return;   // message not on screen
     const isDelete = eventType === 'DELETE';

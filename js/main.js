@@ -310,7 +310,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.4.4 (v124) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.4.5 (v125) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -1352,8 +1352,14 @@ window.startSubscriptions = async function() {
         // reactions table directly. Reuses the existing _onBcReaction* handlers,
         // which skip our own user_id so a DB echo won't double-render. Requires
         // reactions in the realtime publication (supabase/enable_realtime.sql).
-        .on('postgres_changes', {event:'INSERT', schema:'public', table:'reactions', filter:'tenant_id=eq.'+window.currentTenantId}, p => window._onBcReactionAdd?.(p.new))
-        .on('postgres_changes', {event:'DELETE', schema:'public', table:'reactions'}, p => window._onBcReactionRemove?.(p.old))
+        .on('postgres_changes', {event:'INSERT', schema:'public', table:'reactions', filter:'tenant_id=eq.'+window.currentTenantId}, p => {
+            try { window.logger?.logReact?.('pg-recv', { et:'INSERT', hasMid:!!p.new?.message_id, rowFound:!!(p.new?.message_id && document.getElementById('row-'+p.new.message_id)) }); } catch(e){}
+            window._onBcReactionAdd?.(p.new);
+        })
+        .on('postgres_changes', {event:'DELETE', schema:'public', table:'reactions'}, p => {
+            try { window.logger?.logReact?.('pg-recv', { et:'DELETE', hasMid:!!p.old?.message_id, rowFound:!!(p.old?.message_id && document.getElementById('row-'+p.old.message_id)) }); } catch(e){}
+            window._onBcReactionRemove?.(p.old);
+        })
         .on('postgres_changes', {event:'INSERT', schema:'public', table:'messages', filter:'tenant_id=eq.'+window.currentTenantId}, async (p) => {
             // Tenant isolation guard — never react to another tenant's message even
             // if the server-side filter is bypassed (shared room ids like 'general').

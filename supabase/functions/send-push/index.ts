@@ -94,26 +94,30 @@ Deno.serve(async (req) => {
     const mentionedIds = new Set(
       [...String(m.text || '').matchAll(/data-uid="([^"]+)"/g)].map((mm) => mm[1]),
     );
-    const notifRows = recipientIds.map((uid) => {
-      const mentioned = mentionedIds.has(uid);
-      return {
+    // ATTENTION STREAM ONLY (standard chat/task model): create an in-app
+    // notification row ONLY for recipients who were @mentioned. Plain messages
+    // and DMs are represented as per-chat unread (derived from room_reads on the
+    // client) — NOT as bell notifications — so the bell stays a meaningful
+    // "needs your attention" signal instead of mirroring every message. Reactions,
+    // replies-to-you and task events are inserted with correct targeting by the
+    // client/tasks paths. The OS push banner below still fires for all recipients.
+    const notifRows = recipientIds
+      .filter((uid) => mentionedIds.has(uid))
+      .map((uid) => ({
         user_id: uid,
-        type: mentioned ? 'mention' : (isReply ? 'reply' : 'message'),
-        message: mentioned
-          ? `📣 ${senderName} mentioned you${isDMroom ? '' : ' in ' + groupName}: ${snippet}`
-          : isReply
-            ? `↩ ${senderName} replied: ${snippet}`
-            : (isDMroom ? `💬 ${senderName}: ${snippet}` : `${senderName} in ${groupName}: ${snippet}`),
+        type: 'mention',
+        message: `📣 ${senderName} mentioned you${isDMroom ? '' : ' in ' + groupName}: ${snippet}`,
         message_id: m.id,
         tenant_id: tenantId,
         is_read: false,
-      };
-    });
-    try {
-      await supabase.from('notifications')
-        .upsert(notifRows, { onConflict: 'user_id,message_id', ignoreDuplicates: true });
-    } catch (e) {
-      console.log('send-push notif insert error', (e as any)?.message);
+      }));
+    if (notifRows.length) {
+      try {
+        await supabase.from('notifications')
+          .upsert(notifRows, { onConflict: 'user_id,message_id', ignoreDuplicates: true });
+      } catch (e) {
+        console.log('send-push notif insert error', (e as any)?.message);
+      }
     }
     const basePayload = { body: text, tag: room, room, url: '/?room=' + encodeURIComponent(room) };
     const payload = JSON.stringify({ ...basePayload, title });

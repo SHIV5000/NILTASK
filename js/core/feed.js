@@ -120,6 +120,19 @@
         return { items, unread: unreadIds.length };
     }
 
+    // Unread notification count — the ONE canonical query for the bell badge on
+    // both shells (Phase 7.4). user_id only (Phase 4.1): notifications are
+    // per-user, and a stray tenant_id filter previously made web/mobile disagree.
+    async function unreadCount(sb, uid) {
+        try {
+            const { count } = await sb.from('notifications')
+                .select('*', { count: 'exact', head: true })
+                .eq('user_id', uid).eq('is_read', false);
+            return count || 0;
+        } catch (e) { return 0; }
+    }
+
     window.NFA_buildActivity = buildActivity;
     window.NFA_feedKind = kindOf;
+    window.NFA_unreadCount = unreadCount;
 })();

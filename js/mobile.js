@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v119';
+const _MOB_VER = 'v120';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -1248,12 +1248,13 @@ async function _fetchReactions(msgIds) {
     const cache = _loadReactionsCache();
     const map = {};
     msgIds.forEach(id => { if (cache[id]?.length) map[id] = [...cache[id]]; });
-    // Merge DB reactions (authoritative — returns all if RLS policy allows tenant read)
-    const { data, error } = await sb.from('reactions').select('*').in('message_id', msgIds).eq('tenant_id', _tid);
-    if (error) console.error('[mob-react] _fetchReactions error='+error.message);
-    (data||[]).forEach(r => {
-        if (!map[r.message_id]) map[r.message_id] = [];
-        if (!map[r.message_id].find(x => x.value===r.value && x.user_id===r.user_id)) map[r.message_id].push(r);
+    // Merge DB reactions via the shared core (authoritative). The localStorage
+    // cache above (other users' reactions from broadcast) is layered under it.
+    const dbMap = await window.NFA_fetchReactions(sb, msgIds, _tid,
+        err => console.error('[mob-react] _fetchReactions error=' + (err?.message || err)));
+    Object.keys(dbMap).forEach(id => {
+        if (!map[id]) map[id] = [];
+        dbMap[id].forEach(r => { if (!map[id].find(x => x.value===r.value && x.user_id===r.user_id)) map[id].push(r); });
     });
     return map;
 }
@@ -1688,7 +1689,7 @@ async function _groupChat(p) {
           <div class="m-hsubtitle">${memberCount ? memberCount + ' members' : 'View members'} ›</div>
         </div>
         <button class="m-hdr-action" onclick="window._toggleChatSearch('mMsgArea')"><i class="fa-solid fa-magnifying-glass"></i></button>
-        <button class="m-hdr-menu" onclick="window._showRoomMenu('${p.room}','${x(p.name)}')"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+        <button class="m-hdr-menu" onclick="window._showRoomMenu('${p.room}','${window.escapeJs(p.name)}')"><i class="fa-solid fa-ellipsis-vertical"></i></button>
       </div>
       <div id="mChatSearchBar" style="display:none;padding:6px 12px;background:var(--surface);border-bottom:1px solid var(--border);">
         <input id="mChatSearchInp" type="search" placeholder="Search messages…" style="width:100%;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;" oninput="window._filterChatMsgs(this.value,'mMsgArea')">
@@ -1799,7 +1800,7 @@ async function _dm(p) {
           ${onlineStat ? `<div class="m-hsubtitle">${onlineStat}</div>` : ''}
         </div>
         <button class="m-hdr-action" onclick="window._toggleChatSearch('mDMArea')"><i class="fa-solid fa-magnifying-glass"></i></button>
-        <button class="m-hdr-menu" onclick="window._showRoomMenu('${p.room}','${x(p.name)}')"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+        <button class="m-hdr-menu" onclick="window._showRoomMenu('${p.room}','${window.escapeJs(p.name)}')"><i class="fa-solid fa-ellipsis-vertical"></i></button>
       </div>
       <div id="mChatSearchBar" style="display:none;padding:6px 12px;background:var(--surface);border-bottom:1px solid var(--border);">
         <input id="mChatSearchInp" type="search" placeholder="Search messages…" style="width:100%;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;" oninput="window._filterChatMsgs(this.value,'mDMArea')">
@@ -2430,7 +2431,7 @@ async function _groupMgmt() {
             <div style="width:40px;height:40px;border-radius:12px;background:${d.col};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;">${d.photo?`<img src="${d.photo}" style="width:100%;height:100%;border-radius:12px;object-fit:cover;">`:'👥'}</div>
             <div class="m-ri"><div class="m-rn">${x(d.name)}</div><div class="m-rs" style="color:${d.col};">Group</div></div>
             <div style="display:flex;gap:6px;">
-              <button onclick="window._openGroupEditSheet('${d.id}','${x(d.name)}','${d.col}')"
+              <button onclick="window._openGroupEditSheet('${d.id}','${window.escapeJs(d.name)}','${d.col}')"
                 style="padding:6px 12px;border-radius:8px;background:#6366f120;color:#6366f1;border:none;font-size:12px;font-weight:600;cursor:pointer;">Edit</button>
               <button onclick="window._archiveGroup('${d.id}')"
                 style="padding:6px 12px;border-radius:8px;background:#ef444420;color:#ef4444;border:none;font-size:12px;font-weight:600;cursor:pointer;">Archive</button>
@@ -3182,7 +3183,7 @@ async function _markRoomNotifsRead(room) {
     } catch (e) {}
 }
 async function _refreshNotifBadge() {
-    const { count } = await sb.from('notifications').select('*',{count:'exact',head:true}).eq('user_id',_uid).eq('is_read',false);
+    const count = await window.NFA_unreadCount(sb, _uid);   // shared canonical count (Phase 7.4)
     // Bell = larger of the DB unread count and the live per-chat unread sum.
     // NOT ratcheted against the previous _bellCount — reading a chat marks its
     // notifications read in the DB, and the bell must be able to go DOWN with it.

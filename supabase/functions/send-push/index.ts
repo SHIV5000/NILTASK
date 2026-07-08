@@ -83,36 +83,52 @@ Deno.serve(async (req) => {
     // when it happens to receive the realtime event. Deduped by (user_id,
     // message_id) via a unique index (upsert ignore-on-conflict).
     const snippet = text.slice(0, 80);
-    const notifRows = recipientIds.map((uid) => ({
-      user_id: uid,
-      type: isReply ? 'reply' : 'message',
-      message: isReply
-        ? `↩ ${senderName} replied: ${snippet}`
-        : (isDMroom ? `💬 ${senderName}: ${snippet}` : `${senderName} in ${groupName}: ${snippet}`),
-      message_id: m.id,
-      tenant_id: tenantId,
-      is_read: false,
-    }));
+    // @mentions: the client stores mentions as <span class="mention" data-uid="…">.
+    // Recipients who were mentioned get a high-priority "mentioned you" notification.
+    const mentionedIds = new Set(
+      [...String(m.text || '').matchAll(/data-uid="([^"]+)"/g)].map((mm) => mm[1]),
+    );
+    const notifRows = recipientIds.map((uid) => {
+      const mentioned = mentionedIds.has(uid);
+      return {
+        user_id: uid,
+        type: mentioned ? 'mention' : (isReply ? 'reply' : 'message'),
+        message: mentioned
+          ? `📣 ${senderName} mentioned you${isDMroom ? '' : ' in ' + groupName}: ${snippet}`
+          : isReply
+            ? `↩ ${senderName} replied: ${snippet}`
+            : (isDMroom ? `💬 ${senderName}: ${snippet}` : `${senderName} in ${groupName}: ${snippet}`),
+        message_id: m.id,
+        tenant_id: tenantId,
+        is_read: false,
+      };
+    });
     try {
       await supabase.from('notifications')
         .upsert(notifRows, { onConflict: 'user_id,message_id', ignoreDuplicates: true });
     } catch (e) {
       console.log('send-push notif insert error', (e as any)?.message);
     }
-    const payload = JSON.stringify({
-      title, body: text, tag: room, room,
-      url: '/?room=' + encodeURIComponent(room),   // deep-link: tap opens this chat
+    const basePayload = { body: text, tag: room, room, url: '/?room=' + encodeURIComponent(room) };
+    const payload = JSON.stringify({ ...basePayload, title });
+    // Distinct high-priority payload for users who were @mentioned.
+    const mentionPayload = JSON.stringify({
+      ...basePayload, title: `📣 ${senderName} mentioned you${isDMroom ? '' : ' · ' + groupName}`,
+      tag: room + ':mention', priority: 'high',
     });
 
     const { data: subs } = await supabase
-      .from('push_subscriptions').select('endpoint,subscription')
+      .from('push_subscriptions').select('endpoint,subscription,user_id')
       .in('user_id', recipientIds);
     console.log('send-push subscriptions', (subs || []).length);
 
     let sent = 0, failed = 0;
-    await Promise.all((subs || []).map(async (s: { endpoint: string; subscription: unknown }) => {
+    await Promise.all((subs || []).map(async (s: { endpoint: string; subscription: unknown; user_id: string }) => {
       try {
-        await webpush.sendNotification(s.subscription as webpush.PushSubscription, payload);
+        await webpush.sendNotification(
+          s.subscription as webpush.PushSubscription,
+          mentionedIds.has(s.user_id) ? mentionPayload : payload,
+        );
         sent++;
       } catch (e: any) {
         failed++;

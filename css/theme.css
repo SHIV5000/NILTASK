@@ -713,3 +713,6 @@ body { background-color: var(--bg-body); color: var(--text-primary); transition:
 /* ── Suppress slide-in animation on bulk re-render ──────────────────────── */
 #messagesContainer.no-anim .row-sent,
 #messagesContainer.no-anim .row-rcvd { animation: none !important; }
+
+/* @mention chip — highlighted in message bubbles (web) */
+.mention{color:var(--accent);font-weight:700;background:color-mix(in srgb,var(--accent) 12%,transparent);border-radius:5px;padding:0 3px;white-space:nowrap;}

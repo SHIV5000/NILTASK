@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v120';
+const _MOB_VER = 'v121';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -862,9 +862,13 @@ window._navTo = async function(screen, params, replace = false) {
         window.unreadCounts = window.unreadCounts || {};
         window.unreadCounts[params.room] = 0;
         _updateAppBadge();
-        _bellCount = _sumUnread();
-        _renderBellBadge();
-        _markRoomNotifsRead(params.room);
+        // Do NOT clobber _bellCount with _sumUnread() here: _sumUnread counts only
+        // MESSAGE unread, so it would wrongly wipe the count coming from reaction/
+        // reply/mention notifications (which have no per-chat unread), then the 60s
+        // poll would bring it back — the badge "flicker / won't clear" bug. Instead
+        // mark this room's notifications read in the DB and recompute the bell from
+        // the DB truth (max of DB unread and message unread).
+        _markRoomNotifsRead(params.room);   // marks read → then refreshes the badge
     }
     if (replace) _stack.pop();
     _stack.push({ screen, params });
@@ -3175,12 +3179,16 @@ async function _markRoomNotifsRead(room) {
     try {
         const { data: ms } = await sb.from('messages').select('id')
             .eq('room_id', room).eq('tenant_id', _tid)
-            .order('created_at', { ascending:false }).limit(100);
+            .order('created_at', { ascending:false }).limit(300);
         const ids = (ms||[]).map(m => m.id);
-        if (!ids.length) return;
-        await sb.from('notifications').update({ is_read:true })
-            .eq('user_id', _uid).eq('is_read', false).in('message_id', ids);
+        if (ids.length) {
+            await sb.from('notifications').update({ is_read:true })
+                .eq('user_id', _uid).eq('is_read', false).in('message_id', ids);
+        }
     } catch (e) {}
+    // Recompute the bell/activity/app badge from the DB truth AFTER marking read,
+    // so the count actually goes down on chat-open instead of lagging a poll cycle.
+    try { await _refreshNotifBadge(); } catch (e) {}
 }
 async function _refreshNotifBadge() {
     const count = await window.NFA_unreadCount(sb, _uid);   // shared canonical count (Phase 7.4)

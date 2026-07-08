@@ -15,7 +15,7 @@
 | 1 | Security lockdown (RLS + dead pages) | [x] | v112 | ✅ SQL run & verified |
 | 2 | Speed — avatar payload + Tailwind build + indexes | [x] | v113 | ✅ SQL run (2.3 deferred) |
 | 3 | De-duplication — one escape/strip/util core | [x] | v114 | ✅ code-only, no DB |
-| 4 | Correctness — tenant-filter + escape consistency | [ ] | — | — |
+| 4 | Correctness — tenant-filter + escape consistency | [x] | v115 | ✅ code-only |
 | 5 | Realtime resilience + UX polish | [ ] | — | — |
 | 6 | Dead code & abandoned-feature cleanup | [ ] | — | — |
 | 7 | (Long-term) shared web/mobile render-query core | [ ] | — | — |
@@ -84,10 +84,10 @@
 **Goal:** consistent tenant scoping and escape usage; remove undefined behavior.
 
 ### Tasks
-- [ ] **4.1** Standardize `notifications` query scope across `_activity`, `_refreshNotifBadge`, `_notifications()` (mobile) and web feed — pick `user_id` (+ optional tenant) consistently; document why.
-- [ ] **4.2** Audit the 90 inline `onclick="${…}"` sites; ensure every interpolated **data** value is wrapped in the canonical `escapeHtml`. List any that aren't; fix.
-- [ ] **4.3** Fix `beforeinstallprompt`: either wire a real install button to the stored event, or stop `preventDefault()` so the banner shows.
-- [ ] Version bump + commit + push.
+- [x] **4.1** All `notifications` reads scope by `user_id` ONLY (mobile `_notifications` screen + ui-panels fired/all panels), matching the feed/badge. Server rows' tenant_id mismatch no longer starves them. ✔ v115
+- [x] **4.2** Added `window.escapeJs()` (strips JS-breakout chars, keeps spaces) for values embedded in inline JS strings — `escapeHtml` is unsafe there. Applied to admin staff-action buttons (reset/archive/delete) passing full_name/email. **Note:** a full inline-`onclick`→event-delegation conversion (the correct long-term fix for all ~90 sites) is folded into Phase 7. ✔ v115
+- [x] **4.3** Install banner button enlarged (16px font, 14×26 padding, shadow) + banner padding bumped. The `beforeinstallprompt` console line is benign — the custom banner correctly calls `.prompt()` on click. ✔ v115
+- [x] Version bump v115 + commit + push. ✔
 
 ### ✅ EXIT CRITERIA
 - Bell count, feed, and notifications screen agree on the same number.

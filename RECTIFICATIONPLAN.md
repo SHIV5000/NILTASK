@@ -12,7 +12,7 @@
 
 | Phase | Title | Status | Version | Verified |
 |-------|-------|--------|---------|----------|
-| 1 | Security lockdown (RLS + dead pages) | [ ] | — | — |
+| 1 | Security lockdown (RLS + dead pages) | [~] | v112 | pending SQL + exit tests |
 | 2 | Speed — avatar payload + Tailwind build + indexes | [ ] | — | — |
 | 3 | De-duplication — one escape/strip/util core | [ ] | — | — |
 | 4 | Correctness — tenant-filter + escape consistency | [ ] | — | — |
@@ -26,15 +26,12 @@
 **Goal:** close the RLS holes and remove dev tooling from production. No user-facing behavior change.
 
 ### Tasks
-- [ ] **1.1** Write `supabase/migrations/20260708_notifications_owner_rls.sql`: owner-scoped `SELECT`/`UPDATE`/`DELETE` policies on `public.notifications` (`user_id = auth.uid()`). Keep existing INSERT policy.
-- [ ] **1.2** Write `supabase/migrations/20260708_scheduled_messages_rls.sql`: owner + tenant scoped policies on `scheduled_messages` (`sender_id = auth.uid()`).
-- [ ] **1.3** Harden client deletes to match RLS (defense in depth):
-  - `ui-panels.js:238,244` `dismissNotif`/`dismissFired` → add `.eq('user_id', currentUser.id)`
-  - `ui-panels.js:334` `deleteScheduled` → add `.eq('sender_id', currentUser.id)`
-  - `mobile.js:3966` scheduled delete → add `.eq('sender_id', _uid)` (already has tenant)
-- [ ] **1.4** Remove `developer.html`, `logs.html`, `Landing.html` from the production deploy path (move to `/devtools/` excluded from Vercel, or delete if unused). Confirm nothing in the app links to them first (audit showed only `developer.html`→`logs.html`).
-- [ ] **1.5** Confirm `push_subscriptions.sql` (already updated) is in the run-list.
-- [ ] Version bump + commit + push.
+- [x] **1.1** `supabase/migrations/20260708_notifications_owner_rls.sql`: owner-scoped `SELECT`/`UPDATE`/`DELETE` on `notifications`. INSERT policy untouched. ✔ v112
+- [x] **1.2** `supabase/migrations/20260708_scheduled_messages_rls.sql`: owner-scoped `SELECT`/`INSERT`/`UPDATE`/`DELETE` on `scheduled_messages`. ✔ v112
+- [x] **1.3** Hardened client deletes: `dismissNotif`/`dismissFired` `.eq('user_id')`; `deleteScheduled` + mobile `_cancelScheduled` `.eq('sender_id')`. ✔ v112
+- [!] **1.4** Remove `developer.html`/`logs.html`/`Landing.html` from prod — **PAUSED, awaiting user decision** (these may be your own admin tooling; deletion is hard to reverse). RLS hardening already protects them since they run under the user's own session.
+- [x] **1.5** `push_subscriptions.sql` updated and in the run-list. ✔
+- [x] Version bump v112 + commit + push. ✔
 
 ### 🔒 USER/DB ACTIONS (blockers — mark `[!]` until confirmed)
 - [ ] Run in Supabase SQL editor: `20260708_notifications_owner_rls.sql`, `20260708_scheduled_messages_rls.sql`, `push_subscriptions.sql`, and (still pending from before) `20260707_notifications_unique.sql`, `20260707_room_reads.sql`.

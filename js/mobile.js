@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v128';
+const _MOB_VER = 'v129';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -432,7 +432,7 @@ async function _refreshUsers(tid) {
             // "flash twice" when the cached list already matches the server.
             if (_usersSig(data) !== before) {
                 const top = _stack[_stack.length-1];
-                if (top?.screen === 'home') { try { _render('home', top.params, 'forward'); } catch {} }
+                if (top?.screen === 'home') { try { _render('home', top.params, 'none'); } catch {} }   // silent, no slide
             }
             _hydrateAvatars(tid);   // fetch base64 avatars off the critical path
         }
@@ -929,10 +929,14 @@ async function _render(screen, params, dir='forward') {
     const html = await (fns[screen]?.(params) || Promise.resolve('<div style="padding:40px;text-align:center;">Coming soon</div>'));
     if (myNavGen !== _navGen) return;
     const scr  = document.createElement('div');
-    const slideClass = screen === 'thread'
-        ? (dir==='back' ? 'slide-down' : 'slide-up')
-        : (dir==='back' ? 'slide-back' : 'slide-fwd');
-    scr.className = `mScr ${slideClass}`;
+    // dir==='none' → NO slide animation: used for silent BACKGROUND refreshes
+    // (badge/feed reconcile on the fallback poll) so the screen updates in place
+    // like a real app instead of visibly sliding in from the right every poll.
+    const slideClass = dir === 'none' ? ''
+        : screen === 'thread'
+            ? (dir==='back' ? 'slide-down' : 'slide-up')
+            : (dir==='back' ? 'slide-back' : 'slide-fwd');
+    scr.className = `mScr ${slideClass}`.trim();
     scr.dataset.screen = screen;
     scr.innerHTML  = html;
     stage.innerHTML = '';
@@ -1214,7 +1218,7 @@ function _liveRefreshActivity() {
     clearTimeout(_actRefreshTimer);
     _actRefreshTimer = setTimeout(() => {
         const t = _stack[_stack.length-1];
-        if (t?.screen === 'activity') _render('activity', null, 'forward');
+        if (t?.screen === 'activity') _render('activity', null, 'none');   // silent in-place update, no slide
     }, 600);
 }
 window._mobAfFilter = function(v){ window._afFilter = v; window._afSender = ''; window._mobRerenderActivity(); };
@@ -3112,7 +3116,7 @@ function _initRealtime() {
         // Rebuild custom groups from DB so a group created on another device appears live
         _syncRoomSettings().then(() => {
             const top = _stack[_stack.length-1];
-            if (top?.screen === 'home') _render('home', null, 'forward');
+            if (top?.screen === 'home') _render('home', null, 'none');   // silent, no slide
         });
     };
     const _hTyping = p => {
@@ -3259,9 +3263,13 @@ async function _reconcileUnread() {
         if ((top?.screen === 'groupChat' || top?.screen === 'dm') && top.params?.room) perRoom[top.params.room] = 0;
         window.unreadCounts = perRoom;
         _updateAppBadge();
-        // Re-render the home list badges if it's the visible screen (no flash: the
-        // home renderer reads window.unreadCounts).
-        if (top?.screen === 'home') { try { _render('home', top.params, 'forward'); } catch (e) {} }
+        // SURGICAL badge update (no screen re-render / no slide): patch each visible
+        // chat row's unread badge in place, so group/DM badges appear silently in the
+        // background — like a real app — instead of sliding the whole home screen in
+        // from the right on every poll (the "cheap app" refresh).
+        if (top?.screen === 'home') {
+            rooms.forEach(rid => { try { _patchHomeUnread(rid); } catch (e) {} });
+        }
     } catch (e) {}
 }
 // 60s resilience poll (Phase 5.3). Refreshes bell + reconciles message unread from

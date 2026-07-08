@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v122';
+const _MOB_VER = 'v123';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -3031,6 +3031,13 @@ function _initRealtime() {
     if (_rtChannel) return;
     _rtChannel = sb.channel('mobile-rt-'+_tid)
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => _onNewMessage(p.new))
+        // Durable reaction delivery (backup to broadcast): broadcast is fire-and-
+        // forget and is lost when the channel flaps, so also listen to the reactions
+        // table directly. Requires reactions in the realtime publication (see
+        // supabase/enable_realtime.sql). Routes through the SAME _onReactionChange
+        // as broadcast, so no double-render (it re-fetches + de-dupes).
+        .on('postgres_changes', { event:'INSERT', schema:'public', table:'reactions', filter:`tenant_id=eq.${_tid}` }, p => _onReactionChange(p.new, 'INSERT'))
+        .on('postgres_changes', { event:'DELETE', schema:'public', table:'reactions' }, p => _onReactionChange(p.old, 'DELETE'))
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'task_assignees', filter:`tenant_id=eq.${_tid}` }, p => _onTaskAssigneeUpdate(p.new))
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`user_id=eq.${_uid}` }, () => { _refreshNotifBadge(); _liveRefreshActivity(); })
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'profiles', filter:`tenant_id=eq.${_tid}` }, p => _onPresenceUpdate(p.new))

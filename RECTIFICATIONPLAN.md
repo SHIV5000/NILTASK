@@ -29,7 +29,7 @@
 - [x] **1.1** `supabase/migrations/20260708_notifications_owner_rls.sql`: owner-scoped `SELECT`/`UPDATE`/`DELETE` on `notifications`. INSERT policy untouched. ✔ v112
 - [x] **1.2** `supabase/migrations/20260708_scheduled_messages_rls.sql`: owner-scoped `SELECT`/`INSERT`/`UPDATE`/`DELETE` on `scheduled_messages`. ✔ v112
 - [x] **1.3** Hardened client deletes: `dismissNotif`/`dismissFired` `.eq('user_id')`; `deleteScheduled` + mobile `_cancelScheduled` `.eq('sender_id')`. ✔ v112
-- [!] **1.4** Remove `developer.html`/`logs.html`/`Landing.html` from prod — **PAUSED, awaiting user decision** (these may be your own admin tooling; deletion is hard to reverse). RLS hardening already protects them since they run under the user's own session.
+- [x] **1.4** Dev/marketing pages — **ACCEPTED RISK (user decision): leave them.** They run under the user's own Supabase session, so the hardened RLS already limits what they can do. No deletion.
 - [x] **1.5** `push_subscriptions.sql` updated and in the run-list. ✔
 - [x] Version bump v112 + commit + push. ✔
 

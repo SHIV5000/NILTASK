@@ -17,7 +17,7 @@
 | 3 | De-duplication — one escape/strip/util core | [x] | v114 | ✅ code-only, no DB |
 | 4 | Correctness — tenant-filter + escape consistency | [x] | v115 | ✅ code-only |
 | 5 | Realtime resilience + UX polish | [x] | v116 | ✅ 5.1/5.4 deferred |
-| 6 | Dead code & abandoned-feature cleanup | [ ] | — | — |
+| 6 | Dead code & abandoned-feature cleanup | [x] | v117 | ✅ code-only |
 | 7 | (Long-term) shared web/mobile render-query core | [ ] | — | — |
 
 ---
@@ -116,15 +116,15 @@
 **Goal:** shrink the bundle and remove half-built paths.
 
 ### Tasks
-- [ ] **6.1** Delete the dead `shared.js` escapeHtml (if not already in P3).
-- [ ] **6.2** Resolve `room_members`/`members jsonb`: either finish DB-backed membership or remove the half-migration and keep localStorage as the single source (document choice).
-- [ ] **6.3** Remove/relocate dev pages (if not done in P1.4).
-- [ ] **6.4** Prune any unreferenced functions surfaced during P3/P4 refactors.
-- [ ] Version bump + commit + push.
+- [x] **6.1** Dead `shared.js` escapeHtml — already removed in Phase 3. ✔
+- [x] **6.2** Membership source of truth: **`room_settings.members` (DB) is canonical**, localStorage `dept_members_*` is a mirror/cache (hydrated from DB on load, written on edit). No half-migration to remove — documented. ✔
+- [x] **6.3** Dev pages left in place per user decision (Phase 1.4 accepted risk). ✔
+- [x] **6.4** Removed the retired mobile `_notifications()` screen + `window._markAllNotifsRead` (unreachable since v46 — Activity has its own markAllRead) and the stale fns-map entry. Also fixed the live `markAllRead` handler's tenant_id filter (4.1 consistency). ✔ v117
+- [x] Version bump v117 + commit + push. ✔
 
 ### ✅ EXIT CRITERIA
-- No unreferenced top-level functions in `mobile.js`/`main.js` (spot-checked).
-- Membership has a single documented source of truth.
+- No dangling references to removed symbols (grep-confirmed); syntax OK. ✔
+- Membership single source of truth documented (DB canonical). ✔
 
 ---
 

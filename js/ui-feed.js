@@ -56,13 +56,7 @@ function _afAddDismissed(id) {
     } catch(e) {}
 }
 
-// Map a raw notification/trail type to a feed category.
-function _afCat(type) {
-    if (type==='task' || (type||'').startsWith('task_')) return 'tasks';
-    if (type==='reminder' || type==='scheduled')         return 'reminders';
-    if (type==='message' || type==='reply' || type==='reaction') return 'chats';
-    return 'system';
-}
+// (categorization now lives in js/core/feed.js — kindOf — shared by both shells)
 function _istDateStr(ts) {
     try { return new Date(new Date(ts).toLocaleString('en-US',{timeZone:'Asia/Kolkata'})).toDateString(); }
     catch(e){ return ''; }
@@ -190,89 +184,41 @@ window._loadActivityFeed = async function() {
         return;
     }
 
-    const [r1, r2, r3] = await Promise.all([
-        sb.from('messages')
-            .select('id,created_at,room_id,sender_id,text,parent_message_id,profiles(full_name,email)')
-            .eq('tenant_id', tid).is('deleted_at', null)
-            .order('created_at', { ascending: false }).limit(60),
-        sb.from('task_trails')
-            .select('id,created_at,action,task_id,comment,profiles(full_name,email),tasks(title)')
-            .eq('tenant_id', tid)
-            .order('created_at', { ascending: false }).limit(30),
-        sb.from('notifications')
-            .select('id,created_at,type,message,task_id,message_id,is_read')
-            .eq('user_id', uid)
-            .order('created_at', { ascending: false }).limit(60)
-    ]);
-
-    let msgData = r1.data || [];
-    if (!msgData.length && window.currentRoom) {
-        const { data: fb } = await sb.from('messages')
-            .select('id,created_at,room_id,sender_id,text,parent_message_id,profiles(full_name,email)')
-            .eq('tenant_id', tid)
-            .eq('room_id', window.currentRoom).is('deleted_at', null)
-            .order('created_at', { ascending: false }).limit(60);
-        msgData = fb || [];
-    }
-
-    // Deduplicate: notifications already cover message events for the user,
-    // so only show raw messages that are NOT already in notifications
-    const notifMsgIds = new Set((r3.data||[]).map(n => n.message_id).filter(Boolean));
-    const filteredMsgs = msgData.filter(m => !notifMsgIds.has(m.id));
-
-    const myId = window.currentUser?.id;
+    // Shared feed core (Phase 7.2): the fetch + merge + dedup + normalize now
+    // lives in js/core/feed.js and is used by BOTH shells, so the feed pipeline
+    // can never diverge again. Web-specific bits (dismissed-set, src tagging,
+    // click strings, bell badge) are applied when mapping to the web card shape.
     const nameOf = (prof, fallback) => {
         const fn = prof?.full_name || (prof?.email ? prof.email.split('@')[0] : '') || fallback || '';
         return fn ? fn.charAt(0).toUpperCase() + fn.slice(1) : '';
     };
+    const resolveName = (id) => nameOf((window.globalUsersCache || []).find(u => u.id === id), '');
+    const resolveRoom = (rid) => (window.getRoomDisplayName && window.getRoomDisplayName(rid)) || rid || '';
 
-    // Locally-dismissed (non-notification) item ids
-    const dismissed = new Set(_afGetDismissed());
+    const { items: coreItems, unread: unreadCount } = await window.NFA_buildActivity(sb, {
+        uid, tid, resolveName, resolveRoom, snippet: window.snippet,
+        markRead: false,   // web marks-read explicitly in openActivityFeed()
+        logError: (m, d) => window.logger?.sb?.(m, d),
+    });
 
-    // ── Normalize all three sources into a single card shape ──
+    const dismissed = new Set(_afGetDismissed());   // locally-dismissed local item ids
     const items = [];
-    filteredMsgs.forEach(m => {
-        if (dismissed.has('msg:'+m.id)) return;
-        const mine = m.sender_id === myId;
-        const nm  = mine ? 'You' : nameOf(m.profiles, '');
-        const rm  = (window.getRoomDisplayName && window.getRoomDisplayName(m.room_id)) || m.room_id || '';
-        const tx  = _strip(m.text).substring(0,90) || 'Attachment';
+    coreItems.forEach(it => {
+        const rawId  = String(it.n.id);
+        const isNotif = /^[0-9a-f-]{36}$/i.test(rawId);   // real notification row vs msg:/trail:
+        if (!isNotif && dismissed.has(rawId)) return;
+        const click = it.act
+            ? (it.act.k === 'task'
+                ? "window.goToTask&&window.goToTask('" + it.act.id + "'" + (isNotif ? (",'" + rawId + "'") : "") + ")"
+                : "window.goToMessage&&window.goToMessage('" + it.act.id + "',null,null)")
+            : '';
         items.push({
-            id:'msg:'+m.id, src:'local', cat:'chats', ts:m.created_at, unread:false, sender:nm,
-            title:(m.parent_message_id?'Reply':'Message') + ' in ' + rm + ' — ' + tx,
-            click:"window.goToMessage&&window.goToMessage('" + m.id + "',null,'" + m.room_id + "')"
+            id: rawId, src: isNotif ? 'notif' : 'local', cat: it.cat, ts: it.n.created_at,
+            unread: !it.n.is_read, sender: it.sender || '', title: it.n.message, click,
         });
     });
-    (r2.data||[]).forEach(tr => {
-        if (dismissed.has('trail:'+tr.id)) return;
-        const nm  = nameOf(tr.profiles, 'Staff');
-        const ttl = (tr.tasks && tr.tasks.title) || 'Task';
-        const act = tr.action || 'update';
-        const actLabel = ({ created:'assigned', accepted:'completed', submitted:'submitted', update:'updated', delegate:'delegated', transfer:'transferred', review:'reviewed' })[act] || act;
-        items.push({
-            id:'trail:'+tr.id, src:'local', cat:'tasks', ts:tr.created_at, unread:false, sender:nm,
-            title:'Task ' + actLabel + ': ' + ttl,
-            click: tr.task_id ? "window.goToTask&&window.goToTask('" + tr.task_id + "')" : ''
-        });
-    });
-    (r3.data||[]).forEach(n => {
-        const cat = _afCat(n.type);
-        const click = n.task_id
-            ? "window.goToTask&&window.goToTask('" + n.task_id + "','" + n.id + "')"
-            : n.message_id
-                ? "window.goToMessage&&window.goToMessage('" + n.message_id + "',null,null)"
-                : '';
-        items.push({
-            id:n.id, src:'notif', cat, ts:n.created_at, unread:!n.is_read, sender:'',
-            title:_strip(n.message||'').substring(0,120), click
-        });
-    });
-    items.sort((a,b) => new Date(b.ts) - new Date(a.ts));
     // Track loaded local (non-notification) ids so Clear-all can dismiss them.
     window._afLocalShown = items.filter(it => it.src === 'local').map(it => it.id);
-
-    // Update bell badge to reflect actual unread count
-    const unreadCount = (r3.data||[]).filter(n => !n.is_read).length;
     window._setBellBadge?.(unreadCount);
 
     // ── Filters ──

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v127';
+const _MOB_VER = 'v128';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -52,6 +52,7 @@ let _rtWasErrored = false;
 let _rtIntentionalClose = false;
 let _typingThrottle = 0;
 let _notifFallbackInterval = null;
+let _fallbackTimer = null;   // adaptive fallback-poll timer (see _scheduleFallback)
 let _bellCount = 0;   // instant in-memory unread count (survives RLS-blocked notification inserts)
 let _replyMapCache = {};   // room_id -> {parentId: replyCount} so thread buttons show on instant shell render
 let _scrollFabCount = 0;
@@ -303,7 +304,8 @@ window.initMobileApp = async function() {
         });
     } catch (e) {}
     if (_notifFallbackInterval) clearInterval(_notifFallbackInterval);
-    _notifFallbackInterval = setInterval(_fallbackPoll, 60000);
+    if (_fallbackTimer) clearTimeout(_fallbackTimer);
+    _scheduleFallback();   // ADAPTIVE poll (see below) — faster catch-up when the socket is dead
     _showOfflineBanner(_isOffline);
     // Auto-refresh displayed timestamps every 60s + update last_seen heartbeat
     if (_tsInterval) clearInterval(_tsInterval);
@@ -824,6 +826,7 @@ window._confirmLogout = async function() {
     if (!confirm('Sign out of Noted For Action?')) return;
     if (_tsInterval) clearInterval(_tsInterval);
     if (_notifFallbackInterval) { clearInterval(_notifFallbackInterval); _notifFallbackInterval = null; }
+    if (_fallbackTimer) { clearTimeout(_fallbackTimer); _fallbackTimer = null; }
     if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
     if (_rtOutageTimer) { clearTimeout(_rtOutageTimer); _rtOutageTimer = null; }
     _rtToastShown = false;
@@ -3271,6 +3274,22 @@ async function _fallbackPoll() {
     if (document.visibilityState !== 'visible') return;
     const healthy = _rtChannel && _rtChannel.state === 'joined';
     if (!healthy) { try { _pendingRefresh?.(); } catch (e) {} }
+}
+// ADAPTIVE fallback poll (the fix for "kabhi aata hai kabhi nahi" on Android):
+// realtime on mobile/tablet flaps constantly, so a fixed 60s catch-up feels
+// unreliable. Self-schedule based on state — when the socket is NOT joined and
+// the app is visible, reconcile every 20s so missed group badges / messages
+// appear ~3× faster; when realtime is healthy stay at 60s (it carries updates);
+// when backgrounded back off to 90s to save battery.
+function _scheduleFallback() {
+    if (_fallbackTimer) clearTimeout(_fallbackTimer);
+    const hidden  = document.visibilityState !== 'visible';
+    const healthy = _rtChannel && _rtChannel.state === 'joined';
+    const ms = hidden ? 90000 : (healthy ? 60000 : 20000);
+    _fallbackTimer = setTimeout(async () => {
+        try { await _fallbackPoll(); } catch (e) {}
+        _scheduleFallback();   // re-evaluate cadence each tick
+    }, ms);
 }
 // Render the bell badge from the in-memory count (instant, no DB dependency).
 function _renderBellBadge() {

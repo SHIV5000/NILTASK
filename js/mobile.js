@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v126';
+const _MOB_VER = 'v127';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -1310,12 +1310,20 @@ async function _toggleReaction(msgId, value, type, isMine=false) {
         error = res.error;
         console.log('[mob-react] deleted reaction error='+error?.message);
     } else {
-        res = await sb.from('reactions').insert({ message_id:msgId, user_id:_uid, tenant_id:_tid, value, type });
+        // UPSERT (not insert) so a fast double-tap / realtime race is idempotent
+        // instead of throwing 23505 duplicate-key (which used to pop an error toast
+        // and abort before the chip refreshed — reaction looked added but wasn't).
+        // Matches the web path (messages.js). onConflict = the unique index.
+        res = await sb.from('reactions').upsert(
+            { message_id:msgId, user_id:_uid, tenant_id:_tid, value, type },
+            { onConflict:'message_id,user_id,value', ignoreDuplicates:true });
         error = res.error;
-        console.log('[mob-react] inserted reaction error='+error?.message);
+        console.log('[mob-react] upserted reaction error='+error?.message);
     }
-    window.logger?.sb(isDelete ? 'reactions.delete' : 'reactions.insert', res, { msg: msgId, val: value });
-    if (error) { _toast('Could not save reaction: '+error.message, 'err'); return; }
+    window.logger?.sb(isDelete ? 'reactions.delete' : 'reactions.upsert', res, { msg: msgId, val: value });
+    // 23505 (duplicate) is NOT a failure here — the reaction already exists, which is
+    // exactly the desired end state; fall through to render it rather than error.
+    if (error && error.code !== '23505') { _toast('Could not save reaction: '+error.message, 'err'); return; }
     // Persist to localStorage cache (own reaction)
     _saveReactionEntry(msgId, value, type, _uid, isDelete);
     // Broadcast to all users via dedicated broadcast channel (bypasses RLS on postgres_changes)

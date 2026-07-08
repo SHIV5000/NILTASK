@@ -310,7 +310,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.3.9 (v119) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.4.0 (v120) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -1566,12 +1566,9 @@ window.startSubscriptions = async function() {
     // ── Seed the bell badge from existing unread notifications on load ──
     // (_bellCount starts at 0 and is only incremented, so pre-existing unread would never show.)
     try {
-        const { count } = await sb.from('notifications')
-            .select('*', { count: 'exact', head: true })
-            .eq('user_id', window.currentUser.id)
-            .eq('tenant_id', window.currentTenantId)
-            .eq('is_read', false);
-        if (count && count > 0) window._setBellBadge?.(count);
+        // Shared canonical count (Phase 7.4) — user_id only, matches mobile + feed.
+        const count = await window.NFA_unreadCount(sb, window.currentUser.id);
+        if (count > 0) window._setBellBadge?.(count);
     } catch(e) { /* non-fatal */ }
 
     // ── Presence heartbeat (v33) — mirror mobile so web users show as online in DM headers ──

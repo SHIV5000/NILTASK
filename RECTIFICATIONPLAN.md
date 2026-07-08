@@ -18,7 +18,7 @@
 | 4 | Correctness — tenant-filter + escape consistency | [x] | v115 | ✅ code-only |
 | 5 | Realtime resilience + UX polish | [x] | v116 | ✅ 5.1/5.4 deferred |
 | 6 | Dead code & abandoned-feature cleanup | [x] | v117 | ✅ code-only |
-| 7 | (Long-term) shared web/mobile render-query core | [~] | v119 | 7.1–7.2 done; 7.3–7.5 pending |
+| 7 | (Long-term) shared web/mobile render-query core | [x] | v120 | ✅ all sub-steps done |
 
 ---
 
@@ -134,9 +134,9 @@
 ### Sub-steps (scoped small & independently verifiable — approach A)
 - [x] **7.1** Shared **activity-feed core** `js/core/feed.js` (`window.NFA_buildActivity`): fetch+merge+dedup+normalize, resolver-injected. **Mobile** `_activity` wired to it (behavior identical to v111). ✔ v118
 - [x] **7.2** **Web** feed (`ui-feed.js _loadActivityFeed`) wired to the same core; web-specific bits (dismissed-set/src/click/bell) applied in the mapping; removed dead `_afCat`. Feed pipeline now lives in ONE file — exit criterion met. ✔ v119
-- [ ] **7.3** Shared **reactions** query core (`js/core/reactions.js`); wire both shells' batch reaction fetch + toggle.
-- [ ] **7.4** Shared **notifications badge** count query; wire mobile `_refreshNotifBadge` + web `_setBellBadge` initial count.
-- [ ] **7.5** Incremental inline-`onclick` → event-delegation sweep (the Phase 4.2 carry-over) — a few files per pass, each verified.
+- [x] **7.3** `js/core/reactions.js` (`NFA_fetchReactions`/`NFA_groupReactions`): shared tenant-scoped reaction fetch. Mobile `_fetchReactions` delegates the DB query (keeps its localStorage cache layer). Web reaction chains left as-is (already tenant-consistent; fragile render pipeline). ✔ v120
+- [x] **7.4** `NFA_unreadCount`: ONE canonical bell-count query (user_id only), used by mobile `_refreshNotifBadge` + web startup. Removed web's stray tenant_id filter. ✔ v120
+- [x] **7.5** Converted remaining user-DATA-in-`onclick` sites (senderName, room/group names) to `escapeJs`. `msg.text`-in-`onclick` left for a future proper delegation pass (escapeJs would mangle its HTML). No unsafe name-in-handler sites remain. Full delegation rewrite of all ~90 sites remains a future architectural task (documented, not urgent). ✔ v120
 
 ### ✅ EXIT CRITERIA (per sub-step)
 - 7.2: a change to the feed query touches ONLY `js/core/feed.js` and both shells reflect it.

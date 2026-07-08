@@ -593,11 +593,11 @@ window.renderMessages = function(messages) {
             ? `${createTaskBtn}
                <button class="dd-item" onclick="window.closeDropdowns(); window.showReminderModal('${msg.id}', '${snippetText}')"><i class="ti ti-bell"></i>Reminder</button>
                <button class="dd-item" onclick="window.closeDropdowns(); window.startEditMessage('${msg.id}')"><i class="ti ti-edit"></i>Edit</button>
-               <button class="dd-item" onclick="window.closeDropdowns(); window.openForwardModal('${msg.id}', '${snippetText}', '${window.escapeHtml(senderName)}')"><i class="ti ti-share"></i>Forward</button>
+               <button class="dd-item" onclick="window.closeDropdowns(); window.openForwardModal('${msg.id}', '${snippetText}', '${window.escapeJs(senderName)}')"><i class="ti ti-share"></i>Forward</button>
                <button class="dd-item danger" onclick="window.closeDropdowns(); window.deleteMessage('${msg.id}')"><i class="ti ti-trash"></i>Delete</button>`
             : `${createTaskBtn}
                <button class="dd-item" onclick="window.closeDropdowns(); window.showReminderModal('${msg.id}', '${snippetText}')"><i class="ti ti-bell"></i>Reminder</button>
-               <button class="dd-item" onclick="window.closeDropdowns(); window.openForwardModal('${msg.id}', '${snippetText}', '${window.escapeHtml(senderName)}')"><i class="ti ti-share"></i>Forward</button>`;
+               <button class="dd-item" onclick="window.closeDropdowns(); window.openForwardModal('${msg.id}', '${snippetText}', '${window.escapeJs(senderName)}')"><i class="ti ti-share"></i>Forward</button>`;
 
         let repliesHTML = '';
         if (replyCount > 0) {

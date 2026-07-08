@@ -18,7 +18,7 @@
 | 4 | Correctness — tenant-filter + escape consistency | [x] | v115 | ✅ code-only |
 | 5 | Realtime resilience + UX polish | [x] | v116 | ✅ 5.1/5.4 deferred |
 | 6 | Dead code & abandoned-feature cleanup | [x] | v117 | ✅ code-only |
-| 7 | (Long-term) shared web/mobile render-query core | [~] | v118 | 7.1 done; 7.2–7.5 pending |
+| 7 | (Long-term) shared web/mobile render-query core | [~] | v119 | 7.1–7.2 done; 7.3–7.5 pending |
 
 ---
 
@@ -133,7 +133,7 @@
 
 ### Sub-steps (scoped small & independently verifiable — approach A)
 - [x] **7.1** Shared **activity-feed core** `js/core/feed.js` (`window.NFA_buildActivity`): fetch+merge+dedup+normalize, resolver-injected. **Mobile** `_activity` wired to it (behavior identical to v111). ✔ v118
-- [ ] **7.2** Wire the **web** feed (`ui-feed.js refreshActivityFeed`) to the same core; verify web/mobile parity. (Then the feed query lives in ONE file — exit criterion met for the feed.)
+- [x] **7.2** **Web** feed (`ui-feed.js _loadActivityFeed`) wired to the same core; web-specific bits (dismissed-set/src/click/bell) applied in the mapping; removed dead `_afCat`. Feed pipeline now lives in ONE file — exit criterion met. ✔ v119
 - [ ] **7.3** Shared **reactions** query core (`js/core/reactions.js`); wire both shells' batch reaction fetch + toggle.
 - [ ] **7.4** Shared **notifications badge** count query; wire mobile `_refreshNotifBadge` + web `_setBellBadge` initial count.
 - [ ] **7.5** Incremental inline-`onclick` → event-delegation sweep (the Phase 4.2 carry-over) — a few files per pass, each verified.

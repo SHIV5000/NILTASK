@@ -310,7 +310,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.4.2 (v122) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.4.3 (v123) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -1347,6 +1347,13 @@ window.debouncedLoadTasks = function() {
 window.startSubscriptions = async function() {
     if (messageSubscription) messageSubscription.unsubscribe();
     messageSubscription = sb.channel('public:messages-' + window.currentTenantId)
+        // Durable reaction delivery (backup to the broadcast channels): broadcast is
+        // fire-and-forget and lost when a channel flaps, so also listen to the
+        // reactions table directly. Reuses the existing _onBcReaction* handlers,
+        // which skip our own user_id so a DB echo won't double-render. Requires
+        // reactions in the realtime publication (supabase/enable_realtime.sql).
+        .on('postgres_changes', {event:'INSERT', schema:'public', table:'reactions', filter:'tenant_id=eq.'+window.currentTenantId}, p => window._onBcReactionAdd?.(p.new))
+        .on('postgres_changes', {event:'DELETE', schema:'public', table:'reactions'}, p => window._onBcReactionRemove?.(p.old))
         .on('postgres_changes', {event:'INSERT', schema:'public', table:'messages', filter:'tenant_id=eq.'+window.currentTenantId}, async (p) => {
             // Tenant isolation guard — never react to another tenant's message even
             // if the server-side filter is bypassed (shared room ids like 'general').

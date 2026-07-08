@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v109';
+const _MOB_VER = 'v110';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -3212,6 +3212,12 @@ async function _refreshNotifBadge() {
     // notifications read in the DB, and the bell must be able to go DOWN with it.
     _bellCount = Math.max(count || 0, _sumUnread());
     _renderBellBadge();
+    // Tie the Activity feed to the badge: whenever the badge refreshes — via a
+    // realtime notification INSERT, the 60s poll fallback, OR the reconnect
+    // catch-up (all the paths that keep the badge live even when realtime
+    // flaps) — refresh the feed too if the Activity screen is open. This fixes
+    // "badge shows fine but the feed doesn't update" on mobile/tablet.
+    _liveRefreshActivity();
 }
 // Render the bell badge from the in-memory count (instant, no DB dependency).
 function _renderBellBadge() {

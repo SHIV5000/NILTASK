@@ -14,7 +14,7 @@
 |-------|-------|--------|---------|----------|
 | 1 | Security lockdown (RLS + dead pages) | [x] | v112 | ✅ SQL run & verified |
 | 2 | Speed — avatar payload + Tailwind build + indexes | [x] | v113 | ✅ SQL run (2.3 deferred) |
-| 3 | De-duplication — one escape/strip/util core | [~] | — | — |
+| 3 | De-duplication — one escape/strip/util core | [x] | v114 | ✅ code-only, no DB |
 | 4 | Correctness — tenant-filter + escape consistency | [ ] | — | — |
 | 5 | Realtime resilience + UX polish | [ ] | — | — |
 | 6 | Dead code & abandoned-feature cleanup | [ ] | — | — |
@@ -68,14 +68,10 @@
 **Goal:** one implementation of the utilities that keep causing recurring bugs. Behavior-preserving refactor.
 
 ### Tasks
-- [ ] **3.1** Create `js/utils/text.js` exporting a single `escapeHtml`, `stripHtml`, `snippet(text, n)` (strip tags + decode entities + truncate). Cover all cases the 4 current variants handle.
-- [ ] **3.2** Replace call sites:
-  - Remove dead `shared.js:118` `escapeHtml`; keep one canonical (re-export from utils).
-  - `ui-core.js:78` escapeHtml → delegate to utils.
-  - `mobile.js` `x()` (`:3995`) + `_snip` (`:4025`) → delegate to utils.
-  - `ui-feed.js` `_strip`, `notifications.js:291` `_stripHtml`, `shared.js` `getSnippet` → delegate to utils.
-- [ ] **3.3** Verify entity handling parity (`&nbsp;`, `&amp;`, `&#39;`) so the notification/feed entity bugs cannot recur in only one place.
-- [ ] Version bump + commit + push.
+- [x] **3.1** `js/utils/text.js` — canonical `escapeHtml`, `stripHtml` (DOM-based, decodes ALL entities), `snippet(html,n)`, `getSnippet` (inline-safe). Loaded as classic script before modules; wired into index.html + admin.html + SW precache. ✔ v114
+- [x] **3.2** All call sites delegate: shared.js + ui-core.js dropped their escapeHtml; mobile `x()`/`_snip`, ui-feed `_strip`, notifications `_stripHtml` delegate. Grep confirms one definition each. ✔ v114
+- [x] **3.3** `stripHtml` is DOM-based → decodes every entity uniformly (no more one-place-only entity fixes). ✔ v114
+- [x] Version bump v114 + commit + push. ✔
 
 ### ✅ EXIT CRITERIA
 - Grep shows exactly **one** definition each of escape/strip/snippet.

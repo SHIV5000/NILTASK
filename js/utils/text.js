@@ -57,8 +57,20 @@
         return escapeHtml(text).substring(0, 60) + '...';
     }
 
+    // Safe to embed inside a SINGLE-QUOTED JS string that itself sits in an HTML
+    // on* attribute (onclick="fn('...')"). escapeHtml is WRONG there: the HTML
+    // parser decodes &#39; back to ' before the JS parser runs, letting a value
+    // with a quote break out. This strips the breakout characters entirely.
+    function escapeJs(str) {
+        if (str === null || str === undefined) return '';
+        // Strip only breakout chars (quotes, backslash, backtick, angle brackets,
+        // CR/LF) — NOT spaces, so multi-word names stay intact.
+        return String(str).replace(/["'`<>\r\n\\]/g, '');
+    }
+
     window.escapeHtml = escapeHtml;
     window.stripHtml  = stripHtml;
     window.snippet    = snippet;
     window.getSnippet = getSnippet;
+    window.escapeJs   = escapeJs;
 })();

@@ -60,7 +60,7 @@ window.openTopPanel = async function(type) {
     } else if (type==='reminders') {
         panel.innerHTML=`<h4 class="font-bold border-b pb-3 mb-3 flex items-center gap-2" style="border-color:var(--border-color);color:var(--text-primary);"><i class="fa-solid fa-stopwatch text-purple-500"></i> Reminders</h4>`;
         const {data:upcoming}=await sb.from('reminders').select('*, messages(text, room_id)').eq('user_id',window.currentUser.id).eq('tenant_id',window.currentTenantId).eq('triggered',false).order('reminder_time',{ascending:true});
-        const {data:fired}=await sb.from('notifications').select('*').eq('user_id',window.currentUser.id).eq('tenant_id',window.currentTenantId).eq('type','reminder').order('created_at',{ascending:false}).limit(10);
+        const {data:fired}=await sb.from('notifications').select('*').eq('user_id',window.currentUser.id).eq('type','reminder').order('created_at',{ascending:false}).limit(10);
 
         if(upcoming?.length){
             panel.innerHTML+=`<div class="text-[9px] font-black tracking-widest uppercase mb-2" style="color:var(--text-secondary);">⏳ Upcoming</div>`;
@@ -143,7 +143,8 @@ window.openTopPanel = async function(type) {
             panel.appendChild(banner);
         }
 
-        const {data}=await sb.from('notifications').select('*').eq('user_id',window.currentUser.id).eq('tenant_id',window.currentTenantId).order('created_at',{ascending:false}).limit(20);
+        // Scope by user_id only (Phase 4.1) — consistent with the feed/badge.
+        const {data}=await sb.from('notifications').select('*').eq('user_id',window.currentUser.id).order('created_at',{ascending:false}).limit(20);
 
         // Batch-fetch message info (sender + room) for all notifications that have message_id
         const msgIds=(data||[]).filter(d=>d.message_id).map(d=>d.message_id);

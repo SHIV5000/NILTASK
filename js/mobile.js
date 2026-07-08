@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v114';
+const _MOB_VER = 'v115';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -2079,7 +2079,10 @@ async function _remindEdit(p) {
 }
 
 async function _notifications() {
-    const { data } = await sb.from('notifications').select('*').eq('user_id',_uid).eq('tenant_id',_tid).order('created_at',{ascending:false}).limit(50);
+    // Scope by user_id ONLY (Phase 4.1) — notifications are per-user, and
+    // server-created rows' tenant_id didn't always match, which starved this list
+    // while the badge (user_id only) counted them. All notification reads now agree.
+    const { data } = await sb.from('notifications').select('*').eq('user_id',_uid).order('created_at',{ascending:false}).limit(50);
     const iconMap = {reminder:'fa-stopwatch',task:'fa-clipboard-check',message:'fa-comment',general:'fa-bell'};
     const colorMap = {reminder:'#a855f7',task:'#3b82f6',message:'#22c55e',general:'#f59e0b'};
 

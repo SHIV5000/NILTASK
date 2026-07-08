@@ -310,7 +310,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.3.2 (v112) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.3.3 (v113) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -1108,8 +1108,23 @@ window.loadChatsList = async function() {
     // Expose for other modules (e.g. the forward modal).
     window._groupsCache = groups;
 
-    const {data: users} = await sb.from('profiles').select('id, email, full_name, designation, avatar_url, last_seen').eq('tenant_id', window.currentTenantId);
+    // PERF (Phase 2.1): load light columns for the immediate cache — avatar_url is
+    // a base64 data-URL (tens of KB each) that made this query ~1MB and slowed the
+    // sidebar + first message paint. Hydrate avatars in the background and merge
+    // into the cache; subsequent renders (room open, list refresh) pick them up.
+    const {data: users} = await sb.from('profiles').select('id, email, full_name, designation, last_seen').eq('tenant_id', window.currentTenantId);
     window.globalUsersCache = users || [];
+    (async () => {
+        try {
+            const { data: av } = await sb.from('profiles')
+                .select('id, avatar_url').eq('tenant_id', window.currentTenantId)
+                .not('avatar_url', 'is', null);
+            if (av?.length) {
+                const byId = {}; av.forEach(r => { byId[r.id] = r.avatar_url; });
+                (window.globalUsersCache || []).forEach(u => { if (byId[u.id]) u.avatar_url = byId[u.id]; });
+            }
+        } catch (e) {}
+    })();
 
     // Fallback colours / initials for the legacy fixed room ids.
     const deptColors = { general: '#6366f1', math: '#0ea5e9', science: '#10b981', leadership: '#f59e0b' };

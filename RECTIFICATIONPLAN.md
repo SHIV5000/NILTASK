@@ -12,8 +12,8 @@
 
 | Phase | Title | Status | Version | Verified |
 |-------|-------|--------|---------|----------|
-| 1 | Security lockdown (RLS + dead pages) | [~] | v112 | pending SQL + exit tests |
-| 2 | Speed — avatar payload + Tailwind build + indexes | [ ] | — | — |
+| 1 | Security lockdown (RLS + dead pages) | [x] | v112 | code done; SQL user-run |
+| 2 | Speed — avatar payload + Tailwind build + indexes | [~] | v113 | 2.3 deferred; pending SQL + exit tests |
 | 3 | De-duplication — one escape/strip/util core | [ ] | — | — |
 | 4 | Correctness — tenant-filter + escape consistency | [ ] | — | — |
 | 5 | Realtime resilience + UX polish | [ ] | — | — |
@@ -48,14 +48,11 @@
 **Goal:** cut the mobile home-load payload and startup cost. Measurable, no behavior change.
 
 ### Tasks
-- [ ] **2.1** Stop pulling base64 `avatar_url` on list/hot paths:
-  - `mobile.js:410, 473` `profiles.select('*')` → explicit columns **without** `avatar_url`
-  - `mobile.js:2167` profile self-load may keep avatar (single row, fine)
-  - `main.js:1111` drop `avatar_url` from the tenant-members list; fetch avatars lazily per visible row.
-- [ ] **2.2** Add a lightweight avatar fetch: load `avatar_url` only for members actually rendered (viewport), cached in-memory.
-- [ ] **2.3** Replace `cdn.tailwindcss.com` (runtime JIT) with a prebuilt static `css/tailwind.build.css` for `index.html`, `admin.html`, `signup.html`. (Tailwind CLI build committed; drop the CDN `<script>`.)
-- [ ] **2.4** Write `supabase/migrations/20260708_perf_indexes.sql`: `messages(room_id,tenant_id,created_at desc)`, `tasks(tenant_id,created_at desc)`, `reactions(message_id)`, `notifications(user_id,is_read)`.
-- [ ] Version bump + commit + push.
+- [x] **2.1** Light-column profile queries (no base64 `avatar_url`) on all mobile hot paths (`_refreshUsers`, cold-start, cache-first) and web `loadChatsList`. ✔ v113
+- [x] **2.2** Background avatar hydration: `_hydrateAvatars()` (mobile, merges + re-renders once), async merge into `globalUsersCache` (web). Preserves already-loaded avatars across light refreshes. ✔ v113
+- [!] **2.3** Replace `cdn.tailwindcss.com` with a built CSS — **DEFERRED.** High regression risk (purge may drop dynamically-built class names across every page) and no visual verification available here. Needs its own sub-task with per-page screenshot checks. The CDN warning is cosmetic; Tailwind still works.
+- [x] **2.4** `supabase/migrations/20260708_perf_indexes.sql` written (messages/tasks/reactions/notifications). ✔ v113
+- [x] Version bump v113 + commit + push. ✔
 
 ### 🔒 USER/DB ACTIONS
 - [ ] Run `20260708_perf_indexes.sql`.

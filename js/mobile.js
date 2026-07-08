@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v110';
+const _MOB_VER = 'v111';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -1070,24 +1070,43 @@ async function _activity() {
     // .eq('tenant_id',_tid) filtered out server-created notification rows whose
     // tenant_id didn't exactly match, leaving the mobile/tab feed empty while web
     // worked. Notifications are already per-user, so user_id is sufficient.
-    const { data: notifs, error: _notifErr } = await sb.from('notifications')
-        .select('id,type,message,message_id,task_id,created_at,is_read')
-        .eq('user_id',_uid)
-        .order('created_at',{ascending:false}).limit(80);
-    if (_notifErr) window.logger?.sb?.('notifications.select[feed]', { error:_notifErr });
+    // Merge THREE sources so the mobile feed mirrors the WEB feed (which "works
+    // well"): recent messages + task_trails + notifications. Relying on
+    // notification rows ALONE left the mobile/tab feed stale whenever the
+    // server-side push function hadn't written a row (or realtime was flapping),
+    // while the badge still advanced via local per-chat unread counting — the
+    // exact "badge shows fine but feed not updating" divergence. Pulling messages
+    // directly (like web) removes that dependency.
+    const [rNotif, rMsg, rTrail] = await Promise.all([
+        sb.from('notifications')
+            .select('id,type,message,message_id,task_id,created_at,is_read')
+            .eq('user_id',_uid)
+            .order('created_at',{ascending:false}).limit(80),
+        sb.from('messages')
+            .select('id,created_at,room_id,sender_id,text,parent_message_id')
+            .eq('tenant_id',_tid).is('deleted_at',null)
+            .order('created_at',{ascending:false}).limit(60),
+        sb.from('task_trails')
+            .select('id,created_at,action,task_id,comment,tasks(title),profiles(full_name,email)')
+            .eq('tenant_id',_tid)
+            .order('created_at',{ascending:false}).limit(30)
+    ]);
+    const notifs = rNotif.data || [];
+    if (rNotif.error) window.logger?.sb?.('notifications.select[feed]', { error:rNotif.error });
 
     // Persist "read" in the DB so the 60s badge poll (_refreshNotifBadge) doesn't
     // resurrect the count after the user has already seen the feed.
-    const _unreadIds = (notifs||[]).filter(n=>!n.is_read).map(n=>n.id);
+    const _unreadIds = notifs.filter(n=>!n.is_read).map(n=>n.id);
     if (_unreadIds.length) { sb.from('notifications').update({is_read:true}).in('id',_unreadIds).then(()=>{}); }
 
-    // Enrich message-type notifications with a sender name (join messages on id).
+    // Sender name for message-type notifications — reuse the recent messages we
+    // already fetched, then fill any gaps with a single follow-up query.
     const senderById = {};
+    (rMsg.data||[]).forEach(m => { senderById[m.id] = m.sender_id; });
     try {
-        const msgIds = (notifs||[]).filter(n=>n.message_id).map(n=>n.message_id);
-        if (msgIds.length) {
-            const { data: msgs } = await sb.from('messages')
-                .select('id,sender_id').in('id', msgIds);
+        const need = notifs.filter(n=>n.message_id && !(n.message_id in senderById)).map(n=>n.message_id);
+        if (need.length) {
+            const { data: msgs } = await sb.from('messages').select('id,sender_id').in('id', need);
             (msgs||[]).forEach(m => { senderById[m.id] = m.sender_id; });
         }
     } catch(e){}
@@ -1106,12 +1125,53 @@ async function _activity() {
         return { cat:'chats', cls:'blue', badge:'💬 Message', emoji:'💬', act:(n.message_id?{k:'msg',id:n.message_id}:null) };
     };
 
-    let items = (notifs||[]).map(n => ({ n, sender:_senderName(n), ...kind(n) }))
-        .filter(it => filter==='all' || it.cat===filter);
+    // Human-readable room label for a raw message (group name or DM peer).
+    const _roomLabel = (rid) => {
+        if (!rid) return '';
+        if (rid.startsWith('dm_')) {
+            const other = rid.replace('dm_','').split('_').find(id => id !== _uid);
+            return other ? _uname(other) : 'Direct message';
+        }
+        return _findGroup(rid)?.name || _lsGet('dept_name_'+rid,'') || rid;
+    };
+
+    // ── Normalize all three sources into the notification-shaped card model ──
+    const notifMsgIds = new Set(notifs.map(n=>n.message_id).filter(Boolean));
+    const _all = [];
+    notifs.forEach(n => _all.push({ n, sender:_senderName(n), ...kind(n) }));
+    // Raw messages not already covered by a notification row.
+    (rMsg.data||[]).forEach(m => {
+        if (notifMsgIds.has(m.id)) return;
+        const mine  = m.sender_id === _uid;
+        const label = _roomLabel(m.room_id);
+        const tx    = _snip(m.text,60) || 'Attachment';
+        const kindL = m.parent_message_id ? 'Reply' : 'Message';
+        const title = kindL + (label ? (' in ' + label) : '') + ' — ' + tx;
+        _all.push({
+            n:{ id:'msg:'+m.id, message:title, message_id:m.id, created_at:m.created_at, is_read:true },
+            sender: mine ? '' : _uname(m.sender_id), cat:'chats', cls:'blue',
+            badge: m.parent_message_id ? '↩ Reply' : '💬 Message', emoji:'💬', act:{k:'msg',id:m.id}
+        });
+    });
+    // Task trail activity.
+    (rTrail.data||[]).forEach(tr => {
+        const nm  = tr.profiles ? (tr.profiles.full_name || tr.profiles.email?.split('@')[0] || 'Staff') : 'Staff';
+        const ttl = (tr.tasks && tr.tasks.title) || 'Task';
+        const act = tr.action || 'update';
+        const actLabel = ({created:'assigned',accepted:'completed',submitted:'submitted',update:'updated',delegate:'delegated',transfer:'transferred',review:'reviewed'})[act] || act;
+        _all.push({
+            n:{ id:'trail:'+tr.id, message:'Task '+actLabel+': '+ttl, task_id:tr.task_id, created_at:tr.created_at, is_read:true },
+            sender:nm, cat:'tasks', cls:'orange', badge:'📋 Task', emoji:'📋',
+            act:(tr.task_id?{k:'task',id:tr.task_id}:null)
+        });
+    });
+    _all.sort((a,b) => new Date(b.n.created_at) - new Date(a.n.created_at));
+
+    let items = _all.filter(it => filter==='all' || it.cat===filter);
     // Distinct senders present in the (category-filtered) feed, for the sender chips.
     const senders = [...new Set(items.map(it=>it.sender).filter(Boolean))].sort();
     if (senderFilter) items = items.filter(it => it.sender === senderFilter);
-    const unread = (notifs||[]).filter(n=>!n.is_read).length;
+    const unread = notifs.filter(n=>!n.is_read).length;
 
     const today = _istFmtDate.format(new Date());
     const yest  = _istFmtDate.format(new Date(Date.now()-86400000));

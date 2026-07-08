@@ -33,7 +33,8 @@ function _feedTimeAgo(isoStr) {
 }
 
 const _esc  = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-const _strip = s => String(s||'').replace(/<[^>]*>/g,'').trim();
+// Strip tags AND decode HTML entities (so a mention's space shows as ' ' not '&nbsp;').
+const _strip = s => { const d = document.createElement('div'); d.innerHTML = String(s||''); return (d.textContent||'').replace(/ /g,' ').replace(/\s+/g,' ').trim(); };
 
 // ── Card palette (exact spec) ────────────────────────────────────────────────
 const _AF_PAL = {

@@ -61,7 +61,13 @@ Deno.serve(async (req) => {
     const { data: sp } = await supabase
       .from('profiles').select('full_name,email').eq('id', senderId).maybeSingle();
     const senderName = sp?.full_name || sp?.email?.split('@')[0] || 'Someone';
-    const text = (m.text || '').replace(/<[^>]*>/g, '').trim().slice(0, 120) || '📎 Attachment';
+    // Strip HTML tags AND decode the common entities so notification/push text is
+    // clean ("@Name dddd" not "@Name&nbsp;dddd").
+    const text = (m.text || '')
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"')
+      .replace(/\s+/g, ' ').trim().slice(0, 120) || '📎 Attachment';
     const isDMroom = room.startsWith('dm_');
     const isReply = !!m.parent_message_id;
 

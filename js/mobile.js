@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v113';
+const _MOB_VER = 'v117';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -303,7 +303,7 @@ window.initMobileApp = async function() {
         });
     } catch (e) {}
     if (_notifFallbackInterval) clearInterval(_notifFallbackInterval);
-    _notifFallbackInterval = setInterval(_refreshNotifBadge, 60000);
+    _notifFallbackInterval = setInterval(_fallbackPoll, 60000);
     _showOfflineBanner(_isOffline);
     // Auto-refresh displayed timestamps every 60s + update last_seen heartbeat
     if (_tsInterval) clearInterval(_tsInterval);
@@ -824,6 +824,8 @@ window._confirmLogout = async function() {
     if (_tsInterval) clearInterval(_tsInterval);
     if (_notifFallbackInterval) { clearInterval(_notifFallbackInterval); _notifFallbackInterval = null; }
     if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
+    if (_rtOutageTimer) { clearTimeout(_rtOutageTimer); _rtOutageTimer = null; }
+    _rtToastShown = false;
     // Clear all tenant-scoped localStorage data
     if (_tid) {
         const prefix = _tid+'_';
@@ -911,7 +913,7 @@ async function _render(screen, params, dir='forward') {
         marks: _bookmarks, scheduled: _scheduled,
         settings: _settings, dashboard: _dashboard, groupMgmt: _groupMgmt,
         groupChat: _groupChat, thread: _thread,
-        dm: _dm, taskDetail: _taskDetail, remindEdit: _remindEdit, scheduledEdit: _scheduledEdit, notifications: _notifications,
+        dm: _dm, taskDetail: _taskDetail, remindEdit: _remindEdit, scheduledEdit: _scheduledEdit,
     };
     // Render-race guard: if the user navigates again while this screen's data is
     // still loading, the SLOWER older render must not overwrite the newer screen.
@@ -2078,68 +2080,6 @@ async function _remindEdit(p) {
     </div>`;
 }
 
-async function _notifications() {
-    const { data } = await sb.from('notifications').select('*').eq('user_id',_uid).eq('tenant_id',_tid).order('created_at',{ascending:false}).limit(50);
-    const iconMap = {reminder:'fa-stopwatch',task:'fa-clipboard-check',message:'fa-comment',general:'fa-bell'};
-    const colorMap = {reminder:'#a855f7',task:'#3b82f6',message:'#22c55e',general:'#f59e0b'};
-
-    const hasUnread = (data||[]).some(d=>!d.is_read);
-    // Mark all as read silently
-    const unreadIds = (data||[]).filter(d=>!d.is_read).map(d=>d.id);
-    _clearBellBadge();   // opening the notifications screen clears the unread badge
-    if (unreadIds.length) {
-        sb.from('notifications').update({is_read:true}).in('id',unreadIds).then(()=>_refreshNotifBadge());
-    }
-
-    // Group by date (IST)
-    const nowIST = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Kolkata'}));
-    const todayStr = nowIST.toDateString();
-    const yestDate = new Date(nowIST); yestDate.setDate(yestDate.getDate()-1);
-    const yestStr  = yestDate.toDateString();
-    const groups = { Today:[], Yesterday:[], Earlier:[] };
-    (data||[]).forEach(d => {
-        const dt = new Date(new Date(d.created_at).toLocaleString('en-US',{timeZone:'Asia/Kolkata'}));
-        if (dt.toDateString() === todayStr)       groups.Today.push(d);
-        else if (dt.toDateString() === yestStr)   groups.Yesterday.push(d);
-        else                                       groups.Earlier.push(d);
-    });
-
-    const renderItems = items => items.map(d => {
-        const tp = d.type || 'general';
-        const ic = iconMap[tp] || 'fa-bell', co = colorMap[tp] || '#f59e0b';
-        const action = tp === 'task' ? 'goToTaskNotif' : 'goToMsgNotif';
-        return `
-        <div class="m-row" data-action="${action}" data-mid="${d.message_id||''}" data-tid="${d.task_id||''}" style="${d.is_read?'opacity:.65;':''}">
-          <div class="m-av" style="background:${co};border-radius:12px;position:relative;">
-            <i class="fa-solid ${ic}" style="font-size:16px;color:#fff;"></i>
-            ${!d.is_read ? '<span class="m-notif-dot"></span>' : ''}
-          </div>
-          <div class="m-ri">
-            <div class="m-rn" style="${!d.is_read?'font-weight:700;':''}">${x(_snip(d.message,70))}</div>
-            <div class="m-rs">${_fmtIST(d.created_at)}</div>
-          </div>
-        </div>`; }).join('');
-
-    const renderGroup = (label, items) => !items.length ? '' :
-        `<div class="m-notif-day">${label}</div>${renderItems(items)}`;
-
-    const hasAny = groups.Today.length || groups.Yesterday.length || groups.Earlier.length;
-    return `<div class="mScr-inner">
-      <div class="m-hdr m-hdr-plain">
-        <div class="m-htitle">Notifications</div>
-        ${hasUnread ? `<button class="m-hdr-action" onclick="window._markAllNotifsRead()">Mark all read</button>` : ''}
-      </div>
-      ${hasAny
-          ? renderGroup('Today',groups.Today)+renderGroup('Yesterday',groups.Yesterday)+renderGroup('Earlier',groups.Earlier)
-          : '<div class="m-empty">All caught up! 🎉</div>'}
-    </div>`;
-}
-window._markAllNotifsRead = async () => {
-    _clearBellBadge();
-    await sb.from('notifications').update({is_read:true}).eq('user_id',_uid).eq('tenant_id',_tid).eq('is_read',false);
-    _refreshNotifBadge();
-    _render('notifications');
-};
 async function _bookmarks() {
     const bms = JSON.parse(_lsGet('tf_bookmarks_'+_uid)||'[]');
     return `<div class="mScr-inner">
@@ -2898,8 +2838,9 @@ async function _onShellClick(e) {
         }
         case 'markAllRead': {
             try {
+                // user_id only (Phase 4.1) — consistent with the feed/badge reads.
                 await sb.from('notifications').update({ is_read:true })
-                    .eq('user_id',_uid).eq('tenant_id',_tid).eq('is_read',false);
+                    .eq('user_id',_uid).eq('is_read',false);
             } catch(e){}
             _clearBellBadge();
             await _refreshNotifBadge();
@@ -3124,13 +3065,25 @@ function _onSelectionChange() {
 // successful SUBSCRIBED (see _rtChannel callback).
 let _rtBackoff = 4000;
 const _RT_BACKOFF_MAX = 60000;
+// UX (Phase 5.2): don't toast on brief flaps. Arm a timer on the first drop and
+// only show "Reconnecting…" if the outage lasts >8s. "Connected ✓" then shows
+// only if that warning was actually displayed — so a flapping signal that
+// recovers within 8s stays completely silent (no toast flicker).
+let _rtOutageTimer = null;
+let _rtToastShown = false;
 function _scheduleRtReconnect() {
     if (_rtReconnectTimer) return;
     _rtWasErrored = true;
     const jitter = _rtBackoff * (0.7 + Math.random() * 0.6);   // ±30%
     const delay = Math.round(jitter);
-    // Only announce the first drop, not every retry — avoids toast spam on weak signal.
-    if (_rtBackoff === 4000) _toast('Reconnecting…', 'info');
+    // Arm the "sustained outage" toast once per outage (first drop = base backoff).
+    if (_rtBackoff === 4000 && !_rtOutageTimer && !_rtToastShown) {
+        _rtOutageTimer = setTimeout(() => {
+            _rtOutageTimer = null;
+            const healthy = _rtChannel && _rtChannel.state === 'joined';
+            if (!healthy) { _rtToastShown = true; _toast('Reconnecting…', 'info'); }
+        }, 8000);
+    }
     console.log('[mob-rt] scheduling reconnect in ' + delay + 'ms (backoff ' + _rtBackoff + ')');
     _rtBackoff = Math.min(_rtBackoff * 2, _RT_BACKOFF_MAX);     // grow for next time
     _rtReconnectTimer = setTimeout(async () => {
@@ -3163,9 +3116,11 @@ function _initRealtime() {
             console.log('[mob-rt] channel status='+status); window.logger?.logRt('mobile-rt', status);
             if (status === 'SUBSCRIBED') {
                 if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
+                if (_rtOutageTimer) { clearTimeout(_rtOutageTimer); _rtOutageTimer = null; }  // recovered before the 8s warning fired
                 _rtBackoff = 4000;   // healthy again — reset backoff to base
                 if (_rtWasErrored) {
-                    _rtWasErrored = false; _toast('Connected ✓');
+                    _rtWasErrored = false;
+                    if (_rtToastShown) { _rtToastShown = false; _toast('Connected ✓'); }  // only if we warned
                     // CATCH-UP: broadcasts (reactions/replies) sent while we were
                     // disconnected are NOT replayed, so re-sync the open chat from the
                     // DB. This is the automatic version of the manual refresh users had
@@ -3323,6 +3278,17 @@ async function _refreshNotifBadge() {
     // flaps) — refresh the feed too if the Activity screen is open. This fixes
     // "badge shows fine but the feed doesn't update" on mobile/tablet.
     _liveRefreshActivity();
+}
+// 60s resilience poll (Phase 5.3). Always refreshes the badge + feed. When the
+// realtime message channel is NOT confirmed healthy (flapping/dead socket — the
+// exact state the logs showed), it ALSO re-pulls the currently-open chat so a
+// new message still lands within the poll window, not only on reconnect. Skipped
+// while backgrounded to save battery/network.
+async function _fallbackPoll() {
+    _refreshNotifBadge();
+    if (document.visibilityState !== 'visible') return;
+    const healthy = _rtChannel && _rtChannel.state === 'joined';
+    if (!healthy) { try { _pendingRefresh?.(); } catch (e) {} }
 }
 // Render the bell badge from the in-memory count (instant, no DB dependency).
 function _renderBellBadge() {
@@ -4037,7 +4003,7 @@ async function _changePassword() {
 }
 
 function _el(id) { return document.getElementById(id); }
-function x(s)    { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function x(s)    { return window.escapeHtml(s); }   // canonical impl in js/utils/text.js
 function _init(n){ return (n||'?').split(' ').map(w=>w[0]).join('').toUpperCase().substring(0,2)||'?'; }
 function _avatarHTML(photoUrl, name, bg, cls='m-av') {
     const initials = _init(name);
@@ -4067,7 +4033,7 @@ function _fmtIST(ts, withTime=true) {
 }
 function _uname(id){ const u=_users.find(u=>u.id===id) || (window.globalUsersCache||[]).find(u=>u.id===id); return u ? (u.full_name||u.email?.split('@')[0]||'User') : 'User'; }
 function _dmRoom(uid){ return ['dm',...[_uid,uid].sort()].join('_'); }
-function _snip(h,n){ const t=(h||'').replace(/<[^>]*>/g,'').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&quot;/g,'"').trim(); return t.length>n?t.substring(0,n)+'…':t; }
+function _snip(h,n){ return window.snippet(h,n); }   // canonical impl in js/utils/text.js
 const _istFmt12 = new Intl.DateTimeFormat('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'});
 const _istFmtDate = new Intl.DateTimeFormat('en-IN',{day:'2-digit',month:'short',timeZone:'Asia/Kolkata'});
 function _ago(ts){

@@ -93,7 +93,7 @@
     #pwaInstallBanner {
       bottom: 16px;
       background: var(--bg-body, #fff);
-      padding: 12px 14px;
+      padding: 16px 16px;
     }
     #iosInstallHint {
       top: 16px;
@@ -158,6 +158,7 @@
          to its localStorage fallback if either fails to load (e.g. offline first boot). -->
     <script src="https://unpkg.com/dexie@3.2.7/dist/dexie.min.js"></script>
     <script src="./js/db.js"></script>
+    <script src="./js/utils/text.js"></script>
     <script type="module" src="./js/shared.js"></script>
     <script type="module" src="./js/auth.js"></script>
     <script type="module" src="./js/rbac.js"></script>
@@ -253,8 +254,8 @@ window.addEventListener('appinstalled', () => {
     <div style="font-size:13px;font-weight:700;color:var(--text-primary,#111);">Install Noted For Action</div>
     <div style="font-size:11px;color:var(--text-secondary,#666);">Works offline · No app store needed</div>
   </div>
-  <button onclick="window.installPWA()" style="background:var(--accent,#6366f1);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">
-    <i class="fa-solid fa-download"></i> Install
+  <button onclick="window.installPWA()" style="background:var(--accent,#6366f1);color:#fff;border:none;border-radius:12px;padding:14px 26px;font-size:16px;font-weight:800;letter-spacing:.02em;cursor:pointer;white-space:nowrap;box-shadow:0 4px 14px rgba(99,102,241,.45);display:inline-flex;align-items:center;gap:8px;">
+    <i class="fa-solid fa-download" style="font-size:16px;"></i> Install
   </button>
   <button onclick="window.dismissInstall()" style="background:none;border:none;color:var(--text-secondary,#666);cursor:pointer;font-size:20px;padding:4px 6px;flex-shrink:0;line-height:1;">×</button>
 </div>

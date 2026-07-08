@@ -513,6 +513,9 @@ window._admStaffSheet = function(id) {
     if (!s) return;
     const initials = (s.full_name || 'U').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
     const email = window.escapeHtml(s.email), name = window.escapeHtml(s.full_name);
+    // JS-string-safe variants for inline onclick handlers (Phase 4.2) — escapeHtml
+    // is unsafe there because the HTML parser decodes entities before JS runs.
+    const emailJs = window.escapeJs(s.email), nameJs = window.escapeJs(s.full_name);
     let sheet = document.getElementById('maSheet');
     if (!sheet) { sheet = document.createElement('div'); sheet.id='maSheet'; sheet.className='ma-sheet-scrim'; document.body.appendChild(sheet); }
     sheet.innerHTML = `<div class="ma-sheet">
@@ -522,10 +525,10 @@ window._admStaffSheet = function(id) {
           <div style="min-width:0;"><div class="ma-nm">${name}</div><div class="ma-meta">${email}</div></div>
         </div>
         <button class="ma-act" onclick="window._admSheetClose();openEditStaffModal('${s.id}')"><i class="fa-solid fa-pen"></i> Edit details</button>
-        <button class="ma-act" onclick="window._admSheetClose();openResetPwdModal('${email}','${name}')"><i class="fa-solid fa-key"></i> Reset password</button>
+        <button class="ma-act" onclick="window._admSheetClose();openResetPwdModal('${emailJs}','${nameJs}')"><i class="fa-solid fa-key"></i> Reset password</button>
         <button class="ma-act" onclick="window._admSheetClose();toggleApproval('${s.id}', ${s.approved})"><i class="fa-solid fa-user-check"></i> ${s.approved?'Block (un-approve)':'Approve for login'}</button>
-        <button class="ma-act danger" onclick="window._admSheetClose();archiveStaff('${s.id}','${name}')"><i class="fa-solid fa-box-archive"></i> Archive staff member</button>
-        <button class="ma-act danger" onclick="window._admSheetClose();permanentDeleteStaff('${s.id}','${name}')"><i class="fa-solid fa-trash"></i> Delete permanently</button>
+        <button class="ma-act danger" onclick="window._admSheetClose();archiveStaff('${s.id}','${nameJs}')"><i class="fa-solid fa-box-archive"></i> Archive staff member</button>
+        <button class="ma-act danger" onclick="window._admSheetClose();permanentDeleteStaff('${s.id}','${nameJs}')"><i class="fa-solid fa-trash"></i> Delete permanently</button>
     </div>`;
     sheet.classList.add('open');
     sheet.onclick = (e) => { if (e.target === sheet) window._admSheetClose(); };
@@ -740,7 +743,7 @@ function renderStaffTable(staff) {
                     <button class="btn-outline btn-sm" onclick="openEditStaffModal('${s.id}')" title="Edit">
                         <i class="fa-solid fa-pen"></i>
                     </button>
-                    <button class="btn-outline btn-sm" onclick="openResetPwdModal('${window.escapeHtml(s.email)}','${window.escapeHtml(s.full_name)}')" title="Reset Password" style="color:#f59e0b;border-color:#fde68a;">
+                    <button class="btn-outline btn-sm" onclick="openResetPwdModal('${window.escapeJs(s.email)}','${window.escapeJs(s.full_name)}')" title="Reset Password" style="color:#f59e0b;border-color:#fde68a;">
                         <i class="fa-solid fa-key"></i>
                     </button>
                     <div style="position:relative;display:inline-block;" class="action-menu-wrap">
@@ -752,13 +755,13 @@ function renderStaffTable(staff) {
                         <div class="staff-action-menu" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;
                              background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:10px;
                              box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:9999;min-width:180px;overflow:hidden;">
-                            <button onclick="window._toggleStaffMenu(this.closest('.action-menu-wrap').querySelector('button'));archiveStaff('${s.id}','${window.escapeHtml(s.full_name)}')"
+                            <button onclick="window._toggleStaffMenu(this.closest('.action-menu-wrap').querySelector('button'));archiveStaff('${s.id}','${window.escapeJs(s.full_name)}')"
                                 style="width:100%;padding:10px 14px;background:none;border:none;cursor:pointer;
                                        text-align:left;font-size:13px;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
                                 <i class="fa-solid fa-box-archive" style="color:#f59e0b;"></i> Archive
                             </button>
                             <div style="height:1px;background:var(--border-color);"></div>
-                            <button onclick="window._toggleStaffMenu(this.closest('.action-menu-wrap').querySelector('button'));permanentDeleteStaff('${s.id}','${window.escapeHtml(s.full_name)}')"
+                            <button onclick="window._toggleStaffMenu(this.closest('.action-menu-wrap').querySelector('button'));permanentDeleteStaff('${s.id}','${window.escapeJs(s.full_name)}')"
                                 style="width:100%;padding:10px 14px;background:none;border:none;cursor:pointer;
                                        text-align:left;font-size:13px;color:#ef4444;display:flex;align-items:center;gap:8px;">
                                 <i class="fa-solid fa-trash"></i> Delete Permanently
@@ -1023,7 +1026,7 @@ window.loadArchivedStaff = async function() {
             '<div style="font-size:11px;color:var(--text-secondary);">' + window.escapeHtml(s.email || '') + '</div></td>' +
             '<td><span class="role-pill role-' + (s.role||'teacher') + '">' + (s.role||'').replace('_',' ') + '</span></td>' +
             '<td style="font-size:12px;color:var(--text-secondary);">' + archivedDate + '</td>' +
-            '<td><button class="btn-outline btn-sm" onclick="restoreStaff(\'' + s.id + '\',\'' + window.escapeHtml(s.full_name) + '\')" style="color:#16a34a;border-color:#16a34a;">' +
+            '<td><button class="btn-outline btn-sm" onclick="restoreStaff(\'' + s.id + '\',\'' + window.escapeJs(s.full_name) + '\')" style="color:#16a34a;border-color:#16a34a;">' +
             '<i class="fa-solid fa-rotate-left"></i> Restore</button></td>' +
             '</tr>';
     }).join('');

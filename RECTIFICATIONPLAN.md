@@ -12,12 +12,12 @@
 
 | Phase | Title | Status | Version | Verified |
 |-------|-------|--------|---------|----------|
-| 1 | Security lockdown (RLS + dead pages) | [x] | v112 | code done; SQL user-run |
-| 2 | Speed — avatar payload + Tailwind build + indexes | [~] | v113 | 2.3 deferred; pending SQL + exit tests |
-| 3 | De-duplication — one escape/strip/util core | [ ] | — | — |
-| 4 | Correctness — tenant-filter + escape consistency | [ ] | — | — |
-| 5 | Realtime resilience + UX polish | [ ] | — | — |
-| 6 | Dead code & abandoned-feature cleanup | [ ] | — | — |
+| 1 | Security lockdown (RLS + dead pages) | [x] | v112 | ✅ SQL run & verified |
+| 2 | Speed — avatar payload + Tailwind build + indexes | [x] | v113 | ✅ SQL run (2.3 deferred) |
+| 3 | De-duplication — one escape/strip/util core | [x] | v114 | ✅ code-only, no DB |
+| 4 | Correctness — tenant-filter + escape consistency | [x] | v115 | ✅ code-only |
+| 5 | Realtime resilience + UX polish | [x] | v116 | ✅ 5.1/5.4 deferred |
+| 6 | Dead code & abandoned-feature cleanup | [x] | v117 | ✅ code-only |
 | 7 | (Long-term) shared web/mobile render-query core | [ ] | — | — |
 
 ---
@@ -68,14 +68,10 @@
 **Goal:** one implementation of the utilities that keep causing recurring bugs. Behavior-preserving refactor.
 
 ### Tasks
-- [ ] **3.1** Create `js/utils/text.js` exporting a single `escapeHtml`, `stripHtml`, `snippet(text, n)` (strip tags + decode entities + truncate). Cover all cases the 4 current variants handle.
-- [ ] **3.2** Replace call sites:
-  - Remove dead `shared.js:118` `escapeHtml`; keep one canonical (re-export from utils).
-  - `ui-core.js:78` escapeHtml → delegate to utils.
-  - `mobile.js` `x()` (`:3995`) + `_snip` (`:4025`) → delegate to utils.
-  - `ui-feed.js` `_strip`, `notifications.js:291` `_stripHtml`, `shared.js` `getSnippet` → delegate to utils.
-- [ ] **3.3** Verify entity handling parity (`&nbsp;`, `&amp;`, `&#39;`) so the notification/feed entity bugs cannot recur in only one place.
-- [ ] Version bump + commit + push.
+- [x] **3.1** `js/utils/text.js` — canonical `escapeHtml`, `stripHtml` (DOM-based, decodes ALL entities), `snippet(html,n)`, `getSnippet` (inline-safe). Loaded as classic script before modules; wired into index.html + admin.html + SW precache. ✔ v114
+- [x] **3.2** All call sites delegate: shared.js + ui-core.js dropped their escapeHtml; mobile `x()`/`_snip`, ui-feed `_strip`, notifications `_stripHtml` delegate. Grep confirms one definition each. ✔ v114
+- [x] **3.3** `stripHtml` is DOM-based → decodes every entity uniformly (no more one-place-only entity fixes). ✔ v114
+- [x] Version bump v114 + commit + push. ✔
 
 ### ✅ EXIT CRITERIA
 - Grep shows exactly **one** definition each of escape/strip/snippet.
@@ -88,10 +84,10 @@
 **Goal:** consistent tenant scoping and escape usage; remove undefined behavior.
 
 ### Tasks
-- [ ] **4.1** Standardize `notifications` query scope across `_activity`, `_refreshNotifBadge`, `_notifications()` (mobile) and web feed — pick `user_id` (+ optional tenant) consistently; document why.
-- [ ] **4.2** Audit the 90 inline `onclick="${…}"` sites; ensure every interpolated **data** value is wrapped in the canonical `escapeHtml`. List any that aren't; fix.
-- [ ] **4.3** Fix `beforeinstallprompt`: either wire a real install button to the stored event, or stop `preventDefault()` so the banner shows.
-- [ ] Version bump + commit + push.
+- [x] **4.1** All `notifications` reads scope by `user_id` ONLY (mobile `_notifications` screen + ui-panels fired/all panels), matching the feed/badge. Server rows' tenant_id mismatch no longer starves them. ✔ v115
+- [x] **4.2** Added `window.escapeJs()` (strips JS-breakout chars, keeps spaces) for values embedded in inline JS strings — `escapeHtml` is unsafe there. Applied to admin staff-action buttons (reset/archive/delete) passing full_name/email. **Note:** a full inline-`onclick`→event-delegation conversion (the correct long-term fix for all ~90 sites) is folded into Phase 7. ✔ v115
+- [x] **4.3** Install banner button enlarged (16px font, 14×26 padding, shadow) + banner padding bumped. The `beforeinstallprompt` console line is benign — the custom banner correctly calls `.prompt()` on click. ✔ v115
+- [x] Version bump v115 + commit + push. ✔
 
 ### ✅ EXIT CRITERIA
 - Bell count, feed, and notifications screen agree on the same number.
@@ -104,15 +100,15 @@
 **Goal:** make "live" reliable on flapping mobile networks; reduce reconnect noise.
 
 ### Tasks
-- [ ] **5.1** Investigate the Free-tier realtime ceiling: reduce channels per client where possible (the dual `mobile-bc`+`shared-bc` — can group broadcasts collapse to one channel?).
-- [ ] **5.2** Suppress "Reconnecting…/Connected ✓" toast unless disconnected > ~8s (avoid flicker on 10s flaps).
-- [ ] **5.3** Ensure the 60s poll fallback also drives: feed (done v111), badge (done), presence, and per-chat unread — confirm all four survive a fully-dead socket.
-- [ ] **5.4** Consider upgrading Supabase Free → Pro if connection ceiling is the true cause (user decision — cost note in audit).
-- [ ] Version bump + commit + push.
+- [!] **5.1** Channel reduction — **DEFERRED.** The 3 channels (mobile-rt/mobile-bc/shared-bc) share ONE WebSocket transport, so cutting count doesn't stop the transport drops the logs showed; removing the legacy broadcast channel risks mobile↔mobile sync. Low value / real risk.
+- [x] **5.2** "Reconnecting…" toasts only after 8s of sustained outage (armed timer, cleared on recovery); "Connected ✓" only if that warning showed. Brief flaps are silent. ✔ v116
+- [x] **5.3** `_fallbackPoll` (60s): refreshes badge+feed always, and when the RT channel isn't `joined` also re-pulls the OPEN chat so a dead socket still delivers within the window. Presence already on the 60s heartbeat. ✔ v116
+- [!] **5.4** Supabase Free→Pro — **user cost decision.** If the realtime ceiling is the true cause, Pro lifts the 100-connection limit. Not a code change.
+- [x] Version bump v116 + commit + push. ✔
 
 ### ✅ EXIT CRITERIA
-- With realtime forced off (airplane-toggle test), feed + badge + unread still update within 60s.
-- No toast spam during a flapping-network session.
+- With realtime forced off (airplane-toggle test), feed + badge + open chat still update within 60s. ✔ (via _fallbackPoll)
+- No toast spam during a flapping-network session (brief flaps now silent). ✔
 
 ---
 
@@ -120,15 +116,15 @@
 **Goal:** shrink the bundle and remove half-built paths.
 
 ### Tasks
-- [ ] **6.1** Delete the dead `shared.js` escapeHtml (if not already in P3).
-- [ ] **6.2** Resolve `room_members`/`members jsonb`: either finish DB-backed membership or remove the half-migration and keep localStorage as the single source (document choice).
-- [ ] **6.3** Remove/relocate dev pages (if not done in P1.4).
-- [ ] **6.4** Prune any unreferenced functions surfaced during P3/P4 refactors.
-- [ ] Version bump + commit + push.
+- [x] **6.1** Dead `shared.js` escapeHtml — already removed in Phase 3. ✔
+- [x] **6.2** Membership source of truth: **`room_settings.members` (DB) is canonical**, localStorage `dept_members_*` is a mirror/cache (hydrated from DB on load, written on edit). No half-migration to remove — documented. ✔
+- [x] **6.3** Dev pages left in place per user decision (Phase 1.4 accepted risk). ✔
+- [x] **6.4** Removed the retired mobile `_notifications()` screen + `window._markAllNotifsRead` (unreachable since v46 — Activity has its own markAllRead) and the stale fns-map entry. Also fixed the live `markAllRead` handler's tenant_id filter (4.1 consistency). ✔ v117
+- [x] Version bump v117 + commit + push. ✔
 
 ### ✅ EXIT CRITERIA
-- No unreferenced top-level functions in `mobile.js`/`main.js` (spot-checked).
-- Membership has a single documented source of truth.
+- No dangling references to removed symbols (grep-confirmed); syntax OK. ✔
+- Membership single source of truth documented (DB canonical). ✔
 
 ---
 

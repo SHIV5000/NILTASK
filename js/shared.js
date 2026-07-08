@@ -6,7 +6,7 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Single source of truth for the running build — stamped onto every warn/error
 // log row so the Live Log Monitor can tell which version a remote device runs.
-window.APP_VER = 'v113';
+window.APP_VER = 'v117';
 
 // Retire the green 'ocean-teal' theme entirely — it tinted the whole UI (and the
 // safe-area gutter) green. Reset anyone still on it BEFORE ui-core reads the value.
@@ -115,15 +115,9 @@ window.saveQuickTagsToDB = async function(tags) {
 };
 
 // Global Helpers
-window.escapeHtml = function(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m] || m)); }
+// escapeHtml + getSnippet now live in js/utils/text.js (Phase 3 de-dup), loaded
+// as a classic script before this module so window.escapeHtml/getSnippet exist.
 window.toSentenceCase = function(str) { if (!str) return ''; return str.toLowerCase().replace(/(^\w{1})|(\s+\w{1})/g, letter => letter.toUpperCase()); }
-
-window.getSnippet = function(htmlStr) {
-    let tmp = document.createElement("DIV");
-    tmp.innerHTML = htmlStr;
-    let text = (tmp.textContent || tmp.innerText || "").replace(/['"\\]/g, "");
-    return window.escapeHtml(text).substring(0, 60) + "...";
-}
 
 window.getISTTime = function(dateStr) {
     if(!dateStr) return '';

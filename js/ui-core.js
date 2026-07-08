@@ -74,16 +74,8 @@ window.stripHtml = function(html) {
     return (d.textContent || d.innerText || '').trim();
 };
 
-// Escape HTML special characters
-window.escapeHtml = function(str) {
-    if (str === null || str === undefined) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-};
+// escapeHtml now lives in js/utils/text.js (Phase 3 de-dup) — this file no
+// longer redefines it. window.escapeHtml is set before any module runs.
 
 // Sentence case: "hello world" → "Hello World"
 window.toSentenceCase = function(str) {

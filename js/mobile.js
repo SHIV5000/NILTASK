@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v112';
+const _MOB_VER = 'v113';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -407,8 +407,20 @@ function _usersSig(list) {
 async function _refreshUsers(tid) {
     try {
         const before = _usersSig(_users);
-        const { data } = await sb.from('profiles').select('*').eq('tenant_id',tid).is('deleted_at',null);
+        // PERF (Phase 2.1): select ONLY the light columns needed to render names,
+        // roles, presence. avatar_url holds a base64 data-URL (tens of KB each) —
+        // pulling it for every tenant member here made the home load transfer
+        // hundreds of KB and blocked first paint. Avatars are hydrated separately,
+        // off the critical path, by _hydrateAvatars() below.
+        const { data } = await sb.from('profiles')
+            .select('id,full_name,email,designation,department,last_seen,last_login,tenant_id,deleted_at')
+            .eq('tenant_id',tid).is('deleted_at',null);
         if (data?.length) {
+            // Preserve any avatar_url already hydrated into the previous list so a
+            // light refresh doesn't blank out avatars that were fetched earlier.
+            const avById = {};
+            (_users||[]).forEach(u => { if (u.avatar_url) avById[u.id] = u.avatar_url; });
+            data.forEach(u => { if (avById[u.id]) u.avatar_url = avById[u.id]; });
             _users = data;
             window.globalUsersCache = _users;
             _saveUsersCache(tid, _users);
@@ -419,8 +431,34 @@ async function _refreshUsers(tid) {
                 const top = _stack[_stack.length-1];
                 if (top?.screen === 'home') { try { _render('home', top.params, 'forward'); } catch {} }
             }
+            _hydrateAvatars(tid);   // fetch base64 avatars off the critical path
         }
     } catch {}
+}
+// PERF (Phase 2.2): fetch avatar_url separately, AFTER the light user list has
+// rendered, then merge in and re-render once. Keeps the heavy base64 payload off
+// the blocking home-load path. Runs at most once per session-refresh; cheap when
+// avatars are already present in memory.
+let _avatarsHydrated = false;
+async function _hydrateAvatars(tid) {
+    if (_avatarsHydrated) return;
+    try {
+        const { data } = await sb.from('profiles')
+            .select('id,avatar_url').eq('tenant_id',tid).is('deleted_at',null)
+            .not('avatar_url','is',null);
+        if (!data?.length) return;   // no avatars set — leave unlatched so a later refresh retries
+        _avatarsHydrated = true;
+        let changed = false;
+        const byId = {}; data.forEach(r => { byId[r.id] = r.avatar_url; });
+        (_users||[]).forEach(u => { if (byId[u.id] && u.avatar_url !== byId[u.id]) { u.avatar_url = byId[u.id]; changed = true; } });
+        if (changed) {
+            window.globalUsersCache = _users;
+            const top = _stack[_stack.length-1];
+            if (top && (top.screen === 'home' || top.screen === 'dm' || top.screen === 'groupChat')) {
+                try { _render(top.screen, top.params, 'forward'); } catch {}
+            }
+        }
+    } catch {} finally { /* allow a later re-hydrate if users list is rebuilt */ }
 }
 function _saveReactionEntry(msgId, value, type, userId, isDelete) {
     try {
@@ -468,13 +506,20 @@ async function _ctx() {
                 // most every 15 min — realtime events still deliver live changes.
                 const lastFetch = Number(localStorage.getItem('mob_users_ts_'+_tid) || 0);
                 if (Date.now() - lastFetch > 15*60*1000) _refreshUsers(_tid);
+                // Cache is slimmed (no base64 avatars) — hydrate them off-path so
+                // avatars appear even when the 15-min light refresh is skipped.
+                _hydrateAvatars(_tid);
             } else {
                 try {
-                    const { data } = await sb.from('profiles').select('*').eq('tenant_id',_tid).is('deleted_at',null);
+                    // PERF (Phase 2.1): light columns only — avatars hydrate off-path.
+                    const { data } = await sb.from('profiles')
+                        .select('id,full_name,email,designation,department,last_seen,last_login,tenant_id,deleted_at')
+                        .eq('tenant_id',_tid).is('deleted_at',null);
                     _users = data || [];
                     window.globalUsersCache = _users;
                     _saveUsersCache(_tid, _users);
                     try { localStorage.setItem('mob_users_ts_'+_tid, String(Date.now())); } catch (e) {}
+                    _hydrateAvatars(_tid);
                 } catch {
                     _users = window.globalUsersCache || [];
                 }

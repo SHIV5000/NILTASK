@@ -221,6 +221,17 @@ window.loadMessages = async function() {
     const PAGE = 30;
     const cacheKey = 'msgcache_' + window.currentRoom;
 
+    // Phase 3 read-receipt: mark this room read (durable, cross-device) so send-push
+    // won't push messages I'm actively viewing.
+    try {
+        if (window.currentRoom && window.currentUser?.id) {
+            sb.from('room_reads').upsert({
+                user_id: window.currentUser.id, room_id: window.currentRoom,
+                tenant_id: window.currentTenantId, last_read_at: new Date().toISOString()
+            }, { onConflict: 'user_id,room_id' }).then(() => {});
+        }
+    } catch (e) {}
+
     // Reset render-dedup key so a new room always gets a fresh render
     window._prevRenderedIds = '';
 

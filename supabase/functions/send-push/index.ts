@@ -123,13 +123,30 @@ Deno.serve(async (req) => {
       tag: room + ':mention', priority: 'high',
     });
 
+    // Read receipts: don't push to a recipient who is actively reading this room
+    // (their last_read_at is at/after this message). Mentions still push.
+    const msgTs = new Date(m.created_at || Date.now()).getTime();
+    const readUpTo: Record<string, number> = {};
+    try {
+      const { data: reads } = await supabase
+        .from('room_reads').select('user_id,last_read_at')
+        .eq('room_id', room).in('user_id', recipientIds);
+      (reads || []).forEach((r: { user_id: string; last_read_at: string }) => {
+        readUpTo[r.user_id] = new Date(r.last_read_at).getTime();
+      });
+    } catch (_e) { /* table missing → push to everyone */ }
+
     const { data: subs } = await supabase
       .from('push_subscriptions').select('endpoint,subscription,user_id')
       .in('user_id', recipientIds);
     console.log('send-push subscriptions', (subs || []).length);
 
-    let sent = 0, failed = 0;
+    let sent = 0, failed = 0, skipped = 0;
     await Promise.all((subs || []).map(async (s: { endpoint: string; subscription: unknown; user_id: string }) => {
+      // Skip if the user has already read up to this message — unless mentioned.
+      if (!mentionedIds.has(s.user_id) && readUpTo[s.user_id] && readUpTo[s.user_id] >= msgTs) {
+        skipped++; return;
+      }
       try {
         await webpush.sendNotification(
           s.subscription as webpush.PushSubscription,
@@ -145,7 +162,7 @@ Deno.serve(async (req) => {
         }
       }
     }));
-    console.log('send-push done', JSON.stringify({ sent, failed }));
+    console.log('send-push done', JSON.stringify({ sent, failed, skipped }));
 
     return new Response('ok', { status: 200 });
   } catch (e) {

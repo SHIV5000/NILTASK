@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v107';
+const _MOB_VER = 'v108';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -1163,6 +1163,19 @@ async function _activity() {
     </div>`;
 }
 window._mobRerenderActivity = () => _render('activity', null, 'forward');
+// Live-refresh the Activity screen ONLY when it's the one on-screen (debounced so
+// a burst of notifications/messages doesn't thrash it). Wired to the notifications
+// realtime INSERT + incoming messages so the feed updates without a manual reload.
+let _actRefreshTimer = null;
+function _liveRefreshActivity() {
+    const top = _stack[_stack.length-1];
+    if (top?.screen !== 'activity') return;
+    clearTimeout(_actRefreshTimer);
+    _actRefreshTimer = setTimeout(() => {
+        const t = _stack[_stack.length-1];
+        if (t?.screen === 'activity') _render('activity', null, 'forward');
+    }, 600);
+}
 window._mobAfFilter = function(v){ window._afFilter = v; window._afSender = ''; window._mobRerenderActivity(); };
 window._mobAfSender = function(v){ window._afSender = v || ''; window._mobRerenderActivity(); };
 
@@ -1636,6 +1649,7 @@ async function _groupChat(p) {
     setTimeout(() => {
         _bcChannel?.send({ type:'broadcast', event:'room_read', payload:{ room:p.room, uid:_uid, ts:new Date().toISOString() } });
         _lsSet('last_read_'+p.room, new Date().toISOString());
+        try { sb.from('room_reads').upsert({ user_id:_uid, room_id:p.room, tenant_id:_tid, last_read_at:new Date().toISOString() }, { onConflict:'user_id,room_id' }).then(()=>{}); } catch(e){}
     }, 500);
     return `<div class="mFlex">
       <div class="m-hdr">
@@ -1746,6 +1760,7 @@ async function _dm(p) {
     setTimeout(() => {
         _bcChannel?.send({ type:'broadcast', event:'room_read', payload:{ room:p.room, uid:_uid, ts:new Date().toISOString() } });
         _lsSet('last_read_'+p.room, new Date().toISOString());
+        try { sb.from('room_reads').upsert({ user_id:_uid, room_id:p.room, tenant_id:_tid, last_read_at:new Date().toISOString() }, { onConflict:'user_id,room_id' }).then(()=>{}); } catch(e){}
     }, 500);
     return `<div class="mFlex">
       <div class="m-hdr">
@@ -3032,7 +3047,7 @@ function _initRealtime() {
     _rtChannel = sb.channel('mobile-rt-'+_tid)
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => _onNewMessage(p.new))
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'task_assignees', filter:`tenant_id=eq.${_tid}` }, p => _onTaskAssigneeUpdate(p.new))
-        .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`user_id=eq.${_uid}` }, () => _refreshNotifBadge())
+        .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`user_id=eq.${_uid}` }, () => { _refreshNotifBadge(); _liveRefreshActivity(); })
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'profiles', filter:`tenant_id=eq.${_tid}` }, p => _onPresenceUpdate(p.new))
         .subscribe(status => {
             console.log('[mob-rt] channel status='+status); window.logger?.logRt('mobile-rt', status);
@@ -3318,6 +3333,8 @@ async function _onNewMessage(m) {
         const snm = sndr ? (sndr.full_name || sndr.email?.split('@')[0]) : 'Someone';
         _showHeadsUp(m, snm, m.room_id?.startsWith('dm_'), _findGroup(m.room_id), true);
     }
+
+    _liveRefreshActivity();   // if the Activity screen is open, refresh it live
 
     const top = _stack[_stack.length-1];
     if (!top) return;

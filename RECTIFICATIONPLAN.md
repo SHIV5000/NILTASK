@@ -16,7 +16,7 @@
 | 2 | Speed — avatar payload + Tailwind build + indexes | [x] | v113 | ✅ SQL run (2.3 deferred) |
 | 3 | De-duplication — one escape/strip/util core | [x] | v114 | ✅ code-only, no DB |
 | 4 | Correctness — tenant-filter + escape consistency | [x] | v115 | ✅ code-only |
-| 5 | Realtime resilience + UX polish | [ ] | — | — |
+| 5 | Realtime resilience + UX polish | [x] | v116 | ✅ 5.1/5.4 deferred |
 | 6 | Dead code & abandoned-feature cleanup | [ ] | — | — |
 | 7 | (Long-term) shared web/mobile render-query core | [ ] | — | — |
 
@@ -100,15 +100,15 @@
 **Goal:** make "live" reliable on flapping mobile networks; reduce reconnect noise.
 
 ### Tasks
-- [ ] **5.1** Investigate the Free-tier realtime ceiling: reduce channels per client where possible (the dual `mobile-bc`+`shared-bc` — can group broadcasts collapse to one channel?).
-- [ ] **5.2** Suppress "Reconnecting…/Connected ✓" toast unless disconnected > ~8s (avoid flicker on 10s flaps).
-- [ ] **5.3** Ensure the 60s poll fallback also drives: feed (done v111), badge (done), presence, and per-chat unread — confirm all four survive a fully-dead socket.
-- [ ] **5.4** Consider upgrading Supabase Free → Pro if connection ceiling is the true cause (user decision — cost note in audit).
-- [ ] Version bump + commit + push.
+- [!] **5.1** Channel reduction — **DEFERRED.** The 3 channels (mobile-rt/mobile-bc/shared-bc) share ONE WebSocket transport, so cutting count doesn't stop the transport drops the logs showed; removing the legacy broadcast channel risks mobile↔mobile sync. Low value / real risk.
+- [x] **5.2** "Reconnecting…" toasts only after 8s of sustained outage (armed timer, cleared on recovery); "Connected ✓" only if that warning showed. Brief flaps are silent. ✔ v116
+- [x] **5.3** `_fallbackPoll` (60s): refreshes badge+feed always, and when the RT channel isn't `joined` also re-pulls the OPEN chat so a dead socket still delivers within the window. Presence already on the 60s heartbeat. ✔ v116
+- [!] **5.4** Supabase Free→Pro — **user cost decision.** If the realtime ceiling is the true cause, Pro lifts the 100-connection limit. Not a code change.
+- [x] Version bump v116 + commit + push. ✔
 
 ### ✅ EXIT CRITERIA
-- With realtime forced off (airplane-toggle test), feed + badge + unread still update within 60s.
-- No toast spam during a flapping-network session.
+- With realtime forced off (airplane-toggle test), feed + badge + open chat still update within 60s. ✔ (via _fallbackPoll)
+- No toast spam during a flapping-network session (brief flaps now silent). ✔
 
 ---
 

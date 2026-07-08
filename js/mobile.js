@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v103';
+const _MOB_VER = 'v104';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -705,7 +705,9 @@ function _buildShell() {
 
     // Broadcast typing indicator on input in any chat composer
     app.addEventListener('input', e => {
-        if (!e.target.closest('.m-ce')) return;
+        const ce = e.target.closest('.m-ce');
+        if (!ce) return;
+        _detectMention(ce);   // @mention picker
         const top = _stack[_stack.length-1];
         const room = top?.params?.room;
         if (!room || !_bcChannel) return;
@@ -1095,6 +1097,7 @@ async function _activity() {
         if (t==='reminder') return { cat:'reminders', cls:'green',  badge:'⏰ Reminder', emoji:'⏰', act:(n.message_id?{k:'msg',id:n.message_id}:null) };
         if (t==='reply')    return { cat:'chats',     cls:'blue',   badge:'↩ Reply',    emoji:'↩',  act:(n.message_id?{k:'msg',id:n.message_id}:null) };
         if (t==='reaction') return { cat:'chats',     cls:'blue',   badge:'❤️ Reaction', emoji:'❤️', act:(n.message_id?{k:'msg',id:n.message_id}:null) };
+        if (t==='mention')  return { cat:'chats',     cls:'purple', badge:'📣 Mention',  emoji:'📣', act:(n.message_id?{k:'msg',id:n.message_id}:null) };
         return { cat:'chats', cls:'blue', badge:'💬 Message', emoji:'💬', act:(n.message_id?{k:'msg',id:n.message_id}:null) };
     };
 
@@ -1491,6 +1494,74 @@ function _ceHTML(id) {
     return (html==='' || html==='<br>') ? '' : html;
 }
 function _ceClear(id) { const el = _el(id); if (el) el.innerHTML=''; }
+
+// ── @mentions ───────────────────────────────────────────────────────────────
+// Detect an "@query" being typed at the caret, show a member picker, and insert
+// a mention chip (<span class="mention" data-uid="…">@Name</span>) on select.
+// The server (send-push) parses data-uid to fire high-priority "mentioned you"
+// notifications; bubbles render the chip highlighted.
+let _mentionCE = null;
+function _mentionCandidates(room) {
+    let ids = [];
+    try { ids = JSON.parse(_lsGet('dept_members_'+room) || '[]'); } catch (e) {}
+    if (room?.startsWith('dm_')) ids = room.replace('dm_','').split('_');
+    let list = _users.filter(u => (ids.length ? ids.includes(u.id) : true) && u.id !== _uid);
+    if (!list.length) list = _users.filter(u => u.id !== _uid);
+    return list;
+}
+function _detectMention(ce) {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return _closeMentionPicker();
+    const node = sel.anchorNode;
+    if (!node || node.nodeType !== 3) return _closeMentionPicker();   // must be in a text node
+    const textBefore = node.textContent.slice(0, sel.anchorOffset);
+    const mmatch = textBefore.match(/(^|\s)@([\p{L}\p{N}_]{0,20})$/u);
+    if (!mmatch) return _closeMentionPicker();
+    const query = mmatch[2].toLowerCase();
+    const top = _stack[_stack.length-1];
+    const cand = _mentionCandidates(top?.params?.room)
+        .filter(u => (u.full_name || u.email || '').toLowerCase().includes(query))
+        .slice(0, 6);
+    if (!cand.length) return _closeMentionPicker();
+    _mentionCE = ce;
+    _showMentionPicker(cand, node, sel.anchorOffset, mmatch[2].length);
+}
+function _showMentionPicker(cand, node, offset, qlen) {
+    let box = _el('mMentionBox');
+    if (!box) { box = document.createElement('div'); box.id = 'mMentionBox'; document.getElementById('mobileApp')?.appendChild(box); }
+    box.innerHTML = cand.map(u => {
+        const nm = _uname(u.id);
+        return `<div class="m-mention-item" data-uid="${u.id}" data-name="${x(nm)}">
+            ${_avatarHTML(u.avatar_url, nm, 'var(--accent)', 'm-av-tiny')}<span>${x(nm)}</span></div>`;
+    }).join('');
+    box.querySelectorAll('.m-mention-item').forEach(it => {
+        it.onclick = () => _insertMention(it.dataset.uid, it.dataset.name, node, offset, qlen);
+    });
+    box.classList.add('show');
+}
+function _closeMentionPicker() { _el('mMentionBox')?.classList.remove('show'); _mentionCE = null; }
+function _insertMention(uid, name, node, offset, qlen) {
+    try {
+        // Remove the "@query" text (including the @).
+        const start = offset - qlen - 1;
+        const range = document.createRange();
+        range.setStart(node, Math.max(0, start));
+        range.setEnd(node, offset);
+        range.deleteContents();
+        // Insert the mention chip + a trailing space, place caret after it.
+        const chip = document.createElement('span');
+        chip.className = 'mention'; chip.dataset.uid = uid; chip.contentEditable = 'false';
+        chip.textContent = '@' + name;
+        range.insertNode(chip);
+        const sp = document.createTextNode(' ');
+        chip.after(sp);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        const r2 = document.createRange(); r2.setStartAfter(sp); r2.collapse(true);
+        sel.addRange(r2);
+    } catch (e) {}
+    _closeMentionPicker();
+}
 function _ceInsertText(targetId, value) {
     const el = _el(targetId);
     if (!el) return;
@@ -4264,6 +4335,19 @@ function _injectCSS(){
 #mHeadsUp .m-hu-body{font-size:13px;color:var(--text-secondary,#667781);margin-top:1px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 html[data-theme="dark"] #mHeadsUp{background:#1e1e1e;border-color:#333;}
+
+/* @mention chip (in bubbles + composer) */
+.mention{color:var(--accent,#4f46e5);font-weight:700;background:color-mix(in srgb,var(--accent,#4f46e5) 12%,transparent);
+  border-radius:5px;padding:0 3px;white-space:nowrap;}
+/* @mention picker above the composer */
+#mMentionBox{position:absolute;left:10px;right:10px;bottom:70px;z-index:11400;
+  background:var(--card-bg,#fff);border:1px solid var(--border-color,#e5e7eb);border-radius:14px;
+  box-shadow:0 8px 26px rgba(0,0,0,.18);overflow:hidden;display:none;max-height:220px;overflow-y:auto;}
+#mMentionBox.show{display:block;}
+.m-mention-item{display:flex;align-items:center;gap:10px;padding:9px 13px;cursor:pointer;font-size:14px;
+  font-weight:600;color:var(--text-primary,#111);}
+.m-mention-item:active{background:color-mix(in srgb,var(--accent,#4f46e5) 10%,transparent);}
+html[data-theme="dark"] #mMentionBox{background:#1e1e1e;border-color:#333;}
 
 .m-empty{padding:40px 20px;text-align:center;color:var(--text-secondary,#6b7280);
   font-size:14.5px;line-height:1.7;}

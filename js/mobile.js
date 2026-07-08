@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v121';
+const _MOB_VER = 'v122';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -330,6 +330,7 @@ window.initMobileApp = async function() {
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState !== 'visible') return;
         try { _refreshNotifBadge(); } catch (e) {}
+        try { _reconcileUnread(); } catch (e) {}   // re-sync message unread from DB on foreground
         _ensureRealtimeAlive();
     });
     // Android fires these where visibilitychange is sometimes missed — same healing.
@@ -3049,6 +3050,7 @@ function _initRealtime() {
                     try { _pendingRefresh?.(); } catch (e) {}
                     _refreshPresence();   // missed profile UPDATEs during the gap — re-sync dots
                     _refreshNotifBadge(); // missed notification INSERTs — re-sync bell/activity badge
+                    _reconcileUnread();   // missed messages during the gap — re-sync per-chat unread from DB
                 }
             }
             if ((status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') && !_rtIntentionalClose) _scheduleRtReconnect();
@@ -3141,6 +3143,7 @@ function _initRealtime() {
             if ((status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') && !_rtIntentionalClose) _scheduleRtReconnect();
         });
     _refreshNotifBadge();
+    _reconcileUnread();   // initial DB-derived per-chat unread (survives reload/flap)
     // Realtime badge update already wired via postgres_changes INSERT on notifications — no polling needed
 }
 // Poll everyone's last_seen (lightweight) and re-render presence dots. Realtime
@@ -3190,27 +3193,45 @@ async function _markRoomNotifsRead(room) {
     // so the count actually goes down on chat-open instead of lagging a poll cycle.
     try { await _refreshNotifBadge(); } catch (e) {}
 }
+// BELL = the ACTIVITY stream ONLY (Phase 8, standard model): unread notifications
+// = mentions + reactions-to-you + replies-to-you + task events + reminders. It is
+// NOT the message-unread count (that lives on the chat rows, derived from
+// room_reads by _reconcileUnread). Decoupling the two is what fixes the badge
+// "sometimes works / mostly misbehaves": they no longer fight via a max().
 async function _refreshNotifBadge() {
-    const count = await window.NFA_unreadCount(sb, _uid);   // shared canonical count (Phase 7.4)
-    // Bell = larger of the DB unread count and the live per-chat unread sum.
-    // NOT ratcheted against the previous _bellCount — reading a chat marks its
-    // notifications read in the DB, and the bell must be able to go DOWN with it.
-    _bellCount = Math.max(count || 0, _sumUnread());
+    _bellCount = await window.NFA_unreadCount(sb, _uid);   // pure notification unread
     _renderBellBadge();
-    // Tie the Activity feed to the badge: whenever the badge refreshes — via a
-    // realtime notification INSERT, the 60s poll fallback, OR the reconnect
-    // catch-up (all the paths that keep the badge live even when realtime
-    // flaps) — refresh the feed too if the Activity screen is open. This fixes
-    // "badge shows fine but the feed doesn't update" on mobile/tablet.
-    _liveRefreshActivity();
+    _updateAppBadge();
+    _liveRefreshActivity();   // if the Activity screen is open, refresh it live
 }
-// 60s resilience poll (Phase 5.3). Always refreshes the badge + feed. When the
-// realtime message channel is NOT confirmed healthy (flapping/dead socket — the
-// exact state the logs showed), it ALSO re-pulls the currently-open chat so a
-// new message still lands within the poll window, not only on reconnect. Skipped
-// while backgrounded to save battery/network.
+// Reconcile per-chat MESSAGE unread from the DB (room_reads + messages) — the
+// durable source of truth, so counts are correct after reload, realtime flaps
+// and reconnects (not just from ephemeral realtime increments). Only counts
+// rooms the user actually has (groups they can see + their own DMs).
+async function _reconcileUnread() {
+    if (!_uid || !_tid || !window.NFA_computeRoomUnread) return;
+    try {
+        const rooms = new Set();
+        [...DEPTS, ..._customGroups].forEach(d => rooms.add(d.id));
+        (_users || []).forEach(u => { if (u.id !== _uid) rooms.add(_dmRoom(u.id)); });
+        const { perRoom } = await window.NFA_computeRoomUnread(sb, { uid: _uid, tid: _tid, rooms });
+        // Preserve the open room at 0 (we're reading it right now).
+        const top = _stack[_stack.length - 1];
+        if ((top?.screen === 'groupChat' || top?.screen === 'dm') && top.params?.room) perRoom[top.params.room] = 0;
+        window.unreadCounts = perRoom;
+        _updateAppBadge();
+        // Re-render the home list badges if it's the visible screen (no flash: the
+        // home renderer reads window.unreadCounts).
+        if (top?.screen === 'home') { try { _render('home', top.params, 'forward'); } catch (e) {} }
+    } catch (e) {}
+}
+// 60s resilience poll (Phase 5.3). Refreshes bell + reconciles message unread from
+// the DB. When the realtime message channel is NOT 'joined' (flapping/dead socket)
+// it also re-pulls the open chat so a new message still lands within the poll
+// window. Skipped while backgrounded to save battery/network.
 async function _fallbackPoll() {
     _refreshNotifBadge();
+    _reconcileUnread();
     if (document.visibilityState !== 'visible') return;
     const healthy = _rtChannel && _rtChannel.state === 'joined';
     if (!healthy) { try { _pendingRefresh?.(); } catch (e) {} }
@@ -3232,11 +3253,12 @@ function _renderBellBadge() {
 }
 function _bumpBellBadge() { _bellCount++; _renderBellBadge(); _updateAppBadge(); }
 function _clearBellBadge() { _bellCount = 0; _renderBellBadge(); _updateAppBadge(); }
-// App-icon unread badge (installed PWA) — total across all chats.
+// App-icon unread badge (installed PWA) — grand total of things needing
+// attention = unread messages (per-chat) + unread activity (bell). The two
+// streams are disjoint now (plain messages aren't in notifications), so sum.
 function _updateAppBadge() {
     try {
-        // Sync with the bell/activity badge — the app icon shows the same number.
-        const total = Math.max(_bellCount, Object.values(window.unreadCounts || {}).reduce((a, b) => a + (b || 0), 0));
+        const total = _sumUnread() + _bellCount;
         if (navigator.setAppBadge) {
             if (total > 0) navigator.setAppBadge(total); else navigator.clearAppBadge?.();
         }
@@ -3372,8 +3394,7 @@ async function _onNewMessage(m) {
         // update the instant the realtime event arrives.
         window.unreadCounts = window.unreadCounts || {};
         window.unreadCounts[m.room_id] = (window.unreadCounts[m.room_id] || 0) + 1;
-        _updateAppBadge();
-        _bumpBellBadge();                       // live bell count (mSB), independent of DB
+        _updateAppBadge();                      // per-chat unread bumped; bell is attention-only (no bump here)
         _patchHomeUnread(m.room_id, m);         // live badge + preview on the chat-list row (no full re-render/flash)
 
         if (!m.parent_message_id) {

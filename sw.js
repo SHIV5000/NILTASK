@@ -2,7 +2,7 @@
  * TaskFlow Service Worker — enables PWA install prompt on Android/Chrome
  * Caches core app shell for offline-capable experience
  */
-const CACHE   = 'taskflow-v129';
+const CACHE   = 'taskflow-v130';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -134,13 +134,19 @@ self.addEventListener('push', e => {
     } catch(e) {}
     const body = count > 1 ? (count + ' new messages') : (data.body || 'New message');
     try { if (self.navigator?.setAppBadge) await self.navigator.setAppBadge(); } catch(e) {}
+    // WhatsApp-like prominence within PWA limits: DMs and @mentions are "important"
+    // — keep them on the shade until the user acts (requireInteraction) and give a
+    // stronger vibration, like a personal message. Group chatter auto-dismisses.
+    const important = tag.endsWith(':mention') || data.priority === 'high'
+                   || String(data.room || '').startsWith('dm_');
     await self.registration.showNotification(data.title || 'Noted For Action', {
       body,
       icon:    '/icons/notif.png',
       badge:   '/icons/badge-96.png',
-      vibrate: [200, 100, 200],
+      vibrate: important ? [250, 120, 250, 120, 250] : [200, 100, 200],
       tag,
       renotify: true,
+      requireInteraction: important,   // DM/mention stays until tapped (like WhatsApp)
       data:    { url: data.url || '/', room: data.room, count },
       actions: [{ action: 'reply', type: 'text', title: 'Reply', placeholder: 'Message…' }]
     });

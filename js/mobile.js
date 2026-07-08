@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v125';
+const _MOB_VER = 'v126';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -1117,6 +1117,11 @@ async function _activity() {
     _clearBellBadge();
     window.unreadCounts = {};
     _updateAppBadge();
+    // Durably mark ALL unread notifications read (not just the ≤80 the feed fetches
+    // below), so the 60s _fallbackPoll can't resurrect a "ghost" bell count for
+    // unread rows beyond the fetched page. Non-blocking. Needs the notifications
+    // UPDATE RLS policy (Phase 1). NFA_buildActivity still marks the fetched page.
+    try { sb.from('notifications').update({ is_read:true }).eq('user_id',_uid).eq('is_read',false).then(()=>{}); } catch(e){}
 
     // Shared feed core (Phase 7): the fetch + merge (messages + task_trails +
     // notifications) + dedup + normalize now lives in js/core/feed.js, used by
@@ -3039,7 +3044,7 @@ function _initRealtime() {
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'reactions', filter:`tenant_id=eq.${_tid}` }, p => _onReactionChange(p.new, 'INSERT'))
         .on('postgres_changes', { event:'DELETE', schema:'public', table:'reactions' }, p => _onReactionChange(p.old, 'DELETE'))
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'task_assignees', filter:`tenant_id=eq.${_tid}` }, p => _onTaskAssigneeUpdate(p.new))
-        .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`user_id=eq.${_uid}` }, () => { _refreshNotifBadge(); _liveRefreshActivity(); })
+        .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`user_id=eq.${_uid}` }, p => _onNotifInsert(p.new))
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'profiles', filter:`tenant_id=eq.${_tid}` }, p => _onPresenceUpdate(p.new))
         .subscribe(status => {
             console.log('[mob-rt] channel status='+status); window.logger?.logRt('mobile-rt', status);
@@ -3199,6 +3204,22 @@ async function _markRoomNotifsRead(room) {
     // Recompute the bell/activity/app badge from the DB truth AFTER marking read,
     // so the count actually goes down on chat-open instead of lagging a poll cycle.
     try { await _refreshNotifBadge(); } catch (e) {}
+}
+// In-app alert when a notification row lands (reaction/reply/task/reminder for
+// ME). Always refreshes the badge + feed. Also shows a toast + sound UNLESS:
+//  • type is 'mention' — already alerted by _onNewMessage's heads-up (the mention
+//    also arrives as a message event), so alerting here would double up; or
+//  • Do Not Disturb is on; or sound is off (then no ping).
+// Plain messages/DMs don't create notification rows (v122), so this fires for the
+// attention stream only — the gap where a reaction/task gave NO mobile alert.
+function _onNotifInsert(n) {
+    _refreshNotifBadge();
+    _liveRefreshActivity();
+    if (!n || !n.message) return;
+    if (n.type === 'mention') return;                 // de-dup with _onNewMessage heads-up
+    if (window._isDND?.()) return;                    // Do Not Disturb — silent
+    try { _toast(_snip(n.message, 80)); } catch (e) {}
+    if (!window._isSoundOff?.()) { try { window.playSound?.('message'); } catch (e) {} }
 }
 // BELL = the ACTIVITY stream ONLY (Phase 8, standard model): unread notifications
 // = mentions + reactions-to-you + replies-to-you + task events + reminders. It is
@@ -3447,11 +3468,12 @@ async function _onReactionChange(r, eventType) {
         rowFound: !!(r?.message_id && document.getElementById('row-'+r.message_id)),
     }); } catch (e) {}
     if (!r || !r.message_id) return;
-    if (!document.getElementById('row-'+r.message_id)) return;   // message not on screen
     const isDelete = eventType === 'DELETE';
-    // Persist to the local cache first so the DB-backed renderer definitely has the
-    // incoming reaction even if the DB row hasn't propagated to our read yet.
+    // Persist to the local cache FIRST — before the on-screen check — so a reaction
+    // for a chat that isn't currently open is still cached and shows instantly when
+    // the user opens/scrolls to that message (no wait for a DB round-trip).
     _saveReactionEntry(r.message_id, r.value, r.type, r.user_id, isDelete);
+    if (!document.getElementById('row-'+r.message_id)) return;   // not on screen — cached above, render later
     // Render through the SAME reliable path the sender uses (re-fetch from DB +
     // cache, canonical placement, scroll-into-view). This replaced a fragile
     // DOM-reconstruction that mis-rendered on the receiver (web was instant,

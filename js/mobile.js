@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v117';
+const _MOB_VER = 'v118';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -1113,66 +1113,10 @@ async function _activity() {
     window.unreadCounts = {};
     _updateAppBadge();
 
-    // NOTE: filter by user_id only (matches the web feed). A previous
-    // .eq('tenant_id',_tid) filtered out server-created notification rows whose
-    // tenant_id didn't exactly match, leaving the mobile/tab feed empty while web
-    // worked. Notifications are already per-user, so user_id is sufficient.
-    // Merge THREE sources so the mobile feed mirrors the WEB feed (which "works
-    // well"): recent messages + task_trails + notifications. Relying on
-    // notification rows ALONE left the mobile/tab feed stale whenever the
-    // server-side push function hadn't written a row (or realtime was flapping),
-    // while the badge still advanced via local per-chat unread counting — the
-    // exact "badge shows fine but feed not updating" divergence. Pulling messages
-    // directly (like web) removes that dependency.
-    const [rNotif, rMsg, rTrail] = await Promise.all([
-        sb.from('notifications')
-            .select('id,type,message,message_id,task_id,created_at,is_read')
-            .eq('user_id',_uid)
-            .order('created_at',{ascending:false}).limit(80),
-        sb.from('messages')
-            .select('id,created_at,room_id,sender_id,text,parent_message_id')
-            .eq('tenant_id',_tid).is('deleted_at',null)
-            .order('created_at',{ascending:false}).limit(60),
-        sb.from('task_trails')
-            .select('id,created_at,action,task_id,comment,tasks(title),profiles(full_name,email)')
-            .eq('tenant_id',_tid)
-            .order('created_at',{ascending:false}).limit(30)
-    ]);
-    const notifs = rNotif.data || [];
-    if (rNotif.error) window.logger?.sb?.('notifications.select[feed]', { error:rNotif.error });
-
-    // Persist "read" in the DB so the 60s badge poll (_refreshNotifBadge) doesn't
-    // resurrect the count after the user has already seen the feed.
-    const _unreadIds = notifs.filter(n=>!n.is_read).map(n=>n.id);
-    if (_unreadIds.length) { sb.from('notifications').update({is_read:true}).in('id',_unreadIds).then(()=>{}); }
-
-    // Sender name for message-type notifications — reuse the recent messages we
-    // already fetched, then fill any gaps with a single follow-up query.
-    const senderById = {};
-    (rMsg.data||[]).forEach(m => { senderById[m.id] = m.sender_id; });
-    try {
-        const need = notifs.filter(n=>n.message_id && !(n.message_id in senderById)).map(n=>n.message_id);
-        if (need.length) {
-            const { data: msgs } = await sb.from('messages').select('id,sender_id').in('id', need);
-            (msgs||[]).forEach(m => { senderById[m.id] = m.sender_id; });
-        }
-    } catch(e){}
-    const _senderName = (n) => {
-        const sid = n.message_id ? senderById[n.message_id] : null;
-        return sid ? (_uname(sid) || '') : '';
-    };
-
-    const kind = (n) => {
-        const t = n.type || 'message';
-        if (t==='task')     return { cat:'tasks',     cls:'orange', badge:'📋 Task',     emoji:'📋', act:(n.task_id?{k:'task',id:n.task_id}:null) };
-        if (t==='reminder') return { cat:'reminders', cls:'green',  badge:'⏰ Reminder', emoji:'⏰', act:(n.message_id?{k:'msg',id:n.message_id}:null) };
-        if (t==='reply')    return { cat:'chats',     cls:'blue',   badge:'↩ Reply',    emoji:'↩',  act:(n.message_id?{k:'msg',id:n.message_id}:null) };
-        if (t==='reaction') return { cat:'chats',     cls:'blue',   badge:'❤️ Reaction', emoji:'❤️', act:(n.message_id?{k:'msg',id:n.message_id}:null) };
-        if (t==='mention')  return { cat:'chats',     cls:'purple', badge:'📣 Mention',  emoji:'📣', act:(n.message_id?{k:'msg',id:n.message_id}:null) };
-        return { cat:'chats', cls:'blue', badge:'💬 Message', emoji:'💬', act:(n.message_id?{k:'msg',id:n.message_id}:null) };
-    };
-
-    // Human-readable room label for a raw message (group name or DM peer).
+    // Shared feed core (Phase 7): the fetch + merge (messages + task_trails +
+    // notifications) + dedup + normalize now lives in js/core/feed.js, used by
+    // BOTH shells so this logic can never diverge again (the root of the "works
+    // on web, broken on mobile" feed bugs). Rendering below stays mobile-specific.
     const _roomLabel = (rid) => {
         if (!rid) return '';
         if (rid.startsWith('dm_')) {
@@ -1181,44 +1125,16 @@ async function _activity() {
         }
         return _findGroup(rid)?.name || _lsGet('dept_name_'+rid,'') || rid;
     };
-
-    // ── Normalize all three sources into the notification-shaped card model ──
-    const notifMsgIds = new Set(notifs.map(n=>n.message_id).filter(Boolean));
-    const _all = [];
-    notifs.forEach(n => _all.push({ n, sender:_senderName(n), ...kind(n) }));
-    // Raw messages not already covered by a notification row.
-    (rMsg.data||[]).forEach(m => {
-        if (notifMsgIds.has(m.id)) return;
-        const mine  = m.sender_id === _uid;
-        const label = _roomLabel(m.room_id);
-        const tx    = _snip(m.text,60) || 'Attachment';
-        const kindL = m.parent_message_id ? 'Reply' : 'Message';
-        const title = kindL + (label ? (' in ' + label) : '') + ' — ' + tx;
-        _all.push({
-            n:{ id:'msg:'+m.id, message:title, message_id:m.id, created_at:m.created_at, is_read:true },
-            sender: mine ? '' : _uname(m.sender_id), cat:'chats', cls:'blue',
-            badge: m.parent_message_id ? '↩ Reply' : '💬 Message', emoji:'💬', act:{k:'msg',id:m.id}
-        });
+    const { items: _all, unread } = await window.NFA_buildActivity(sb, {
+        uid: _uid, tid: _tid,
+        resolveName: _uname, resolveRoom: _roomLabel, snippet: _snip,
+        logError: (m, d) => window.logger?.sb?.(m, d),
     });
-    // Task trail activity.
-    (rTrail.data||[]).forEach(tr => {
-        const nm  = tr.profiles ? (tr.profiles.full_name || tr.profiles.email?.split('@')[0] || 'Staff') : 'Staff';
-        const ttl = (tr.tasks && tr.tasks.title) || 'Task';
-        const act = tr.action || 'update';
-        const actLabel = ({created:'assigned',accepted:'completed',submitted:'submitted',update:'updated',delegate:'delegated',transfer:'transferred',review:'reviewed'})[act] || act;
-        _all.push({
-            n:{ id:'trail:'+tr.id, message:'Task '+actLabel+': '+ttl, task_id:tr.task_id, created_at:tr.created_at, is_read:true },
-            sender:nm, cat:'tasks', cls:'orange', badge:'📋 Task', emoji:'📋',
-            act:(tr.task_id?{k:'task',id:tr.task_id}:null)
-        });
-    });
-    _all.sort((a,b) => new Date(b.n.created_at) - new Date(a.n.created_at));
 
     let items = _all.filter(it => filter==='all' || it.cat===filter);
     // Distinct senders present in the (category-filtered) feed, for the sender chips.
     const senders = [...new Set(items.map(it=>it.sender).filter(Boolean))].sort();
     if (senderFilter) items = items.filter(it => it.sender === senderFilter);
-    const unread = notifs.filter(n=>!n.is_read).length;
 
     const today = _istFmtDate.format(new Date());
     const yest  = _istFmtDate.format(new Date(Date.now()-86400000));
@@ -1253,7 +1169,7 @@ async function _activity() {
       : `<div class="af-empty"><div class="em">🚀</div><div class="t">All caught up!</div>
            <div style="margin-top:6px;">${filter==='all' ? 'Your activity will appear here when teammates chat, assign tasks, or reminders fire.' : 'No activity matches this filter.'}</div></div>`;
 
-    const hasAny = (notifs||[]).length > 0;
+    const hasAny = _all.length > 0;
     return `<div class="mScr-inner">
       <div class="m-hdr m-hdr-plain" style="display:flex;align-items:center;justify-content:space-between;">
         <div class="m-htitle">🔔 Activity ${unread?`<span style="background:#2563eb;color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:30px;margin-left:6px;vertical-align:middle;">${unread} new</span>`:''}</div>

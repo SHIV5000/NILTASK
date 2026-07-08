@@ -235,13 +235,14 @@ window.openTopPanel = async function(type) {
 
 window.dismissNotif = async function(id) {
     document.getElementById('notif-'+id)?.remove();
-    await sb.from('notifications').delete().eq('id',id);
+    // Owner-scoped (defense in depth alongside the notifications DELETE RLS policy).
+    await sb.from('notifications').delete().eq('id',id).eq('user_id', window.currentUser?.id);
     window.refreshNotificationBadge?.();
 };
 
 window.dismissFired = async function(id) {
     document.getElementById('fired-'+id)?.remove();
-    await sb.from('notifications').delete().eq('id',id);
+    await sb.from('notifications').delete().eq('id',id).eq('user_id', window.currentUser?.id);
     window.refreshNotificationBadge?.();
 };
 window.deleteNotification = window.dismissNotif;
@@ -331,7 +332,7 @@ window.deleteReminder = async function(id) {
 
 window.deleteScheduled = async function(id) {
     if (window.guardSchedule?.()) return;
-    await sb.from('scheduled_messages').delete().eq('id',id);
+    await sb.from('scheduled_messages').delete().eq('id',id).eq('sender_id', window.currentUser?.id);
     document.querySelectorAll('.top-panel-dropdown').forEach(m=>m.remove());
     window.showCenterToast('Scheduled message cancelled.','fa-solid fa-info-circle','text-yellow-400');
 };

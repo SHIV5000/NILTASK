@@ -288,7 +288,4 @@ window.initNotifications = async function() {
 };
 
 // ── HELPER ───────────────────────────────────────────────────
-function _stripHtml(html) {
-    return html.replace(/<[^>]*>/g, '').replace(/&amp;/g,'&')
-               .replace(/&lt;/g,'<').replace(/&gt;/g,'>').trim();
-}
+function _stripHtml(html) { return window.stripHtml(String(html||'')); }   // canonical impl in js/utils/text.js

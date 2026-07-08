@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v113';
+const _MOB_VER = 'v114';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -4037,7 +4037,7 @@ async function _changePassword() {
 }
 
 function _el(id) { return document.getElementById(id); }
-function x(s)    { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function x(s)    { return window.escapeHtml(s); }   // canonical impl in js/utils/text.js
 function _init(n){ return (n||'?').split(' ').map(w=>w[0]).join('').toUpperCase().substring(0,2)||'?'; }
 function _avatarHTML(photoUrl, name, bg, cls='m-av') {
     const initials = _init(name);
@@ -4067,7 +4067,7 @@ function _fmtIST(ts, withTime=true) {
 }
 function _uname(id){ const u=_users.find(u=>u.id===id) || (window.globalUsersCache||[]).find(u=>u.id===id); return u ? (u.full_name||u.email?.split('@')[0]||'User') : 'User'; }
 function _dmRoom(uid){ return ['dm',...[_uid,uid].sort()].join('_'); }
-function _snip(h,n){ const t=(h||'').replace(/<[^>]*>/g,'').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&quot;/g,'"').trim(); return t.length>n?t.substring(0,n)+'…':t; }
+function _snip(h,n){ return window.snippet(h,n); }   // canonical impl in js/utils/text.js
 const _istFmt12 = new Intl.DateTimeFormat('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'});
 const _istFmtDate = new Intl.DateTimeFormat('en-IN',{day:'2-digit',month:'short',timeZone:'Asia/Kolkata'});
 function _ago(ts){

@@ -12,9 +12,9 @@
 
 | Phase | Title | Status | Version | Verified |
 |-------|-------|--------|---------|----------|
-| 1 | Security lockdown (RLS + dead pages) | [x] | v112 | code done; SQL user-run |
-| 2 | Speed — avatar payload + Tailwind build + indexes | [~] | v113 | 2.3 deferred; pending SQL + exit tests |
-| 3 | De-duplication — one escape/strip/util core | [ ] | — | — |
+| 1 | Security lockdown (RLS + dead pages) | [x] | v112 | ✅ SQL run & verified |
+| 2 | Speed — avatar payload + Tailwind build + indexes | [x] | v113 | ✅ SQL run (2.3 deferred) |
+| 3 | De-duplication — one escape/strip/util core | [~] | — | — |
 | 4 | Correctness — tenant-filter + escape consistency | [ ] | — | — |
 | 5 | Realtime resilience + UX polish | [ ] | — | — |
 | 6 | Dead code & abandoned-feature cleanup | [ ] | — | — |

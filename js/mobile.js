@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v115';
+const _MOB_VER = 'v116';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -303,7 +303,7 @@ window.initMobileApp = async function() {
         });
     } catch (e) {}
     if (_notifFallbackInterval) clearInterval(_notifFallbackInterval);
-    _notifFallbackInterval = setInterval(_refreshNotifBadge, 60000);
+    _notifFallbackInterval = setInterval(_fallbackPoll, 60000);
     _showOfflineBanner(_isOffline);
     // Auto-refresh displayed timestamps every 60s + update last_seen heartbeat
     if (_tsInterval) clearInterval(_tsInterval);
@@ -824,6 +824,8 @@ window._confirmLogout = async function() {
     if (_tsInterval) clearInterval(_tsInterval);
     if (_notifFallbackInterval) { clearInterval(_notifFallbackInterval); _notifFallbackInterval = null; }
     if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
+    if (_rtOutageTimer) { clearTimeout(_rtOutageTimer); _rtOutageTimer = null; }
+    _rtToastShown = false;
     // Clear all tenant-scoped localStorage data
     if (_tid) {
         const prefix = _tid+'_';
@@ -3127,13 +3129,25 @@ function _onSelectionChange() {
 // successful SUBSCRIBED (see _rtChannel callback).
 let _rtBackoff = 4000;
 const _RT_BACKOFF_MAX = 60000;
+// UX (Phase 5.2): don't toast on brief flaps. Arm a timer on the first drop and
+// only show "Reconnecting…" if the outage lasts >8s. "Connected ✓" then shows
+// only if that warning was actually displayed — so a flapping signal that
+// recovers within 8s stays completely silent (no toast flicker).
+let _rtOutageTimer = null;
+let _rtToastShown = false;
 function _scheduleRtReconnect() {
     if (_rtReconnectTimer) return;
     _rtWasErrored = true;
     const jitter = _rtBackoff * (0.7 + Math.random() * 0.6);   // ±30%
     const delay = Math.round(jitter);
-    // Only announce the first drop, not every retry — avoids toast spam on weak signal.
-    if (_rtBackoff === 4000) _toast('Reconnecting…', 'info');
+    // Arm the "sustained outage" toast once per outage (first drop = base backoff).
+    if (_rtBackoff === 4000 && !_rtOutageTimer && !_rtToastShown) {
+        _rtOutageTimer = setTimeout(() => {
+            _rtOutageTimer = null;
+            const healthy = _rtChannel && _rtChannel.state === 'joined';
+            if (!healthy) { _rtToastShown = true; _toast('Reconnecting…', 'info'); }
+        }, 8000);
+    }
     console.log('[mob-rt] scheduling reconnect in ' + delay + 'ms (backoff ' + _rtBackoff + ')');
     _rtBackoff = Math.min(_rtBackoff * 2, _RT_BACKOFF_MAX);     // grow for next time
     _rtReconnectTimer = setTimeout(async () => {
@@ -3166,9 +3180,11 @@ function _initRealtime() {
             console.log('[mob-rt] channel status='+status); window.logger?.logRt('mobile-rt', status);
             if (status === 'SUBSCRIBED') {
                 if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
+                if (_rtOutageTimer) { clearTimeout(_rtOutageTimer); _rtOutageTimer = null; }  // recovered before the 8s warning fired
                 _rtBackoff = 4000;   // healthy again — reset backoff to base
                 if (_rtWasErrored) {
-                    _rtWasErrored = false; _toast('Connected ✓');
+                    _rtWasErrored = false;
+                    if (_rtToastShown) { _rtToastShown = false; _toast('Connected ✓'); }  // only if we warned
                     // CATCH-UP: broadcasts (reactions/replies) sent while we were
                     // disconnected are NOT replayed, so re-sync the open chat from the
                     // DB. This is the automatic version of the manual refresh users had
@@ -3326,6 +3342,17 @@ async function _refreshNotifBadge() {
     // flaps) — refresh the feed too if the Activity screen is open. This fixes
     // "badge shows fine but the feed doesn't update" on mobile/tablet.
     _liveRefreshActivity();
+}
+// 60s resilience poll (Phase 5.3). Always refreshes the badge + feed. When the
+// realtime message channel is NOT confirmed healthy (flapping/dead socket — the
+// exact state the logs showed), it ALSO re-pulls the currently-open chat so a
+// new message still lands within the poll window, not only on reconnect. Skipped
+// while backgrounded to save battery/network.
+async function _fallbackPoll() {
+    _refreshNotifBadge();
+    if (document.visibilityState !== 'visible') return;
+    const healthy = _rtChannel && _rtChannel.state === 'joined';
+    if (!healthy) { try { _pendingRefresh?.(); } catch (e) {} }
 }
 // Render the bell badge from the in-memory count (instant, no DB dependency).
 function _renderBellBadge() {

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v108';
+const _MOB_VER = 'v109';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -1066,10 +1066,15 @@ async function _activity() {
     window.unreadCounts = {};
     _updateAppBadge();
 
-    const { data: notifs } = await sb.from('notifications')
+    // NOTE: filter by user_id only (matches the web feed). A previous
+    // .eq('tenant_id',_tid) filtered out server-created notification rows whose
+    // tenant_id didn't exactly match, leaving the mobile/tab feed empty while web
+    // worked. Notifications are already per-user, so user_id is sufficient.
+    const { data: notifs, error: _notifErr } = await sb.from('notifications')
         .select('id,type,message,message_id,task_id,created_at,is_read')
-        .eq('user_id',_uid).eq('tenant_id',_tid)
+        .eq('user_id',_uid)
         .order('created_at',{ascending:false}).limit(80);
+    if (_notifErr) window.logger?.sb?.('notifications.select[feed]', { error:_notifErr });
 
     // Persist "read" in the DB so the 60s badge poll (_refreshNotifBadge) doesn't
     // resurrect the count after the user has already seen the feed.
@@ -3201,7 +3206,7 @@ async function _markRoomNotifsRead(room) {
     } catch (e) {}
 }
 async function _refreshNotifBadge() {
-    const { count } = await sb.from('notifications').select('*',{count:'exact',head:true}).eq('user_id',_uid).eq('tenant_id',_tid).eq('is_read',false);
+    const { count } = await sb.from('notifications').select('*',{count:'exact',head:true}).eq('user_id',_uid).eq('is_read',false);
     // Bell = larger of the DB unread count and the live per-chat unread sum.
     // NOT ratcheted against the previous _bellCount — reading a chat marks its
     // notifications read in the DB, and the bell must be able to go DOWN with it.

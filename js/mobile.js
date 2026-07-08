@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v105';
+const _MOB_VER = 'v107';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -3308,6 +3308,17 @@ async function _onNewMessage(m) {
         const parts = m.room_id.replace('dm_','').split('_');
         if (!parts.includes(_uid)) return;
     }
+    // @mention: if this incoming message mentions ME, always alert distinctly —
+    // even if I'm currently viewing that chat — independent of the server. The
+    // heads-up + a mention notification row are created here so it works live and
+    // without relying on the edge function.
+    const mentionsMe = !!(m.text && m.text.includes('data-uid="' + _uid + '"'));
+    if (mentionsMe && !(window._isDND?.())) {
+        const sndr = _users.find(u => u.id === m.sender_id);
+        const snm = sndr ? (sndr.full_name || sndr.email?.split('@')[0]) : 'Someone';
+        _showHeadsUp(m, snm, m.room_id?.startsWith('dm_'), _findGroup(m.room_id), true);
+    }
+
     const top = _stack[_stack.length-1];
     if (!top) return;
     const inGroup  = top.screen==='groupChat' && m.room_id===top.params?.room && !m.parent_message_id;
@@ -3347,7 +3358,7 @@ async function _onNewMessage(m) {
             const dept = _findGroup(m.room_id);
             const isDM = m.room_id?.startsWith('dm_');
             const roomLabel = dept ? dept.name : (isDM ? 'a direct message' : 'a group');
-            if (!(window._isDND?.())) _showHeadsUp(m, name, isDM, dept);
+            if (!(window._isDND?.()) && !mentionsMe) _showHeadsUp(m, name, isDM, dept);
             // The notifications ROW is now created server-side by the send-push edge
             // function (reliable for online/offline/reconnect) — see plan.md Phase 1.
             // Just refresh the DB-backed badge; the realtime notifications INSERT sub
@@ -3952,21 +3963,24 @@ window._mobToast = _toast;
 // message arrives while the app is OPEN (the OS push only fires when closed).
 // Shows avatar + sender + snippet, taps through to the chat, auto-dismisses.
 let _headsUpTimer = null;
-function _showHeadsUp(m, name, isDM, dept) {
-    // Don't interrupt if the user is already viewing that exact chat.
+function _showHeadsUp(m, name, isDM, dept, isMention) {
+    // A mention alert shows even while viewing the chat; a normal one does not.
     const top = _stack[_stack.length-1];
-    if (top && top.params?.room === m.room_id) return;
+    if (!isMention && top && top.params?.room === m.room_id) return;
     let el = _el('mHeadsUp');
     if (!el) {
         el = document.createElement('div');
         el.id = 'mHeadsUp';
         document.getElementById('mobileApp')?.appendChild(el) || document.body.appendChild(el);
     }
+    el.classList.toggle('mention', !!isMention);
     const sender = _users.find(u => u.id === m.sender_id);
     const avatar = isDM
         ? _avatarHTML(sender?.avatar_url, name, 'var(--accent)', 'm-av-sm')
         : _avatarHTML(_lsGet('dept_photo_'+m.room_id) || dept?.photo, dept?.name || name, dept?.col || 'var(--accent)', 'm-av-sm sq');
-    const line1 = isDM ? x(name) : `${x(name)} · ${x(dept?.name || 'Group')}`;
+    const line1 = isMention
+        ? `📣 ${x(name)} mentioned you${isDM ? '' : ' · ' + x(dept?.name || 'Group')}`
+        : (isDM ? x(name) : `${x(name)} · ${x(dept?.name || 'Group')}`);
     el.innerHTML =
         `<div class="m-hu-ico">${avatar}</div>
          <div class="m-hu-txt"><div class="m-hu-title">${line1}</div>
@@ -4335,6 +4349,9 @@ function _injectCSS(){
 #mHeadsUp .m-hu-body{font-size:13px;color:var(--text-secondary,#667781);margin-top:1px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 html[data-theme="dark"] #mHeadsUp{background:#1e1e1e;border-color:#333;}
+#mHeadsUp.mention{border-color:var(--accent,#4f46e5);border-left:4px solid var(--accent,#4f46e5);
+  background:color-mix(in srgb,var(--accent,#4f46e5) 8%,var(--card-bg,#fff));}
+#mHeadsUp.mention .m-hu-title{color:var(--accent,#4f46e5);}
 
 /* @mention chip (in bubbles + composer) */
 .mention{color:var(--accent,#4f46e5);font-weight:700;background:color-mix(in srgb,var(--accent,#4f46e5) 12%,transparent);

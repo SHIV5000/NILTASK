@@ -310,7 +310,7 @@ window.renderMainApp = async function() {
                         </button>
                     </div>
                     <!-- F: Version -->
-                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.2.5 (v105) &nbsp;&bull;&nbsp; Noted For Action</div>
+                    <div style="font-size:9px;color:var(--text-secondary);text-align:center;margin-top:5px;letter-spacing:.08em;text-transform:uppercase;">v2.2.7 (v107) &nbsp;&bull;&nbsp; Noted For Action</div>
                 </div>
             </div>
 
@@ -758,9 +758,39 @@ window.renderMainApp = async function() {
     const toolbar = document.querySelector('.ql-toolbar');
     document.getElementById('toolbar-container').appendChild(toolbar);
 
+    // ── @mentions (web) ─────────────────────────────────────────────────────
+    // Register an inline Quill blot that serializes to
+    // <span class="mention" data-uid="…">@Name</span> so the send-push function
+    // can parse data-uid (same format the mobile picker produces).
+    try {
+        if (!window._mentionBlotReady && window.Quill) {
+            const Inline = window.Quill.import('blots/inline');
+            class MentionBlot extends Inline {
+                static create(v) {
+                    const n = super.create();
+                    n.setAttribute('data-uid', v.uid);
+                    n.setAttribute('contenteditable', 'false');
+                    n.classList.add('mention');
+                    return n;
+                }
+                static formats(n) { return { uid: n.getAttribute('data-uid') }; }
+            }
+            MentionBlot.blotName = 'mention'; MentionBlot.tagName = 'span'; MentionBlot.className = 'mention';
+            window.Quill.register(MentionBlot, true);
+            window._mentionBlotReady = true;
+        }
+    } catch (e) {}
+
     window.quillEditor.root.addEventListener('keydown', (e) => {
+        // Let the mention picker capture arrow/enter/escape when open.
+        if (window._webMentionOpen && ['ArrowDown','ArrowUp','Enter','Escape','Tab'].includes(e.key)) {
+            e.preventDefault(); window._webMentionKey?.(e.key); return;
+        }
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (typeof window.sendMessage === 'function') window.sendMessage(); }
     });
+
+    // Detect "@query" at the caret and show a member picker.
+    window.quillEditor.on('text-change', () => window._webDetectMention?.());
 
     // Typing indicator — broadcast to mobile users via the reactions broadcast channel (same bcChannel pattern)
     let _webTypingThrottle = 0;
@@ -773,6 +803,73 @@ window.renderMainApp = async function() {
         window._reactionsBroadcast?.send({ type: 'broadcast', event: 'typing', payload: { room: window.currentRoom, uid: window.currentUser.id, name } });
         window._sharedBroadcast?.send({ type: 'broadcast', event: 'typing', payload: { room: window.currentRoom, uid: window.currentUser.id, name, src: 'w' } });
     });
+
+    // ── @mention picker (web) implementation ────────────────────────────────
+    let _wmSel = 0, _wmCands = [], _wmAnchor = 0, _wmQlen = 0;
+    function _wmMembers() {
+        const room = window.currentRoom || '';
+        let ids = [];
+        try { ids = JSON.parse(localStorage.getItem((window.currentTenantId ? window.currentTenantId + '_' : '') + 'dept_members_' + room) || '[]'); } catch (e) {}
+        if (room.startsWith('dm_')) ids = room.replace('dm_', '').split('_');
+        const me = window.currentUser?.id;
+        let list = (window.globalUsersCache || []).filter(u => (ids.length ? ids.includes(u.id) : true) && u.id !== me);
+        if (!list.length) list = (window.globalUsersCache || []).filter(u => u.id !== me);
+        return list;
+    }
+    function _wmBox() {
+        let b = document.getElementById('webMentionBox');
+        if (!b) {
+            b = document.createElement('div'); b.id = 'webMentionBox';
+            b.style.cssText = 'position:absolute;z-index:9999;min-width:200px;max-height:230px;overflow-y:auto;background:var(--card-bg,#fff);border:1px solid var(--border-color,#e5e7eb);border-radius:12px;box-shadow:0 8px 26px rgba(0,0,0,.18);display:none;';
+            document.body.appendChild(b);
+        }
+        return b;
+    }
+    window._webDetectMention = function () {
+        const q = window.quillEditor.getSelection();
+        if (!q) return _wmClose();
+        const before = window.quillEditor.getText(Math.max(0, q.index - 25), Math.min(25, q.index));
+        const mm = before.match(/(^|\s)@([\p{L}\p{N}_]{0,20})$/u);
+        if (!mm) return _wmClose();
+        const query = mm[2].toLowerCase();
+        _wmQlen = mm[2].length; _wmAnchor = q.index - _wmQlen - 1;
+        _wmCands = _wmMembers().filter(u => (u.full_name || u.email || '').toLowerCase().includes(query)).slice(0, 6);
+        if (!_wmCands.length) return _wmClose();
+        _wmSel = 0; _wmRender();
+    };
+    function _wmRender() {
+        const b = _wmBox();
+        b.innerHTML = _wmCands.map((u, i) => {
+            const nm = window.toSentenceCase?.(u.full_name || u.email?.split('@')[0] || 'User') || 'User';
+            return '<div data-i="' + i + '" style="display:flex;align-items:center;gap:9px;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:600;color:var(--text-primary,#111);' + (i === _wmSel ? 'background:color-mix(in srgb,var(--accent,#4f46e5) 12%,transparent);' : '') + '">' +
+                '<span style="width:26px;height:26px;border-radius:50%;background:var(--accent,#4f46e5);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">' + (nm[0] || '?').toUpperCase() + '</span>' + window.escapeHtml(nm) + '</div>';
+        }).join('');
+        b.querySelectorAll('[data-i]').forEach(el => el.onclick = () => _wmPick(+el.dataset.i));
+        // Position above the editor.
+        const ed = document.getElementById('richEditor');
+        if (ed) { const r = ed.getBoundingClientRect(); b.style.left = r.left + 'px'; b.style.top = (window.scrollY + r.top - b.offsetHeight - 6) + 'px'; }
+        b.style.display = 'block';
+        // reposition now that height is known
+        if (ed) { const r = ed.getBoundingClientRect(); b.style.top = (window.scrollY + r.top - b.offsetHeight - 6) + 'px'; }
+        window._webMentionOpen = true;
+    }
+    function _wmClose() { const b = document.getElementById('webMentionBox'); if (b) b.style.display = 'none'; window._webMentionOpen = false; }
+    function _wmPick(i) {
+        const u = _wmCands[i]; if (!u) return _wmClose();
+        const nm = window.toSentenceCase?.(u.full_name || u.email?.split('@')[0] || 'User') || 'User';
+        const Q = window.quillEditor;
+        Q.deleteText(_wmAnchor, _wmQlen + 1, 'user');            // remove "@query"
+        Q.insertText(_wmAnchor, '@' + nm, { mention: { uid: u.id } }, 'user');
+        Q.insertText(_wmAnchor + nm.length + 1, ' ', 'user');    // trailing space (unformatted)
+        Q.setSelection(_wmAnchor + nm.length + 2, 0, 'user');
+        _wmClose();
+    }
+    window._webMentionKey = function (key) {
+        if (key === 'Escape') return _wmClose();
+        if (key === 'ArrowDown') { _wmSel = (_wmSel + 1) % _wmCands.length; return _wmRender(); }
+        if (key === 'ArrowUp') { _wmSel = (_wmSel - 1 + _wmCands.length) % _wmCands.length; return _wmRender(); }
+        if (key === 'Enter' || key === 'Tab') return _wmPick(_wmSel);
+    };
 
     // Offline indicator
     window.addEventListener('offline', () => {
@@ -1242,6 +1339,14 @@ window.startSubscriptions = async function() {
             logger.logRealtime('msg:INSERT', { id: p.new?.id, room: p.new?.room_id });
             const incomingRoom = p.new.room_id;
             const isMine = p.new.sender_id === window.currentUser?.id;
+
+            // @mention: alert the current user distinctly if this message mentions them.
+            if (!isMine && p.new.text && p.new.text.includes('data-uid="' + window.currentUser?.id + '"')) {
+                const sndr = window.globalUsersCache?.find(u => u.id === p.new.sender_id);
+                const snm = window.toSentenceCase?.(sndr?.full_name || sndr?.email?.split('@')[0] || 'Someone') || 'Someone';
+                try { window.playSound?.('message'); } catch (e) {}
+                window.showCenterToast(`📣 ${window.escapeHtml(snm)} mentioned you`, 'fa-solid fa-at', 'text-indigo-400');
+            }
 
             if (incomingRoom === window.currentRoom) {
                 // Skip full reload for own messages — optimistic row already in DOM

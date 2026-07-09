@@ -82,6 +82,9 @@ function _urlB64ToUint8(base64) {
 // edge function can reach it. Safe to call repeatedly (idempotent upsert).
 window.subscribeToPush = async function(opts = {}) {
     try {
+        // Native app (Capacitor): OS push via FCM/APNs is handled by js/native.js,
+        // so skip Web-Push to avoid double registration/notifications.
+        if (window.IS_NATIVE) return false;
         if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
         if (!window.currentUser?.id) return false;
         if (Notification.permission === 'denied') return false;

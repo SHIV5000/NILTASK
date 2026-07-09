@@ -3,10 +3,13 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 export const SUPABASE_URL = 'https://apfymygzwkzjhhgmtkaj.supabase.co';
 export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwZnlteWd6d2t6amhoZ210a2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5MjM5MTIsImV4cCI6MjA5NjQ5OTkxMn0.RiV6kDDeSq5ZIP68RGwtpLtqPALFloq23owoNm2aA-c';
 export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Expose on window so the Capacitor native bridge (js/native.js, a classic
+// script) can reach the same client to save its FCM/APNs push token.
+window.sb = sb;
 
 // Single source of truth for the running build — stamped onto every warn/error
 // log row so the Live Log Monitor can tell which version a remote device runs.
-window.APP_VER = 'v130';
+window.APP_VER = 'v131';
 
 // Retire the green 'ocean-teal' theme entirely — it tinted the whole UI (and the
 // safe-area gutter) green. Reset anyone still on it BEFORE ui-core reads the value.

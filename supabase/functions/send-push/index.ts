@@ -26,6 +26,75 @@ webpush.setVapidDetails(
 
 const HOOK_SECRET = Deno.env.get('PUSH_HOOK_SECRET') || '';
 
+// ── FCM (native Android/iOS push) ─────────────────────────────────────────────
+// Uses a Firebase service-account JSON stored in the FCM_SERVICE_ACCOUNT secret.
+// If the secret is absent, getFcmAccessToken() returns null → the FCM path is a
+// no-op (Web Push still works). Signs a Google OAuth JWT (RS256) via Web Crypto,
+// exchanges it for an access token, then POSTs to the FCM HTTP v1 API.
+let _svc: { client_email: string; private_key: string; project_id: string; token_uri?: string } | null = null;
+try { const raw = Deno.env.get('FCM_SERVICE_ACCOUNT'); if (raw) _svc = JSON.parse(raw); } catch (_e) { _svc = null; }
+const FCM_PROJECT_ID = _svc?.project_id || '';
+let _fcmToken: { value: string; exp: number } | null = null;
+
+function _b64url(buf: ArrayBuffer | Uint8Array): string {
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  let s = ''; for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+async function _importPrivateKey(pem: string): Promise<CryptoKey> {
+  const body = pem.replace(/-----BEGIN PRIVATE KEY-----/, '').replace(/-----END PRIVATE KEY-----/, '').replace(/\s+/g, '');
+  const der = Uint8Array.from(atob(body), (c) => c.charCodeAt(0));
+  return await crypto.subtle.importKey('pkcs8', der.buffer, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
+}
+async function getFcmAccessToken(): Promise<string | null> {
+  if (!_svc) return null;
+  const now = Math.floor(Date.now() / 1000);
+  if (_fcmToken && _fcmToken.exp > now + 60) return _fcmToken.value;
+  const tokenUri = _svc.token_uri || 'https://oauth2.googleapis.com/token';
+  const header = _b64url(new TextEncoder().encode(JSON.stringify({ alg: 'RS256', typ: 'JWT' })));
+  const claim = _b64url(new TextEncoder().encode(JSON.stringify({
+    iss: _svc.client_email, scope: 'https://www.googleapis.com/auth/firebase.messaging',
+    aud: tokenUri, iat: now, exp: now + 3600,
+  })));
+  const key = await _importPrivateKey(_svc.private_key);
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(header + '.' + claim));
+  const jwt = header + '.' + claim + '.' + _b64url(sig);
+  const res = await fetch(tokenUri, {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=' + jwt,
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!j.access_token) { console.log('fcm token error', JSON.stringify(j)); return null; }
+  _fcmToken = { value: j.access_token, exp: now + (j.expires_in || 3600) };
+  return _fcmToken.value;
+}
+// Returns true (delivered), 'gone' (invalid token → delete), or false (other error).
+async function sendFcm(accessToken: string, projectId: string, token: string,
+  p: { title: string; body: string; room: string; url: string; priority: string }): Promise<boolean | 'gone'> {
+  try {
+    const res = await fetch('https://fcm.googleapis.com/v1/projects/' + projectId + '/messages:send', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: {
+          token,
+          notification: { title: p.title, body: (p.body || '').slice(0, 240) },
+          data: { room: p.room || '', url: p.url || '/' },
+          android: { priority: p.priority === 'high' ? 'high' : 'normal',
+            notification: { channel_id: 'default', default_sound: true } },
+          apns: { headers: { 'apns-priority': p.priority === 'high' ? '10' : '5' },
+            payload: { aps: { sound: 'default' } } },
+        },
+      }),
+    });
+    if (res.ok) return true;
+    const errText = await res.text();
+    if (res.status === 404 || /UNREGISTERED|INVALID_ARGUMENT/i.test(errText)) return 'gone';
+    console.log('fcm send failed', res.status, errText.slice(0, 200));
+    return false;
+  } catch (e) { console.log('fcm send exception', (e as any)?.message); return false; }
+}
+
 Deno.serve(async (req) => {
   try {
     // Optional shared-secret gate (set the same value in the webhook header).
@@ -166,7 +235,38 @@ Deno.serve(async (req) => {
         }
       }
     }));
-    console.log('send-push done', JSON.stringify({ sent, failed, skipped }));
+    // ── NATIVE push via FCM (Android/iOS Capacitor app) ─────────────────────
+    // Delivers to the native apps' device tokens (push_tokens), alongside the
+    // Web-Push above. Only runs if the FCM_SERVICE_ACCOUNT secret is set, so it's
+    // a no-op until you configure Firebase. Same read-receipt skip as web push.
+    let fcmSent = 0, fcmFailed = 0;
+    try {
+      const accessToken = await getFcmAccessToken();
+      if (accessToken) {
+        const { data: tokens } = await supabase
+          .from('push_tokens').select('token,user_id')
+          .in('user_id', recipientIds);
+        console.log('send-push fcm-tokens', (tokens || []).length);
+        await Promise.all((tokens || []).map(async (t: { token: string; user_id: string }) => {
+          if (!mentionedIds.has(t.user_id) && readUpTo[t.user_id] && readUpTo[t.user_id] >= msgTs) return;
+          const isMention = mentionedIds.has(t.user_id);
+          const ok = await sendFcm(accessToken, FCM_PROJECT_ID, t.token, {
+            title: isMention ? `📣 ${senderName} mentioned you${isDMroom ? '' : ' · ' + groupName}` : title,
+            body: text,
+            room,
+            url: '/?room=' + encodeURIComponent(room),
+            priority: isMention || isDMroom ? 'high' : 'normal',
+          });
+          if (ok === true) fcmSent++;
+          else {
+            fcmFailed++;
+            if (ok === 'gone') await supabase.from('push_tokens').delete().eq('token', t.token);
+          }
+        }));
+      }
+    } catch (e) { console.log('send-push fcm error', (e as any)?.message); }
+
+    console.log('send-push done', JSON.stringify({ sent, failed, skipped, fcmSent, fcmFailed }));
 
     return new Response('ok', { status: 200 });
   } catch (e) {

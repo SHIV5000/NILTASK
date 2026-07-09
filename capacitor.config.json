@@ -1,0 +1,14 @@
+{
+  "appId": "in.niltask.app",
+  "appName": "Noted For Action",
+  "webDir": "www",
+  "server": {
+    "url": "https://niltask.vercel.app",
+    "androidScheme": "https",
+    "cleartext": false
+  },
+  "plugins": {
+    "PushNotifications": { "presentationOptions": ["badge", "sound", "alert"] },
+    "SplashScreen": { "launchAutoHide": true, "backgroundColor": "#312e81", "showSpinner": false }
+  }
+}

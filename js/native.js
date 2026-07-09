@@ -56,6 +56,18 @@
   var _lastToken = null;
   function registerPush() {
     if (!P.PushNotifications) return;
+    // WhatsApp-style heads-up: Android 8+ only shows a slide-down banner (and full
+    // content on the lock screen) if the notification channel is IMPORTANCE_HIGH.
+    // The FCM payload targets channel_id 'default', so create it high + public here.
+    try {
+      P.PushNotifications.createChannel && P.PushNotifications.createChannel({
+        id: 'default', name: 'Messages',
+        description: 'Chat messages and mentions',
+        importance: 5,     // HIGH → heads-up banner slides down from the top
+        visibility: 1,     // PUBLIC → shows message content on the lock screen
+        sound: 'default', vibration: true, lights: true,
+      });
+    } catch (e) {}
     P.PushNotifications.addListener('registration', function (t) {
       _lastToken = (t && t.value) || null;
       saveToken(_lastToken);

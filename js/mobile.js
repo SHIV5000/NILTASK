@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v132';
+const _MOB_VER = 'v134';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -866,6 +866,7 @@ window._navTo = async function(screen, params, replace = false) {
         window.unreadCounts = window.unreadCounts || {};
         window.unreadCounts[params.room] = 0;
         _updateAppBadge();
+        _renderBellBadge();   // instant: drop this room's messages from the bell/Activity count now
         // Do NOT clobber _bellCount with _sumUnread() here: _sumUnread counts only
         // MESSAGE unread, so it would wrongly wipe the count coming from reaction/
         // reply/mention notifications (which have no per-chat unread), then the 60s
@@ -3263,6 +3264,7 @@ async function _reconcileUnread() {
         if ((top?.screen === 'groupChat' || top?.screen === 'dm') && top.params?.room) perRoom[top.params.room] = 0;
         window.unreadCounts = perRoom;
         _updateAppBadge();
+        _renderBellBadge();   // bell/Activity reflect the reconciled per-room totals (no double, DMs included)
         // SURGICAL badge update (no screen re-render / no slide): patch each visible
         // chat row's unread badge in place, so group/DM badges appear silently in the
         // background — like a real app — instead of sliding the whole home screen in
@@ -3299,18 +3301,25 @@ function _scheduleFallback() {
         _scheduleFallback();   // re-evaluate cadence each tick
     }, ms);
 }
-// Render the bell badge from the in-memory count (instant, no DB dependency).
+// Render the bell + Activity-tab badge. Per the chosen model, the bell reflects
+// EVERY unread item: attention notifications (_bellCount = mentions/reactions/
+// replies/tasks) PLUS all unread chat messages (per-room, from room_reads via
+// _reconcileUnread). room_reads counts each message exactly once, so a single
+// message can never show as 2, and DMs (which live in unreadCounts too) badge the
+// bell like groups do.
+function _bellTotal() { return _bellCount + _sumUnread(); }
 function _renderBellBadge() {
+    const total = _bellTotal();
     const badge = _el('mNotifBadge');
     if (badge) {
-        if (_bellCount > 0) { badge.textContent = _bellCount > 9 ? '9+' : String(_bellCount); badge.style.display = 'flex'; }
+        if (total > 0) { badge.textContent = total > 9 ? '9+' : String(total); badge.style.display = 'flex'; }
         else badge.style.display = 'none';
     }
     // Mirror onto the Activity bottom-nav tab (hidden while the feed is open).
     const nb = _el('mnActBadge');
     if (nb) {
         const onActivity = _stack[_stack.length-1]?.screen === 'activity';
-        if (_bellCount > 0 && !onActivity) { nb.textContent = _bellCount > 9 ? '9+' : String(_bellCount); nb.style.display = 'flex'; }
+        if (total > 0 && !onActivity) { nb.textContent = total > 9 ? '9+' : String(total); nb.style.display = 'flex'; }
         else nb.style.display = 'none';
     }
 }
@@ -3457,8 +3466,9 @@ async function _onNewMessage(m) {
         // update the instant the realtime event arrives.
         window.unreadCounts = window.unreadCounts || {};
         window.unreadCounts[m.room_id] = (window.unreadCounts[m.room_id] || 0) + 1;
-        _updateAppBadge();                      // per-chat unread bumped; bell is attention-only (no bump here)
+        _updateAppBadge();                      // per-chat unread bumped
         _patchHomeUnread(m.room_id, m);         // live badge + preview on the chat-list row (no full re-render/flash)
+        _renderBellBadge();                     // every message also lifts the bell + Activity-tab count (chosen model)
 
         if (!m.parent_message_id) {
             const sender = _users.find(u=>u.id===m.sender_id);

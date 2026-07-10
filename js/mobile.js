@@ -3387,6 +3387,7 @@ async function _recomputeBadges() {
 
     try {
         const rooms = new Set();
+        // Force the inclusion of all Groups and DMs
         [...DEPTS, ..._customGroups].forEach(d => rooms.add(d.id));
         (_users || []).forEach(u => { if (u.id !== _uid) rooms.add(_dmRoom(u.id)); });
 
@@ -3420,8 +3421,7 @@ async function _recomputeBadges() {
         window.unreadCounts = perRoom;
         const msgUnread = Object.values(perRoom).reduce((a, b) => a + (b || 0), 0);
 
-
-// Maintain last known state during offline drops instead of resetting to 0
+        // Maintain last known attention state during offline drops instead of resetting to 0
         window._lastKnownAttention = window._lastKnownAttention || 0;
         let attention = window._lastKnownAttention; 
         
@@ -3444,9 +3444,25 @@ async function _recomputeBadges() {
             console.warn('[mob-badge] Network fetch failed, retaining last known attention:', attention);
         }
 
+        // RACE CONDITION GUARD #2: Check again after the second DB query
+        if (_badgeCalcGen !== myGen) return;
 
+        _bellCount = msgUnread + attention;
+        console.log('[mob-badge] recompute: msgUnread=', msgUnread, 'attention=', attention, 'bellCount=', _bellCount);
 
-
+        // Apply UI updates using requestAnimationFrame to batch DOM patches and avoid UI stutter
+        requestAnimationFrame(() => {
+            _renderBellBadge();
+            _updateAppBadge();
+            if (top?.screen === 'home') {
+                rooms.forEach(rid => { try { _patchHomeUnread(rid); } catch (e) {} });
+            }
+        });
+        _liveRefreshActivity();
+    } catch (e) {
+        console.error('[mob-badge] error in _recomputeBadges:', e);
+    }
+}
 
         
 

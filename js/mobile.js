@@ -3301,11 +3301,11 @@ async function _markRoomNotifsRead(room) {
 // Plain messages/DMs don't create notification rows (v122), so this fires for the
 // attention stream only — the gap where a reaction/task gave NO mobile alert.
 function _onNotifInsert(n) {
-    // Instant provisional bump ONLY for attention types that are NOT themselves an
-    // unread message (reaction/task/reminder). mention/reply are unread messages and
-    // are already bumped by _onNewMessage — bumping here too would double-count until
-    // reconcile. The debounced reconcile then makes the count authoritative.
-    if (n && (n.type === 'reaction' || n.type === 'task' || n.type === 'reminder')) { _bellCount++; _renderBellBadge(); }
+    _badgeCalcGen++; // ⚡ INVALIDATE any in-flight background DB polls
+    if (n && (n.type === 'reaction' || n.type === 'task' || n.type === 'reminder')) { 
+        _bellCount++; 
+        _renderBellBadge(); 
+    }
     _scheduleReconcile();      // authoritative de-duped recompute from DB truth
     _liveRefreshActivity();
     if (!n || !n.message) return;

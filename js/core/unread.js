@@ -28,10 +28,9 @@
      * @returns {Promise<{perRoom:Object, total:number}>}
      */
     async function computeRoomUnread(sb, opts) {
-        const { uid, tid, rooms = null, window: win = 1000 } = opts || {};
+        const { uid, tid, rooms = null, window: win = 500 } = opts || {};
         const perRoom = {};
-        const unreadMsgIds = new Set();   // ids of the messages counted as unread (for bell de-dup)
-        if (!uid || !tid) return { perRoom, total: 0, unreadMsgIds };
+        if (!uid || !tid) return { perRoom, total: 0 };
         try {
             const [reads, msgs] = await Promise.all([
                 sb.from('room_reads').select('room_id,last_read_at').eq('user_id', uid),
@@ -47,11 +46,11 @@
                 if (rooms && !rooms.has(m.room_id)) return;            // outside the caller's room set
                 const t = new Date(m.created_at).getTime();
                 const seen = marker[m.room_id] || 0;                  // no marker → never opened → all unread
-                if (t > seen) { perRoom[m.room_id] = (perRoom[m.room_id] || 0) + 1; unreadMsgIds.add(m.id); }
+                if (t > seen) perRoom[m.room_id] = (perRoom[m.room_id] || 0) + 1;
             });
         } catch (e) { /* offline / RLS — return what we have */ }
         const total = Object.values(perRoom).reduce((a, b) => a + b, 0);
-        return { perRoom, total, unreadMsgIds };
+        return { perRoom, total };
     }
 
     window.NFA_computeRoomUnread = computeRoomUnread;

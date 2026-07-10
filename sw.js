@@ -2,7 +2,7 @@
  * TaskFlow Service Worker — enables PWA install prompt on Android/Chrome
  * Caches core app shell for offline-capable experience
  */
-const CACHE   = 'taskflow-v145';
+const CACHE   = 'taskflow-v146';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -237,11 +237,9 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // JS/CSS: NETWORK-FIRST (cache fallback only when offline). Stale-while-revalidate
-  // previously could serve one-launch-old JS against fresh HTML — a version skew that
-  // left the app blank/broken until it caught up. When online we now always run the
-  // freshest code (a deploy can never be masked by a stale cache); the cache is only
-  // a fallback for genuine offline. Correctness over a few ms of repeat-load speed.
+  // JS/CSS: NETWORK-FIRST (cache fallback only when offline). Prevents a stale
+  // cached JS from being served against fresh HTML — the version skew that could
+  // blank the app until it caught up. Online devices always run the freshest code.
   const isCode = e.request.url.includes('/css/') || e.request.url.includes('/js/');
   if (isCode) {
     e.respondWith(

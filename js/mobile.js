@@ -3632,6 +3632,11 @@ async function _goToTask(taskId) {
 // bridge. Without this, the bubble renders twice and every badge counts it twice.
 const _seenMsgIds = new Set();
 const _seenMsgOrder = [];
+// De-dupe: a message can arrive via BOTH postgres_changes and the shared broadcast
+// bridge. Without this, the bubble renders twice and every badge counts it twice.
+const _seenMsgIds = new Set();
+const _seenMsgOrder = [];
+
 async function _onNewMessage(m) {
     if (!m) return;
     if (m.id) {
@@ -3642,11 +3647,13 @@ async function _onNewMessage(m) {
     }
     if (m.tenant_id && m.tenant_id !== _tid) return;
     if (m.sender_id === _uid) return; // own sends are already shown by the post-send refresh
+    
     // DM privacy guard — ignore DMs the current user is not a participant of (no toast/notif/render)
     if (m.room_id && m.room_id.startsWith('dm_')) {
         const parts = m.room_id.replace('dm_','').split('_');
         if (!parts.includes(_uid)) return;
     }
+    
     // @mention: if this incoming message mentions ME, always alert distinctly —
     // even if I'm currently viewing that chat — independent of the server. The
     // heads-up + a mention notification row are created here so it works live and
@@ -3665,10 +3672,9 @@ async function _onNewMessage(m) {
     const inGroup  = top.screen==='groupChat' && m.room_id===top.params?.room && !m.parent_message_id;
     const inDM     = top.screen==='dm'        && m.room_id===top.params?.room;
     const inThread = top.screen==='thread'    && m.parent_message_id===top.params?.id;
+    
     if (!inGroup && !inDM && !inThread) {
         // Update the reply indicator on the parent bubble if it's visible in the current chat.
-        // Use the SAME clickable .m-thread-link element the renderer emits (not a separate div),
-        // so the indicator stays single and tappable to open the thread.
         if (m.parent_message_id) {
             const parentRow = document.getElementById('row-'+m.parent_message_id);
             if (parentRow) {
@@ -3684,14 +3690,25 @@ async function _onNewMessage(m) {
                 }
             }
         }
+        
+        // ⚡ RACE CONDITION GUARD: Invalidate any in-flight background DB polls immediately
+        _badgeCalcGen++; 
+
         // Per-chat unread badge (this chat isn't open) — WhatsApp-style count.
         // Runs for every received message (incl. replies) so the badges + bell
         // update the instant the realtime event arrives.
         window.unreadCounts = window.unreadCounts || {};
         window.unreadCounts[m.room_id] = (window.unreadCounts[m.room_id] || 0) + 1;
-        _updateAppBadge();                      // per-chat unread bumped
-        _patchHomeUnread(m.room_id, m);         // live badge + preview on the chat-list row (no full re-render/flash)
-        _bellCount++; _renderBellBadge();       // instant: every message lifts the bell + Activity-tab count
+        
+        _bellCount++; // instant: every message lifts the bell + Activity-tab count
+        
+        // Batch UI DOM updates together
+        requestAnimationFrame(() => {
+            _renderBellBadge();       
+            _updateAppBadge();                      // per-chat unread bumped
+            _patchHomeUnread(m.room_id, m);         // live badge + preview on the chat-list row (no full re-render/flash)
+        });
+        
         _scheduleReconcile();                   // self-heal from DB truth ~1.2s later (de-dups mentions, covers drops)
 
         if (!m.parent_message_id) {
@@ -3699,34 +3716,37 @@ async function _onNewMessage(m) {
             const name = sender ? (sender.full_name||sender.email?.split('@')[0]) : 'Someone';
             const dept = _findGroup(m.room_id);
             const isDM = m.room_id?.startsWith('dm_');
-            const roomLabel = dept ? dept.name : (isDM ? 'a direct message' : 'a group');
             if (!(window._isDND?.()) && !mentionsMe) _showHeadsUp(m, name, isDM, dept);
-            // The notifications ROW is now created server-side by the send-push edge
-            // function (reliable for online/offline/reconnect) — see plan.md Phase 1.
-            // Just refresh the DB-backed badge; the realtime notifications INSERT sub
-            // also fires _refreshNotifBadge when the server row lands.
             _refreshNotifBadge();
         }
         return;
     }
+    
+    // Chat is currently OPEN: Append message to screen
     const areaId = top.screen==='groupChat' ? 'mMsgArea' : top.screen==='dm' ? 'mDMArea' : 'mThreadArea';
     const area = _el(areaId); if (!area) return;
+    
     const wasNearBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 150;
     area.insertAdjacentHTML('beforeend', _bubbleHTML(m, {}, inThread?160:140));
-    if (wasNearBottom) area.scrollTop = area.scrollHeight;
-    else {
+    
+    if (wasNearBottom) {
+        area.scrollTop = area.scrollHeight;
+    } else {
         _scrollFabCount++;
         const fab = _el('mScrollFab');
-        if (fab) { fab.style.display = 'flex'; fab.innerHTML = `<i class="fa-solid fa-chevron-down"></i>${_scrollFabCount > 0 ? `<span style="position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;border-radius:50%;font-size:9px;font-weight:700;width:16px;height:16px;display:flex;align-items:center;justify-content:center;">${_scrollFabCount > 9 ? '9+' : _scrollFabCount}</span>` : ''}`; }
+        if (fab) { 
+            fab.style.display = 'flex'; 
+            fab.innerHTML = `<i class="fa-solid fa-chevron-down"></i>${_scrollFabCount > 0 ? `<span style="position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;border-radius:50%;font-size:9px;font-weight:700;width:16px;height:16px;display:flex;align-items:center;justify-content:center;">${_scrollFabCount > 9 ? '9+' : _scrollFabCount}</span>` : ''}`; 
+        }
     }
+    
     // Keep room cache in sync
     if (!inThread) {
         const cached = _loadRoomCache(m.room_id) || [];
         cached.push(m);
         _saveRoomCache(m.room_id, cached);
     }
-}
-async function _onReactionChange(r, eventType) {
+}async function _onReactionChange(r, eventType) {
     // DIAGNOSTIC (authoritative, correct selector): records whether the reaction
     // event was DELIVERED, whether the payload carried a message_id (null ⇒ RLS
     // blocked the payload / DELETE without replica-identity-full), and whether the

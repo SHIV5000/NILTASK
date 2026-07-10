@@ -24,6 +24,7 @@
             if (prev && prev.length) { buf.push('──── previous session ────'); buf = buf.concat(prev.slice(-400)); buf.push('──── this session ────'); }
           } catch (e) {}
           window.__LOG = buf;
+          var sessionStart = buf.length;   // persist only THIS session (no compounding of prev sessions)
           var t0 = Date.now(), saveT = null;
           function fmt(a) {
             try {
@@ -32,7 +33,7 @@
               return JSON.stringify(a, function (k, v) { return (v instanceof Error) ? (v.stack || v.message) : v; });
             } catch (e) { return String(a); }
           }
-          function save() { if (saveT) return; saveT = setTimeout(function () { saveT = null; try { localStorage.setItem(KEY, JSON.stringify(buf.slice(-600))); } catch (e) {} }, 1500); }
+          function save() { if (saveT) return; saveT = setTimeout(function () { saveT = null; try { localStorage.setItem(KEY, JSON.stringify(buf.slice(sessionStart).slice(-600))); } catch (e) {} }, 1500); }
           function push(lvl, args) {
             var ms = ((Date.now() - t0) / 1000).toFixed(2);
             buf.push('[' + ms + 's][' + lvl + '] ' + Array.prototype.map.call(args, fmt).join(' '));

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v150';
+const _MOB_VER = 'v151';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -2187,7 +2187,16 @@ async function _settings() {
         </button>`}
       </div>
 
-      <!-- 3 · BUTTONS -->
+      <!-- 3 · QUICK ACCESS (Bookmarks / Scheduled / Dashboard were only in an
+           orphaned "More" sheet; surface them here so the Profile tab reaches them) -->
+      <div class="m-sl">QUICK ACCESS</div>
+      <div style="padding:0 16px 8px;display:flex;flex-direction:column;gap:2px;">
+        <div class="m-sheet-row" data-action="navMore" data-screen="marks"><i class="fa-solid fa-bookmark" style="color:#f59e0b;width:22px;"></i> Bookmarks</div>
+        <div class="m-sheet-row" data-action="navMore" data-screen="scheduled"><i class="fa-solid fa-clock" style="color:#6366f1;width:22px;"></i> Scheduled Messages</div>
+        <div class="m-sheet-row" data-action="navMore" data-screen="dashboard"><i class="fa-solid fa-chart-bar" style="color:#16a34a;width:22px;"></i> Dashboard</div>
+      </div>
+
+      <!-- 4 · BUTTONS -->
       <div class="m-sl">ACTIONS</div>
       <div style="padding:0 16px 8px;display:flex;flex-direction:column;gap:12px;">
         <button class="m-action-btn" style="background:#6366f1;" data-action="saveProfile">

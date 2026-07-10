@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v141';
+const _MOB_VER = 'v142';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -301,13 +301,31 @@ window.initMobileApp = async function() {
     _buildShell();
     _initKeyboardHandling();
     _initImgHydration();
-    // Hydrate the room-message mirror from IndexedDB in parallel with the
-    // context load — chats then open instantly with up to 150 cached messages.
-    await Promise.all([_ctx(), _hydrateRoomCaches()]);
-    // Principals/admins get a toggle to the Admin Panel (permission known after _ctx).
-    if (window.currentPermissions?.admin_panel) _el('mSBAdmin')?.style.setProperty('display','flex');
-    await _navTo('home');
-    window._hideSplash?.();   // first screen painted — drop the boot splash
+    // FAIL-SAFE BOOT: never leave a blank/indigo splash if any startup step throws.
+    // Load context, then render home; on ANY error still drop the splash, log it,
+    // and show a minimal retry so the user is never stuck on a blank screen.
+    try {
+        // Hydrate the room-message mirror from IndexedDB in parallel with the
+        // context load — chats then open instantly with up to 150 cached messages.
+        await Promise.all([_ctx(), _hydrateRoomCaches()]);
+        // Principals/admins get a toggle to the Admin Panel (permission known after _ctx).
+        if (window.currentPermissions?.admin_panel) _el('mSBAdmin')?.style.setProperty('display','flex');
+        await _navTo('home');
+    } catch (bootErr) {
+        try { window.logger?.logError?.(bootErr, { where: 'initMobileApp' }); } catch (e) {}
+        console.error('[mob-boot] init failed', bootErr);
+        try {
+            const stage = _el('mStage');
+            if (stage) stage.innerHTML =
+                '<div style="padding:40px 24px;text-align:center;color:var(--text-secondary);">'
+              + '<div style="font-size:34px;margin-bottom:10px;">😕</div>'
+              + '<div style="font-weight:700;color:var(--text-primary);margin-bottom:6px;">Could not load</div>'
+              + '<div style="font-size:13px;margin-bottom:16px;">Please check your connection and try again.</div>'
+              + '<button onclick="location.reload()" style="background:var(--accent,#6366f1);color:#fff;border:none;border-radius:22px;padding:10px 22px;font-weight:700;">Retry</button>'
+              + '</div>';
+        } catch (e) {}
+    }
+    window._hideSplash?.();   // first screen painted (or the retry card) — always drop the boot splash
     _initRealtime();
     try { _setConnState(); } catch(e){}   // paint the initial Online/Offline chip
     // Deep-link: open a specific chat from a push tap (?room=…) or SW message.

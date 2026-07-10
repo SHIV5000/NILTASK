@@ -9,7 +9,7 @@ window.sb = sb;
 
 // Single source of truth for the running build — stamped onto every warn/error
 // log row so the Live Log Monitor can tell which version a remote device runs.
-window.APP_VER = 'v141';
+window.APP_VER = 'v142';
 
 // Retire the green 'ocean-teal' theme entirely — it tinted the whole UI (and the
 // safe-area gutter) green. Reset anyone still on it BEFORE ui-core reads the value.
@@ -44,7 +44,15 @@ try {
         // reload loop was causing the session churn AND a green flash on every launch
         // (each reload briefly shows the old cached paint before the new build loads).
         const healedKey = 'ver_healed_v';
-        if (v && v !== window.APP_VER && localStorage.getItem(healedKey) !== v) {
+        // Only heal FORWARD: if the manifest version is strictly NEWER than the
+        // running build. A stale/CDN-cached version.json that is OLDER than (or
+        // equal to) the code we're already running must NEVER trigger a
+        // cache-purge + SW-unregister + reload — that was reloading good builds
+        // and could leave a blank/indigo frame. Compare the numeric part of vNNN.
+        const _num = s => { const m = /(\d+)/.exec(String(s || '')); return m ? parseInt(m[1], 10) : NaN; };
+        const _manifest = _num(v), _running = _num(window.APP_VER);
+        const _isNewer = Number.isFinite(_manifest) && Number.isFinite(_running) && _manifest > _running;
+        if (v && _isNewer && localStorage.getItem(healedKey) !== v) {
             localStorage.setItem(healedKey, v);   // one attempt per version, forever
             // Paint a full-screen indigo cover BEFORE reloading so the convergence
             // reload shows the brand splash colour, never a blink of the old (green)

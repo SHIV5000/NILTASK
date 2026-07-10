@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Install NILTASK</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0d1117; --bg2: #161b22; --bg3: #21262d; --border: #30363d;
+            --text: #e6edf3; --text2: #8b949e; --accent: #238636; --accent-h: #2ea043;
+            --blue: #388bfd; --orange: #e3b341; --radius: 16px;
+            --shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        [data-theme="light"] {
+            --bg: #f6f8fa; --bg2: #ffffff; --bg3: #f0f2f5;
+            --border: #d0d7de; --text: #1f2328; --text2: #656d76;
+            --shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .container { max-width: 440px; width: 100%; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px 24px; text-align: center; box-shadow: var(--shadow); }
+        .logo { font-size: 56px; color: var(--accent-h); margin-bottom: 8px; }
+        h1 { font-size: 28px; font-weight: 900; margin-bottom: 4px; }
+        .subtitle { color: var(--text2); font-size: 14px; margin-bottom: 24px; }
+
+        /* ─── ANDROID BUTTON ─── */
+        .install-btn {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            width: 100%;
+            padding: 18px 24px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 20px;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all .2s;
+            text-decoration: none;
+            box-shadow: 0 4px 20px rgba(35,134,54,0.35);
+        }
+        .install-btn:hover { background: var(--accent-h); transform: scale(1.02); }
+        .install-btn i { font-size: 24px; }
+        .install-btn.show { display: flex; }
+
+        .secondary-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            padding: 14px 24px;
+            margin-top: 10px;
+            background: var(--bg3);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all .2s;
+            text-decoration: none;
+        }
+        .secondary-btn:hover { background: var(--border); }
+
+        /* ─── STATUS ─── */
+        .status { font-size: 14px; padding: 12px 16px; border-radius: 8px; margin-top: 16px; display: none; }
+        .status.show { display: block; }
+        .status.success { color: var(--accent-h); background: rgba(35,134,54,.1); border-left: 4px solid var(--accent-h); }
+        .status.info { color: var(--blue); background: rgba(56,139,253,.1); border-left: 4px solid var(--blue); }
+        .status.warning { color: var(--orange); background: rgba(227,179,65,.1); border-left: 4px solid var(--orange); }
+
+        /* ─── IOS FINGER-POINTING GUIDE ─── */
+        .ios-guide {
+            display: none;
+            margin-top: 20px;
+            text-align: left;
+        }
+        .ios-guide.show { display: block; }
+
+        .ios-guide .step {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            padding: 14px 0;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+            opacity: 0.6;
+            transition: opacity 0.5s ease;
+        }
+        .ios-guide .step.active {
+            opacity: 1;
+        }
+        .ios-guide .step:last-child {
+            border-bottom: none;
+        }
+
+        .ios-guide .step .num {
+            width: 32px;
+            height: 32px;
+            background: var(--blue);
+            color: #fff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .ios-guide .step .content {
+            flex: 1;
+        }
+        .ios-guide .step .content strong {
+            color: var(--text);
+            font-size: 15px;
+            display: block;
+            margin-bottom: 2px;
+        }
+        .ios-guide .step .content p {
+            color: var(--text2);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .ios-guide .step .icon-box {
+            width: 48px;
+            height: 48px;
+            background: var(--bg3);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            flex-shrink: 0;
+            border: 1px solid var(--border);
+        }
+
+        .ios-guide .step .icon-box i {
+            color: var(--blue);
+        }
+
+        /* ─── FINGER POINTING ANIMATION ─── */
+        @keyframes fingerPoint {
+            0% { transform: translateY(0) scale(1); opacity: 0.7; }
+            50% { transform: translateY(-8px) scale(1.1); opacity: 1; }
+            100% { transform: translateY(0) scale(1); opacity: 0.7; }
+        }
+        .finger {
+            position: absolute;
+            right: -10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 32px;
+            animation: fingerPoint 1.5s ease-in-out infinite;
+            display: none;
+            z-index: 10;
+        }
+        .step.active .finger {
+            display: block;
+        }
+
+        /* ─── PROGRESS DOTS ─── */
+        .progress-dots {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 16px;
+        }
+        .progress-dots .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--border);
+            transition: all .3s;
+        }
+        .progress-dots .dot.active {
+            background: var(--blue);
+            width: 24px;
+            border-radius: 4px;
+        }
+
+        /* ─── IOS BUTTON ─── */
+        .ios-btn {
+            display: none;
+            width: 100%;
+            padding: 16px;
+            background: var(--blue);
+            color: #fff;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 18px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all .2s;
+            margin-top: 16px;
+            box-shadow: 0 4px 20px rgba(56,139,253,0.3);
+        }
+        .ios-btn:hover { background: #2d7bdb; transform: scale(1.02); }
+        .ios-btn.show { display: block; }
+
+        .footer { margin-top: 24px; font-size: 13px; color: var(--text2); border-top: 1px solid var(--border); padding-top: 16px; }
+        .footer a { color: var(--blue); text-decoration: none; }
+
+        .theme-toggle {
+            position: fixed; top: 16px; right: 16px;
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: 50%; width: 44px; height: 44px;
+            color: var(--text); font-size: 20px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            z-index: 100;
+        }
+
+        /* ─── RESPONSIVE ─── */
+        @media (max-width: 480px) {
+            .container { padding: 24px 16px; }
+            .logo { font-size: 44px; }
+            h1 { font-size: 22px; }
+            .install-btn { font-size: 18px; padding: 16px; }
+            .ios-guide .step { padding: 12px 0; }
+            .ios-guide .step .content strong { font-size: 14px; }
+            .finger { font-size: 26px; right: -4px; }
+            .ios-btn { font-size: 16px; padding: 14px; }
+        }
+    </style>
+</head>
+<body>
+
+    <button class="theme-toggle" onclick="toggleTheme()"><i class="fa-solid fa-moon" id="themeIcon"></i></button>
+
+    <div class="container">
+        <div class="logo">📝</div>
+        <h1>NILTASK</h1>
+        <p class="subtitle">Get the app for the best experience</p>
+
+        <!-- ─── ANDROID: BIG INSTALL BUTTON ─── -->
+        <a href="intent://niltask.vercel.app/#Intent;scheme=https;package=com.android.chrome;end;"
+           class="install-btn" id="androidInstall">
+            <i class="fa-brands fa-chrome"></i>
+            <span>
+                Install App
+                <small style="display:block;font-size:12px;font-weight:400;opacity:0.8;">One tap • Works on Chrome</small>
+            </span>
+        </a>
+
+        <!-- ─── IOS: ADD TO HOME SCREEN BUTTON ─── -->
+        <button class="ios-btn" id="iosInstallBtn">
+            <i class="fa-solid fa-plus-circle"></i> Add to Home Screen
+        </button>
+
+        <!-- ─── OPEN IN BROWSER ─── -->
+        <a href="https://niltask.vercel.app/" class="secondary-btn">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i> Open in Browser
+        </a>
+
+        <!-- ─── STATUS ─── -->
+        <div class="status show info" id="statusMessage">
+            <i class="fa-regular fa-circle-check" style="color:var(--accent-h);"></i>
+            <span id="statusText">Tap "Install App" to add to home screen.</span>
+        </div>
+
+        <!-- ─── IOS FINGER-POINTING GUIDE ─── -->
+        <div class="ios-guide" id="iosGuide">
+
+            <!-- Step 1 -->
+            <div class="step active" data-step="0">
+                <div class="num">1</div>
+                <div class="icon-box"><i class="fa-solid fa-square-arrow-up"></i></div>
+                <div class="content">
+                    <strong>Tap the Share Button</strong>
+                    <p>Tap the square with an arrow at the bottom of your screen.</p>
+                </div>
+                <div class="finger">👆</div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="step" data-step="1">
+                <div class="num">2</div>
+                <div class="icon-box"><i class="fa-solid fa-house-chimney"></i></div>
+                <div class="content">
+                    <strong>Tap "Add to Home Screen"</strong>
+                    <p>Scroll down and tap <strong>"Add to Home Screen"</strong> in the share menu.</p>
+                </div>
+                <div class="finger">👆</div>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="step" data-step="2">
+                <div class="num">3</div>
+                <div class="icon-box"><i class="fa-solid fa-check"></i></div>
+                <div class="content">
+                    <strong>Tap "Add"</strong>
+                    <p>Tap <strong>"Add"</strong> in the top-right corner to confirm.</p>
+                </div>
+                <div class="finger">👆</div>
+            </div>
+
+            <!-- Progress Dots -->
+            <div class="progress-dots">
+                <span class="dot active"></span>
+                <span class="dot"></span>
+                <span class="dot"></span>
+            </div>
+        </div>
+
+        <!-- ─── MANUAL GUIDE (Fallback) ─── -->
+        <div class="manual-guide" id="manualGuide" style="display:none;background:var(--bg3);border-radius:var(--radius);padding:16px;margin-top:16px;text-align:left;font-size:13px;color:var(--text2);line-height:1.6;">
+            <h3 style="font-size:14px;margin-bottom:8px;color:var(--text);">📱 Manual Install</h3>
+            <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">
+                <span style="width:24px;height:24px;background:var(--orange);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;">1</span>
+                Tap the three-dot menu (top-right)
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">
+                <span style="width:24px;height:24px;background:var(--orange);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;">2</span>
+                Select "Add to Home Screen" or "Install App"
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:6px 0;">
+                <span style="width:24px;height:24px;background:var(--orange);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;">3</span>
+                Tap "Add" or "Install" to confirm
+            </div>
+        </div>
+
+        <div class="footer">
+            Already have the app? <a href="/">Open NILTASK</a>
+        </div>
+    </div>
+
+    <script>
+        // ── THEME ──────────────────────────────────────────────
+        function toggleTheme() {
+            const html = document.documentElement;
+            const isLight = html.getAttribute('data-theme') === 'light';
+            html.setAttribute('data-theme', isLight ? '' : 'light');
+            localStorage.setItem('installTheme', isLight ? 'dark' : 'light');
+            document.getElementById('themeIcon').className = isLight ? 'fa-solid fa-moon' : 'fa-solid fa-sun';
+        }
+        (function() {
+            const saved = localStorage.getItem('installTheme');
+            if (saved === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+                document.getElementById('themeIcon').className = 'fa-solid fa-sun';
+            }
+        })();
+
+        // ── DETECT PLATFORM ────────────────────────────────────
+        const ua = navigator.userAgent;
+        const isAndroid = /android/i.test(ua);
+        const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+        const isDesktop = !isAndroid && !isIOS;
+
+        const androidBtn = document.getElementById('androidInstall');
+        const iosBtn = document.getElementById('iosInstallBtn');
+        const iosGuide = document.getElementById('iosGuide');
+        const manualGuide = document.getElementById('manualGuide');
+        const statusMsg = document.getElementById('statusMessage');
+        const statusText = document.getElementById('statusText');
+        const dots = document.querySelectorAll('.dot');
+        const steps = document.querySelectorAll('.step');
+
+        let currentStep = 0;
+        let stepInterval = null;
+
+        function showStatus(msg, type = 'info') {
+            statusText.textContent = msg;
+            statusMsg.className = 'status show ' + type;
+        }
+
+        // ─── ANDROID ────────────────────────────────────────────
+        if (isAndroid) {
+            androidBtn.classList.add('show');
+            iosGuide.classList.remove('show');
+            iosBtn.classList.remove('show');
+
+            if (window.matchMedia('(display-mode: standalone)').matches) {
+                androidBtn.style.display = 'none';
+                showStatus('✅ NILTASK is already installed!', 'success');
+            } else {
+                showStatus('📱 Tap "Install App" to add to home screen instantly.', 'info');
+            }
+        }
+
+        // ─── IOS ────────────────────────────────────────────────
+        if (isIOS) {
+            androidBtn.style.display = 'none';
+            iosGuide.classList.add('show');
+            iosBtn.classList.add('show');
+
+            if (window.navigator.standalone) {
+                showStatus('✅ NILTASK is already installed!', 'success');
+                iosGuide.classList.remove('show');
+                iosBtn.style.display = 'none';
+            } else {
+                showStatus('👆 Follow the steps below to add NILTASK to your home screen.', 'info');
+                startAutoStep();
+            }
+        }
+
+        // ─── DESKTOP ────────────────────────────────────────────
+        if (isDesktop) {
+            androidBtn.style.display = 'none';
+            manualGuide.style.display = 'block';
+            showStatus('📱 Scan the QR code with your phone to install.', 'info');
+        }
+
+        // ─── AUTO STEP PROGRESSION ─────────────────────────────
+        function startAutoStep() {
+            let count = 0;
+            stepInterval = setInterval(() => {
+                count++;
+                if (count > 3) {
+                    // Reset after loop
+                    count = 0;
+                    steps.forEach(s => s.classList.remove('active'));
+                    dots.forEach(d => d.classList.remove('active'));
+                }
+                const stepIndex = count % 3;
+                steps.forEach((s, i) => {
+                    s.classList.toggle('active', i === stepIndex);
+                });
+                dots.forEach((d, i) => {
+                    d.classList.toggle('active', i === stepIndex);
+                });
+                currentStep = stepIndex;
+            }, 2500);
+        }
+
+        // ─── IOS BUTTON CLICK ───────────────────────────────────
+        iosBtn.addEventListener('click', () => {
+            // Scroll to guide and highlight
+            iosGuide.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            showStatus('👆 Follow the steps above to add NILTASK to your home screen.', 'info');
+        });
+
+        // ─── TRACK ──────────────────────────────────────────────
+        async function trackInstall(method) {
+            try {
+                await fetch('https://apfymygzwkzjhhgmtkaj.supabase.co/functions/v1/track-install', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: null,
+                        tenant_id: null,
+                        os_name: isAndroid ? 'Android' : isIOS ? 'iOS' : 'Desktop',
+                        install_method: method,
+                        is_first_open: true,
+                    })
+                });
+            } catch(e) { console.error('Track error:', e); }
+        }
+
+        if (isAndroid && !window.matchMedia('(display-mode: standalone)').matches) {
+            trackInstall('android_visit');
+        }
+        if (isIOS && !window.navigator.standalone) {
+            trackInstall('ios_visit');
+        }
+    </script>
+
+</body>
+</html>

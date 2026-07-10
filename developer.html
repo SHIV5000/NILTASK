@@ -48,14 +48,14 @@
     .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
     .err { color:var(--red); font-size:13px; margin-top:8px; text-align:center; display:none; }
 
-    .dev-wrap { max-width:100%; margin:0 auto; padding:20px 24px; }
+    .dev-wrap { max-width:1200px; margin:0 auto; padding:20px 24px; }
 
     .topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; padding-bottom:16px; border-bottom:1px solid var(--border); flex-wrap:wrap; gap:12px; }
     .topbar-left { display:flex; align-items:center; gap:12px; }
     .dev-badge { background:var(--accent); color:#fff; font-size:11px; font-weight:800; padding:2px 8px; border-radius:4px; letter-spacing:.06em; }
     .topbar h1 { font-size:18px; font-weight:800; }
-    .topbar-right { display:flex; align-items:center; gap:10px; }
-    .btn-sm { padding:7px 14px; border-radius:var(--radius); font-size:13px; font-weight:700; cursor:pointer; border:1px solid var(--border); background:var(--bg3); color:var(--text); transition:.2s; }
+    .topbar-right { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .btn-sm { padding:7px 14px; border-radius:var(--radius); font-size:13px; font-weight:700; cursor:pointer; border:1px solid var(--border); background:var(--bg3); color:var(--text); transition:.2s; white-space:nowrap; }
     .btn-sm:hover { border-color:var(--text2); }
     .btn-danger-sm { background:rgba(248,81,73,.12); color:var(--red); border-color:rgba(248,81,73,.3); }
     .btn-danger-sm:hover { background:rgba(248,81,73,.2); }
@@ -155,135 +155,31 @@
       .stat { border:1px solid #ccc; }
     }
 
-    /* ── Login screen ── */
-    .login-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; }
-    .login-card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:32px; width:100%; max-width:360px; }
-    .login-logo { text-align:center; margin-bottom:24px; }
-    .login-logo i { font-size:28px; color:var(--accent-h); }
-    .login-logo h1 { font-size:18px; font-weight:800; margin-top:8px; }
-    .login-logo p { color:var(--text2); font-size:11px; margin-top:4px; }
-    .field { margin-bottom:14px; }
-    .field label { display:block; font-size:11px; font-weight:600; color:var(--text2); margin-bottom:5px; text-transform:uppercase; letter-spacing:.05em; }
-    .field input { width:100%; padding:9px 12px; background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-size:13px; outline:none; transition:border-color .2s; }
-    .field input:focus { border-color:var(--blue); }
-    .btn-primary { width:100%; padding:10px; background:var(--accent); color:#fff; border:none; border-radius:var(--radius); font-size:13px; font-weight:700; cursor:pointer; transition:background .2s; }
-    .btn-primary:hover { background:var(--accent-h); }
-    .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
-    .err { color:var(--red); font-size:12px; margin-top:8px; text-align:center; display:none; }
+    .bar-track {
+      margin-top: 6px;
+      height: 5px;
+      background: var(--bg3);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width .5s ease;
+    }
+    .bar-fill.green { background: var(--accent-h); }
+    .bar-fill.blue { background: var(--blue); }
+    .bar-fill.purple { background: var(--purple); }
+    .bar-fill.orange { background: var(--orange); }
+    .bar-fill.red { background: var(--red); }
 
-    /* ── Main layout ── */
-    .dev-wrap { max-width:1200px; margin:0 auto; padding:20px 16px; }
-
-    /* ── Top bar ── */
-    .topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; padding-bottom:16px; border-bottom:1px solid var(--border); flex-wrap:wrap; gap:12px; }
-    .topbar-left { display:flex; align-items:center; gap:12px; }
-    .dev-badge { background:var(--accent); color:#fff; font-size:10px; font-weight:800; padding:2px 8px; border-radius:4px; letter-spacing:.06em; }
-    .topbar h1 { font-size:16px; font-weight:800; }
-    .topbar-right { display:flex; align-items:center; gap:10px; }
-    .btn-sm { padding:6px 14px; border-radius:var(--radius); font-size:12px; font-weight:700; cursor:pointer; border:1px solid var(--border); background:var(--bg3); color:var(--text); transition:.2s; }
-    .btn-sm:hover { border-color:var(--text2); }
-    .btn-danger-sm { background:rgba(248,81,73,.12); color:var(--red); border-color:rgba(248,81,73,.3); }
-    .btn-danger-sm:hover { background:rgba(248,81,73,.2); }
-
-    /* ── Stats row ── */
-    .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; margin-bottom:24px; }
-    .stat { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; }
-    .stat-val { font-size:24px; font-weight:800; line-height:1; }
-    .stat-lbl { font-size:11px; color:var(--text2); margin-top:4px; font-weight:600; }
-
-    /* ── Search ── */
-    .search-row { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
-    .search-row input { flex:1; padding:8px 12px; background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-size:13px; outline:none; }
-    .search-row input:focus { border-color:var(--blue); }
-
-    /* ── School cards ── */
-    .school-card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:10px; overflow:hidden; }
-    .school-header { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; cursor:pointer; transition:background .15s; flex-wrap:wrap; gap:8px; }
-    .school-header:hover { background:var(--bg3); }
-    .school-name { font-size:14px; font-weight:700; }
-    .school-meta { font-size:11px; color:var(--text2); margin-top:2px; }
-    .school-header-right { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-    .pill { display:inline-block; font-size:10px; font-weight:700; padding:2px 9px; border-radius:20px; }
-    .pill-green  { background:rgba(35,134,54,.2);  color:#3fb950; }
-    .pill-blue   { background:rgba(56,139,253,.15); color:var(--blue); }
-    .pill-orange { background:rgba(227,179,65,.15); color:var(--orange); }
-    .pill-red    { background:rgba(248,81,73,.15);  color:var(--red); }
-    .pill-gray   { background:var(--bg3); color:var(--text2); }
-    .school-body { border-top:1px solid var(--border); padding:20px; display:none; }
-    .school-body.open { display:block; }
-
-    /* ── Two column edit layout ── */
-    .edit-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
-    @media(max-width:640px) { .edit-grid { grid-template-columns:1fr; } }
-    .edit-section { background:var(--bg3); border-radius:var(--radius); padding:16px; }
-    .edit-section h3 { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text2); margin-bottom:14px; }
-    .ef { margin-bottom:12px; }
-    .ef label { display:block; font-size:11px; color:var(--text2); margin-bottom:4px; font-weight:600; }
-    .ef input, .ef select { width:100%; padding:7px 10px; background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-size:12px; font-family:'Inter',sans-serif; outline:none; }
-    .ef input:focus, .ef select:focus { border-color:var(--blue); }
-    .ef select option { background:var(--bg2); }
-
-    /* ── Toggle ── */
-    .toggle-row { display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border); }
-    .toggle-row:last-child { border-bottom:none; }
-    .toggle-row label { font-size:12px; color:var(--text); }
-    .tog { position:relative; width:36px; height:20px; }
-    .tog input { opacity:0; width:0; height:0; }
-    .tog-sl { position:absolute; inset:0; background:#30363d; border-radius:20px; cursor:pointer; transition:.2s; }
-    .tog-sl::before { content:''; position:absolute; left:2px; top:2px; width:16px; height:16px; background:#fff; border-radius:50%; transition:.2s; }
-    .tog input:checked + .tog-sl { background:var(--accent-h); }
-    .tog input:checked + .tog-sl::before { transform:translateX(16px); }
-
-    /* ── Actions row ── */
-    .action-row { display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; }
-    .btn-save { padding:8px 20px; background:var(--accent); color:#fff; border:none; border-radius:var(--radius); font-size:12px; font-weight:700; cursor:pointer; }
-    .btn-save:hover { background:var(--accent-h); }
-    .btn-suspend { padding:8px 18px; background:rgba(248,81,73,.12); color:var(--red); border:1px solid rgba(248,81,73,.3); border-radius:var(--radius); font-size:12px; font-weight:700; cursor:pointer; }
-    .btn-restore { padding:8px 18px; background:rgba(56,139,253,.12); color:var(--blue); border:1px solid rgba(56,139,253,.3); border-radius:var(--radius); font-size:12px; font-weight:700; cursor:pointer; }
-    .save-note { font-size:11px; color:var(--text2); padding:6px 0; }
-
-    /* ── Toast ── */
-    #devToast { position:fixed; top:16px; right:16px; padding:10px 18px; border-radius:var(--radius); font-size:13px; font-weight:700; display:none; z-index:9999; box-shadow:0 4px 16px rgba(0,0,0,.3); }
-
-    /* ── Tabs ── */
-    .tabs { display:flex; gap:2px; border-bottom:1px solid var(--border); margin-bottom:20px; }
-    .tab { padding:8px 18px; font-size:13px; font-weight:600; cursor:pointer; border-bottom:2px solid transparent; color:var(--text2); transition:.15s; background:none; border-top:none; border-left:none; border-right:none; }
-    .tab:hover { color:var(--text); }
-    .tab.active { color:var(--text); border-bottom-color:var(--accent-h); }
-    .tab-panel { display:none; }
-    .tab-panel.active { display:block; }
-
-    /* ── Permission matrix ── */
-    .pm-table { width:100%; border-collapse:collapse; font-size:12px; }
-    .pm-table th { padding:8px 12px; text-align:center; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text2); border-bottom:1px solid var(--border); white-space:nowrap; position:sticky; top:0; background:var(--bg2); }
-    .pm-table th.perm-col { text-align:left; min-width:200px; }
-    .pm-table td { padding:7px 12px; border-bottom:1px solid var(--border); text-align:center; }
-    .pm-table td.perm-name { text-align:left; color:var(--text); font-size:12px; }
-    .pm-table td.perm-name small { color:var(--text2); font-size:10px; display:block; margin-top:1px; }
-    .pm-table tr:hover td { background:var(--bg3); }
-    .pm-table tr.section-row td { background:var(--bg); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text2); text-align:left; padding:5px 12px; border-bottom:1px solid var(--border); }
-    .pm-cb { width:16px; height:16px; border-radius:4px; cursor:pointer; accent-color:var(--accent-h); }
-    .role-header { writing-mode:vertical-rl; text-orientation:mixed; transform:rotate(180deg); padding:8px 0; font-size:11px; max-height:100px; min-width:50px; }
-
-    /* ── Suspended overlay ── */
-    .suspended { opacity:.55; }
-    .suspended .school-name::after { content:' [SUSPENDED]'; color:var(--red); font-size:10px; }
-
-    /* ── Users panel ── */
-    .users-panel { margin-top:16px; background:var(--bg); border-radius:var(--radius); overflow:hidden; }
-    .users-panel h4 { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text2); padding:10px 14px; border-bottom:1px solid var(--border); }
-    .user-row { display:flex; align-items:center; gap:12px; padding:9px 14px; border-bottom:1px solid var(--border); }
-    .user-row:last-child { border-bottom:none; }
-    .user-av { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:#fff; flex-shrink:0; }
-    .user-name { font-size:12px; font-weight:700; color:var(--text); }
-    .user-meta { font-size:11px; color:var(--text2); }
-    .role-tag { font-size:10px; font-weight:700; padding:2px 8px; border-radius:20px; }
-    .role-principal   { background:rgba(163,113,247,.2); color:#a371f7; }
-    .role-vp_admin    { background:rgba(56,139,253,.2);  color:var(--blue); }
-    .role-exam_controller { background:rgba(227,179,65,.2); color:var(--orange); }
-    .role-hod         { background:rgba(56,211,159,.2);  color:#3fb950; }
-    .role-teacher     { background:rgba(139,148,158,.15);color:var(--text2); }
-    .stat-mini { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-family:'Inter',sans-serif; color:var(--text2); }
+    /* table styles for school-wise */
+    .metrics-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .metrics-table th { padding:8px 10px; text-align:center; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text2); border-bottom:2px solid var(--border); position:sticky; top:0; background:var(--bg2); }
+    .metrics-table td { padding:8px 10px; border-bottom:1px solid var(--border); text-align:center; }
+    .metrics-table tr:hover td { background:var(--bg3); }
+    .metrics-table .school-name-col { text-align:left; font-weight:600; }
+    .metrics-table .status-pill { display:inline-block; font-size:10px; font-weight:700; padding:2px 9px; border-radius:20px; }
   </style>
 </head>
 <body>
@@ -344,6 +240,7 @@
     <div class="tabs">
         <button class="tab active" onclick="showTab('schools')"><i class="fa-solid fa-school"></i> Schools</button>
         <button class="tab" onclick="showTab('roles')"><i class="fa-solid fa-user-shield"></i> Roles &amp; Permissions</button>
+        <button class="tab" onclick="showTab('metrics')"><i class="fa-solid fa-chart-simple"></i> Monitoring</button>
     </div>
 
     <!-- Schools panel -->
@@ -386,6 +283,78 @@
         </p>
     </div>
 
+    <!-- Monitoring panel -->
+    <div class="tab-panel" id="tab-metrics">
+        <!-- Global metrics -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+            <div>
+                <h2 style="font-size:15px;font-weight:700;margin:0 0 3px;">📊 Supabase Resource Usage</h2>
+                <p style="font-size:11px;color:var(--text2);margin:0;">Updates every 60 seconds. Alerts appear when usage > 90%.</p>
+            </div>
+            <button class="btn-sm" onclick="loadMetrics()"><i class="fa-solid fa-rotate"></i> Refresh Now</button>
+        </div>
+
+        <!-- Alert box -->
+        <div id="metricsAlerts" style="padding:12px 16px;border-radius:var(--radius);margin-bottom:16px;background:var(--bg3);border-left:4px solid var(--accent-h);">
+            <span style="font-weight:700;font-size:13px;">Status:</span> <span id="alertText">Loading...</span>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="stats" id="metricsStats">
+            <div class="stat">
+                <div class="stat-val" id="m_db">—</div>
+                <div class="stat-lbl">Database Size (GB) <span style="color:var(--text2);font-weight:400;">/ 8</span></div>
+                <div class="bar-track"><div class="bar-fill green" id="m_db_bar" style="width:0%;"></div></div>
+            </div>
+            <div class="stat">
+                <div class="stat-val" id="m_storage">—</div>
+                <div class="stat-lbl">Storage (GB) <span style="color:var(--text2);font-weight:400;">/ 1</span></div>
+                <div class="bar-track"><div class="bar-fill blue" id="m_storage_bar" style="width:0%;"></div></div>
+            </div>
+            <div class="stat">
+                <div class="stat-val" id="m_realtime">—</div>
+                <div class="stat-lbl">Realtime Msgs (Month) <span style="color:var(--text2);font-weight:400;">/ 2,000,000</span></div>
+                <div class="bar-track"><div class="bar-fill purple" id="m_realtime_bar" style="width:0%;"></div></div>
+            </div>
+            <div class="stat">
+                <div class="stat-val" id="m_conn">—</div>
+                <div class="stat-lbl">Active Connections <span style="color:var(--text2);font-weight:400;">/ 500</span></div>
+                <div class="bar-track"><div class="bar-fill orange" id="m_conn_bar" style="width:0%;"></div></div>
+            </div>
+            <div class="stat">
+                <div class="stat-val" id="m_mau">—</div>
+                <div class="stat-lbl">Monthly Active Users <span style="color:var(--text2);font-weight:400;">/ 100,000</span></div>
+                <div class="bar-track"><div class="bar-fill green" id="m_mau_bar" style="width:0%;"></div></div>
+            </div>
+        </div>
+
+        <div style="font-size:11px;color:var(--text2);margin-top:8px;padding:8px 0;">
+            <i class="fa-solid fa-circle-info" style="color:var(--blue);"></i> 
+            If any bar turns <span style="color:var(--red);font-weight:700;">red</span>, you are over 90% usage. Consider upgrading your Supabase plan or optimizing.
+        </div>
+
+        <!-- School-wise Usage Table -->
+        <div style="margin-top:24px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+            <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                <div>
+                    <h3 style="font-size:13px;font-weight:700;margin:0;">
+                        <i class="fa-solid fa-school" style="color:var(--blue);margin-right:8px;"></i>
+                        School-wise Usage
+                    </h3>
+                    <span style="font-size:11px;color:var(--text2);">Per-school metrics from your database</span>
+                </div>
+                <button class="btn-sm" onclick="loadSchoolMetrics()">
+                    <i class="fa-solid fa-rotate"></i> Refresh
+                </button>
+            </div>
+            <div id="schoolMetricsTable" style="overflow-x:auto;padding:12px;">
+                <div style="text-align:center;padding:20px;color:var(--text2);">
+                    <i class="fa-solid fa-spinner fa-spin"></i> Loading school metrics...
+                </div>
+            </div>
+        </div>
+    </div>
+
   </div><!-- /dev-wrap -->
 </div><!-- /consoleWrap -->
 
@@ -411,7 +380,6 @@ window.devLogin = async function() {
         const { data, error } = await sb.auth.signInWithPassword({ email, password: pwd });
         if (error) throw new Error(error.message);
 
-        // Verify developer identity
         const { data: isDev, error: devErr } = await sb.rpc('is_developer');
         if (devErr || !isDev) {
             await sb.auth.signOut();
@@ -421,6 +389,7 @@ window.devLogin = async function() {
         document.getElementById('loginWrap').style.display   = 'none';
         document.getElementById('consoleWrap').style.display = 'block';
         await loadSchools();
+        // Load school metrics if monitoring tab is active (it will be loaded on first click)
 
     } catch(e) {
         err.textContent = e.message;
@@ -442,7 +411,6 @@ window.devLogin = async function() {
     }
 })();
 
-// Enter key on password
 document.getElementById('devPwd').addEventListener('keydown', e => {
     if (e.key === 'Enter') window.devLogin();
 });
@@ -571,7 +539,6 @@ function renderSchools(schools) {
                         <div class="ef" style="margin-top:14px;"><label>Max Upload Size (MB)</label>
                             <input type="number" id="ft-mb-${s.id}" value="${s.max_upload_mb||5}" min="1" max="100">
                         </div>
-                        <!-- Stats summary -->
                         <div style="margin-top:16px;padding:10px;background:var(--bg);border-radius:6px;font-family:'Inter',sans-serif;font-size:11px;color:var(--text2);line-height:2;">
                             <div>Users: <span style="color:var(--text);">${s.user_count||0}</span> / ${s.max_users||25}</div>
                             <div>Messages: <span style="color:var(--text);">${s.message_count||0}</span></div>
@@ -616,7 +583,6 @@ function renderSchools(schools) {
                     </button>
                     <span class="save-note" id="note-${s.id}"></span>
                 </div>
-                <!-- Principal Password Reset — hidden until button clicked -->
                 <div id="resetPrincipalSection-${s.id}" style="display:none;margin-top:14px;padding:14px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border);">
                     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
                         <div style="flex:1;min-width:200px;">
@@ -789,6 +755,10 @@ window.showTab = function(name) {
     document.querySelector(`.tab[onclick*="${name}"]`).classList.add('active');
     document.getElementById(`tab-${name}`).classList.add('active');
     if (name === 'roles' && !window._rolesLoaded) loadRoles();
+    if (name === 'metrics') {
+        loadMetrics();          // load global metrics
+        loadSchoolMetrics();    // load school-wise table
+    }
 };
 
 // ── PERMISSION DEFINITIONS ─────────────────────────────────────
@@ -934,7 +904,6 @@ window.resetPrincipalPassword = async function(tenantId) {
 
     const { data: { session } } = await sb.auth.getSession();
     const payload = { mode: 'reset_password', tenant_id: tenantId, password: pwd };
-    console.log('[resetPrincipal] sending:', JSON.stringify(payload));
 
     const resp = await fetch('https://apfymygzwkzjhhgmtkaj.supabase.co/functions/v1/create-school-user', {
         method: 'POST',
@@ -945,7 +914,6 @@ window.resetPrincipalPassword = async function(tenantId) {
         body: JSON.stringify(payload)
     });
     const result = await resp.json();
-    console.log('[resetPrincipal] response:', resp.status, result);
 
     if (!resp.ok || result.error) {
         note.style.color = 'var(--red)';
@@ -1038,6 +1006,193 @@ window.printSchoolUsers = async function(tenantId, schoolName) {
     win.print();
 };
 
+// ── LOAD METRICS ──────────────────────────────────────────────
+window.loadMetrics = async function() {
+    const alertText = document.getElementById('alertText');
+    alertText.textContent = 'Fetching metrics...';
+    alertText.style.color = 'var(--text2)';
+
+    console.log('🔍 [loadMetrics] Starting...');
+
+    try {
+        console.log('🔍 [loadMetrics] Getting session...');
+        const { data: { session }, error: sessionError } = await sb.auth.getSession();
+        if (sessionError) {
+            console.error('❌ [loadMetrics] Session error:', sessionError);
+            throw new Error('Session error: ' + sessionError.message);
+        }
+        if (!session) {
+            console.error('❌ [loadMetrics] No session found');
+            throw new Error('Not logged in. Please refresh and login again.');
+        }
+        console.log('✅ [loadMetrics] Session found for user:', session.user.email);
+
+        const url = 'https://apfymygzwkzjhhgmtkaj.supabase.co/functions/v1/get-metrics';
+        const headers = {
+            'Authorization': 'Bearer ' + session.access_token,
+            'Content-Type': 'application/json',
+        };
+        console.log('🔍 [loadMetrics] Fetching URL:', url);
+        console.log('🔍 [loadMetrics] Headers:', headers);
+
+        console.log('🔍 [loadMetrics] Sending request...');
+        const resp = await fetch(url, {
+            method: 'GET',
+            headers: headers,
+        });
+
+        console.log('🔍 [loadMetrics] Response status:', resp.status, resp.statusText);
+        console.log('🔍 [loadMetrics] Response headers:', [...resp.headers.entries()]);
+
+        if (resp.status === 404) {
+            console.error('❌ [loadMetrics] Function not found (404)');
+            throw new Error('The "get-metrics" edge function is not deployed. Please deploy it from your Supabase dashboard.');
+        }
+
+        if (!resp.ok) {
+            const errText = await resp.text();
+            console.error('❌ [loadMetrics] HTTP error response body:', errText);
+            throw new Error(`HTTP ${resp.status}: ${errText || 'Unknown error'}`);
+        }
+
+        const data = await resp.json();
+        console.log('✅ [loadMetrics] Received data:', data);
+
+        if (data.error) {
+            console.error('❌ [loadMetrics] Function returned error:', data.error);
+            throw new Error('Function error: ' + data.error);
+        }
+
+        const m = data.metrics;
+        console.log('🔍 [loadMetrics] Metrics object:', m);
+
+        document.getElementById('m_db').textContent = m.db_size_gb?.toFixed(2) ?? '0.00';
+        document.getElementById('m_storage').textContent = m.storage_gb?.toFixed(2) ?? '0.00';
+        document.getElementById('m_realtime').textContent = (m.realtime_messages_month ?? 0).toLocaleString();
+        document.getElementById('m_conn').textContent = m.realtime_connections ?? 0;
+        document.getElementById('m_mau').textContent = (m.auth_mau ?? 0).toLocaleString();
+
+        setBar('m_db_bar', m.db_size_gb ?? 0, data.limits.db_size_gb);
+        setBar('m_storage_bar', m.storage_gb ?? 0, data.limits.storage_gb);
+        setBar('m_realtime_bar', m.realtime_messages_month ?? 0, data.limits.realtime_messages_month);
+        setBar('m_conn_bar', m.realtime_connections ?? 0, data.limits.realtime_connections);
+        setBar('m_mau_bar', m.auth_mau ?? 0, data.limits.auth_mau);
+
+        const alerts = data.alerts || ['✅ All systems healthy!'];
+        const alertBox = document.getElementById('metricsAlerts');
+        const hasWarning = alerts.some(a => a.includes('⚠️'));
+
+        if (hasWarning) {
+            alertBox.style.borderLeftColor = 'var(--red)';
+            alertText.style.color = 'var(--red)';
+            alertText.textContent = alerts.filter(a => a.includes('⚠️')).join(' | ');
+        } else {
+            alertBox.style.borderLeftColor = 'var(--accent-h)';
+            alertText.style.color = 'var(--accent-h)';
+            alertText.textContent = alerts[0] || '✅ All systems healthy!';
+        }
+
+        console.log('✅ [loadMetrics] UI updated successfully.');
+
+    } catch (e) {
+        console.error('❌ [loadMetrics] CATCH block error:', e);
+        alertText.textContent = '❌ ' + e.message;
+        alertText.style.color = 'var(--red)';
+        toast('Metrics error: ' + e.message, 'red');
+    }
+};
+
+function setBar(id, value, limit) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const percent = Math.min((value / limit) * 100, 100);
+    el.style.width = percent + '%';
+    if (percent > 90) {
+        el.style.background = 'var(--red)';
+    } else if (percent > 70) {
+        el.style.background = 'var(--orange)';
+    } else {
+        el.style.background = '';
+    }
+}
+
+// ── LOAD SCHOOL-WISE METRICS ──────────────────────────────────
+window.loadSchoolMetrics = async function() {
+    const container = document.getElementById('schoolMetricsTable');
+    container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);"><i class="fa-solid fa-spinner fa-spin"></i> Loading school data...</div>';
+
+    try {
+        // Use the existing RPC to get all schools
+        const { data: schools, error } = await sb.rpc('dev_get_all_schools');
+        if (error) throw new Error(error.message);
+
+        const schoolsData = Array.isArray(schools) ? schools : JSON.parse(schools || '[]');
+
+        if (!schoolsData.length) {
+            container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);">No schools found.</div>';
+            return;
+        }
+
+        // Sort by message count (most active first)
+        schoolsData.sort((a, b) => (b.message_count || 0) - (a.message_count || 0));
+
+        let tableHTML = `
+            <table class="metrics-table">
+                <thead>
+                    <tr>
+                        <th style="text-align:left;">School</th>
+                        <th>Users</th>
+                        <th>Messages</th>
+                        <th>Tasks</th>
+                        <th>Staff</th>
+                        <th>Storage</th>
+                        <th>Status</th>
+                        <th>Last Activity</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        schoolsData.forEach(s => {
+            const statusPillClass = {
+                active: 'pill-green',
+                trial: 'pill-blue',
+                expired: 'pill-orange',
+                suspended: 'pill-red'
+            }[s.status] || 'pill-gray';
+
+            const storageGB = ((s.storage_mb || 0) / 1024).toFixed(2);
+
+            tableHTML += `
+                <tr>
+                    <td class="school-name-col">${esc(s.school_name)}</td>
+                    <td>${s.user_count || 0}</td>
+                    <td>${(s.message_count || 0).toLocaleString()}</td>
+                    <td>${s.task_count || 0}</td>
+                    <td>${s.staff_count || 0}</td>
+                    <td>${storageGB} GB</td>
+                    <td><span class="pill ${statusPillClass}">${s.status.toUpperCase()}</span></td>
+                    <td style="font-size:11px;color:var(--text2);">${devFmtLogin(s.last_activity)}</td>
+                </tr>
+            `;
+        });
+
+        tableHTML += `
+                </tbody>
+            </table>
+            <div style="font-size:11px;color:var(--text2);padding:10px 0 4px;">
+                Showing ${schoolsData.length} schools · Sorted by most messages
+            </div>
+        `;
+
+        container.innerHTML = tableHTML;
+
+    } catch (e) {
+        container.innerHTML = `<div style="text-align:center;padding:20px;color:var(--red);">❌ Error loading school metrics: ${e.message}</div>`;
+        console.error('School metrics error:', e);
+    }
+};
+
 // ── TOAST ─────────────────────────────────────────────────────
 function toast(msg, type = 'green') {
     const el = document.getElementById('devToast');
@@ -1060,6 +1215,16 @@ function esc(str) {
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 window.esc = esc;
+
+// ── AUTO-REFRESH METRICS ──────────────────────────────────────
+setInterval(() => {
+    const metricsTab = document.getElementById('tab-metrics');
+    if (metricsTab && metricsTab.classList.contains('active')) {
+        loadMetrics();
+        loadSchoolMetrics();
+    }
+}, 60000);
+
 </script>
 </body>
 </html>

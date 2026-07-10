@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v140';
+const _MOB_VER = 'v142';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -678,7 +678,9 @@ async function _syncRoomSettings() {
                 }
             } catch(e){}
         }));
-    } catch {}
+    } catch (e) {
+        console.error('[mob] _syncRoomSettings error:', e);
+    }
 }
 
 // Upsert room_settings including members; retries without members if the column doesn't exist yet.
@@ -1155,9 +1157,16 @@ async function _home() {
 }
 
 function _fmtDateTime(ds){ try { const d=new Date(ds); return _istFmtDate.format(d)+', '+_istFmt12.format(d); } catch { return ''; } }
+
+// ----- Activity feed with change detection to avoid flicker -----
+let _lastActivityCount = -1;
+
 async function _activity() {
     const filter = window._afFilter || 'all';
     const senderFilter = window._afSender || '';
+    // reset counter so first render always happens
+    _lastActivityCount = -1;
+
     // Opening the feed marks it "seen" (clears the Activity tab badge + bell badge)
     // AND the per-chat unread badges on the home list — the user has now seen
     // everything the feed lists, so individual group/DM counts reset too.
@@ -1232,6 +1241,9 @@ async function _activity() {
            <div style="margin-top:6px;">${filter==='all' ? 'Your activity will appear here when teammates chat, assign tasks, or reminders fire.' : 'No activity matches this filter.'}</div></div>`;
 
     const hasAny = _all.length > 0;
+    // store current count for change detection in live refresh
+    _lastActivityCount = items.length;
+
     return `<div class="mScr-inner">
       <div class="m-hdr m-hdr-plain" style="display:flex;align-items:center;justify-content:space-between;">
         <div class="m-htitle">🔔 Activity ${unread?`<span style="background:#2563eb;color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:30px;margin-left:6px;vertical-align:middle;">${unread} new</span>`:''}</div>
@@ -1261,10 +1273,32 @@ function _liveRefreshActivity() {
     const top = _stack[_stack.length-1];
     if (top?.screen !== 'activity') return;
     clearTimeout(_actRefreshTimer);
-    _actRefreshTimer = setTimeout(() => {
-        const t = _stack[_stack.length-1];
-        if (t?.screen === 'activity') _render('activity', null, 'none');   // silent in-place update, no slide
-    }, 600);
+    _actRefreshTimer = setTimeout(async () => {
+        // Only refresh if the count of items changed (avoid flicker on repeated calls)
+        try {
+            const _roomLabel = (rid) => {
+                if (!rid) return '';
+                if (rid.startsWith('dm_')) {
+                    const other = rid.replace('dm_','').split('_').find(id => id !== _uid);
+                    return other ? _uname(other) : 'Direct message';
+                }
+                return _findGroup(rid)?.name || _lsGet('dept_name_'+rid,'') || rid;
+            };
+            const { items } = await window.NFA_buildActivity(sb, {
+                uid: _uid, tid: _tid,
+                resolveName: _uname,
+                resolveRoom: _roomLabel,
+                snippet: _snip,
+                logError: (m, d) => window.logger?.sb?.(m, d),
+            });
+            const newCount = items.length;
+            if (newCount !== _lastActivityCount) {
+                _lastActivityCount = newCount;
+                const t = _stack[_stack.length-1];
+                if (t?.screen === 'activity') _render('activity', null, 'none');
+            }
+        } catch (e) { /* quiet */ }
+    }, 1500);
 }
 window._mobAfFilter = function(v){ window._afFilter = v; window._afSender = ''; window._mobRerenderActivity(); };
 window._mobAfSender = function(v){ window._afSender = v || ''; window._mobRerenderActivity(); };
@@ -1748,7 +1782,7 @@ async function _groupChat(p) {
     setTimeout(() => {
         _bcChannel?.send({ type:'broadcast', event:'room_read', payload:{ room:p.room, uid:_uid, ts:new Date().toISOString() } });
         _lsSet('last_read_'+p.room, new Date().toISOString());
-        try { sb.from('room_reads').upsert({ user_id:_uid, room_id:p.room, tenant_id:_tid, last_read_at:new Date().toISOString() }, { onConflict:'user_id,room_id' }).then(()=>{}); } catch(e){}
+        _upsertRoomRead(p.room);   // ✅ retry + reconcile
     }, 500);
     return `<div class="mFlex">
       <div class="m-hdr">
@@ -1861,7 +1895,7 @@ async function _dm(p) {
     setTimeout(() => {
         _bcChannel?.send({ type:'broadcast', event:'room_read', payload:{ room:p.room, uid:_uid, ts:new Date().toISOString() } });
         _lsSet('last_read_'+p.room, new Date().toISOString());
-        try { sb.from('room_reads').upsert({ user_id:_uid, room_id:p.room, tenant_id:_tid, last_read_at:new Date().toISOString() }, { onConflict:'user_id,room_id' }).then(()=>{}); } catch(e){}
+        _upsertRoomRead(p.room);   // ✅ retry + reconcile
     }, 500);
     return `<div class="mFlex">
       <div class="m-hdr">
@@ -3285,11 +3319,11 @@ async function _markRoomNotifsRead(room) {
 // Plain messages/DMs don't create notification rows (v122), so this fires for the
 // attention stream only — the gap where a reaction/task gave NO mobile alert.
 function _onNotifInsert(n) {
-    // Instant provisional bump ONLY for attention types that are NOT themselves an
-    // unread message (reaction/task/reminder). mention/reply are unread messages and
-    // are already bumped by _onNewMessage — bumping here too would double-count until
-    // reconcile. The debounced reconcile then makes the count authoritative.
-    if (n && (n.type === 'reaction' || n.type === 'task' || n.type === 'reminder')) { _bellCount++; _renderBellBadge(); }
+    _badgeCalcGen++; // ⚡ INVALIDATE any in-flight background DB polls
+    if (n && (n.type === 'reaction' || n.type === 'task' || n.type === 'reminder')) { 
+        _bellCount++; 
+        _renderBellBadge(); 
+    }
     _scheduleReconcile();      // authoritative de-duped recompute from DB truth
     _liveRefreshActivity();
     if (!n || !n.message) return;
@@ -3298,6 +3332,7 @@ function _onNotifInsert(n) {
     try { _toast(_snip(n.message, 80)); } catch (e) {}
     if (!window._isSoundOff?.()) { try { window.playSound?.('message'); } catch (e) {} }
 }
+
 // ── ONE authoritative badge engine (v138 model: "everything, de-duped") ─────────
 // The bell / Activity number = ALL unread messages (every DM + group) PLUS the
 // attention items (mentions, replies-to-you, reactions-to-you, tasks, reminders) —
@@ -3306,32 +3341,167 @@ function _onNotifInsert(n) {
 // read (or no) message, so it DOES add. Everything is re-derived from DB truth
 // (room_reads + messages + notifications), which is why it stays consistent across
 // DM / group / mention regardless of the flaky realtime socket.
+
+
+// Direct fallback to compute unread counts per room when the core engine fails
+async function _directUnreadCounts(rooms) {
+    if (!rooms || rooms.size === 0) return {};
+    const roomArray = Array.from(rooms);
+    // Fetch the user's last_read_at for each room
+    const { data: reads, error: readErr } = await sb
+        .from('room_reads')
+        .select('room_id, last_read_at')
+        .eq('user_id', _uid)
+        .eq('tenant_id', _tid)
+        .in('room_id', roomArray);
+    if (readErr) {
+        console.warn('[mob-badge] directUnread: room_reads fetch error', readErr);
+        return {};
+    }
+    const readMap = {};
+    (reads || []).forEach(r => { readMap[r.room_id] = r.last_read_at; });
+
+    // For rooms without a read entry, treat last_read_at as epoch (count all messages)
+    const unreadMap = {};
+    // To avoid too many queries, fetch messages in bulk: group by room, count after timestamp.
+    // We'll do one query per room, but we can batch with OR conditions.
+    // For simplicity, we'll query all messages for these rooms and filter client-side.
+    // But that could be heavy. Better: use a group by query with Supabase.
+    // Since Supabase doesn't support COUNT with a filter on different timestamps per room,
+    // we'll iterate rooms and query per room (capped at 1000 messages).
+    for (const room of roomArray) {
+        let lastRead = readMap[room] || null;
+        let q = sb.from('messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('room_id', room)
+            .eq('tenant_id', _tid)
+            .is('deleted_at', null);
+        if (lastRead) {
+            q = q.gt('created_at', lastRead);
+        }
+        const { count, error } = await q;
+        if (error) {
+            console.warn('[mob-badge] directUnread: count error for room', room, error);
+            continue;
+        }
+        unreadMap[room] = count || 0;
+    }
+    return unreadMap;
+}
+
+
+
 async function _recomputeBadges() {
     if (!_uid || !_tid || !window.NFA_computeRoomUnread) return;
+    const myGen = ++_badgeCalcGen; // Mark the start of this specific fetch
+
+    // --- FALLBACK: ensure groups are loaded ---
+    if (_customGroups.length === 0) {
+        try { await _syncRoomSettings(); } catch (e) { /* ignore */ }
+    }
+    if (_users.length === 0) {
+        try { await _refreshUsers(_tid); } catch (e) { /* ignore */ }
+    }
+
     try {
         const rooms = new Set();
+        // Force the inclusion of all Groups and DMs
         [...DEPTS, ..._customGroups].forEach(d => rooms.add(d.id));
         (_users || []).forEach(u => { if (u.id !== _uid) rooms.add(_dmRoom(u.id)); });
-        const { perRoom, unreadMsgIds } = await window.NFA_computeRoomUnread(sb, { uid: _uid, tid: _tid, rooms });
-        // The open chat is being read right now → force it to 0 and drop its ids.
+
+        if (rooms.size === 0) {
+            setTimeout(() => { _recomputeBadges(); }, 2000);
+            return;
+        }
+
+        let perRoom = {};
+        let unreadMsgIds = new Set();
+        try {
+            const result = await window.NFA_computeRoomUnread(sb, { uid: _uid, tid: _tid, rooms });
+            perRoom = result.perRoom || {};
+            unreadMsgIds = result.unreadMsgIds || new Set();
+        } catch (e) {
+            perRoom = await _directUnreadCounts(rooms);
+        }
+
+        // RACE CONDITION GUARD #1: If a newer realtime event arrived while we queried, 
+        // discard this stale DB state immediately to prevent overwriting local truth.
+        if (_badgeCalcGen !== myGen) {
+            console.log('[mob-badge] discarding stale DB state (gen mismatch)');
+            return;
+        }
+
+        // The open chat is being read right now → force it to 0
         const top = _stack[_stack.length - 1];
         const openRoom = (top?.screen === 'groupChat' || top?.screen === 'dm') ? top.params?.room : null;
         if (openRoom) perRoom[openRoom] = 0;
+
         window.unreadCounts = perRoom;
         const msgUnread = Object.values(perRoom).reduce((a, b) => a + (b || 0), 0);
-        // Attention notifications NOT already counted as an unread message (de-dup).
-        let attention = 0;
+
+        // Maintain last known attention state during offline drops instead of resetting to 0
+        window._lastKnownAttention = window._lastKnownAttention || 0;
+        let attention = window._lastKnownAttention; 
+        
         try {
-            const { data: ns } = await sb.from('notifications')
+            const { data: ns, error } = await sb.from('notifications')
                 .select('message_id').eq('user_id', _uid).eq('is_read', false);
-            attention = (ns || []).filter(n => !n.message_id || !unreadMsgIds.has(n.message_id)).length;
-        } catch (e) {}
-        _bellCount = msgUnread + attention;   // authoritative grand total (de-duped)
-        _renderBellBadge();
-        _updateAppBadge();
-        if (top?.screen === 'home') rooms.forEach(rid => { try { _patchHomeUnread(rid); } catch (e) {} });
+            
+            if (error) throw error; // Force it to the catch block on network errors
+
+            if (unreadMsgIds.size > 0) {
+                attention = (ns || []).filter(n => !n.message_id || !unreadMsgIds.has(n.message_id)).length;
+            } else {
+                attention = (ns || []).length;
+            }
+            
+            // Save the successful network fetch state
+            window._lastKnownAttention = attention;
+            
+        } catch (e) {
+            console.warn('[mob-badge] Network fetch failed, retaining last known attention:', attention);
+        }
+
+        // RACE CONDITION GUARD #2: Check again after the second DB query
+        if (_badgeCalcGen !== myGen) return;
+
+        _bellCount = msgUnread + attention;
+        console.log('[mob-badge] recompute: msgUnread=', msgUnread, 'attention=', attention, 'bellCount=', _bellCount);
+
+        // Apply UI updates using requestAnimationFrame to batch DOM patches and avoid UI stutter
+        requestAnimationFrame(() => {
+            _renderBellBadge();
+            _updateAppBadge();
+            if (top?.screen === 'home') {
+                rooms.forEach(rid => { try { _patchHomeUnread(rid); } catch (e) {} });
+            }
+        });
         _liveRefreshActivity();
-    } catch (e) {}
+    } catch (e) {
+        console.error('[mob-badge] error in _recomputeBadges:', e);
+    }
+}
+
+        
+
+        // RACE CONDITION GUARD #2: Check again after the second DB query
+        if (_badgeCalcGen !== myGen) return;
+
+        _bellCount = msgUnread + attention;
+        console.log('[mob-badge] recompute: msgUnread=', msgUnread, 'attention=', attention, 'bellCount=', _bellCount);
+
+        // Apply UI updates using requestAnimationFrame to batch DOM patches and avoid UI stutter
+        requestAnimationFrame(() => {
+            _renderBellBadge();
+            _updateAppBadge();
+            if (top?.screen === 'home') {
+                rooms.forEach(rid => { try { _patchHomeUnread(rid); } catch (e) {} });
+            }
+        });
+        _liveRefreshActivity();
+    } catch (e) {
+        console.error('[mob-badge] error in _recomputeBadges:', e);
+    }
 }
 // Back-compat aliases — many call sites use these two names; both now run the one
 // authoritative engine so message-unread and attention can never disagree.
@@ -3341,39 +3511,76 @@ async function _refreshNotifBadge() { return _recomputeBadges(); }
 // and reconnects (not just from ephemeral realtime increments). Only counts
 // rooms the user actually has (groups they can see + their own DMs).
 async function _reconcileUnread() { return _recomputeBadges(); }   // one engine now
+
+// 🔥 NEW: Retry helper for room_reads upsert
+async function _upsertRoomRead(room, retries = 3) {
+    let attempt = 0;
+    while (attempt < retries) {
+        try {
+            const { error } = await sb.from('room_reads').upsert({
+                user_id: _uid,
+                room_id: room,
+                tenant_id: _tid,
+                last_read_at: new Date().toISOString()
+            }, { onConflict: 'user_id,room_id' });
+            if (!error) {
+                console.log('[mob-roomread] upsert success for room', room);
+                // After successful write, recompute badges from DB truth
+                try { await _recomputeBadges(); } catch (e) {}
+                return;
+            }
+            console.warn('[mob-roomread] upsert attempt', attempt+1, 'failed:', error);
+        } catch (e) {
+            console.warn('[mob-roomread] upsert attempt', attempt+1, 'exception:', e);
+        }
+        attempt++;
+        // exponential backoff: 500ms, 1s, 2s
+        await new Promise(r => setTimeout(r, 500 * Math.pow(2, attempt - 1)));
+    }
+    console.error('[mob-roomread] all retries exhausted for room', room);
+}
+
 // Debounced self-heal: after ANY realtime event (message or notification) re-derive
 // ALL badges from the DB truth (room_reads + notifications). This is what makes the
 // badges reliable like a standard app — the live increment gives instant feedback,
 // then ~1.2s later the DB reconcile guarantees DM / group / @mention / reaction /
 // reply / task counts are all correct and consistent, healing any dropped event.
+let _badgeCalcGen = 0; // Generation counter to defeat race conditions
 let _reconcileTimer = null;
+
 function _scheduleReconcile() {
     if (_reconcileTimer) clearTimeout(_reconcileTimer);
+    // Increased from 300ms to 1200ms to allow Supabase read-replicas to catch up
+    // before we query the truth.
     _reconcileTimer = setTimeout(() => {
         _reconcileTimer = null;
         try { _recomputeBadges(); } catch (e) {}
     }, 1200);
 }
+
 // Steady resilience poll. Refreshes bell + reconciles message unread from the DB.
 // CRITICAL: mobile realtime frequently reports state='joined' while silently
 // dropping postgres_changes events, so we do NOT trust "healthy" to slow the poll —
 // a steady 15s catch-up while visible keeps every badge correct within ~15s even
 // when the socket lies. Backgrounded backs off to 60s to save battery.
 async function _fallbackPoll() {
+    console.log('[mob-poll] running fallback poll');
     _recomputeBadges();
     if (document.visibilityState !== 'visible') return;
     const healthy = _rtChannel && _rtChannel.state === 'joined';
     if (!healthy) { try { _pendingRefresh?.(); } catch (e) {} }
 }
+
 function _scheduleFallback() {
     if (_fallbackTimer) clearTimeout(_fallbackTimer);
     const hidden = document.visibilityState !== 'visible';
-    const ms = hidden ? 60000 : 15000;   // steady, socket-state-independent
+    const ms = hidden ? 30000 : 5000;   // steady, socket-state-independent
     _fallbackTimer = setTimeout(async () => {
         try { await _fallbackPoll(); } catch (e) {}
         _scheduleFallback();   // re-evaluate cadence each tick
     }, ms);
 }
+
 // Render the bell + Activity-tab badge. _bellCount is now the AUTHORITATIVE grand
 // total computed by _recomputeBadges (all message-unread + de-duped attention), so
 // render it directly — no second addition of _sumUnread (that was the old double).

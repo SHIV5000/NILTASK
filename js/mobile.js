@@ -3324,6 +3324,55 @@ function _onNotifInsert(n) {
 // (room_reads + messages + notifications), which is why it stays consistent across
 // DM / group / mention regardless of the flaky realtime socket.
 
+
+// Direct fallback to compute unread counts per room when the core engine fails
+async function _directUnreadCounts(rooms) {
+    if (!rooms || rooms.size === 0) return {};
+    const roomArray = Array.from(rooms);
+    // Fetch the user's last_read_at for each room
+    const { data: reads, error: readErr } = await sb
+        .from('room_reads')
+        .select('room_id, last_read_at')
+        .eq('user_id', _uid)
+        .eq('tenant_id', _tid)
+        .in('room_id', roomArray);
+    if (readErr) {
+        console.warn('[mob-badge] directUnread: room_reads fetch error', readErr);
+        return {};
+    }
+    const readMap = {};
+    (reads || []).forEach(r => { readMap[r.room_id] = r.last_read_at; });
+
+    // For rooms without a read entry, treat last_read_at as epoch (count all messages)
+    const unreadMap = {};
+    // To avoid too many queries, fetch messages in bulk: group by room, count after timestamp.
+    // We'll do one query per room, but we can batch with OR conditions.
+    // For simplicity, we'll query all messages for these rooms and filter client-side.
+    // But that could be heavy. Better: use a group by query with Supabase.
+    // Since Supabase doesn't support COUNT with a filter on different timestamps per room,
+    // we'll iterate rooms and query per room (capped at 1000 messages).
+    for (const room of roomArray) {
+        let lastRead = readMap[room] || null;
+        let q = sb.from('messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('room_id', room)
+            .eq('tenant_id', _tid)
+            .is('deleted_at', null);
+        if (lastRead) {
+            q = q.gt('created_at', lastRead);
+        }
+        const { count, error } = await q;
+        if (error) {
+            console.warn('[mob-badge] directUnread: count error for room', room, error);
+            continue;
+        }
+        unreadMap[room] = count || 0;
+    }
+    return unreadMap;
+}
+
+
+
 async function _recomputeBadges() {
     if (!_uid || !_tid || !window.NFA_computeRoomUnread) return;
 
@@ -3331,7 +3380,6 @@ async function _recomputeBadges() {
     if (_customGroups.length === 0) {
         try { await _syncRoomSettings(); } catch (e) { /* ignore */ }
     }
-    // --- FALLBACK: ensure users are loaded ---
     if (_users.length === 0) {
         try { await _refreshUsers(_tid); } catch (e) { /* ignore */ }
     }
@@ -3341,42 +3389,68 @@ async function _recomputeBadges() {
         [...DEPTS, ..._customGroups].forEach(d => rooms.add(d.id));
         (_users || []).forEach(u => { if (u.id !== _uid) rooms.add(_dmRoom(u.id)); });
 
-        // --- DIAGNOSTIC ---
         console.log('[mob-badge] rooms set size:', rooms.size, 'customGroups:', _customGroups.length, 'users:', _users.length);
         console.log('[mob-badge] rooms set:', Array.from(rooms));
 
-        // If still empty, schedule a retry after a short delay (network may be slow)
         if (rooms.size === 0) {
             console.warn('[mob-badge] rooms set empty – scheduling retry in 2s');
             setTimeout(() => { _recomputeBadges(); }, 2000);
-            return; // skip this run, will retry
+            return;
         }
 
-        const { perRoom, unreadMsgIds } = await window.NFA_computeRoomUnread(sb, { uid: _uid, tid: _tid, rooms });
-        // The open chat is being read right now → force it to 0 and drop its ids.
+        let perRoom = {};
+        let unreadMsgIds = new Set();
+        try {
+            const result = await window.NFA_computeRoomUnread(sb, { uid: _uid, tid: _tid, rooms });
+            perRoom = result.perRoom || {};
+            unreadMsgIds = result.unreadMsgIds || new Set();
+        } catch (e) {
+            console.warn('[mob-badge] NFA_computeRoomUnread threw error, using fallback', e);
+        }
+
+        // If core returned empty, fallback to direct computation
+        if (Object.keys(perRoom).length === 0) {
+            console.log('[mob-badge] Core unread engine returned empty – using direct fallback');
+            perRoom = await _directUnreadCounts(rooms);
+            // unreadMsgIds is not needed for direct counts, but keep it empty
+        }
+
+        // The open chat is being read right now → force it to 0
         const top = _stack[_stack.length - 1];
         const openRoom = (top?.screen === 'groupChat' || top?.screen === 'dm') ? top.params?.room : null;
         if (openRoom) perRoom[openRoom] = 0;
+
         window.unreadCounts = perRoom;
         const msgUnread = Object.values(perRoom).reduce((a, b) => a + (b || 0), 0);
+
         // Attention notifications NOT already counted as an unread message (de-dup).
         let attention = 0;
         try {
             const { data: ns } = await sb.from('notifications')
                 .select('message_id').eq('user_id', _uid).eq('is_read', false);
-            attention = (ns || []).filter(n => !n.message_id || !unreadMsgIds.has(n.message_id)).length;
-        } catch (e) {}
+            // If we don't have unreadMsgIds (from fallback), we cannot de-dup, so count all attention
+            if (unreadMsgIds.size > 0) {
+                attention = (ns || []).filter(n => !n.message_id || !unreadMsgIds.has(n.message_id)).length;
+            } else {
+                // Fallback: count all notifications as attention (they might be replies/reactions)
+                attention = (ns || []).length;
+            }
+        } catch (e) { console.warn('[mob-badge] attention fetch error', e); }
+
         _bellCount = msgUnread + attention;
         console.log('[mob-badge] recompute: msgUnread=', msgUnread, 'attention=', attention, 'bellCount=', _bellCount);
         console.log('[mob-badge] perRoom=', JSON.stringify(perRoom));
+
         _renderBellBadge();
         _updateAppBadge();
-        if (top?.screen === 'home') rooms.forEach(rid => { try { _patchHomeUnread(rid); } catch (e) {} });
+        if (top?.screen === 'home') {
+            rooms.forEach(rid => { try { _patchHomeUnread(rid); } catch (e) {} });
+        }
         _liveRefreshActivity();
-    } catch (e) { console.error('[mob-badge] error in _recomputeBadges:', e); }
+    } catch (e) {
+        console.error('[mob-badge] error in _recomputeBadges:', e);
+    }
 }
-
-
 
 // Back-compat aliases — many call sites use these two names; both now run the one
 // authoritative engine so message-unread and attention can never disagree.

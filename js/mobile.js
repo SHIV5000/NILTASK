@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v144';
+const _MOB_VER = 'v145';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -313,6 +313,10 @@ window.initMobileApp = async function() {
         // Principals/admins get a toggle to the Admin Panel (permission known after _ctx).
         if (window.currentPermissions?.admin_panel) _el('mSBAdmin')?.style.setProperty('display','flex');
         await _navTo('home');
+        // Belt-and-suspenders: if for any reason the stage is still empty after the
+        // home nav (a discarded render race), force one direct paint so we can never
+        // sit on a blank screen with a built shell.
+        if (!_el('mStage')?.children?.length) { try { await _render('home', null, 'none'); } catch (e) {} }
     } catch (bootErr) {
         try { window.logger?.logError?.(bootErr, { where: 'initMobileApp' }); } catch (e) {}
         console.error('[mob-boot] init failed', bootErr);
@@ -977,7 +981,11 @@ async function _render(screen, params, dir='forward') {
     // still loading, the SLOWER older render must not overwrite the newer screen.
     const myNavGen = ++_navGen;
     const html = await (fns[screen]?.(params) || Promise.resolve('<div style="padding:40px;text-align:center;">Coming soon</div>'));
-    if (myNavGen !== _navGen) return;
+    // Race guard: a SLOWER older render must not overwrite a newer screen. BUT only
+    // skip when the stage already has something painted — if the stage is still
+    // EMPTY (e.g. at boot two home renders raced and both would otherwise bail),
+    // paint anyway so we can never be left on a blank screen.
+    if (myNavGen !== _navGen && stage.children.length) return;
     const scr  = document.createElement('div');
     // dir==='none' → NO slide animation: used for silent BACKGROUND refreshes
     // (badge/feed reconcile on the fallback poll) so the screen updates in place

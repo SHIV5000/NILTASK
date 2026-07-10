@@ -162,6 +162,14 @@ window.openActivityFeed = async function() {
 
     rs.appendChild(panel);
     await window._loadActivityFeed();
+    // Real-time safety net: realtime events already refresh the feed, but the web
+    // socket can drop silently. While the panel is open, reload every 12s so the
+    // feed stays live regardless of socket health. Cleared in closeActivityFeed().
+    try { clearInterval(window._afPollTimer); } catch (e) {}
+    window._afPollTimer = setInterval(() => {
+        if (window._activityFeedOpen && document.getElementById('activityFeedList')) window._loadActivityFeed();
+        else { try { clearInterval(window._afPollTimer); } catch (e) {} }
+    }, 12000);
 
     // Opening the feed IS "seeing" your notifications — mark personal unread
     // notifications read and clear the bell badge (the feed replaces the old
@@ -281,6 +289,7 @@ window.prependFeedItem = function(notif) {
 
 window.closeActivityFeed = function() {
     window._activityFeedOpen = false;
+    try { clearInterval(window._afPollTimer); } catch (e) {}
     document.getElementById('activityFeedPanel')?.remove();
     ['tasksPanel','rightSidebarFilters','dateRangeFilter'].forEach(id => {
         const el = document.getElementById(id);

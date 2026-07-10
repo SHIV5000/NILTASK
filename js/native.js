@@ -57,17 +57,26 @@
   function registerPush() {
     if (!P.PushNotifications) return;
     // WhatsApp-style heads-up: Android 8+ only shows a slide-down banner (and full
-    // content on the lock screen) if the notification channel is IMPORTANCE_HIGH.
-    // The FCM payload targets channel_id 'default', so create it high + public here.
+    // content on the lock screen) when the channel is IMPORTANCE_HIGH + PUBLIC.
+    // IMPORTANT: Android freezes a channel's importance at CREATE time — editing an
+    // existing channel is ignored. A prior build may have created 'default' at a
+    // lower importance, so use a FRESH channel id ('nfa_alerts') to guarantee the
+    // high-importance settings actually take effect. send-push targets this id.
     try {
       P.PushNotifications.createChannel && P.PushNotifications.createChannel({
-        id: 'default', name: 'Messages',
-        description: 'Chat messages and mentions',
+        id: 'nfa_alerts', name: 'Messages & Alerts',
+        description: 'Chat messages, mentions, tasks and reminders',
         importance: 5,     // HIGH → heads-up banner slides down from the top
         visibility: 1,     // PUBLIC → shows message content on the lock screen
         sound: 'default', vibration: true, lights: true,
       });
     } catch (e) {}
+    // Foreground policy (chosen model): when the app is OPEN, the in-app slide-down
+    // banner (driven by realtime in mobile.js) is the single alert — so consume the
+    // foreground push here WITHOUT posting anything, killing the duplicate OS +
+    // in-app "kiosk". When the app is closed/background the OS shows it (via the
+    // notification payload) on the lock screen; that path never reaches this handler.
+    P.PushNotifications.addListener('pushNotificationReceived', function () { /* suppress in foreground */ });
     P.PushNotifications.addListener('registration', function (t) {
       _lastToken = (t && t.value) || null;
       saveToken(_lastToken);

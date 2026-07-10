@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v142';
+const _MOB_VER = 'v143';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -54,6 +54,7 @@ let _typingThrottle = 0;
 let _notifFallbackInterval = null;
 let _fallbackTimer = null;   // adaptive fallback-poll timer (see _scheduleFallback)
 let _activityPoll = null;    // 12s refresh while the Activity screen is open (realtime safety net)
+let _badgeCalcGen = 0;       // generation counter to defeat badge race conditions (hoisted)
 let _bellCount = 0;   // instant in-memory unread count (survives RLS-blocked notification inserts)
 let _replyMapCache = {};   // room_id -> {parentId: replyCount} so thread buttons show on instant shell render
 let _scrollFabCount = 0;
@@ -295,16 +296,17 @@ window.initMobileApp = async function() {
         s.onload = () => eruda.init();
         document.head.appendChild(s);
     }
+    // FAIL-SAFE BOOT: wrap the ENTIRE startup (theme/CSS/shell build + context load
+    // + home render). If ANY step throws, we un-hide the login root, drop the boot
+    // splash, and render the real error message on screen so it can never sit blank
+    // — and so the exact failure is visible (not just in remote logs).
     _el('root')?.style.setProperty('display', 'none', 'important');
-    _applyMobTheme();   // System (default) / Light / Dark — user-controlled from the top bar
-    _injectCSS();
-    _buildShell();
-    _initKeyboardHandling();
-    _initImgHydration();
-    // FAIL-SAFE BOOT: never leave a blank/indigo splash if any startup step throws.
-    // Load context, then render home; on ANY error still drop the splash, log it,
-    // and show a minimal retry so the user is never stuck on a blank screen.
     try {
+        _applyMobTheme();   // System (default) / Light / Dark
+        _injectCSS();
+        _buildShell();
+        _initKeyboardHandling();
+        _initImgHydration();
         // Hydrate the room-message mirror from IndexedDB in parallel with the
         // context load — chats then open instantly with up to 150 cached messages.
         await Promise.all([_ctx(), _hydrateRoomCaches()]);
@@ -314,15 +316,19 @@ window.initMobileApp = async function() {
     } catch (bootErr) {
         try { window.logger?.logError?.(bootErr, { where: 'initMobileApp' }); } catch (e) {}
         console.error('[mob-boot] init failed', bootErr);
+        const msg = (bootErr && (bootErr.stack || bootErr.message)) ? String(bootErr.stack || bootErr.message) : String(bootErr);
         try {
-            const stage = _el('mStage');
-            if (stage) stage.innerHTML =
-                '<div style="padding:40px 24px;text-align:center;color:var(--text-secondary);">'
-              + '<div style="font-size:34px;margin-bottom:10px;">😕</div>'
-              + '<div style="font-weight:700;color:var(--text-primary);margin-bottom:6px;">Could not load</div>'
-              + '<div style="font-size:13px;margin-bottom:16px;">Please check your connection and try again.</div>'
-              + '<button onclick="location.reload()" style="background:var(--accent,#6366f1);color:#fff;border:none;border-radius:22px;padding:10px 22px;font-weight:700;">Retry</button>'
-              + '</div>';
+            const host = _el('mStage') || document.getElementById('mobileApp') || document.body;
+            if (host === document.body) _el('root')?.style.removeProperty('display');   // no shell — show login instead of blank
+            const card = document.createElement('div');
+            card.style.cssText = 'position:fixed;inset:0;z-index:100000;overflow:auto;background:var(--bg-body,#fff);color:#111;padding:40px 22px;text-align:center;font-family:-apple-system,system-ui,sans-serif;';
+            card.innerHTML =
+                '<div style="font-size:34px;margin-bottom:10px;">😕</div>'
+              + '<div style="font-weight:700;font-size:16px;margin-bottom:6px;">Could not load</div>'
+              + '<div style="font-size:13px;color:#555;margin-bottom:16px;">Check your connection and retry.</div>'
+              + '<button onclick="location.reload()" style="background:#6366f1;color:#fff;border:none;border-radius:22px;padding:10px 24px;font-weight:700;">Retry</button>'
+              + '<pre style="text-align:left;white-space:pre-wrap;word-break:break-word;font-size:10px;color:#b91c1c;margin-top:20px;background:#fef2f2;padding:10px;border-radius:8px;">' + (window.escapeHtml ? window.escapeHtml(msg) : msg) + '</pre>';
+            (host === document.body ? document.body : host).appendChild(card);
         } catch (e) {}
     }
     window._hideSplash?.();   // first screen painted (or the retry card) — always drop the boot splash
@@ -3545,7 +3551,6 @@ async function _upsertRoomRead(room, retries = 3) {
 // badges reliable like a standard app — the live increment gives instant feedback,
 // then ~1.2s later the DB reconcile guarantees DM / group / @mention / reaction /
 // reply / task counts are all correct and consistent, healing any dropped event.
-let _badgeCalcGen = 0; // Generation counter to defeat race conditions
 let _reconcileTimer = null;
 
 function _scheduleReconcile() {

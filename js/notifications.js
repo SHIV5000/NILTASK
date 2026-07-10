@@ -48,6 +48,15 @@ window._setDND = async function(on) {
         r.onupgradeneeded = () => { try { r.result.createObjectStore('kv'); } catch (e) {} };
         r.onsuccess = () => { try { r.result.transaction('kv', 'readwrite').objectStore('kv').put(on ? 1 : 0, 'dnd'); } catch (e) {} };
     } catch (e) {}
+    // Persist the mute state server-side so the send-push edge function can deliver
+    // a SILENT background/lock-screen push (no sound/vibration) instead of a full
+    // alert while the user is muted — the OS notification channel is chosen per
+    // recipient from this flag. Fire-and-forget; failure just keeps the prior state.
+    try {
+        if (window.sb && window.currentUser?.id) {
+            await window.sb.from('profiles').update({ notify_muted: !!on }).eq('id', window.currentUser.id);
+        }
+    } catch (e) {}
 };
 
 window._persistAuthForSW = async function() {

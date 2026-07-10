@@ -28,7 +28,7 @@
      * @returns {Promise<{perRoom:Object, total:number}>}
      */
     async function computeRoomUnread(sb, opts) {
-        const { uid, tid, rooms = null, window: win = 500 } = opts || {};
+        const { uid, tid, rooms = null, window: win = 1000 } = opts || {};
         const perRoom = {};
         if (!uid || !tid) return { perRoom, total: 0 };
         try {

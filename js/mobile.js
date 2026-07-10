@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v137';
+const _MOB_VER = 'v138';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -3267,6 +3267,7 @@ async function _markRoomNotifsRead(room) {
 // attention stream only — the gap where a reaction/task gave NO mobile alert.
 function _onNotifInsert(n) {
     _refreshNotifBadge();
+    _scheduleReconcile();      // keep bell + per-chat counts consistent from DB truth
     _liveRefreshActivity();
     if (!n || !n.message) return;
     if (n.type === 'mention') return;                 // de-dup with _onNewMessage heads-up
@@ -3311,10 +3312,25 @@ async function _reconcileUnread() {
         }
     } catch (e) {}
 }
-// 60s resilience poll (Phase 5.3). Refreshes bell + reconciles message unread from
-// the DB. When the realtime message channel is NOT 'joined' (flapping/dead socket)
-// it also re-pulls the open chat so a new message still lands within the poll
-// window. Skipped while backgrounded to save battery/network.
+// Debounced self-heal: after ANY realtime event (message or notification) re-derive
+// ALL badges from the DB truth (room_reads + notifications). This is what makes the
+// badges reliable like a standard app — the live increment gives instant feedback,
+// then ~1.2s later the DB reconcile guarantees DM / group / @mention / reaction /
+// reply / task counts are all correct and consistent, healing any dropped event.
+let _reconcileTimer = null;
+function _scheduleReconcile() {
+    if (_reconcileTimer) clearTimeout(_reconcileTimer);
+    _reconcileTimer = setTimeout(() => {
+        _reconcileTimer = null;
+        try { _reconcileUnread(); } catch (e) {}
+        try { _refreshNotifBadge(); } catch (e) {}
+    }, 1200);
+}
+// Steady resilience poll. Refreshes bell + reconciles message unread from the DB.
+// CRITICAL: mobile realtime frequently reports state='joined' while silently
+// dropping postgres_changes events, so we do NOT trust "healthy" to slow the poll —
+// a steady 15s catch-up while visible keeps every badge correct within ~15s even
+// when the socket lies. Backgrounded backs off to 60s to save battery.
 async function _fallbackPoll() {
     _refreshNotifBadge();
     _reconcileUnread();
@@ -3322,17 +3338,10 @@ async function _fallbackPoll() {
     const healthy = _rtChannel && _rtChannel.state === 'joined';
     if (!healthy) { try { _pendingRefresh?.(); } catch (e) {} }
 }
-// ADAPTIVE fallback poll (the fix for "kabhi aata hai kabhi nahi" on Android):
-// realtime on mobile/tablet flaps constantly, so a fixed 60s catch-up feels
-// unreliable. Self-schedule based on state — when the socket is NOT joined and
-// the app is visible, reconcile every 20s so missed group badges / messages
-// appear ~3× faster; when realtime is healthy stay at 60s (it carries updates);
-// when backgrounded back off to 90s to save battery.
 function _scheduleFallback() {
     if (_fallbackTimer) clearTimeout(_fallbackTimer);
-    const hidden  = document.visibilityState !== 'visible';
-    const healthy = _rtChannel && _rtChannel.state === 'joined';
-    const ms = hidden ? 90000 : (healthy ? 60000 : 20000);
+    const hidden = document.visibilityState !== 'visible';
+    const ms = hidden ? 60000 : 15000;   // steady, socket-state-independent
     _fallbackTimer = setTimeout(async () => {
         try { await _fallbackPoll(); } catch (e) {}
         _scheduleFallback();   // re-evaluate cadence each tick
@@ -3506,6 +3515,7 @@ async function _onNewMessage(m) {
         _updateAppBadge();                      // per-chat unread bumped
         _patchHomeUnread(m.room_id, m);         // live badge + preview on the chat-list row (no full re-render/flash)
         _renderBellBadge();                     // every message also lifts the bell + Activity-tab count (chosen model)
+        _scheduleReconcile();                   // self-heal from DB truth ~1.2s later (covers dropped events / drift)
 
         if (!m.parent_message_id) {
             const sender = _users.find(u=>u.id===m.sender_id);

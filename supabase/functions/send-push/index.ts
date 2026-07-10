@@ -70,8 +70,11 @@ async function getFcmAccessToken(): Promise<string | null> {
 }
 // Returns true (delivered), 'gone' (invalid token → delete), or false (other error).
 async function sendFcm(accessToken: string, projectId: string, token: string,
-  p: { title: string; body: string; room: string; url: string; priority: string }): Promise<boolean | 'gone'> {
+  p: { title: string; body: string; room: string; url: string; priority: string; muted?: boolean }): Promise<boolean | 'gone'> {
   try {
+    // Muted recipients: deliver SILENTLY — a LOW-importance channel (no sound, no
+    // heads-up, still on the lock screen) and no APNs sound. Otherwise full alert.
+    const muted = !!p.muted;
     const res = await fetch('https://fcm.googleapis.com/v1/projects/' + projectId + '/messages:send', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
@@ -80,10 +83,10 @@ async function sendFcm(accessToken: string, projectId: string, token: string,
           token,
           notification: { title: p.title, body: (p.body || '').slice(0, 240) },
           data: { room: p.room || '', url: p.url || '/' },
-          android: { priority: p.priority === 'high' ? 'high' : 'normal',
-            notification: { channel_id: 'nfa_alerts', default_sound: true } },
-          apns: { headers: { 'apns-priority': p.priority === 'high' ? '10' : '5' },
-            payload: { aps: { sound: 'default' } } },
+          android: { priority: (p.priority === 'high' && !muted) ? 'high' : 'normal',
+            notification: { channel_id: muted ? 'nfa_silent' : 'nfa_alerts', default_sound: !muted } },
+          apns: { headers: { 'apns-priority': (p.priority === 'high' && !muted) ? '10' : '5' },
+            payload: { aps: muted ? { 'content-available': 1 } : { sound: 'default' } } },
         },
       }),
     });
@@ -247,6 +250,13 @@ Deno.serve(async (req) => {
           .from('push_tokens').select('token,user_id')
           .in('user_id', recipientIds);
         console.log('send-push fcm-tokens', (tokens || []).length);
+        // Per-recipient mute state → silent channel (WhatsApp-style mute).
+        const mutedIds = new Set<string>();
+        try {
+          const { data: muted } = await supabase
+            .from('profiles').select('id').eq('notify_muted', true).in('id', recipientIds);
+          (muted || []).forEach((m: { id: string }) => mutedIds.add(m.id));
+        } catch (_e) { /* column missing → treat all as un-muted */ }
         await Promise.all((tokens || []).map(async (t: { token: string; user_id: string }) => {
           if (!mentionedIds.has(t.user_id) && readUpTo[t.user_id] && readUpTo[t.user_id] >= msgTs) return;
           const isMention = mentionedIds.has(t.user_id);
@@ -256,6 +266,7 @@ Deno.serve(async (req) => {
             room,
             url: '/?room=' + encodeURIComponent(room),
             priority: isMention || isDMroom ? 'high' : 'normal',
+            muted: mutedIds.has(t.user_id),
           });
           if (ok === true) fcmSent++;
           else {

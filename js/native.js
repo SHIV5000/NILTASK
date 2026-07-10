@@ -70,6 +70,15 @@
         visibility: 1,     // PUBLIC → shows message content on the lock screen
         sound: 'default', vibration: true, lights: true,
       });
+      // Silent channel for muted users: still shows on the lock screen / shade, but
+      // no sound and no vibration (importance LOW). send-push targets this channel
+      // for recipients whose profiles.notify_muted is true.
+      P.PushNotifications.createChannel && P.PushNotifications.createChannel({
+        id: 'nfa_silent', name: 'Muted messages',
+        description: 'Messages while Do Not Disturb / mute is on',
+        importance: 2,     // LOW → no sound, no heads-up; still on the lock screen
+        visibility: 1, vibration: false,
+      });
     } catch (e) {}
     // Foreground policy (chosen model): when the app is OPEN, the in-app slide-down
     // banner (driven by realtime in mobile.js) is the single alert — so consume the

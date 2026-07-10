@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v149';
+const _MOB_VER = 'v150';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -3058,10 +3058,13 @@ function _onSelectionChange() {
 
 // Exponential backoff so a flaky signal doesn't produce a tight 5s reconnect loop
 // (which fights Supabase's own transport recovery and churns the connection).
-// Grows 4s → 8s → 16s → 32s → cap 60s, with ±30% jitter; reset to base on a
-// successful SUBSCRIBED (see _rtChannel callback).
-let _rtBackoff = 4000;
-const _RT_BACKOFF_MAX = 60000;
+// Grows 3s → 6s → 12s → cap 15s, with ±30% jitter; reset to base on a successful
+// SUBSCRIBED. Capped LOW (was 60s) because the log showed the socket flapping for
+// minutes with the reconnect pushed out to 30-60s — far too long a miss window for
+// live messages/reactions/replies. A 15s ceiling recovers ~4× faster; the adaptive
+// fallback poll (20s when the socket is dead) catches anything missed in between.
+let _rtBackoff = 3000;
+const _RT_BACKOFF_MAX = 15000;
 // UX (Phase 5.2): don't toast on brief flaps. Arm a timer on the first drop and
 // only show "Reconnecting…" if the outage lasts >8s. "Connected ✓" then shows
 // only if that warning was actually displayed — so a flapping signal that
@@ -3074,7 +3077,7 @@ function _scheduleRtReconnect() {
     const jitter = _rtBackoff * (0.7 + Math.random() * 0.6);   // ±30%
     const delay = Math.round(jitter);
     // Arm the "sustained outage" toast once per outage (first drop = base backoff).
-    if (_rtBackoff === 4000 && !_rtOutageTimer && !_rtToastShown) {
+    if (_rtBackoff === 3000 && !_rtOutageTimer && !_rtToastShown) {
         _rtOutageTimer = setTimeout(() => {
             _rtOutageTimer = null;
             const healthy = _rtChannel && _rtChannel.state === 'joined';
@@ -3122,7 +3125,7 @@ function _initRealtime() {
             if (status === 'SUBSCRIBED') {
                 if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
                 if (_rtOutageTimer) { clearTimeout(_rtOutageTimer); _rtOutageTimer = null; }  // recovered before the 8s warning fired
-                _rtBackoff = 4000;   // healthy again — reset backoff to base
+                _rtBackoff = 3000;   // healthy again — reset backoff to base
                 if (_rtWasErrored) {
                     _rtWasErrored = false;
                     if (_rtToastShown) { _rtToastShown = false; _toast('Connected ✓'); }  // only if we warned
@@ -4118,9 +4121,12 @@ function _avatarHTML(photoUrl, name, bg, cls='m-av') {
     const bgStyle  = `background:${bg||'var(--accent)'};`;
     if (!photoUrl) return `<div class="${cls}" style="${bgStyle}">${initials}</div>`;
     const esc = photoUrl.replace(/'/g,"%27");
+    // onerror: capture the parent FIRST and set style BEFORE innerHTML. Writing
+    // innerHTML detaches this <img>, so touching this.parentElement AFTER it is null
+    // — that was the repeated "Cannot read properties of null (reading 'style')".
     return `<div class="${cls}" style="${bgStyle}overflow:hidden;">` +
         `<img src="${esc}" style="width:100%;height:100%;object-fit:cover;display:block;" ` +
-        `onerror="this.parentElement.innerHTML='${initials.replace(/'/g,"&#39;")}';this.parentElement.style.overflow='';"></div>`;
+        `onerror="var p=this.parentElement;if(p){p.style.overflow='';p.innerHTML='${initials.replace(/'/g,"&#39;")}';}"></div>`;
 }
 function _sentenceCase(s){ s=(s||'').trim(); return s ? s[0].toUpperCase()+s.slice(1).toLowerCase() : s; }
 // Normalize a DB timestamp to an unambiguous UTC instant: append Z when there is no

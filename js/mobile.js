@@ -3350,7 +3350,7 @@ async function _fallbackPoll() {
 function _scheduleFallback() {
     if (_fallbackTimer) clearTimeout(_fallbackTimer);
     const hidden = document.visibilityState !== 'visible';
-    const ms = hidden ? 60000 : 15000;   // steady, socket-state-independent
+    const ms = hidden ? 30000 : 5000;   // steady, socket-state-independent
     _fallbackTimer = setTimeout(async () => {
         try { await _fallbackPoll(); } catch (e) {}
         _scheduleFallback();   // re-evaluate cadence each tick

@@ -10,6 +10,51 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <script>
+      // ── GLOBAL CONSOLE RECORDER (must be the FIRST script) ─────────────────
+      // Captures EVERY console.log/info/warn/error/debug + uncaught errors +
+      // unhandled promise rejections, from the very first line of the app, with a
+      // relative timestamp per line. Persists to localStorage so the logs SURVIVE a
+      // reload or crash (the previous session's tail is prepended) — which is exactly
+      // when we need them. Tap the version badge (or window._copyLogs()) to copy all.
+      (function () {
+        try {
+          var CAP = 1500, KEY = 'nfa_console_log', buf = [];
+          try {
+            var prev = JSON.parse(localStorage.getItem(KEY) || '[]');
+            if (prev && prev.length) { buf.push('──── previous session ────'); buf = buf.concat(prev.slice(-400)); buf.push('──── this session ────'); }
+          } catch (e) {}
+          window.__LOG = buf;
+          var t0 = Date.now(), saveT = null;
+          function fmt(a) {
+            try {
+              if (typeof a === 'string') return a;
+              if (a instanceof Error) return a.stack || a.message;
+              return JSON.stringify(a, function (k, v) { return (v instanceof Error) ? (v.stack || v.message) : v; });
+            } catch (e) { return String(a); }
+          }
+          function save() { if (saveT) return; saveT = setTimeout(function () { saveT = null; try { localStorage.setItem(KEY, JSON.stringify(buf.slice(-600))); } catch (e) {} }, 1500); }
+          function push(lvl, args) {
+            var ms = ((Date.now() - t0) / 1000).toFixed(2);
+            buf.push('[' + ms + 's][' + lvl + '] ' + Array.prototype.map.call(args, fmt).join(' '));
+            if (buf.length > CAP) buf.shift();
+            save();
+          }
+          ['log', 'info', 'warn', 'error', 'debug'].forEach(function (m) {
+            var o = console[m] ? console[m].bind(console) : function () {};
+            console[m] = function () { try { push(m.charAt(0).toUpperCase(), arguments); } catch (e) {} o.apply(null, arguments); };
+          });
+          window.addEventListener('error', function (e) {
+            var w = e.filename ? (e.filename.split('/').pop() + ':' + e.lineno + ':' + e.colno) : '?';
+            push('ERR', [(e.message || 'error') + ' @ ' + w + (e.error && e.error.stack ? '\n' + e.error.stack : '')]);
+          });
+          window.addEventListener('unhandledrejection', function (e) {
+            var r = e.reason; push('REJ', [r && r.stack ? r.stack : (r && r.message ? r.message : String(r))]);
+          });
+          window.__clearLog = function () { buf.length = 0; try { localStorage.removeItem(KEY); } catch (e) {} };
+        } catch (e) {}
+      })();
+    </script>
+    <script>
       // Pre-paint theme guard: on mobile devices, never let the saved WEB theme
       // (e.g. ocean-teal) color the first paint / login page — apply the user's
       // mobile theme choice (system/light/dark) before any CSS renders.

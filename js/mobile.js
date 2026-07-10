@@ -3420,16 +3420,35 @@ async function _recomputeBadges() {
         window.unreadCounts = perRoom;
         const msgUnread = Object.values(perRoom).reduce((a, b) => a + (b || 0), 0);
 
-        let attention = 0;
+
+// Maintain last known state during offline drops instead of resetting to 0
+        window._lastKnownAttention = window._lastKnownAttention || 0;
+        let attention = window._lastKnownAttention; 
+        
         try {
-            const { data: ns } = await sb.from('notifications')
+            const { data: ns, error } = await sb.from('notifications')
                 .select('message_id').eq('user_id', _uid).eq('is_read', false);
+            
+            if (error) throw error; // Force it to the catch block on network errors
+
             if (unreadMsgIds.size > 0) {
                 attention = (ns || []).filter(n => !n.message_id || !unreadMsgIds.has(n.message_id)).length;
             } else {
                 attention = (ns || []).length;
             }
-        } catch (e) {}
+            
+            // Save the successful network fetch state
+            window._lastKnownAttention = attention;
+            
+        } catch (e) {
+            console.warn('[mob-badge] Network fetch failed, retaining last known attention:', attention);
+        }
+
+
+
+
+
+        
 
         // RACE CONDITION GUARD #2: Check again after the second DB query
         if (_badgeCalcGen !== myGen) return;

@@ -2,7 +2,7 @@
  * TaskFlow Service Worker — enables PWA install prompt on Android/Chrome
  * Caches core app shell for offline-capable experience
  */
-const CACHE   = 'taskflow-v143';
+const CACHE   = 'taskflow-v144';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -237,24 +237,18 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // JS/CSS: stale-while-revalidate — serve the cached copy INSTANTLY (fast repeat
-  // loads, the "use cache" win) while fetching a fresh copy in the background to
-  // update the cache for next time. A version bump of CACHE + the SW activate step
-  // still guarantees a full refresh on each release, so this never masks a deploy:
-  // the whole file set updates together in the background and is served fresh next load.
+  // JS/CSS: NETWORK-FIRST (cache fallback only when offline). Stale-while-revalidate
+  // previously could serve one-launch-old JS against fresh HTML — a version skew that
+  // left the app blank/broken until it caught up. When online we now always run the
+  // freshest code (a deploy can never be masked by a stale cache); the cache is only
+  // a fallback for genuine offline. Correctness over a few ms of repeat-load speed.
   const isCode = e.request.url.includes('/css/') || e.request.url.includes('/js/');
   if (isCode) {
     e.respondWith(
-      caches.match(e.request).then(cached => {
-        const network = fetch(e.request).then(res => {
-          if (res.ok) {
-            const clone = res.clone();
-            caches.open(CACHE).then(c => c.put(e.request, clone));
-          }
-          return res;
-        }).catch(() => cached);
-        return cached || network;
-      })
+      fetch(e.request).then(res => {
+        if (res.ok) { const clone = res.clone(); caches.open(CACHE).then(c => c.put(e.request, clone)); }
+        return res;
+      }).catch(() => caches.match(e.request))
     );
     return;
   }

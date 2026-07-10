@@ -1312,10 +1312,15 @@ window._soundLastPlayed = {};
 // Global mute helpers — respected by sound, vibration, and notifications.
 window._isDND      = () => localStorage.getItem('mpgs_dnd') === '1';
 window._isSoundOff = () => localStorage.getItem('mpgs_sound_off') === '1';
+window._isSoundInOff  = () => localStorage.getItem('mpgs_mute_incoming') === '1';
+window._isSoundOutOff = () => localStorage.getItem('mpgs_mute_outgoing') === '1';
 window.playSound = function(type) {
     if (window._isDND() || window._isSoundOff()) return;
-    if (type === 'message' && localStorage.getItem('mpgs_mute_incoming') === '1') return;
-    if (type !== 'message' && localStorage.getItem('mpgs_mute_outgoing') === '1') return;
+    // Direction split: 'send' = outgoing (your own send); everything else
+    // (message/reminder/task) = incoming. Two independent mutes in Profile.
+    if (type === 'send'  && window._isSoundOutOff()) return;
+    if (type !== 'send'  && window._isSoundInOff())  return;
+    if (type === 'send') type = 'message';   // reuse the message chime for sends
     const now = Date.now();
     // Debounce: same sound can't fire more than once per 2 seconds
     if (window._soundLastPlayed[type] && now - window._soundLastPlayed[type] < 2000) return;

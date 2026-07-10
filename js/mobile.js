@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v135';
+const _MOB_VER = 'v136';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -53,6 +53,7 @@ let _rtIntentionalClose = false;
 let _typingThrottle = 0;
 let _notifFallbackInterval = null;
 let _fallbackTimer = null;   // adaptive fallback-poll timer (see _scheduleFallback)
+let _activityPoll = null;    // 12s refresh while the Activity screen is open (realtime safety net)
 let _bellCount = 0;   // instant in-memory unread count (survives RLS-blocked notification inserts)
 let _replyMapCache = {};   // room_id -> {parentId: replyCount} so thread buttons show on instant shell render
 let _scrollFabCount = 0;
@@ -321,6 +322,15 @@ window.initMobileApp = async function() {
     if (_notifFallbackInterval) clearInterval(_notifFallbackInterval);
     if (_fallbackTimer) clearTimeout(_fallbackTimer);
     _scheduleFallback();   // ADAPTIVE poll (see below) — faster catch-up when the socket is dead
+    // Real-time safety net for the Activity screen: realtime already refreshes it,
+    // but the mobile socket flaps. While the Activity screen is open, reload it
+    // every 12s so it stays live regardless of socket health (matches web).
+    if (_activityPoll) clearInterval(_activityPoll);
+    _activityPoll = setInterval(() => {
+        if (document.visibilityState !== 'visible') return;
+        const t = _stack[_stack.length-1];
+        if (t?.screen === 'activity') { try { _render('activity', null, 'none'); } catch(e){} }
+    }, 12000);
     _showOfflineBanner(_isOffline);
     // Auto-refresh displayed timestamps every 60s + update last_seen heartbeat
     if (_tsInterval) clearInterval(_tsInterval);
@@ -1752,13 +1762,15 @@ async function _thread(p) {
         .is('deleted_at',null).order('created_at',{ascending:true});
 
     const reactionsMap = await _fetchReactions((replies||[]).map(m=>m.id));
+    // Header reads "Reply to <Name>" (WhatsApp-style), not the generic "Thread".
+    const _who = (p.sender || '').split('·')[0].split('•')[0].trim() || 'message';
 
     return `<div class="mFlex">
       <div class="m-hdr">
         <button class="m-back" onclick="window._back()"><i class="fa-solid fa-arrow-left"></i></button>
         <div style="display:flex;flex-direction:column;gap:1px;">
-          <div class="m-htitle">Thread</div>
-          ${p.rname ? `<div style="font-size:11px;color:var(--text-secondary);font-weight:600;">#${x(p.rname)}</div>` : ''}
+          <div class="m-htitle">Reply to ${x(_who)}</div>
+          ${p.rname ? `<div style="font-size:11px;color:var(--text-secondary);font-weight:600;">${x(p.rname)}</div>` : ''}
         </div>
       </div>
       <div class="m-msgs" id="mThreadArea">
@@ -2134,25 +2146,27 @@ async function _settings() {
           <input class="m-inp" id="sDept" value="${x(p?.department||'')}" placeholder="Your department"></div>
       </div>
 
-      <!-- 2 · NOTIFICATION SETTINGS -->
-      <div class="m-sl">NOTIFICATION SETTINGS</div>
+      <!-- 2 · SOUND SETTINGS -->
+      <div class="m-sl">SOUND</div>
       <div style="padding:0 16px 8px;">
-        <div class="m-detail-row"><span class="m-detail-lbl">Status</span><span class="m-detail-val">${permLabel}</span></div>
-        <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;padding:4px 0 10px;">
-          When enabled, you'll get a phone notification (with sound + vibration) for new messages and task updates — even if Noted For Action isn't open on screen.
+        <div class="m-detail-row" style="margin-top:2px;">
+          <span class="m-detail-lbl">Incoming message sound</span>
+          <button data-action="toggleSoundIn" style="background:${(window._isSoundInOff?.())?'#9ca3af':_ONLINE_GREEN};color:#fff;border:none;border-radius:20px;padding:5px 16px;font-size:12px;font-weight:700;cursor:pointer;min-width:52px;">${(window._isSoundInOff?.())?'Off':'On'}</button>
         </div>
-        ${permState !== 'granted' ? `<button class="m-action-btn" style="background:#6366f1;" data-action="enablePush">
-          <i class="fa-solid fa-bell"></i> Enable notifications on this device
-        </button>` : `<button class="m-action-btn" style="background:#16a34a;" data-action="enablePush">
-          <i class="fa-solid fa-rotate"></i> Re-register this device
-        </button>`}
         <div class="m-detail-row" style="margin-top:10px;">
-          <span class="m-detail-lbl">Notification sound</span>
-          <button data-action="toggleSound" style="background:${(window._isSoundOff?.())?'#9ca3af':'var(--accent)'};color:#fff;border:none;border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer;">${(window._isSoundOff?.())?'Off':'On'}</button>
+          <span class="m-detail-lbl">Outgoing (send) sound</span>
+          <button data-action="toggleSoundOut" style="background:${(window._isSoundOutOff?.())?'#9ca3af':_ONLINE_GREEN};color:#fff;border:none;border-radius:20px;padding:5px 16px;font-size:12px;font-weight:700;cursor:pointer;min-width:52px;">${(window._isSoundOutOff?.())?'Off':'On'}</button>
         </div>
+        ${window.IS_NATIVE ? '' : `
+        <div class="m-detail-row" style="margin-top:10px;">
+          <span class="m-detail-lbl">Browser notifications</span><span class="m-detail-val">${permLabel}</span>
+        </div>
+        ${permState !== 'granted' ? `<button class="m-action-btn" style="background:#6366f1;margin-top:8px;" data-action="enablePush">
+          <i class="fa-solid fa-bell"></i> Enable notifications on this device
+        </button>` : ''}
         <button class="m-action-btn" style="background:#0ea5e9;margin-top:8px;" data-action="testSound">
           <i class="fa-solid fa-volume-high"></i> Play test sound
-        </button>
+        </button>`}
       </div>
 
       <!-- 3 · BUTTONS -->
@@ -2833,15 +2847,22 @@ async function _onShellClick(e) {
             if (ok) { const top = _stack[_stack.length-1]; if (top?.screen === 'settings') await _render('settings', null, 'forward'); }
             break;
         }
-        case 'toggleSound': {
-            const off = !(window._isSoundOff?.());
-            try { localStorage.setItem('mpgs_sound_off', off ? '1' : '0'); } catch(e){}
-            _toast(off ? '🔇 Notification sound off' : '🔔 Notification sound on');
-            { const top = _stack[_stack.length-1]; if (top?.screen === 'settings') await _render('settings', null, 'forward'); }
+        case 'toggleSoundIn': {
+            const off = !(window._isSoundInOff?.());
+            try { localStorage.setItem('mpgs_mute_incoming', off ? '1' : '0'); } catch(e){}
+            _toast(off ? '🔇 Incoming sound off' : '🔔 Incoming sound on');
+            { const top = _stack[_stack.length-1]; if (top?.screen === 'settings') await _render('settings', null, 'none'); }
+            break;
+        }
+        case 'toggleSoundOut': {
+            const off = !(window._isSoundOutOff?.());
+            try { localStorage.setItem('mpgs_mute_outgoing', off ? '1' : '0'); } catch(e){}
+            _toast(off ? '🔇 Send sound off' : '🔔 Send sound on');
+            { const top = _stack[_stack.length-1]; if (top?.screen === 'settings') await _render('settings', null, 'none'); }
             break;
         }
         case 'testSound': {
-            if (window._isSoundOff?.()) { _toast('Sound is off — turn it on first','err'); break; }
+            if (window._isSoundInOff?.()) { _toast('Incoming sound is off — turn it on first','err'); break; }
             if (window._isDND?.()) { _toast('Do Not Disturb is on','err'); break; }
             window._unlockSharedAudio?.();
             window.playSound?.('message');
@@ -3745,7 +3766,7 @@ async function _doSendGroup(a) {
     }
     const { data: m, error } = await sb.from('messages').insert(payload).select().single();
     if (error) { _toast('Send failed: '+error.message,'err'); return; }
-    window.playSound?.('message');
+    window.playSound?.('send');
     _appendOwnMessage('mMsgArea', m);
     // Broadcast bridge (group only, never DMs) so other devices get it live even
     // if their postgres channel is flaky. Receivers de-dupe by message id.
@@ -3769,7 +3790,7 @@ async function _doSendReply(a) {
     window.logger?.sb('messages.insert[reply]', _rres, { room:a.room, parent:a.pid });
     if (error) { _toast('Send failed: '+error.message,'err'); return; }
     window.logger?.logReply('send', { id:m.id, room:a.room, parent:a.pid });
-    window.playSound?.('message');
+    window.playSound?.('send');
     _appendOwnMessage('mThreadArea', m, 160);
     _bcSend('new_message', m);   // live-delivery bridge (replies too; de-duped)
     // Reflect the reply on the parent's "N replies" link (group view + cache) so it
@@ -3815,7 +3836,7 @@ async function _doSendDM(a) {
     }
     const { data: m, error } = await sb.from('messages').insert(payload).select().single();
     if (error) { _toast('Send failed: '+error.message,'err'); return; }
-    window.playSound?.('message');
+    window.playSound?.('send');
     _appendOwnMessage('mDMArea', m);
 }
 function _appendOwnMessage(areaId, m, maxLen=150) {
@@ -4038,7 +4059,15 @@ async function _saveProfile() {
     const department  = _el('sDept')?.value?.trim();
     const { error } = await sb.from('profiles').update({full_name,designation,department}).eq('id',_uid).eq('tenant_id',_tid);
     _toast(error ? 'Save failed' : 'Profile saved ✓', error?'err':'ok');
-    if (!error) { window.currentUser.full_name = full_name; const u=_el('mSBInfo')?.querySelector('.m-sb-user'); if(u) u.textContent=full_name; }
+    if (!error) {
+        window.currentUser.full_name = full_name;
+        // Rebuild the name label WITHOUT dropping the Online/Offline chip that lives
+        // inside .m-sb-user (a bare textContent set would wipe it).
+        const u = _el('mSBInfo')?.querySelector('.m-sb-user');
+        if (u) { u.innerHTML = x(_sentenceCase(full_name)) + '<span id="mConnState" class="m-conn"></span>'; try { _setConnState(); } catch(e){} }
+        // After confirmation, return to the home screen (requested UX).
+        setTimeout(() => { try { _navTo('home', null, true); } catch(e){} }, 700);
+    }
 }
 async function _changePassword() {
     const np = prompt('Enter new password (min 8 chars):');

@@ -3334,7 +3334,7 @@ function _scheduleReconcile() {
     _reconcileTimer = setTimeout(() => {
         _reconcileTimer = null;
         try { _recomputeBadges(); } catch (e) {}
-    }, 1200);
+    }, 300);
 }
 // Steady resilience poll. Refreshes bell + reconciles message unread from the DB.
 // CRITICAL: mobile realtime frequently reports state='joined' while silently

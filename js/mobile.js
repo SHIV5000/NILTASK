@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v145';
+const _MOB_VER = 'v146';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -54,7 +54,6 @@ let _typingThrottle = 0;
 let _notifFallbackInterval = null;
 let _fallbackTimer = null;   // adaptive fallback-poll timer (see _scheduleFallback)
 let _activityPoll = null;    // 12s refresh while the Activity screen is open (realtime safety net)
-let _badgeCalcGen = 0;       // generation counter to defeat badge race conditions (hoisted)
 let _bellCount = 0;   // instant in-memory unread count (survives RLS-blocked notification inserts)
 let _replyMapCache = {};   // room_id -> {parentId: replyCount} so thread buttons show on instant shell render
 let _scrollFabCount = 0;
@@ -296,46 +295,19 @@ window.initMobileApp = async function() {
         s.onload = () => eruda.init();
         document.head.appendChild(s);
     }
-    // FAIL-SAFE BOOT: wrap the ENTIRE startup (theme/CSS/shell build + context load
-    // + home render). If ANY step throws, we un-hide the login root, drop the boot
-    // splash, and render the real error message on screen so it can never sit blank
-    // — and so the exact failure is visible (not just in remote logs).
     _el('root')?.style.setProperty('display', 'none', 'important');
-    try {
-        _applyMobTheme();   // System (default) / Light / Dark
-        _injectCSS();
-        _buildShell();
-        _initKeyboardHandling();
-        _initImgHydration();
-        // Hydrate the room-message mirror from IndexedDB in parallel with the
-        // context load — chats then open instantly with up to 150 cached messages.
-        await Promise.all([_ctx(), _hydrateRoomCaches()]);
-        // Principals/admins get a toggle to the Admin Panel (permission known after _ctx).
-        if (window.currentPermissions?.admin_panel) _el('mSBAdmin')?.style.setProperty('display','flex');
-        await _navTo('home');
-        // Belt-and-suspenders: if for any reason the stage is still empty after the
-        // home nav (a discarded render race), force one direct paint so we can never
-        // sit on a blank screen with a built shell.
-        if (!_el('mStage')?.children?.length) { try { await _render('home', null, 'none'); } catch (e) {} }
-    } catch (bootErr) {
-        try { window.logger?.logError?.(bootErr, { where: 'initMobileApp' }); } catch (e) {}
-        console.error('[mob-boot] init failed', bootErr);
-        const msg = (bootErr && (bootErr.stack || bootErr.message)) ? String(bootErr.stack || bootErr.message) : String(bootErr);
-        try {
-            const host = _el('mStage') || document.getElementById('mobileApp') || document.body;
-            if (host === document.body) _el('root')?.style.removeProperty('display');   // no shell — show login instead of blank
-            const card = document.createElement('div');
-            card.style.cssText = 'position:fixed;inset:0;z-index:100000;overflow:auto;background:var(--bg-body,#fff);color:#111;padding:40px 22px;text-align:center;font-family:-apple-system,system-ui,sans-serif;';
-            card.innerHTML =
-                '<div style="font-size:34px;margin-bottom:10px;">😕</div>'
-              + '<div style="font-weight:700;font-size:16px;margin-bottom:6px;">Could not load</div>'
-              + '<div style="font-size:13px;color:#555;margin-bottom:16px;">Check your connection and retry.</div>'
-              + '<button onclick="location.reload()" style="background:#6366f1;color:#fff;border:none;border-radius:22px;padding:10px 24px;font-weight:700;">Retry</button>'
-              + '<pre style="text-align:left;white-space:pre-wrap;word-break:break-word;font-size:10px;color:#b91c1c;margin-top:20px;background:#fef2f2;padding:10px;border-radius:8px;">' + (window.escapeHtml ? window.escapeHtml(msg) : msg) + '</pre>';
-            (host === document.body ? document.body : host).appendChild(card);
-        } catch (e) {}
-    }
-    window._hideSplash?.();   // first screen painted (or the retry card) — always drop the boot splash
+    _applyMobTheme();   // System (default) / Light / Dark — user-controlled from the top bar
+    _injectCSS();
+    _buildShell();
+    _initKeyboardHandling();
+    _initImgHydration();
+    // Hydrate the room-message mirror from IndexedDB in parallel with the
+    // context load — chats then open instantly with up to 150 cached messages.
+    await Promise.all([_ctx(), _hydrateRoomCaches()]);
+    // Principals/admins get a toggle to the Admin Panel (permission known after _ctx).
+    if (window.currentPermissions?.admin_panel) _el('mSBAdmin')?.style.setProperty('display','flex');
+    await _navTo('home');
+    window._hideSplash?.();   // first screen painted — drop the boot splash
     _initRealtime();
     try { _setConnState(); } catch(e){}   // paint the initial Online/Offline chip
     // Deep-link: open a specific chat from a push tap (?room=…) or SW message.
@@ -688,9 +660,7 @@ async function _syncRoomSettings() {
                 }
             } catch(e){}
         }));
-    } catch (e) {
-        console.error('[mob] _syncRoomSettings error:', e);
-    }
+    } catch {}
 }
 
 // Upsert room_settings including members; retries without members if the column doesn't exist yet.
@@ -919,14 +889,16 @@ window._navTo = async function(screen, params, replace = false) {
     // and persist "read" for this room's notifications so the DB poll agrees.
     if ((screen === 'groupChat' || screen === 'dm') && params?.room) {
         window.unreadCounts = window.unreadCounts || {};
-        // Instant: drop this room's unread from the grand-total bell now, then let
-        // the authoritative recompute (via _markRoomNotifsRead) confirm from the DB.
-        const _wasUnread = window.unreadCounts[params.room] || 0;
         window.unreadCounts[params.room] = 0;
-        _bellCount = Math.max(0, _bellCount - _wasUnread);
         _updateAppBadge();
-        _renderBellBadge();
-        _markRoomNotifsRead(params.room);   // marks notifs read → then _recomputeBadges (authoritative)
+        _renderBellBadge();   // instant: drop this room's messages from the bell/Activity count now
+        // Do NOT clobber _bellCount with _sumUnread() here: _sumUnread counts only
+        // MESSAGE unread, so it would wrongly wipe the count coming from reaction/
+        // reply/mention notifications (which have no per-chat unread), then the 60s
+        // poll would bring it back — the badge "flicker / won't clear" bug. Instead
+        // mark this room's notifications read in the DB and recompute the bell from
+        // the DB truth (max of DB unread and message unread).
+        _markRoomNotifsRead(params.room);   // marks read → then refreshes the badge
     }
     if (replace) _stack.pop();
     _stack.push({ screen, params });
@@ -981,11 +953,7 @@ async function _render(screen, params, dir='forward') {
     // still loading, the SLOWER older render must not overwrite the newer screen.
     const myNavGen = ++_navGen;
     const html = await (fns[screen]?.(params) || Promise.resolve('<div style="padding:40px;text-align:center;">Coming soon</div>'));
-    // Race guard: a SLOWER older render must not overwrite a newer screen. BUT only
-    // skip when the stage already has something painted — if the stage is still
-    // EMPTY (e.g. at boot two home renders raced and both would otherwise bail),
-    // paint anyway so we can never be left on a blank screen.
-    if (myNavGen !== _navGen && stage.children.length) return;
+    if (myNavGen !== _navGen) return;
     const scr  = document.createElement('div');
     // dir==='none' → NO slide animation: used for silent BACKGROUND refreshes
     // (badge/feed reconcile on the fallback poll) so the screen updates in place
@@ -1171,32 +1139,22 @@ async function _home() {
 }
 
 function _fmtDateTime(ds){ try { const d=new Date(ds); return _istFmtDate.format(d)+', '+_istFmt12.format(d); } catch { return ''; } }
-
-// ----- Activity feed with change detection to avoid flicker -----
-let _lastActivityCount = -1;
-
 async function _activity() {
     const filter = window._afFilter || 'all';
     const senderFilter = window._afSender || '';
-    // reset counter so first render always happens
-    _lastActivityCount = -1;
-
     // Opening the feed marks it "seen" (clears the Activity tab badge + bell badge)
     // AND the per-chat unread badges on the home list — the user has now seen
     // everything the feed lists, so individual group/DM counts reset too.
     try { localStorage.setItem('activity_seen_ts', new Date().toISOString()); } catch(e){}
     _el('mnActBadge')?.style.setProperty('display','none');
-    // Opening the Activity list marks the ATTENTION stream seen (mentions/replies/
-    // reactions/tasks/reminders) — but NOT chat messages: per-chat unread only
-    // clears when you actually open that chat (standard behaviour). So mark all
-    // unread notifications read, then recompute the grand-total badge from DB truth
-    // (it will now = remaining unread MESSAGES only). Do NOT wipe window.unreadCounts
-    // here — that would clear the chat-row badges and then reconcile would flicker
-    // them back, since room_reads was never advanced.
-    try {
-        await sb.from('notifications').update({ is_read:true }).eq('user_id',_uid).eq('is_read',false);
-    } catch(e){}
-    try { _recomputeBadges(); } catch(e){}
+    _clearBellBadge();
+    window.unreadCounts = {};
+    _updateAppBadge();
+    // Durably mark ALL unread notifications read (not just the ≤80 the feed fetches
+    // below), so the 60s _fallbackPoll can't resurrect a "ghost" bell count for
+    // unread rows beyond the fetched page. Non-blocking. Needs the notifications
+    // UPDATE RLS policy (Phase 1). NFA_buildActivity still marks the fetched page.
+    try { sb.from('notifications').update({ is_read:true }).eq('user_id',_uid).eq('is_read',false).then(()=>{}); } catch(e){}
 
     // Shared feed core (Phase 7): the fetch + merge (messages + task_trails +
     // notifications) + dedup + normalize now lives in js/core/feed.js, used by
@@ -1255,9 +1213,6 @@ async function _activity() {
            <div style="margin-top:6px;">${filter==='all' ? 'Your activity will appear here when teammates chat, assign tasks, or reminders fire.' : 'No activity matches this filter.'}</div></div>`;
 
     const hasAny = _all.length > 0;
-    // store current count for change detection in live refresh
-    _lastActivityCount = items.length;
-
     return `<div class="mScr-inner">
       <div class="m-hdr m-hdr-plain" style="display:flex;align-items:center;justify-content:space-between;">
         <div class="m-htitle">🔔 Activity ${unread?`<span style="background:#2563eb;color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:30px;margin-left:6px;vertical-align:middle;">${unread} new</span>`:''}</div>
@@ -1287,32 +1242,10 @@ function _liveRefreshActivity() {
     const top = _stack[_stack.length-1];
     if (top?.screen !== 'activity') return;
     clearTimeout(_actRefreshTimer);
-    _actRefreshTimer = setTimeout(async () => {
-        // Only refresh if the count of items changed (avoid flicker on repeated calls)
-        try {
-            const _roomLabel = (rid) => {
-                if (!rid) return '';
-                if (rid.startsWith('dm_')) {
-                    const other = rid.replace('dm_','').split('_').find(id => id !== _uid);
-                    return other ? _uname(other) : 'Direct message';
-                }
-                return _findGroup(rid)?.name || _lsGet('dept_name_'+rid,'') || rid;
-            };
-            const { items } = await window.NFA_buildActivity(sb, {
-                uid: _uid, tid: _tid,
-                resolveName: _uname,
-                resolveRoom: _roomLabel,
-                snippet: _snip,
-                logError: (m, d) => window.logger?.sb?.(m, d),
-            });
-            const newCount = items.length;
-            if (newCount !== _lastActivityCount) {
-                _lastActivityCount = newCount;
-                const t = _stack[_stack.length-1];
-                if (t?.screen === 'activity') _render('activity', null, 'none');
-            }
-        } catch (e) { /* quiet */ }
-    }, 1500);
+    _actRefreshTimer = setTimeout(() => {
+        const t = _stack[_stack.length-1];
+        if (t?.screen === 'activity') _render('activity', null, 'none');   // silent in-place update, no slide
+    }, 600);
 }
 window._mobAfFilter = function(v){ window._afFilter = v; window._afSender = ''; window._mobRerenderActivity(); };
 window._mobAfSender = function(v){ window._afSender = v || ''; window._mobRerenderActivity(); };
@@ -1796,7 +1729,7 @@ async function _groupChat(p) {
     setTimeout(() => {
         _bcChannel?.send({ type:'broadcast', event:'room_read', payload:{ room:p.room, uid:_uid, ts:new Date().toISOString() } });
         _lsSet('last_read_'+p.room, new Date().toISOString());
-        _upsertRoomRead(p.room);   // ✅ retry + reconcile
+        try { sb.from('room_reads').upsert({ user_id:_uid, room_id:p.room, tenant_id:_tid, last_read_at:new Date().toISOString() }, { onConflict:'user_id,room_id' }).then(()=>{}); } catch(e){}
     }, 500);
     return `<div class="mFlex">
       <div class="m-hdr">
@@ -1909,7 +1842,7 @@ async function _dm(p) {
     setTimeout(() => {
         _bcChannel?.send({ type:'broadcast', event:'room_read', payload:{ room:p.room, uid:_uid, ts:new Date().toISOString() } });
         _lsSet('last_read_'+p.room, new Date().toISOString());
-        _upsertRoomRead(p.room);   // ✅ retry + reconcile
+        try { sb.from('room_reads').upsert({ user_id:_uid, room_id:p.room, tenant_id:_tid, last_read_at:new Date().toISOString() }, { onConflict:'user_id,room_id' }).then(()=>{}); } catch(e){}
     }, 500);
     return `<div class="mFlex">
       <div class="m-hdr">
@@ -3333,12 +3266,7 @@ async function _markRoomNotifsRead(room) {
 // Plain messages/DMs don't create notification rows (v122), so this fires for the
 // attention stream only — the gap where a reaction/task gave NO mobile alert.
 function _onNotifInsert(n) {
-    _badgeCalcGen++; // ⚡ INVALIDATE any in-flight background DB polls
-    if (n && (n.type === 'reaction' || n.type === 'task' || n.type === 'reminder')) { 
-        _bellCount++; 
-        _renderBellBadge(); 
-    }
-    _scheduleReconcile();      // authoritative de-duped recompute from DB truth
+    _refreshNotifBadge();
     _liveRefreshActivity();
     if (!n || !n.message) return;
     if (n.type === 'mention') return;                 // de-dup with _onNewMessage heads-up
@@ -3346,258 +3274,77 @@ function _onNotifInsert(n) {
     try { _toast(_snip(n.message, 80)); } catch (e) {}
     if (!window._isSoundOff?.()) { try { window.playSound?.('message'); } catch (e) {} }
 }
-
-// ── ONE authoritative badge engine (v138 model: "everything, de-duped") ─────────
-// The bell / Activity number = ALL unread messages (every DM + group) PLUS the
-// attention items (mentions, replies-to-you, reactions-to-you, tasks, reminders) —
-// but an item is counted ONCE. A mention/reply is itself an unread message, so its
-// notification is NOT added again; a reaction/task/reminder points at an already-
-// read (or no) message, so it DOES add. Everything is re-derived from DB truth
-// (room_reads + messages + notifications), which is why it stays consistent across
-// DM / group / mention regardless of the flaky realtime socket.
-
-
-// Direct fallback to compute unread counts per room when the core engine fails
-async function _directUnreadCounts(rooms) {
-    if (!rooms || rooms.size === 0) return {};
-    const roomArray = Array.from(rooms);
-    // Fetch the user's last_read_at for each room
-    const { data: reads, error: readErr } = await sb
-        .from('room_reads')
-        .select('room_id, last_read_at')
-        .eq('user_id', _uid)
-        .eq('tenant_id', _tid)
-        .in('room_id', roomArray);
-    if (readErr) {
-        console.warn('[mob-badge] directUnread: room_reads fetch error', readErr);
-        return {};
-    }
-    const readMap = {};
-    (reads || []).forEach(r => { readMap[r.room_id] = r.last_read_at; });
-
-    // For rooms without a read entry, treat last_read_at as epoch (count all messages)
-    const unreadMap = {};
-    // To avoid too many queries, fetch messages in bulk: group by room, count after timestamp.
-    // We'll do one query per room, but we can batch with OR conditions.
-    // For simplicity, we'll query all messages for these rooms and filter client-side.
-    // But that could be heavy. Better: use a group by query with Supabase.
-    // Since Supabase doesn't support COUNT with a filter on different timestamps per room,
-    // we'll iterate rooms and query per room (capped at 1000 messages).
-    for (const room of roomArray) {
-        let lastRead = readMap[room] || null;
-        let q = sb.from('messages')
-            .select('id', { count: 'exact', head: true })
-            .eq('room_id', room)
-            .eq('tenant_id', _tid)
-            .is('deleted_at', null);
-        if (lastRead) {
-            q = q.gt('created_at', lastRead);
-        }
-        const { count, error } = await q;
-        if (error) {
-            console.warn('[mob-badge] directUnread: count error for room', room, error);
-            continue;
-        }
-        unreadMap[room] = count || 0;
-    }
-    return unreadMap;
+// BELL = the ACTIVITY stream ONLY (Phase 8, standard model): unread notifications
+// = mentions + reactions-to-you + replies-to-you + task events + reminders. It is
+// NOT the message-unread count (that lives on the chat rows, derived from
+// room_reads by _reconcileUnread). Decoupling the two is what fixes the badge
+// "sometimes works / mostly misbehaves": they no longer fight via a max().
+async function _refreshNotifBadge() {
+    _bellCount = await window.NFA_unreadCount(sb, _uid);   // pure notification unread
+    _renderBellBadge();
+    _updateAppBadge();
+    _liveRefreshActivity();   // if the Activity screen is open, refresh it live
 }
-
-
-
-async function _recomputeBadges() {
-    if (!_uid || !_tid || !window.NFA_computeRoomUnread) return;
-    const myGen = ++_badgeCalcGen; // Mark the start of this specific fetch
-
-    // --- FALLBACK: ensure groups are loaded ---
-    if (_customGroups.length === 0) {
-        try { await _syncRoomSettings(); } catch (e) { /* ignore */ }
-    }
-    if (_users.length === 0) {
-        try { await _refreshUsers(_tid); } catch (e) { /* ignore */ }
-    }
-
-    try {
-        const rooms = new Set();
-        // Force the inclusion of all Groups and DMs
-        [...DEPTS, ..._customGroups].forEach(d => rooms.add(d.id));
-        (_users || []).forEach(u => { if (u.id !== _uid) rooms.add(_dmRoom(u.id)); });
-
-        if (rooms.size === 0) {
-            setTimeout(() => { _recomputeBadges(); }, 2000);
-            return;
-        }
-
-        let perRoom = {};
-        let unreadMsgIds = new Set();
-        try {
-            const result = await window.NFA_computeRoomUnread(sb, { uid: _uid, tid: _tid, rooms });
-            perRoom = result.perRoom || {};
-            unreadMsgIds = result.unreadMsgIds || new Set();
-        } catch (e) {
-            perRoom = await _directUnreadCounts(rooms);
-        }
-
-        // RACE CONDITION GUARD #1: If a newer realtime event arrived while we queried, 
-        // discard this stale DB state immediately to prevent overwriting local truth.
-        if (_badgeCalcGen !== myGen) {
-            console.log('[mob-badge] discarding stale DB state (gen mismatch)');
-            return;
-        }
-
-        // The open chat is being read right now → force it to 0
-        const top = _stack[_stack.length - 1];
-        const openRoom = (top?.screen === 'groupChat' || top?.screen === 'dm') ? top.params?.room : null;
-        if (openRoom) perRoom[openRoom] = 0;
-
-        window.unreadCounts = perRoom;
-        const msgUnread = Object.values(perRoom).reduce((a, b) => a + (b || 0), 0);
-
-        // Maintain last known attention state during offline drops instead of resetting to 0
-        window._lastKnownAttention = window._lastKnownAttention || 0;
-        let attention = window._lastKnownAttention; 
-        
-        try {
-            const { data: ns, error } = await sb.from('notifications')
-                .select('message_id').eq('user_id', _uid).eq('is_read', false);
-            
-            if (error) throw error; // Force it to the catch block on network errors
-
-            if (unreadMsgIds.size > 0) {
-                attention = (ns || []).filter(n => !n.message_id || !unreadMsgIds.has(n.message_id)).length;
-            } else {
-                attention = (ns || []).length;
-            }
-            
-            // Save the successful network fetch state
-            window._lastKnownAttention = attention;
-            
-        } catch (e) {
-            console.warn('[mob-badge] Network fetch failed, retaining last known attention:', attention);
-        }
-
-        // RACE CONDITION GUARD #2: Check again after the second DB query
-        if (_badgeCalcGen !== myGen) return;
-
-        _bellCount = msgUnread + attention;
-        console.log('[mob-badge] recompute: msgUnread=', msgUnread, 'attention=', attention, 'bellCount=', _bellCount);
-
-        // Apply UI updates using requestAnimationFrame to batch DOM patches and avoid UI stutter
-        requestAnimationFrame(() => {
-            _renderBellBadge();
-            _updateAppBadge();
-            if (top?.screen === 'home') {
-                rooms.forEach(rid => { try { _patchHomeUnread(rid); } catch (e) {} });
-            }
-        });
-        _liveRefreshActivity();
-    } catch (e) {
-        console.error('[mob-badge] error in _recomputeBadges:', e);
-    }
-}
-
-        
-
-        // RACE CONDITION GUARD #2: Check again after the second DB query
-        if (_badgeCalcGen !== myGen) return;
-
-        _bellCount = msgUnread + attention;
-        console.log('[mob-badge] recompute: msgUnread=', msgUnread, 'attention=', attention, 'bellCount=', _bellCount);
-
-        // Apply UI updates using requestAnimationFrame to batch DOM patches and avoid UI stutter
-        requestAnimationFrame(() => {
-            _renderBellBadge();
-            _updateAppBadge();
-            if (top?.screen === 'home') {
-                rooms.forEach(rid => { try { _patchHomeUnread(rid); } catch (e) {} });
-            }
-        });
-        _liveRefreshActivity();
-    } catch (e) {
-        console.error('[mob-badge] error in _recomputeBadges:', e);
-    }
-}
-// Back-compat aliases — many call sites use these two names; both now run the one
-// authoritative engine so message-unread and attention can never disagree.
-async function _refreshNotifBadge() { return _recomputeBadges(); }
 // Reconcile per-chat MESSAGE unread from the DB (room_reads + messages) — the
 // durable source of truth, so counts are correct after reload, realtime flaps
 // and reconnects (not just from ephemeral realtime increments). Only counts
 // rooms the user actually has (groups they can see + their own DMs).
-async function _reconcileUnread() { return _recomputeBadges(); }   // one engine now
-
-// 🔥 NEW: Retry helper for room_reads upsert
-async function _upsertRoomRead(room, retries = 3) {
-    let attempt = 0;
-    while (attempt < retries) {
-        try {
-            const { error } = await sb.from('room_reads').upsert({
-                user_id: _uid,
-                room_id: room,
-                tenant_id: _tid,
-                last_read_at: new Date().toISOString()
-            }, { onConflict: 'user_id,room_id' });
-            if (!error) {
-                console.log('[mob-roomread] upsert success for room', room);
-                // After successful write, recompute badges from DB truth
-                try { await _recomputeBadges(); } catch (e) {}
-                return;
-            }
-            console.warn('[mob-roomread] upsert attempt', attempt+1, 'failed:', error);
-        } catch (e) {
-            console.warn('[mob-roomread] upsert attempt', attempt+1, 'exception:', e);
+async function _reconcileUnread() {
+    if (!_uid || !_tid || !window.NFA_computeRoomUnread) return;
+    try {
+        const rooms = new Set();
+        [...DEPTS, ..._customGroups].forEach(d => rooms.add(d.id));
+        (_users || []).forEach(u => { if (u.id !== _uid) rooms.add(_dmRoom(u.id)); });
+        const { perRoom } = await window.NFA_computeRoomUnread(sb, { uid: _uid, tid: _tid, rooms });
+        // Preserve the open room at 0 (we're reading it right now).
+        const top = _stack[_stack.length - 1];
+        if ((top?.screen === 'groupChat' || top?.screen === 'dm') && top.params?.room) perRoom[top.params.room] = 0;
+        window.unreadCounts = perRoom;
+        _updateAppBadge();
+        _renderBellBadge();   // bell/Activity reflect the reconciled per-room totals (no double, DMs included)
+        // SURGICAL badge update (no screen re-render / no slide): patch each visible
+        // chat row's unread badge in place, so group/DM badges appear silently in the
+        // background — like a real app — instead of sliding the whole home screen in
+        // from the right on every poll (the "cheap app" refresh).
+        if (top?.screen === 'home') {
+            rooms.forEach(rid => { try { _patchHomeUnread(rid); } catch (e) {} });
         }
-        attempt++;
-        // exponential backoff: 500ms, 1s, 2s
-        await new Promise(r => setTimeout(r, 500 * Math.pow(2, attempt - 1)));
-    }
-    console.error('[mob-roomread] all retries exhausted for room', room);
+    } catch (e) {}
 }
-
-// Debounced self-heal: after ANY realtime event (message or notification) re-derive
-// ALL badges from the DB truth (room_reads + notifications). This is what makes the
-// badges reliable like a standard app — the live increment gives instant feedback,
-// then ~1.2s later the DB reconcile guarantees DM / group / @mention / reaction /
-// reply / task counts are all correct and consistent, healing any dropped event.
-let _reconcileTimer = null;
-
-function _scheduleReconcile() {
-    if (_reconcileTimer) clearTimeout(_reconcileTimer);
-    // Increased from 300ms to 1200ms to allow Supabase read-replicas to catch up
-    // before we query the truth.
-    _reconcileTimer = setTimeout(() => {
-        _reconcileTimer = null;
-        try { _recomputeBadges(); } catch (e) {}
-    }, 1200);
-}
-
-// Steady resilience poll. Refreshes bell + reconciles message unread from the DB.
-// CRITICAL: mobile realtime frequently reports state='joined' while silently
-// dropping postgres_changes events, so we do NOT trust "healthy" to slow the poll —
-// a steady 15s catch-up while visible keeps every badge correct within ~15s even
-// when the socket lies. Backgrounded backs off to 60s to save battery.
+// 60s resilience poll (Phase 5.3). Refreshes bell + reconciles message unread from
+// the DB. When the realtime message channel is NOT 'joined' (flapping/dead socket)
+// it also re-pulls the open chat so a new message still lands within the poll
+// window. Skipped while backgrounded to save battery/network.
 async function _fallbackPoll() {
-    console.log('[mob-poll] running fallback poll');
-    _recomputeBadges();
+    _refreshNotifBadge();
+    _reconcileUnread();
     if (document.visibilityState !== 'visible') return;
     const healthy = _rtChannel && _rtChannel.state === 'joined';
     if (!healthy) { try { _pendingRefresh?.(); } catch (e) {} }
 }
-
+// ADAPTIVE fallback poll (the fix for "kabhi aata hai kabhi nahi" on Android):
+// realtime on mobile/tablet flaps constantly, so a fixed 60s catch-up feels
+// unreliable. Self-schedule based on state — when the socket is NOT joined and
+// the app is visible, reconcile every 20s so missed group badges / messages
+// appear ~3× faster; when realtime is healthy stay at 60s (it carries updates);
+// when backgrounded back off to 90s to save battery.
 function _scheduleFallback() {
     if (_fallbackTimer) clearTimeout(_fallbackTimer);
-    const hidden = document.visibilityState !== 'visible';
-    const ms = hidden ? 30000 : 5000;   // steady, socket-state-independent
+    const hidden  = document.visibilityState !== 'visible';
+    const healthy = _rtChannel && _rtChannel.state === 'joined';
+    const ms = hidden ? 90000 : (healthy ? 60000 : 20000);
     _fallbackTimer = setTimeout(async () => {
         try { await _fallbackPoll(); } catch (e) {}
         _scheduleFallback();   // re-evaluate cadence each tick
     }, ms);
 }
-
-// Render the bell + Activity-tab badge. _bellCount is now the AUTHORITATIVE grand
-// total computed by _recomputeBadges (all message-unread + de-duped attention), so
-// render it directly — no second addition of _sumUnread (that was the old double).
-function _bellTotal() { return _bellCount; }
+// Render the bell + Activity-tab badge. Per the chosen model, the bell reflects
+// EVERY unread item: attention notifications (_bellCount = mentions/reactions/
+// replies/tasks) PLUS all unread chat messages (per-room, from room_reads via
+// _reconcileUnread). room_reads counts each message exactly once, so a single
+// message can never show as 2, and DMs (which live in unreadCounts too) badge the
+// bell like groups do.
+function _bellTotal() { return _bellCount + _sumUnread(); }
 function _renderBellBadge() {
     const total = _bellTotal();
     const badge = _el('mNotifBadge');
@@ -3615,11 +3362,12 @@ function _renderBellBadge() {
 }
 function _bumpBellBadge() { _bellCount++; _renderBellBadge(); _updateAppBadge(); }
 function _clearBellBadge() { _bellCount = 0; _renderBellBadge(); _updateAppBadge(); }
-// App-icon unread badge (installed PWA) — the same authoritative grand total the
-// bell shows (_bellCount already = messages + de-duped attention).
+// App-icon unread badge (installed PWA) — grand total of things needing
+// attention = unread messages (per-chat) + unread activity (bell). The two
+// streams are disjoint now (plain messages aren't in notifications), so sum.
 function _updateAppBadge() {
     try {
-        const total = _bellCount;
+        const total = _sumUnread() + _bellCount;
         if (navigator.setAppBadge) {
             if (total > 0) navigator.setAppBadge(total); else navigator.clearAppBadge?.();
         }
@@ -3757,8 +3505,7 @@ async function _onNewMessage(m) {
         window.unreadCounts[m.room_id] = (window.unreadCounts[m.room_id] || 0) + 1;
         _updateAppBadge();                      // per-chat unread bumped
         _patchHomeUnread(m.room_id, m);         // live badge + preview on the chat-list row (no full re-render/flash)
-        _bellCount++; _renderBellBadge();       // instant: every message lifts the bell + Activity-tab count
-        _scheduleReconcile();                   // self-heal from DB truth ~1.2s later (de-dups mentions, covers drops)
+        _renderBellBadge();                     // every message also lifts the bell + Activity-tab count (chosen model)
 
         if (!m.parent_message_id) {
             const sender = _users.find(u=>u.id===m.sender_id);

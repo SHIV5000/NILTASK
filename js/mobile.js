@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v134';
+const _MOB_VER = 'v135';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -87,22 +87,36 @@ function _roleChip(userId) {
     return `<span class="m-role-chip" style="background:${c.bg};">${x(c.label)}</span>`;
 }
 
+// Standard presence palette (per request): dark green = online, maroon = offline.
+const _ONLINE_GREEN = '#15803d', _OFFLINE_MAROON = '#7f1d1d';
 function _onlineStatus(uid) {
     const u = _users.find(u => u.id === uid);
-    if (!u?.last_seen) return '';
+    if (!u?.last_seen) return `<span style="color:${_OFFLINE_MAROON};font-weight:700;">● Offline</span>`;
     const diffMin = (Date.now() - new Date(u.last_seen).getTime()) / 60000;
-    if (diffMin < 3)    return '<span style="color:#22c55e;font-weight:700;">● Online</span>';
+    if (diffMin < 3)    return `<span style="color:${_ONLINE_GREEN};font-weight:700;">● Online</span>`;
     if (diffMin < 60)   return `Last seen ${Math.round(diffMin)}m ago`;
     if (diffMin < 1440) return `Last seen ${Math.round(diffMin/60)}h ago`;
-    return '';
+    return `<span style="color:${_OFFLINE_MAROON};font-weight:700;">● Offline</span>`;
 }
 
 function _onlineDot(uid) {
     const u = _users.find(u => u.id === uid);
-    if (!u?.last_seen) return '';
-    const diffMin = (Date.now() - new Date(u.last_seen).getTime()) / 60000;
-    if (diffMin < 3)  return '<span class="m-presence-dot"></span>';
-    return '';
+    const diffMin = u?.last_seen ? (Date.now() - new Date(u.last_seen).getTime()) / 60000 : Infinity;
+    const online = diffMin < 3;
+    // Dark green when online, maroon when offline — shown on every avatar.
+    return `<span class="m-presence-dot" style="background:${online ? _ONLINE_GREEN : _OFFLINE_MAROON};"></span>`;
+}
+
+// Top-bar connectivity chip: dark-green "Online" when the device has a network
+// AND the realtime socket is joined; maroon "Offline" otherwise. Replaces the
+// Capacitor WebView "web page not available" experience with a clear status.
+function _setConnState(online) {
+    const el = _el('mConnState');
+    if (!el) return;
+    const ok = (online !== undefined) ? online
+        : (navigator.onLine && (!_rtChannel || _rtChannel.state === 'joined'));
+    el.textContent = ok ? '● Online' : '● Offline';
+    el.style.color = ok ? _ONLINE_GREEN : _OFFLINE_MAROON;
 }
 
 function _updateTypingUI(room) {
@@ -141,8 +155,8 @@ function _showOfflineBanner(show) {
     }
     if (el) el.style.display = show ? 'flex' : 'none';
 }
-window.addEventListener('offline', () => { _isOffline = true;  _showOfflineBanner(true);  });
-window.addEventListener('online',  () => { _isOffline = false; _showOfflineBanner(false); _flushOfflineQueue(); });
+window.addEventListener('offline', () => { _isOffline = true;  _showOfflineBanner(true);  try { _setConnState(false); } catch(e){} });
+window.addEventListener('online',  () => { _isOffline = false; _showOfflineBanner(false); _flushOfflineQueue(); try { _setConnState(true); } catch(e){} });
 
 function _getOfflineQueue() { try { return JSON.parse(localStorage.getItem('mob_send_queue')||'[]'); } catch { return []; } }
 function _saveOfflineQueue(q) { try { localStorage.setItem('mob_send_queue', JSON.stringify(q)); } catch {} }
@@ -294,6 +308,7 @@ window.initMobileApp = async function() {
     await _navTo('home');
     window._hideSplash?.();   // first screen painted — drop the boot splash
     _initRealtime();
+    try { _setConnState(); } catch(e){}   // paint the initial Online/Offline chip
     // Deep-link: open a specific chat from a push tap (?room=…) or SW message.
     _openRoomFromUrl();
     // Web Share Target: content shared into the app from the OS share sheet.
@@ -661,7 +676,7 @@ function _buildShell() {
     app.innerHTML = `
       <div id="mSB">
         <div id="mSBInfo" class="m-sb-info" onclick="window._navTo('home')">
-          <div class="m-sb-user">${x(_sentenceCase(window.currentUser?.full_name || window.currentUser?.email?.split('@')[0] || 'User'))}</div>
+          <div class="m-sb-user">${x(_sentenceCase(window.currentUser?.full_name || window.currentUser?.email?.split('@')[0] || 'User'))}<span id="mConnState" class="m-conn"></span></div>
           <div class="m-sb-school-card">${x(window.currentSchoolName || 'School')} <span onclick="window._copyLogs()" title="Tap to copy console logs" style="font-size:9px;opacity:.5;font-weight:700;letter-spacing:.5px;cursor:pointer;">${_MOB_VER}</span></div>
         </div>
         <div id="mSBSearch" class="m-sb-search" style="display:none;">
@@ -3064,6 +3079,7 @@ function _initRealtime() {
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'profiles', filter:`tenant_id=eq.${_tid}` }, p => _onPresenceUpdate(p.new))
         .subscribe(status => {
             console.log('[mob-rt] channel status='+status); window.logger?.logRt('mobile-rt', status);
+            try { _setConnState(); } catch(e){}   // reflect socket health in the top-bar Online/Offline chip
             if (status === 'SUBSCRIBED') {
                 if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
                 if (_rtOutageTimer) { clearTimeout(_rtOutageTimer); _rtOutageTimer = null; }  // recovered before the 8s warning fired
@@ -4177,8 +4193,8 @@ function _injectCSS(){
   -webkit-tap-highlight-color:transparent;}
 .m-sb-icon:active{opacity:.6;}
 .m-presence-dot{position:absolute;bottom:-1px;right:-1px;width:14px;height:14px;border-radius:50%;
-  background:#10b981;border:2.5px solid var(--bg-body,#fff);pointer-events:none;
-  box-shadow:0 0 5px rgba(16,185,129,.6);}
+  background:#15803d;border:2.5px solid var(--bg-body,#fff);pointer-events:none;}
+.m-conn{margin-left:8px;font-size:11px;font-weight:700;letter-spacing:.02em;vertical-align:middle;}
 .m-notif-badge{position:absolute;top:2px;right:2px;background:#ef4444;color:#fff;
   font-size:10px;font-weight:800;min-width:16px;height:16px;border-radius:8px;
   display:flex;align-items:center;justify-content:center;padding:0 4px;

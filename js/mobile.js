@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v138';
+const _MOB_VER = 'v139';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -889,16 +889,14 @@ window._navTo = async function(screen, params, replace = false) {
     // and persist "read" for this room's notifications so the DB poll agrees.
     if ((screen === 'groupChat' || screen === 'dm') && params?.room) {
         window.unreadCounts = window.unreadCounts || {};
+        // Instant: drop this room's unread from the grand-total bell now, then let
+        // the authoritative recompute (via _markRoomNotifsRead) confirm from the DB.
+        const _wasUnread = window.unreadCounts[params.room] || 0;
         window.unreadCounts[params.room] = 0;
+        _bellCount = Math.max(0, _bellCount - _wasUnread);
         _updateAppBadge();
-        _renderBellBadge();   // instant: drop this room's messages from the bell/Activity count now
-        // Do NOT clobber _bellCount with _sumUnread() here: _sumUnread counts only
-        // MESSAGE unread, so it would wrongly wipe the count coming from reaction/
-        // reply/mention notifications (which have no per-chat unread), then the 60s
-        // poll would bring it back — the badge "flicker / won't clear" bug. Instead
-        // mark this room's notifications read in the DB and recompute the bell from
-        // the DB truth (max of DB unread and message unread).
-        _markRoomNotifsRead(params.room);   // marks read → then refreshes the badge
+        _renderBellBadge();
+        _markRoomNotifsRead(params.room);   // marks notifs read → then _recomputeBadges (authoritative)
     }
     if (replace) _stack.pop();
     _stack.push({ screen, params });
@@ -1147,14 +1145,17 @@ async function _activity() {
     // everything the feed lists, so individual group/DM counts reset too.
     try { localStorage.setItem('activity_seen_ts', new Date().toISOString()); } catch(e){}
     _el('mnActBadge')?.style.setProperty('display','none');
-    _clearBellBadge();
-    window.unreadCounts = {};
-    _updateAppBadge();
-    // Durably mark ALL unread notifications read (not just the ≤80 the feed fetches
-    // below), so the 60s _fallbackPoll can't resurrect a "ghost" bell count for
-    // unread rows beyond the fetched page. Non-blocking. Needs the notifications
-    // UPDATE RLS policy (Phase 1). NFA_buildActivity still marks the fetched page.
-    try { sb.from('notifications').update({ is_read:true }).eq('user_id',_uid).eq('is_read',false).then(()=>{}); } catch(e){}
+    // Opening the Activity list marks the ATTENTION stream seen (mentions/replies/
+    // reactions/tasks/reminders) — but NOT chat messages: per-chat unread only
+    // clears when you actually open that chat (standard behaviour). So mark all
+    // unread notifications read, then recompute the grand-total badge from DB truth
+    // (it will now = remaining unread MESSAGES only). Do NOT wipe window.unreadCounts
+    // here — that would clear the chat-row badges and then reconcile would flicker
+    // them back, since room_reads was never advanced.
+    try {
+        await sb.from('notifications').update({ is_read:true }).eq('user_id',_uid).eq('is_read',false);
+    } catch(e){}
+    try { _recomputeBadges(); } catch(e){}
 
     // Shared feed core (Phase 7): the fetch + merge (messages + task_trails +
     // notifications) + dedup + normalize now lives in js/core/feed.js, used by
@@ -3266,8 +3267,12 @@ async function _markRoomNotifsRead(room) {
 // Plain messages/DMs don't create notification rows (v122), so this fires for the
 // attention stream only — the gap where a reaction/task gave NO mobile alert.
 function _onNotifInsert(n) {
-    _refreshNotifBadge();
-    _scheduleReconcile();      // keep bell + per-chat counts consistent from DB truth
+    // Instant provisional bump ONLY for attention types that are NOT themselves an
+    // unread message (reaction/task/reminder). mention/reply are unread messages and
+    // are already bumped by _onNewMessage — bumping here too would double-count until
+    // reconcile. The debounced reconcile then makes the count authoritative.
+    if (n && (n.type === 'reaction' || n.type === 'task' || n.type === 'reminder')) { _bellCount++; _renderBellBadge(); }
+    _scheduleReconcile();      // authoritative de-duped recompute from DB truth
     _liveRefreshActivity();
     if (!n || !n.message) return;
     if (n.type === 'mention') return;                 // de-dup with _onNewMessage heads-up
@@ -3275,43 +3280,49 @@ function _onNotifInsert(n) {
     try { _toast(_snip(n.message, 80)); } catch (e) {}
     if (!window._isSoundOff?.()) { try { window.playSound?.('message'); } catch (e) {} }
 }
-// BELL = the ACTIVITY stream ONLY (Phase 8, standard model): unread notifications
-// = mentions + reactions-to-you + replies-to-you + task events + reminders. It is
-// NOT the message-unread count (that lives on the chat rows, derived from
-// room_reads by _reconcileUnread). Decoupling the two is what fixes the badge
-// "sometimes works / mostly misbehaves": they no longer fight via a max().
-async function _refreshNotifBadge() {
-    _bellCount = await window.NFA_unreadCount(sb, _uid);   // pure notification unread
-    _renderBellBadge();
-    _updateAppBadge();
-    _liveRefreshActivity();   // if the Activity screen is open, refresh it live
-}
-// Reconcile per-chat MESSAGE unread from the DB (room_reads + messages) — the
-// durable source of truth, so counts are correct after reload, realtime flaps
-// and reconnects (not just from ephemeral realtime increments). Only counts
-// rooms the user actually has (groups they can see + their own DMs).
-async function _reconcileUnread() {
+// ── ONE authoritative badge engine (v138 model: "everything, de-duped") ─────────
+// The bell / Activity number = ALL unread messages (every DM + group) PLUS the
+// attention items (mentions, replies-to-you, reactions-to-you, tasks, reminders) —
+// but an item is counted ONCE. A mention/reply is itself an unread message, so its
+// notification is NOT added again; a reaction/task/reminder points at an already-
+// read (or no) message, so it DOES add. Everything is re-derived from DB truth
+// (room_reads + messages + notifications), which is why it stays consistent across
+// DM / group / mention regardless of the flaky realtime socket.
+async function _recomputeBadges() {
     if (!_uid || !_tid || !window.NFA_computeRoomUnread) return;
     try {
         const rooms = new Set();
         [...DEPTS, ..._customGroups].forEach(d => rooms.add(d.id));
         (_users || []).forEach(u => { if (u.id !== _uid) rooms.add(_dmRoom(u.id)); });
-        const { perRoom } = await window.NFA_computeRoomUnread(sb, { uid: _uid, tid: _tid, rooms });
-        // Preserve the open room at 0 (we're reading it right now).
+        const { perRoom, unreadMsgIds } = await window.NFA_computeRoomUnread(sb, { uid: _uid, tid: _tid, rooms });
+        // The open chat is being read right now → force it to 0 and drop its ids.
         const top = _stack[_stack.length - 1];
-        if ((top?.screen === 'groupChat' || top?.screen === 'dm') && top.params?.room) perRoom[top.params.room] = 0;
+        const openRoom = (top?.screen === 'groupChat' || top?.screen === 'dm') ? top.params?.room : null;
+        if (openRoom) perRoom[openRoom] = 0;
         window.unreadCounts = perRoom;
+        const msgUnread = Object.values(perRoom).reduce((a, b) => a + (b || 0), 0);
+        // Attention notifications NOT already counted as an unread message (de-dup).
+        let attention = 0;
+        try {
+            const { data: ns } = await sb.from('notifications')
+                .select('message_id').eq('user_id', _uid).eq('is_read', false);
+            attention = (ns || []).filter(n => !n.message_id || !unreadMsgIds.has(n.message_id)).length;
+        } catch (e) {}
+        _bellCount = msgUnread + attention;   // authoritative grand total (de-duped)
+        _renderBellBadge();
         _updateAppBadge();
-        _renderBellBadge();   // bell/Activity reflect the reconciled per-room totals (no double, DMs included)
-        // SURGICAL badge update (no screen re-render / no slide): patch each visible
-        // chat row's unread badge in place, so group/DM badges appear silently in the
-        // background — like a real app — instead of sliding the whole home screen in
-        // from the right on every poll (the "cheap app" refresh).
-        if (top?.screen === 'home') {
-            rooms.forEach(rid => { try { _patchHomeUnread(rid); } catch (e) {} });
-        }
+        if (top?.screen === 'home') rooms.forEach(rid => { try { _patchHomeUnread(rid); } catch (e) {} });
+        _liveRefreshActivity();
     } catch (e) {}
 }
+// Back-compat aliases — many call sites use these two names; both now run the one
+// authoritative engine so message-unread and attention can never disagree.
+async function _refreshNotifBadge() { return _recomputeBadges(); }
+// Reconcile per-chat MESSAGE unread from the DB (room_reads + messages) — the
+// durable source of truth, so counts are correct after reload, realtime flaps
+// and reconnects (not just from ephemeral realtime increments). Only counts
+// rooms the user actually has (groups they can see + their own DMs).
+async function _reconcileUnread() { return _recomputeBadges(); }   // one engine now
 // Debounced self-heal: after ANY realtime event (message or notification) re-derive
 // ALL badges from the DB truth (room_reads + notifications). This is what makes the
 // badges reliable like a standard app — the live increment gives instant feedback,
@@ -3322,8 +3333,7 @@ function _scheduleReconcile() {
     if (_reconcileTimer) clearTimeout(_reconcileTimer);
     _reconcileTimer = setTimeout(() => {
         _reconcileTimer = null;
-        try { _reconcileUnread(); } catch (e) {}
-        try { _refreshNotifBadge(); } catch (e) {}
+        try { _recomputeBadges(); } catch (e) {}
     }, 1200);
 }
 // Steady resilience poll. Refreshes bell + reconciles message unread from the DB.
@@ -3332,8 +3342,7 @@ function _scheduleReconcile() {
 // a steady 15s catch-up while visible keeps every badge correct within ~15s even
 // when the socket lies. Backgrounded backs off to 60s to save battery.
 async function _fallbackPoll() {
-    _refreshNotifBadge();
-    _reconcileUnread();
+    _recomputeBadges();
     if (document.visibilityState !== 'visible') return;
     const healthy = _rtChannel && _rtChannel.state === 'joined';
     if (!healthy) { try { _pendingRefresh?.(); } catch (e) {} }
@@ -3347,13 +3356,10 @@ function _scheduleFallback() {
         _scheduleFallback();   // re-evaluate cadence each tick
     }, ms);
 }
-// Render the bell + Activity-tab badge. Per the chosen model, the bell reflects
-// EVERY unread item: attention notifications (_bellCount = mentions/reactions/
-// replies/tasks) PLUS all unread chat messages (per-room, from room_reads via
-// _reconcileUnread). room_reads counts each message exactly once, so a single
-// message can never show as 2, and DMs (which live in unreadCounts too) badge the
-// bell like groups do.
-function _bellTotal() { return _bellCount + _sumUnread(); }
+// Render the bell + Activity-tab badge. _bellCount is now the AUTHORITATIVE grand
+// total computed by _recomputeBadges (all message-unread + de-duped attention), so
+// render it directly — no second addition of _sumUnread (that was the old double).
+function _bellTotal() { return _bellCount; }
 function _renderBellBadge() {
     const total = _bellTotal();
     const badge = _el('mNotifBadge');
@@ -3371,12 +3377,11 @@ function _renderBellBadge() {
 }
 function _bumpBellBadge() { _bellCount++; _renderBellBadge(); _updateAppBadge(); }
 function _clearBellBadge() { _bellCount = 0; _renderBellBadge(); _updateAppBadge(); }
-// App-icon unread badge (installed PWA) — grand total of things needing
-// attention = unread messages (per-chat) + unread activity (bell). The two
-// streams are disjoint now (plain messages aren't in notifications), so sum.
+// App-icon unread badge (installed PWA) — the same authoritative grand total the
+// bell shows (_bellCount already = messages + de-duped attention).
 function _updateAppBadge() {
     try {
-        const total = _sumUnread() + _bellCount;
+        const total = _bellCount;
         if (navigator.setAppBadge) {
             if (total > 0) navigator.setAppBadge(total); else navigator.clearAppBadge?.();
         }
@@ -3514,8 +3519,8 @@ async function _onNewMessage(m) {
         window.unreadCounts[m.room_id] = (window.unreadCounts[m.room_id] || 0) + 1;
         _updateAppBadge();                      // per-chat unread bumped
         _patchHomeUnread(m.room_id, m);         // live badge + preview on the chat-list row (no full re-render/flash)
-        _renderBellBadge();                     // every message also lifts the bell + Activity-tab count (chosen model)
-        _scheduleReconcile();                   // self-heal from DB truth ~1.2s later (covers dropped events / drift)
+        _bellCount++; _renderBellBadge();       // instant: every message lifts the bell + Activity-tab count
+        _scheduleReconcile();                   // self-heal from DB truth ~1.2s later (de-dups mentions, covers drops)
 
         if (!m.parent_message_id) {
             const sender = _users.find(u=>u.id===m.sender_id);

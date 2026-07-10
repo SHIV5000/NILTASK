@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v148';
+const _MOB_VER = 'v149';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -3368,6 +3368,7 @@ function _scheduleFallback() {
 // message unread lives on the chat rows, NOT here — that's the 3-surface split.
 function _bellTotal() { return _bellCount; }
 function _renderBellBadge() {
+    console.log('[act] badge bell='+_bellCount+' dot='+_activityHasNew+' rowUnread='+(typeof _sumUnread==='function'?_sumUnread():'?'));
     // 1) BELL (top-right) — the attention NUMBER.
     const badge = _el('mNotifBadge');
     if (badge) {
@@ -3475,9 +3476,10 @@ const _seenMsgIds = new Set();
 const _seenMsgOrder = [];
 async function _onNewMessage(m) {
     if (!m) return;
+    console.log('[act] msg-recv id='+m.id+' room='+m.room_id+' reply='+!!m.parent_message_id+' from='+m.sender_id+' openTop='+(_stack[_stack.length-1]?.screen));
     if (m.id) {
-        if (_seenMsgIds.has(m.id)) return;                       // already handled
-        if (document.getElementById('row-'+m.id)) return;        // already rendered
+        if (_seenMsgIds.has(m.id)) { console.log('[act] msg-recv DUP-skip id='+m.id); return; }   // already handled
+        if (document.getElementById('row-'+m.id)) { console.log('[act] msg-recv already-rendered id='+m.id); return; }
         _seenMsgIds.add(m.id); _seenMsgOrder.push(m.id);
         if (_seenMsgOrder.length > 200) _seenMsgIds.delete(_seenMsgOrder.shift());
     }
@@ -3512,16 +3514,19 @@ async function _onNewMessage(m) {
         // so the indicator stays single and tappable to open the thread.
         if (m.parent_message_id) {
             const parentRow = document.getElementById('row-'+m.parent_message_id);
+            console.log('[act] reply-recv parent='+m.parent_message_id+' parentOnScreen='+!!parentRow);
             if (parentRow) {
                 const link = parentRow.querySelector('.m-thread-link');
                 if (link) {
                     const n = (parseInt(link.dataset.n||'1')+1);
                     link.dataset.n = n;
                     link.innerHTML = `💬 ${n} repl${n===1?'y':'ies'} ›`;
+                    console.log('[act] reply-recv thread-link UPDATED n='+n);
                 } else {
                     const dept = DEPTS.find(d=>d.id===m.room_id) || _customGroups.find(g=>g.id===m.room_id);
                     parentRow.querySelector('.m-bubble')?.insertAdjacentHTML('beforeend',
                         `<button class="m-thread-link" data-action="thread" data-n="1" data-id="${m.parent_message_id}" data-room="${m.room_id||''}" data-rname="${x(dept?.name||'')}" data-rcol="${dept?.col||''}">💬 1 reply ›</button>`);
+                    console.log('[act] reply-recv thread-link INSERTED');
                 }
             }
         }
@@ -3567,6 +3572,7 @@ async function _onNewMessage(m) {
     }
 }
 async function _onReactionChange(r, eventType) {
+    console.log('[act] react-recv et='+eventType+' mid='+(r&&r.message_id)+' val='+(r&&r.value)+' onScreen='+!!(r&&r.message_id&&document.getElementById('row-'+r.message_id)));
     // DIAGNOSTIC (authoritative, correct selector): records whether the reaction
     // event was DELIVERED, whether the payload carried a message_id (null ⇒ RLS
     // blocked the payload / DELETE without replica-identity-full), and whether the
@@ -3815,7 +3821,8 @@ async function _doSendReply(a) {
     const _rres = await sb.from('messages').insert(payload).select().single();
     const { data: m, error } = _rres;
     window.logger?.sb('messages.insert[reply]', _rres, { room:a.room, parent:a.pid });
-    if (error) { _toast('Send failed: '+error.message,'err'); return; }
+    if (error) { console.log('[act] reply-send FAIL '+error.message); _toast('Send failed: '+error.message,'err'); return; }
+    console.log('[act] reply-send OK id='+m.id+' parent='+a.pid+' room='+a.room);
     window.logger?.logReply('send', { id:m.id, room:a.room, parent:a.pid });
     window.playSound?.('send');
     _appendOwnMessage('mThreadArea', m, 160);

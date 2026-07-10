@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v140';
+const _MOB_VER = 'v141';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -660,7 +660,9 @@ async function _syncRoomSettings() {
                 }
             } catch(e){}
         }));
-    } catch {}
+    } catch (e) {
+        console.error('[mob] _syncRoomSettings error:', e);
+    }
 }
 
 // Upsert room_settings including members; retries without members if the column doesn't exist yet.
@@ -1137,9 +1139,16 @@ async function _home() {
 }
 
 function _fmtDateTime(ds){ try { const d=new Date(ds); return _istFmtDate.format(d)+', '+_istFmt12.format(d); } catch { return ''; } }
+
+// ----- Activity feed with change detection to avoid flicker -----
+let _lastActivityCount = -1;
+
 async function _activity() {
     const filter = window._afFilter || 'all';
     const senderFilter = window._afSender || '';
+    // reset counter so first render always happens
+    _lastActivityCount = -1;
+
     // Opening the feed marks it "seen" (clears the Activity tab badge + bell badge)
     // AND the per-chat unread badges on the home list — the user has now seen
     // everything the feed lists, so individual group/DM counts reset too.
@@ -1214,6 +1223,9 @@ async function _activity() {
            <div style="margin-top:6px;">${filter==='all' ? 'Your activity will appear here when teammates chat, assign tasks, or reminders fire.' : 'No activity matches this filter.'}</div></div>`;
 
     const hasAny = _all.length > 0;
+    // store current count for change detection in live refresh
+    _lastActivityCount = items.length;
+
     return `<div class="mScr-inner">
       <div class="m-hdr m-hdr-plain" style="display:flex;align-items:center;justify-content:space-between;">
         <div class="m-htitle">🔔 Activity ${unread?`<span style="background:#2563eb;color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:30px;margin-left:6px;vertical-align:middle;">${unread} new</span>`:''}</div>
@@ -1243,10 +1255,32 @@ function _liveRefreshActivity() {
     const top = _stack[_stack.length-1];
     if (top?.screen !== 'activity') return;
     clearTimeout(_actRefreshTimer);
-    _actRefreshTimer = setTimeout(() => {
-        const t = _stack[_stack.length-1];
-        if (t?.screen === 'activity') _render('activity', null, 'none');   // silent in-place update, no slide
-    }, 600);
+    _actRefreshTimer = setTimeout(async () => {
+        // Only refresh if the count of items changed (avoid flicker on repeated calls)
+        try {
+            const _roomLabel = (rid) => {
+                if (!rid) return '';
+                if (rid.startsWith('dm_')) {
+                    const other = rid.replace('dm_','').split('_').find(id => id !== _uid);
+                    return other ? _uname(other) : 'Direct message';
+                }
+                return _findGroup(rid)?.name || _lsGet('dept_name_'+rid,'') || rid;
+            };
+            const { items } = await window.NFA_buildActivity(sb, {
+                uid: _uid, tid: _tid,
+                resolveName: _uname,
+                resolveRoom: _roomLabel,
+                snippet: _snip,
+                logError: (m, d) => window.logger?.sb?.(m, d),
+            });
+            const newCount = items.length;
+            if (newCount !== _lastActivityCount) {
+                _lastActivityCount = newCount;
+                const t = _stack[_stack.length-1];
+                if (t?.screen === 'activity') _render('activity', null, 'none');
+            }
+        } catch (e) { /* quiet */ }
+    }, 1500);
 }
 window._mobAfFilter = function(v){ window._afFilter = v; window._afSender = ''; window._mobRerenderActivity(); };
 window._mobAfSender = function(v){ window._afSender = v || ''; window._mobRerenderActivity(); };
@@ -3291,6 +3325,10 @@ function _onNotifInsert(n) {
 // DM / group / mention regardless of the flaky realtime socket.
 async function _recomputeBadges() {
     if (!_uid || !_tid || !window.NFA_computeRoomUnread) return;
+    // --- FALLBACK: ensure groups are loaded ---
+    if (_customGroups.length === 0) {
+        try { await _syncRoomSettings(); } catch (e) { /* ignore */ }
+    }
     try {
         const rooms = new Set();
         [...DEPTS, ..._customGroups].forEach(d => rooms.add(d.id));
@@ -3312,7 +3350,7 @@ async function _recomputeBadges() {
         _bellCount = msgUnread + attention;   // authoritative grand total (de-duped)
         // 🔥 Detailed logging for debugging
         console.log('[mob-badge] recompute: msgUnread=', msgUnread, 'attention=', attention, 'bellCount=', _bellCount);
-        console.log('[mob-badge] perRoom=', perRoom);
+        console.log('[mob-badge] perRoom=', JSON.stringify(perRoom));
         _renderBellBadge();
         _updateAppBadge();
         if (top?.screen === 'home') rooms.forEach(rid => { try { _patchHomeUnread(rid); } catch (e) {} });

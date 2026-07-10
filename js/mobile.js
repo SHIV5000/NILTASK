@@ -3323,16 +3323,35 @@ function _onNotifInsert(n) {
 // read (or no) message, so it DOES add. Everything is re-derived from DB truth
 // (room_reads + messages + notifications), which is why it stays consistent across
 // DM / group / mention regardless of the flaky realtime socket.
+
 async function _recomputeBadges() {
     if (!_uid || !_tid || !window.NFA_computeRoomUnread) return;
+
     // --- FALLBACK: ensure groups are loaded ---
     if (_customGroups.length === 0) {
         try { await _syncRoomSettings(); } catch (e) { /* ignore */ }
     }
+    // --- FALLBACK: ensure users are loaded ---
+    if (_users.length === 0) {
+        try { await _refreshUsers(_tid); } catch (e) { /* ignore */ }
+    }
+
     try {
         const rooms = new Set();
         [...DEPTS, ..._customGroups].forEach(d => rooms.add(d.id));
         (_users || []).forEach(u => { if (u.id !== _uid) rooms.add(_dmRoom(u.id)); });
+
+        // --- DIAGNOSTIC ---
+        console.log('[mob-badge] rooms set size:', rooms.size, 'customGroups:', _customGroups.length, 'users:', _users.length);
+        console.log('[mob-badge] rooms set:', Array.from(rooms));
+
+        // If still empty, schedule a retry after a short delay (network may be slow)
+        if (rooms.size === 0) {
+            console.warn('[mob-badge] rooms set empty – scheduling retry in 2s');
+            setTimeout(() => { _recomputeBadges(); }, 2000);
+            return; // skip this run, will retry
+        }
+
         const { perRoom, unreadMsgIds } = await window.NFA_computeRoomUnread(sb, { uid: _uid, tid: _tid, rooms });
         // The open chat is being read right now → force it to 0 and drop its ids.
         const top = _stack[_stack.length - 1];
@@ -3347,8 +3366,7 @@ async function _recomputeBadges() {
                 .select('message_id').eq('user_id', _uid).eq('is_read', false);
             attention = (ns || []).filter(n => !n.message_id || !unreadMsgIds.has(n.message_id)).length;
         } catch (e) {}
-        _bellCount = msgUnread + attention;   // authoritative grand total (de-duped)
-        // 🔥 Detailed logging for debugging
+        _bellCount = msgUnread + attention;
         console.log('[mob-badge] recompute: msgUnread=', msgUnread, 'attention=', attention, 'bellCount=', _bellCount);
         console.log('[mob-badge] perRoom=', JSON.stringify(perRoom));
         _renderBellBadge();
@@ -3357,6 +3375,8 @@ async function _recomputeBadges() {
         _liveRefreshActivity();
     } catch (e) { console.error('[mob-badge] error in _recomputeBadges:', e); }
 }
+
+
 
 // Back-compat aliases — many call sites use these two names; both now run the one
 // authoritative engine so message-unread and attention can never disagree.

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v146';
+const _MOB_VER = 'v147';
 
 // Console log buffer — tap version badge to copy all logs
 const _logBuf = [];
@@ -54,7 +54,8 @@ let _typingThrottle = 0;
 let _notifFallbackInterval = null;
 let _fallbackTimer = null;   // adaptive fallback-poll timer (see _scheduleFallback)
 let _activityPoll = null;    // 12s refresh while the Activity screen is open (realtime safety net)
-let _bellCount = 0;   // instant in-memory unread count (survives RLS-blocked notification inserts)
+let _bellCount = 0;   // BELL = attention-only count (mentions/replies/reactions/tasks/reminders)
+let _activityHasNew = false;   // Activity TIMELINE tab: show a subtle "new" dot when unseen items exist
 let _replyMapCache = {};   // room_id -> {parentId: replyCount} so thread buttons show on instant shell render
 let _scrollFabCount = 0;
 let _oldestTs = {};      // room_id -> created_at of oldest loaded message (pagination)
@@ -329,7 +330,7 @@ window.initMobileApp = async function() {
     _activityPoll = setInterval(() => {
         if (document.visibilityState !== 'visible') return;
         const t = _stack[_stack.length-1];
-        if (t?.screen === 'activity') { try { _render('activity', null, 'none'); } catch(e){} }
+        if (t?.screen === 'activity' || t?.screen === 'notifications') { try { _render(t.screen, t.params, 'none'); } catch(e){} }
     }, 12000);
     _showOfflineBanner(_isOffline);
     // Auto-refresh displayed timestamps every 60s + update last_seen heartbeat
@@ -698,7 +699,7 @@ function _buildShell() {
         <button class="m-sb-icon" id="mSBDnd" title="Do Not Disturb" data-action="toggleDND" style="${(window._isDND?.())?'color:#ef4444;':''}">
           <i class="fa-solid ${(window._isDND?.())?'fa-volume-xmark':'fa-volume-high'}"></i>
         </button>
-        <button class="m-sb-icon" id="mSBBell" title="Notifications & Activity" data-action="openActivity" style="position:relative;">
+        <button class="m-sb-icon" id="mSBBell" title="Notifications" data-action="openNotifs" style="position:relative;">
           <i class="fa-solid fa-bell"></i>
           <span id="mNotifBadge" class="m-notif-badge" style="display:none;"></span>
         </button>
@@ -943,7 +944,7 @@ async function _render(screen, params, dir='forward') {
     const stage = _el('mStage');
     if (!stage) return;
     const fns = {
-        home: _home, activity: _activity, tasks: _tasks, remind: _reminders,
+        home: _home, activity: _activity, notifications: _activity, tasks: _tasks, remind: _reminders,
         marks: _bookmarks, scheduled: _scheduled,
         settings: _settings, dashboard: _dashboard, groupMgmt: _groupMgmt,
         groupChat: _groupChat, thread: _thread,
@@ -1139,22 +1140,27 @@ async function _home() {
 }
 
 function _fmtDateTime(ds){ try { const d=new Date(ds); return _istFmtDate.format(d)+', '+_istFmt12.format(d); } catch { return ''; } }
-async function _activity() {
+async function _activity(p) {
+    // TWO surfaces share this renderer (3-surface model):
+    //   • mode 'attention'  = the BELL → Notifications: only items aimed at ME
+    //     (mentions/replies/reactions/tasks/reminders). Opening it MARKS them read
+    //     and clears the bell. Does NOT touch chat-row unread or the Activity dot.
+    //   • mode 'timeline' (default) = the bottom ACTIVITY tab → team timeline of ALL
+    //     recent messages + tasks. Browsing it clears only the "new" DOT — it does
+    //     NOT mark attention read (bell stays) and does NOT clear chat-row unread.
+    const mode = (p && p.mode === 'attention') ? 'attention' : 'timeline';
     const filter = window._afFilter || 'all';
     const senderFilter = window._afSender || '';
-    // Opening the feed marks it "seen" (clears the Activity tab badge + bell badge)
-    // AND the per-chat unread badges on the home list — the user has now seen
-    // everything the feed lists, so individual group/DM counts reset too.
-    try { localStorage.setItem('activity_seen_ts', new Date().toISOString()); } catch(e){}
-    _el('mnActBadge')?.style.setProperty('display','none');
-    _clearBellBadge();
-    window.unreadCounts = {};
-    _updateAppBadge();
-    // Durably mark ALL unread notifications read (not just the ≤80 the feed fetches
-    // below), so the 60s _fallbackPoll can't resurrect a "ghost" bell count for
-    // unread rows beyond the fetched page. Non-blocking. Needs the notifications
-    // UPDATE RLS policy (Phase 1). NFA_buildActivity still marks the fetched page.
-    try { sb.from('notifications').update({ is_read:true }).eq('user_id',_uid).eq('is_read',false).then(()=>{}); } catch(e){}
+    if (mode === 'attention') {
+        // Opening the bell = the attention stream is now seen → clear the bell.
+        _clearBellBadge();
+        try { sb.from('notifications').update({ is_read:true }).eq('user_id',_uid).eq('is_read',false).then(()=>{}); } catch(e){}
+    } else {
+        // Opening the timeline tab = clear only the subtle "new" dot.
+        try { localStorage.setItem('activity_seen_ts', new Date().toISOString()); } catch(e){}
+        _activityHasNew = false;
+        _el('mnActBadge')?.style.setProperty('display','none');
+    }
 
     // Shared feed core (Phase 7): the fetch + merge (messages + task_trails +
     // notifications) + dedup + normalize now lives in js/core/feed.js, used by
@@ -1168,11 +1174,21 @@ async function _activity() {
         }
         return _findGroup(rid)?.name || _lsGet('dept_name_'+rid,'') || rid;
     };
-    const { items: _all, unread } = await window.NFA_buildActivity(sb, {
+    const { items: _feed, unread } = await window.NFA_buildActivity(sb, {
         uid: _uid, tid: _tid,
         resolveName: _uname, resolveRoom: _roomLabel, snippet: _snip,
+        // Only the BELL (attention) marks notifications read on open. Browsing the
+        // timeline must NOT clear the bell, so it fetches without marking read.
+        markRead: mode === 'attention',
         logError: (m, d) => window.logger?.sb?.(m, d),
     });
+
+    // ATTENTION view = notification-sourced items only (mentions/replies/reactions/
+    // tasks/reminders). Timeline view = everything (also raw messages + task trails,
+    // which NFA_buildActivity tags with 'msg:'/'trail:' id prefixes).
+    const _all = mode === 'attention'
+        ? _feed.filter(it => { const id = String(it.n?.id || ''); return !id.startsWith('msg:') && !id.startsWith('trail:'); })
+        : _feed;
 
     let items = _all.filter(it => filter==='all' || it.cat===filter);
     // Distinct senders present in the (category-filtered) feed, for the sender chips.
@@ -1209,13 +1225,13 @@ async function _activity() {
     const feed = groups.length ? groups.map(g => `
         <div class="af-div"><span>🔵 ${g.label}</span><div class="ln"></div></div>
         ${g.items.map(card).join('')}`).join('')
-      : `<div class="af-empty"><div class="em">🚀</div><div class="t">All caught up!</div>
-           <div style="margin-top:6px;">${filter==='all' ? 'Your activity will appear here when teammates chat, assign tasks, or reminders fire.' : 'No activity matches this filter.'}</div></div>`;
+      : `<div class="af-empty"><div class="em">${mode==='attention'?'🔔':'🚀'}</div><div class="t">All caught up!</div>
+           <div style="margin-top:6px;">${filter!=='all' ? 'Nothing matches this filter.' : (mode==='attention' ? 'No mentions, replies, reactions, tasks or reminders for you yet.' : 'Team activity — messages, tasks and reminders — will appear here.')}</div></div>`;
 
     const hasAny = _all.length > 0;
     return `<div class="mScr-inner">
       <div class="m-hdr m-hdr-plain" style="display:flex;align-items:center;justify-content:space-between;">
-        <div class="m-htitle">🔔 Activity ${unread?`<span style="background:#2563eb;color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:30px;margin-left:6px;vertical-align:middle;">${unread} new</span>`:''}</div>
+        <div class="m-htitle">${mode==='attention'?'🔔 Notifications':'🗞️ Activity'} ${(mode==='attention'&&unread)?`<span style="background:#2563eb;color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:30px;margin-left:6px;vertical-align:middle;">${unread} new</span>`:''}</div>
         <div style="display:flex;gap:6px;">
           ${unread?`<button class="m-hdr-action" data-action="markAllRead" title="Mark all read"><i class="fa-solid fa-check-double"></i></button>`:''}
           ${hasAny?`<button class="m-hdr-action" data-action="afClearAll" title="Clear all"><i class="fa-solid fa-trash-can"></i></button>`:''}
@@ -1233,18 +1249,26 @@ async function _activity() {
       <div class="af-feed">${feed}</div>
     </div>`;
 }
-window._mobRerenderActivity = () => _render('activity', null, 'forward');
+// Re-render whichever feed surface is open (timeline 'activity' or bell
+// 'notifications'), preserving its mode/params — so filters/clears never flip
+// the user from the bell list to the timeline.
+window._mobRerenderActivity = () => {
+    const t = _stack[_stack.length-1];
+    const s = (t && t.screen === 'notifications') ? 'notifications' : 'activity';
+    return _render(s, t?.params, 'forward');
+};
 // Live-refresh the Activity screen ONLY when it's the one on-screen (debounced so
 // a burst of notifications/messages doesn't thrash it). Wired to the notifications
 // realtime INSERT + incoming messages so the feed updates without a manual reload.
 let _actRefreshTimer = null;
 function _liveRefreshActivity() {
     const top = _stack[_stack.length-1];
-    if (top?.screen !== 'activity') return;
+    if (top?.screen !== 'activity' && top?.screen !== 'notifications') return;
     clearTimeout(_actRefreshTimer);
     _actRefreshTimer = setTimeout(() => {
         const t = _stack[_stack.length-1];
-        if (t?.screen === 'activity') _render('activity', null, 'none');   // silent in-place update, no slide
+        // Re-render whichever of the two surfaces is open, preserving its mode.
+        if (t?.screen === 'activity' || t?.screen === 'notifications') _render(t.screen, t.params, 'none');
     }, 600);
 }
 window._mobAfFilter = function(v){ window._afFilter = v; window._afSender = ''; window._mobRerenderActivity(); };
@@ -2789,23 +2813,23 @@ async function _onShellClick(e) {
         case 'editScheduled': await _navTo('scheduledEdit',{id:a.id,text:a.text,at:a.at,room:a.room}); break;
         case 'saveScheduled': await _saveScheduled(a.id); break;
         case 'openTaskFile': await _openTaskFile(a.path); break;
-        case 'openNotifs': await _navTo('activity'); break;
-        case 'openActivity': await _navTo('activity'); break;
+        case 'openNotifs': await _navTo('notifications', { mode:'attention' }); break;   // bell → attention list
+        case 'openActivity': await _navTo('activity'); break;                             // bottom tab → timeline
         case 'goToMsgNotif': await _goToMessage(a.mid); break;
         case 'goToTaskNotif': await _goToTask(a.tid); break;
-        case 'afFilter': window._afFilter = a.f; window._afSender = ''; await _render('activity', null, 'forward'); break;
-        case 'afSender': window._afSender = a.s || ''; await _render('activity', null, 'forward'); break;
+        case 'afFilter': window._afFilter = a.f; window._afSender = ''; await window._mobRerenderActivity(); break;
+        case 'afSender': window._afSender = a.s || ''; await window._mobRerenderActivity(); break;
         case 'afClear': {
             try { await sb.from('notifications').delete().eq('id',a.nid).eq('user_id',_uid); } catch(e){}
             await _refreshNotifBadge();
-            await _render('activity', null, 'forward');
+            await window._mobRerenderActivity();
             break;
         }
         case 'afClearAll': {
             try { await sb.from('notifications').delete().eq('user_id',_uid).eq('tenant_id',_tid); } catch(e){}
             _clearBellBadge();
             await _refreshNotifBadge();
-            await _render('activity', null, 'forward');
+            await window._mobRerenderActivity();
             break;
         }
         case 'markAllRead': {
@@ -2816,7 +2840,7 @@ async function _onShellClick(e) {
             } catch(e){}
             _clearBellBadge();
             await _refreshNotifBadge();
-            await _render('activity', null, 'forward');
+            await window._mobRerenderActivity();
             break;
         }
         case 'goToTaskNotif': await _goToTask(a.tid); break;
@@ -3266,7 +3290,9 @@ async function _markRoomNotifsRead(room) {
 // Plain messages/DMs don't create notification rows (v122), so this fires for the
 // attention stream only — the gap where a reaction/task gave NO mobile alert.
 function _onNotifInsert(n) {
-    _refreshNotifBadge();
+    _refreshNotifBadge();                 // bell (attention) recomputed from DB
+    _activityHasNew = true;               // it also shows in the timeline → light the dot
+    _renderBellBadge();
     _liveRefreshActivity();
     if (!n || !n.message) return;
     if (n.type === 'mention') return;                 // de-dup with _onNewMessage heads-up
@@ -3344,20 +3370,27 @@ function _scheduleFallback() {
 // _reconcileUnread). room_reads counts each message exactly once, so a single
 // message can never show as 2, and DMs (which live in unreadCounts too) badge the
 // bell like groups do.
-function _bellTotal() { return _bellCount + _sumUnread(); }
+// BELL = attention only (mentions/replies/reactions/tasks/reminders). Per-chat
+// message unread lives on the chat rows, NOT here — that's the 3-surface split.
+function _bellTotal() { return _bellCount; }
 function _renderBellBadge() {
-    const total = _bellTotal();
+    // 1) BELL (top-right) — the attention NUMBER.
     const badge = _el('mNotifBadge');
     if (badge) {
-        if (total > 0) { badge.textContent = total > 9 ? '9+' : String(total); badge.style.display = 'flex'; }
+        if (_bellCount > 0) { badge.textContent = _bellCount > 9 ? '9+' : String(_bellCount); badge.style.display = 'flex'; }
         else badge.style.display = 'none';
     }
-    // Mirror onto the Activity bottom-nav tab (hidden while the feed is open).
+    // 2) ACTIVITY bottom-nav tab — a subtle "new" DOT (no number), hidden while the
+    //    timeline is open. It signals unseen team activity, not a personal count.
     const nb = _el('mnActBadge');
     if (nb) {
-        const onActivity = _stack[_stack.length-1]?.screen === 'activity';
-        if (total > 0 && !onActivity) { nb.textContent = total > 9 ? '9+' : String(total); nb.style.display = 'flex'; }
-        else nb.style.display = 'none';
+        const onTimeline = _stack[_stack.length-1]?.screen === 'activity';
+        if (_activityHasNew && !onTimeline) {
+            nb.textContent = '';
+            nb.style.cssText = 'display:block;position:absolute;top:4px;right:12px;width:9px;height:9px;min-width:0;padding:0;border-radius:50%;background:#ef4444;border:1.5px solid var(--bg-sidebar,#fff);';
+        } else {
+            nb.style.display = 'none';
+        }
     }
 }
 function _bumpBellBadge() { _bellCount++; _renderBellBadge(); _updateAppBadge(); }
@@ -3503,9 +3536,9 @@ async function _onNewMessage(m) {
         // update the instant the realtime event arrives.
         window.unreadCounts = window.unreadCounts || {};
         window.unreadCounts[m.room_id] = (window.unreadCounts[m.room_id] || 0) + 1;
-        _updateAppBadge();                      // per-chat unread bumped
+        _updateAppBadge();                      // per-chat unread bumped (app icon = messages + attention)
         _patchHomeUnread(m.room_id, m);         // live badge + preview on the chat-list row (no full re-render/flash)
-        _renderBellBadge();                     // every message also lifts the bell + Activity-tab count (chosen model)
+        _activityHasNew = true; _renderBellBadge();   // a plain message lights the Activity "new" DOT, NOT the bell
 
         if (!m.parent_message_id) {
             const sender = _users.find(u=>u.id===m.sender_id);

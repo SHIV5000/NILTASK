@@ -3375,6 +3375,7 @@ async function _directUnreadCounts(rooms) {
 
 async function _recomputeBadges() {
     if (!_uid || !_tid || !window.NFA_computeRoomUnread) return;
+    const myGen = ++_badgeCalcGen; // Mark the start of this specific fetch
 
     // --- FALLBACK: ensure groups are loaded ---
     if (_customGroups.length === 0) {
@@ -3389,11 +3390,7 @@ async function _recomputeBadges() {
         [...DEPTS, ..._customGroups].forEach(d => rooms.add(d.id));
         (_users || []).forEach(u => { if (u.id !== _uid) rooms.add(_dmRoom(u.id)); });
 
-        console.log('[mob-badge] rooms set size:', rooms.size, 'customGroups:', _customGroups.length, 'users:', _users.length);
-        console.log('[mob-badge] rooms set:', Array.from(rooms));
-
         if (rooms.size === 0) {
-            console.warn('[mob-badge] rooms set empty – scheduling retry in 2s');
             setTimeout(() => { _recomputeBadges(); }, 2000);
             return;
         }
@@ -3405,14 +3402,14 @@ async function _recomputeBadges() {
             perRoom = result.perRoom || {};
             unreadMsgIds = result.unreadMsgIds || new Set();
         } catch (e) {
-            console.warn('[mob-badge] NFA_computeRoomUnread threw error, using fallback', e);
+            perRoom = await _directUnreadCounts(rooms);
         }
 
-        // If core returned empty, fallback to direct computation
-        if (Object.keys(perRoom).length === 0) {
-            console.log('[mob-badge] Core unread engine returned empty – using direct fallback');
-            perRoom = await _directUnreadCounts(rooms);
-            // unreadMsgIds is not needed for direct counts, but keep it empty
+        // RACE CONDITION GUARD #1: If a newer realtime event arrived while we queried, 
+        // discard this stale DB state immediately to prevent overwriting local truth.
+        if (_badgeCalcGen !== myGen) {
+            console.log('[mob-badge] discarding stale DB state (gen mismatch)');
+            return;
         }
 
         // The open chat is being read right now → force it to 0
@@ -3423,35 +3420,36 @@ async function _recomputeBadges() {
         window.unreadCounts = perRoom;
         const msgUnread = Object.values(perRoom).reduce((a, b) => a + (b || 0), 0);
 
-        // Attention notifications NOT already counted as an unread message (de-dup).
         let attention = 0;
         try {
             const { data: ns } = await sb.from('notifications')
                 .select('message_id').eq('user_id', _uid).eq('is_read', false);
-            // If we don't have unreadMsgIds (from fallback), we cannot de-dup, so count all attention
             if (unreadMsgIds.size > 0) {
                 attention = (ns || []).filter(n => !n.message_id || !unreadMsgIds.has(n.message_id)).length;
             } else {
-                // Fallback: count all notifications as attention (they might be replies/reactions)
                 attention = (ns || []).length;
             }
-        } catch (e) { console.warn('[mob-badge] attention fetch error', e); }
+        } catch (e) {}
+
+        // RACE CONDITION GUARD #2: Check again after the second DB query
+        if (_badgeCalcGen !== myGen) return;
 
         _bellCount = msgUnread + attention;
         console.log('[mob-badge] recompute: msgUnread=', msgUnread, 'attention=', attention, 'bellCount=', _bellCount);
-        console.log('[mob-badge] perRoom=', JSON.stringify(perRoom));
 
-        _renderBellBadge();
-        _updateAppBadge();
-        if (top?.screen === 'home') {
-            rooms.forEach(rid => { try { _patchHomeUnread(rid); } catch (e) {} });
-        }
+        // Apply UI updates using requestAnimationFrame to batch DOM patches and avoid UI stutter
+        requestAnimationFrame(() => {
+            _renderBellBadge();
+            _updateAppBadge();
+            if (top?.screen === 'home') {
+                rooms.forEach(rid => { try { _patchHomeUnread(rid); } catch (e) {} });
+            }
+        });
         _liveRefreshActivity();
     } catch (e) {
         console.error('[mob-badge] error in _recomputeBadges:', e);
     }
 }
-
 // Back-compat aliases — many call sites use these two names; both now run the one
 // authoritative engine so message-unread and attention can never disagree.
 async function _refreshNotifBadge() { return _recomputeBadges(); }
@@ -3494,13 +3492,17 @@ async function _upsertRoomRead(room, retries = 3) {
 // badges reliable like a standard app — the live increment gives instant feedback,
 // then ~1.2s later the DB reconcile guarantees DM / group / @mention / reaction /
 // reply / task counts are all correct and consistent, healing any dropped event.
+let _badgeCalcGen = 0; // Generation counter to defeat race conditions
 let _reconcileTimer = null;
+
 function _scheduleReconcile() {
     if (_reconcileTimer) clearTimeout(_reconcileTimer);
+    // Increased from 300ms to 1200ms to allow Supabase read-replicas to catch up
+    // before we query the truth.
     _reconcileTimer = setTimeout(() => {
         _reconcileTimer = null;
         try { _recomputeBadges(); } catch (e) {}
-    }, 300);
+    }, 1200);
 }
 
 // Steady resilience poll. Refreshes bell + reconciles message unread from the DB.

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v152';
+const _MOB_VER = 'v153';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -968,6 +968,14 @@ async function _render(screen, params, dir='forward') {
     scr.className = `mScr ${slideClass}`.trim();
     scr.dataset.screen = screen;
     scr.innerHTML  = html;
+    // ANTI-FLICKER: on a silent BACKGROUND refresh (dir='none' — poll / live
+    // reconcile), if the freshly-built markup is identical to what's already on
+    // screen, DON'T swap the DOM. This is what stopped the Activity feed flickering
+    // on every poll tick when nothing actually changed.
+    if (dir === 'none') {
+        const cur = stage.firstElementChild;
+        if (cur && cur.dataset.screen === screen && cur.innerHTML === html) return;
+    }
     stage.innerHTML = '';
     stage.appendChild(scr);
 
@@ -3304,6 +3312,7 @@ async function _markRoomNotifsRead(room) {
 // Plain messages/DMs don't create notification rows (v122), so this fires for the
 // attention stream only — the gap where a reaction/task gave NO mobile alert.
 function _onNotifInsert(n) {
+    console.log('[act] notif-recv type='+(n&&n.type)+' mid='+(n&&n.message_id));   // confirms the notifications realtime channel fired
     _refreshNotifBadge();                 // bell (attention) recomputed from DB
     _activityHasNew = true;               // it also shows in the timeline → light the dot
     _renderBellBadge();
@@ -3537,22 +3546,31 @@ async function _onNewMessage(m) {
         // Use the SAME clickable .m-thread-link element the renderer emits (not a separate div),
         // so the indicator stays single and tappable to open the thread.
         if (m.parent_message_id) {
+            // Keep the reply-count cache in sync ALWAYS (even if the parent isn't on
+            // screen right now) so the "N replies" button appears the moment the user
+            // opens/scrolls to that chat — not only when the parent happens to be
+            // rendered when the reply lands.
+            _replyMapCache[m.room_id] = _replyMapCache[m.room_id] || {};
+            _replyMapCache[m.room_id][m.parent_message_id] = (_replyMapCache[m.room_id][m.parent_message_id] || 0) + 1;
             const parentRow = document.getElementById('row-'+m.parent_message_id);
             console.log('[act] reply-recv parent='+m.parent_message_id+' parentOnScreen='+!!parentRow);
             if (parentRow) {
                 const link = parentRow.querySelector('.m-thread-link');
+                const n = _replyMapCache[m.room_id][m.parent_message_id];
                 if (link) {
-                    const n = (parseInt(link.dataset.n||'1')+1);
                     link.dataset.n = n;
                     link.innerHTML = `💬 ${n} repl${n===1?'y':'ies'} ›`;
                     console.log('[act] reply-recv thread-link UPDATED n='+n);
                 } else {
                     const dept = DEPTS.find(d=>d.id===m.room_id) || _customGroups.find(g=>g.id===m.room_id);
                     parentRow.querySelector('.m-bubble')?.insertAdjacentHTML('beforeend',
-                        `<button class="m-thread-link" data-action="thread" data-n="1" data-id="${m.parent_message_id}" data-room="${m.room_id||''}" data-rname="${x(dept?.name||'')}" data-rcol="${dept?.col||''}">💬 1 reply ›</button>`);
+                        `<button class="m-thread-link" data-action="thread" data-n="${n}" data-id="${m.parent_message_id}" data-room="${m.room_id||''}" data-rname="${x(dept?.name||'')}" data-rcol="${dept?.col||''}">💬 ${n} repl${n===1?'y':'ies'} ›</button>`);
                     console.log('[act] reply-recv thread-link INSERTED');
                 }
             }
+            // A reply to MY message creates a notification — refresh the bell now
+            // (real time) rather than on the 15s poll. Harmless no-op if not for me.
+            try { _refreshNotifBadge(); } catch (e) {}
         }
         // Per-chat unread badge (this chat isn't open) — WhatsApp-style count.
         // Runs for every received message (incl. replies) so the badges + bell
@@ -3612,6 +3630,11 @@ async function _onReactionChange(r, eventType) {
     // for a chat that isn't currently open is still cached and shows instantly when
     // the user opens/scrolls to that message (no wait for a DB round-trip).
     _saveReactionEntry(r.message_id, r.value, r.type, r.user_id, isDelete);
+    // A reaction to MY message creates a notification for me. That reaction event
+    // arrives in real time (unlike the notifications channel, which may not be in
+    // the realtime publication) — so re-pull the bell now instead of waiting up to
+    // 15s for the fallback poll. Only for others' reactions (not my own toggles).
+    if (!isDelete && r.user_id && r.user_id !== _uid) { try { _refreshNotifBadge(); } catch (e) {} }
     if (!document.getElementById('row-'+r.message_id)) return;   // not on screen — cached above, render later
     // Render through the SAME reliable path the sender uses (re-fetch from DB +
     // cache, canonical placement, scroll-into-view). This replaced a fragile

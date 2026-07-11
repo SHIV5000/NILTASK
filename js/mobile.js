@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v158';
+const _MOB_VER = 'v159';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -23,15 +23,27 @@ let _tsInterval = null;
 let _users  = [];
 let _pendingUploadTaskId = null;
 let _pendingDeptPhoto = null;
+// SINGLE realtime channel (v159). Previously three channels (mobile-rt postgres +
+// mobile-bc broadcast + taskflow-bc shared) rode the one WebSocket; any one erroring
+// on a flaky phone triggered a full teardown/reconnect. Collapsed into ONE channel
+// on the cross-platform topic 'taskflow-bc-'+tid (so the web↔mobile bridge is
+// unchanged) that carries BOTH postgres_changes AND all broadcasts. Fewer joins,
+// fewer failure points, one place to heal.
 let _rtChannel = null;
-let _bcChannel = null;
-let _sharedBc = null;  // v33 cross-platform bridge: shared with web on 'taskflow-bc-'+tid
-// Broadcast to BOTH the legacy mobile channel and the shared cross-platform channel.
-// Shared payload carries src:'m' so web ignores mobile's own-platform echo correctly,
-// and mobile's shared listener ignores src:'m' (already delivered via the legacy channel).
+// Broadcast on the single shared channel. self:false already stops our own echo, so
+// every other client (web src:'w', mobile src:'m') receives it once.
 function _bcSend(event, payload) {
-    try { _bcChannel?.send({ type:'broadcast', event, payload }); } catch {}
-    try { _sharedBc?.send({ type:'broadcast', event, payload:{ ...payload, src:'m' } }); } catch {}
+    try { _rtChannel?.send({ type:'broadcast', event, payload:{ ...payload, src:'m' } }); } catch {}
+}
+// Refresh the Realtime socket's auth token from the current session — an expired JWT
+// can silently wedge postgres_changes delivery until a full reconnect. Cheap; call
+// before every (re)subscribe and on wake.
+async function _refreshRtAuth() {
+    try {
+        const { data } = await sb.auth.getSession();
+        const tok = data?.session?.access_token;
+        if (tok) sb.realtime.setAuth(tok);
+    } catch (e) {}
 }
 let _notifPoll = null;
 let _navGen = 0;   // render-race guard (see _render)
@@ -372,12 +384,11 @@ window.initMobileApp = async function() {
 function _ensureRealtimeAlive() {
     try {
         const dead = c => c && c.state !== 'joined' && c.state !== 'joining';
-        if (!_rtChannel || dead(_rtChannel) || dead(_bcChannel) || dead(_sharedBc)) {
+        if (!_rtChannel || dead(_rtChannel)) {
+            _refreshRtAuth();   // freshen the token before rebuilding on wake
             _rtIntentionalClose = true;
             try { if (_rtChannel) sb.removeChannel(_rtChannel); } catch (e) {}
-            try { if (_bcChannel) sb.removeChannel(_bcChannel); } catch (e) {}
-            try { if (_sharedBc)  sb.removeChannel(_sharedBc); } catch (e) {}
-            _rtChannel = null; _bcChannel = null; _sharedBc = null;
+            _rtChannel = null;
             _rtIntentionalClose = false;
             _initRealtime();
         }
@@ -786,7 +797,7 @@ function _buildShell() {
         _detectMention(ce);   // @mention picker
         const top = _stack[_stack.length-1];
         const room = top?.params?.room;
-        if (!room || !_bcChannel) return;
+        if (!room || !_rtChannel) return;
         const now = Date.now();
         if (now - _typingThrottle < 2000) return;
         _typingThrottle = now;
@@ -1800,7 +1811,7 @@ async function _groupChat(p) {
     const memberCount = (() => { try { const m=JSON.parse(_lsGet('dept_members_'+p.room)||'[]'); return m.length || ''; } catch { return ''; } })();
     // Broadcast room_read and record our own read timestamp
     setTimeout(() => {
-        _bcChannel?.send({ type:'broadcast', event:'room_read', payload:{ room:p.room, uid:_uid, ts:new Date().toISOString() } });
+        _bcSend('room_read', { room:p.room, uid:_uid, ts:new Date().toISOString() });
         _lsSet('last_read_'+p.room, new Date().toISOString());
         try { sb.from('room_reads').upsert({ user_id:_uid, room_id:p.room, tenant_id:_tid, last_read_at:new Date().toISOString() }, { onConflict:'user_id,room_id' }).then(()=>{}); } catch(e){}
     }, 500);
@@ -1913,7 +1924,7 @@ async function _dm(p) {
     const roleTag = _roleChip(p.uid);
     // Broadcast room_read and record our own read timestamp
     setTimeout(() => {
-        _bcChannel?.send({ type:'broadcast', event:'room_read', payload:{ room:p.room, uid:_uid, ts:new Date().toISOString() } });
+        _bcSend('room_read', { room:p.room, uid:_uid, ts:new Date().toISOString() });
         _lsSet('last_read_'+p.room, new Date().toISOString());
         try { sb.from('room_reads').upsert({ user_id:_uid, room_id:p.room, tenant_id:_tid, last_read_at:new Date().toISOString() }, { onConflict:'user_id,room_id' }).then(()=>{}); } catch(e){}
     }, 500);
@@ -3148,16 +3159,14 @@ function _scheduleRtReconnect() {
         _rtReconnectTimer = null;
         // If the SDK's own recovery already brought the primary channel back while we
         // waited, skip the disruptive teardown entirely.
-        if (_rtChannel && _rtChannel.state === 'joined' &&
-            _bcChannel?.state === 'joined' && _sharedBc?.state === 'joined') {
-            console.log('[mob-rt] channels healthy on wake — skipping reconnect');
+        if (_rtChannel && _rtChannel.state === 'joined') {
+            console.log('[mob-rt] channel healthy on wake — skipping reconnect');
             return;
         }
         console.log('[mob-rt] reconnecting…');
+        await _refreshRtAuth();   // freshen token so the rebuilt socket authenticates cleanly
         _rtIntentionalClose = true;
         if (_rtChannel) { try { await sb.removeChannel(_rtChannel); } catch {} _rtChannel = null; }
-        if (_bcChannel) { try { await sb.removeChannel(_bcChannel); } catch {} _bcChannel = null; }
-        if (_sharedBc) { try { await sb.removeChannel(_sharedBc); } catch {} _sharedBc = null; }
         _rtIntentionalClose = false;
         _initRealtime();
     }, delay);
@@ -3165,42 +3174,11 @@ function _scheduleRtReconnect() {
 function _initRealtime() {
     if (!_tid) { console.error('[mob-rt] Cannot init realtime without tenant_id'); return; }
     if (_rtChannel) return;
-    _rtChannel = sb.channel('mobile-rt-'+_tid)
-        .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => _onNewMessage(p.new))
-        // Durable reaction delivery (backup to broadcast): broadcast is fire-and-
-        // forget and is lost when the channel flaps, so also listen to the reactions
-        // table directly. Requires reactions in the realtime publication (see
-        // supabase/enable_realtime.sql). Routes through the SAME _onReactionChange
-        // as broadcast, so no double-render (it re-fetches + de-dupes).
-        .on('postgres_changes', { event:'INSERT', schema:'public', table:'reactions', filter:`tenant_id=eq.${_tid}` }, p => _onReactionChange(p.new, 'INSERT'))
-        .on('postgres_changes', { event:'DELETE', schema:'public', table:'reactions' }, p => _onReactionChange(p.old, 'DELETE'))
-        .on('postgres_changes', { event:'UPDATE', schema:'public', table:'task_assignees', filter:`tenant_id=eq.${_tid}` }, p => _onTaskAssigneeUpdate(p.new))
-        .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`user_id=eq.${_uid}` }, p => _onNotifInsert(p.new))
-        .on('postgres_changes', { event:'UPDATE', schema:'public', table:'profiles', filter:`tenant_id=eq.${_tid}` }, p => _onPresenceUpdate(p.new))
-        .subscribe(status => {
-            console.log('[mob-rt] channel status='+status); window.logger?.logRt('mobile-rt', status);
-            try { _setConnState(); } catch(e){}   // reflect socket health in the top-bar Online/Offline chip
-            if (status === 'SUBSCRIBED') {
-                if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
-                if (_rtOutageTimer) { clearTimeout(_rtOutageTimer); _rtOutageTimer = null; }  // recovered before the 8s warning fired
-                _rtBackoff = 3000;   // healthy again — reset backoff to base
-                if (_rtWasErrored) {
-                    _rtWasErrored = false;
-                    if (_rtToastShown) { _rtToastShown = false; _toast('Connected ✓'); }  // only if we warned
-                    // CATCH-UP: broadcasts (reactions/replies) sent while we were
-                    // disconnected are NOT replayed, so re-sync the open chat from the
-                    // DB. This is the automatic version of the manual refresh users had
-                    // to do after a channel flap. Anti-flash keeps it invisible if nothing changed.
-                    try { _pendingRefresh?.(); } catch (e) {}
-                    _refreshPresence();   // missed profile UPDATEs during the gap — re-sync dots
-                    _refreshNotifBadge(); // missed notification INSERTs — re-sync bell/activity badge
-                    _reconcileUnread();   // missed messages during the gap — re-sync per-chat unread from DB
-                }
-            }
-            if ((status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') && !_rtIntentionalClose) _scheduleRtReconnect();
-        });
-    // Shared broadcast handlers — attached to BOTH the legacy mobile channel and the
-    // cross-platform 'taskflow-bc' channel so mobile ↔ web sync live (v33).
+    // Make sure the socket carries a fresh session token BEFORE we (re)subscribe, so
+    // postgres_changes RLS keeps delivering after the 1h JWT would otherwise expire.
+    _refreshRtAuth();
+    // Broadcast handlers — declared before subscribe so the single channel can wire
+    // both postgres_changes and broadcast in one .on() chain.
     const _hReaction = p => {
         // Diagnostic: log EVERY reaction broadcast received (before the guards) so a
         // log dump shows whether group members actually receive reaction events.
@@ -3256,34 +3234,53 @@ function _initRealtime() {
         if (!m || !m.id || m.room_id?.startsWith('dm_')) return;
         _onNewMessage(m);
     };
-    _bcChannel = sb.channel('mobile-bc-'+_tid, { config: { broadcast: { self: false } } })
+    const _hRoomRead = p => {
+        if (!p.payload || p.payload.uid === _uid) return;
+        _lsSet('last_read_other_'+p.payload.room, p.payload.ts);
+        // Upgrade tick marks to blue (read) for visible sent messages in this room
+        const top = _stack[_stack.length-1];
+        if (top?.params?.room === p.payload.room) {
+            document.querySelectorAll('.m-tick.sent').forEach(el => { el.className = 'm-tick read'; el.textContent = '✓✓'; });
+        }
+    };
+    // ── ONE channel on the shared cross-platform topic: postgres_changes (durable
+    //    DB truth) + broadcasts (instant, web↔mobile). self:false drops our own echo,
+    //    so no src filtering is needed — every remote broadcast (web 'w' / other
+    //    mobiles 'm') is processed exactly once. Handlers already de-dupe against the
+    //    postgres_changes path (_seenMsgIds, reaction re-fetch), so no double render.
+    _rtChannel = sb.channel('taskflow-bc-'+_tid, { config: { broadcast: { self: false } } })
+        .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => _onNewMessage(p.new))
+        .on('postgres_changes', { event:'INSERT', schema:'public', table:'reactions', filter:`tenant_id=eq.${_tid}` }, p => _onReactionChange(p.new, 'INSERT'))
+        .on('postgres_changes', { event:'DELETE', schema:'public', table:'reactions' }, p => _onReactionChange(p.old, 'DELETE'))
+        .on('postgres_changes', { event:'UPDATE', schema:'public', table:'task_assignees', filter:`tenant_id=eq.${_tid}` }, p => _onTaskAssigneeUpdate(p.new))
+        .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`user_id=eq.${_uid}` }, p => _onNotifInsert(p.new))
+        .on('postgres_changes', { event:'UPDATE', schema:'public', table:'profiles', filter:`tenant_id=eq.${_tid}` }, p => _onPresenceUpdate(p.new))
         .on('broadcast', { event:'new_message' }, _hNewMessage)
         .on('broadcast', { event:'reaction' }, _hReaction)
         .on('broadcast', { event:'group_photo' }, _hGroupPhoto)
         .on('broadcast', { event:'typing' }, _hTyping)
-        .on('broadcast', { event:'room_read' }, p => {
-            if (!p.payload || p.payload.uid === _uid) return;
-            _lsSet('last_read_other_'+p.payload.room, p.payload.ts);
-            // Upgrade tick marks to blue (read) for visible sent messages in this room
-            const top = _stack[_stack.length-1];
-            if (top?.params?.room === p.payload.room) {
-                document.querySelectorAll('.m-tick.sent').forEach(el => { el.className = 'm-tick read'; el.textContent = '✓✓'; });
+        .on('broadcast', { event:'room_read' }, _hRoomRead)
+        .subscribe(status => {
+            console.log('[mob-rt] channel status='+status); window.logger?.logRt('taskflow-bc', status);
+            try { _setConnState(); } catch(e){}   // reflect socket health in the top-bar Online/Offline chip
+            if (status === 'SUBSCRIBED') {
+                if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
+                if (_rtOutageTimer) { clearTimeout(_rtOutageTimer); _rtOutageTimer = null; }  // recovered before the 8s warning fired
+                _rtBackoff = 3000;   // healthy again — reset backoff to base
+                if (_rtWasErrored) {
+                    _rtWasErrored = false;
+                    if (_rtToastShown) { _rtToastShown = false; _toast('Connected ✓'); }  // only if we warned
+                    // CATCH-UP: broadcasts (reactions/replies) sent while disconnected are
+                    // NOT replayed, so pull the DB truth for the open chat, presence,
+                    // badges and per-chat unread. This is the automatic gap-fill that
+                    // makes a socket drop invisible (WhatsApp/Slack model). Anti-flash
+                    // keeps it silent when nothing actually changed.
+                    try { _pendingRefresh?.(); } catch (e) {}
+                    _refreshPresence();
+                    _refreshNotifBadge();
+                    _reconcileUnread();
+                }
             }
-        })
-        .subscribe(status => {
-            console.log('[mob-rt] bc channel status='+status); window.logger?.logRt('mobile-bc', status);
-            if (status === 'SUBSCRIBED' && _rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
-            if ((status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') && !_rtIntentionalClose) _scheduleRtReconnect();
-        });
-    // Shared cross-platform channel (mobile ↔ web). self:false so we don't hear our own broadcasts.
-    // Ignore src:'m' (own platform) — those are already delivered via the legacy mobile-bc channel.
-    _sharedBc = sb.channel('taskflow-bc-'+_tid, { config: { broadcast: { self: false } } })
-        .on('broadcast', { event:'new_message' }, p => { if (p.payload?.src === 'm') return; _hNewMessage(p); })
-        .on('broadcast', { event:'reaction' }, p => { if (p.payload?.src === 'm') return; _hReaction(p); })
-        .on('broadcast', { event:'group_photo' }, p => { if (p.payload?.src === 'm') return; _hGroupPhoto(p); })
-        .on('broadcast', { event:'typing' }, p => { if (p.payload?.src === 'm') return; _hTyping(p); })
-        .subscribe(status => {
-            console.log('[mob-rt] shared bc status='+status); window.logger?.logRt('shared-bc', status);
             if ((status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') && !_rtIntentionalClose) _scheduleRtReconnect();
         });
     _refreshNotifBadge();

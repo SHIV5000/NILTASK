@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v156';
+const _MOB_VER = 'v157';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -3417,7 +3417,8 @@ function _renderBellBadge() {
     // 1) BELL (top-right) — the attention NUMBER.
     const badge = _el('mNotifBadge');
     if (badge) {
-        if (_bellCount > 0) { badge.textContent = _bellCount > 9 ? '9+' : String(_bellCount); badge.style.display = 'flex'; }
+        const bt = _bellTotal();   // attention + all unread messages (DM + group), WhatsApp/Slack style
+        if (bt > 0) { badge.textContent = bt > 9 ? '9+' : String(bt); badge.style.display = 'flex'; }
         else badge.style.display = 'none';
     }
     // 2) ACTIVITY bottom-nav tab — a subtle "new" DOT (no number), hidden while the

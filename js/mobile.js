@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v157';
+const _MOB_VER = 'v158';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -486,7 +486,7 @@ async function _hydrateAvatars(tid) {
             window.globalUsersCache = _users;
             const top = _stack[_stack.length-1];
             if (top && (top.screen === 'home' || top.screen === 'dm' || top.screen === 'groupChat')) {
-                try { _render(top.screen, top.params, 'forward'); } catch {}
+                try { _render(top.screen, top.params, 'none'); } catch {}   // silent, no second slide-in
             }
         }
     } catch {} finally { /* allow a later re-hydrate if users list is rebuilt */ }
@@ -682,7 +682,7 @@ function _buildShell() {
         { id:'activity',  icon:'fa-bolt',          lbl:'Activity',   action:"window._navTo('activity')" },
         ...(window.canSeeTaskHub?.() ?? true ? [{ id:'tasks', icon:'fa-list-check', lbl:'Tasks', action:"window._navTo('tasks')" }] : []),
         { id:'remind',    icon:'fa-bell',          lbl:'Reminders',  action:"window._navTo('remind')" },
-        { id:'more',      icon:'fa-circle-user',   lbl:'Profile',    action:"window._navTo('settings')" },
+        { id:'more',      icon:'fa-ellipsis',      lbl:'More',       action:"window._openMoreSheet()" },
     ];
     const app = document.createElement('div');
     app.id = 'mobileApp';
@@ -955,35 +955,53 @@ async function _render(screen, params, dir='forward') {
     // Render-race guard: if the user navigates again while this screen's data is
     // still loading, the SLOWER older render must not overwrite the newer screen.
     const myNavGen = ++_navGen;
-    const html = await (fns[screen]?.(params) || Promise.resolve('<div style="padding:40px;text-align:center;">Coming soon</div>'));
-    if (myNavGen !== _navGen) return;
-    const scr  = document.createElement('div');
-    // dir==='none' → NO slide animation: used for silent BACKGROUND refreshes
-    // (badge/feed reconcile on the fallback poll) so the screen updates in place
-    // like a real app instead of visibly sliding in from the right every poll.
+    const immersive = screen === 'thread' || screen === 'groupChat' || screen === 'dm';
     const slideClass = dir === 'none' ? ''
         : screen === 'thread'
             ? (dir==='back' ? 'slide-down' : 'slide-up')
             : (dir==='back' ? 'slide-back' : 'slide-fwd');
-    scr.className = `mScr ${slideClass}`.trim();
-    scr.dataset.screen = screen;
-    scr.innerHTML  = html;
-    // ANTI-FLICKER: on a silent BACKGROUND refresh (dir='none' — poll / live
-    // reconcile), if the freshly-built markup is identical to what's already on
-    // screen, DON'T swap the DOM. This is what stopped the Activity feed flickering
-    // on every poll tick when nothing actually changed.
-    if (dir === 'none') {
-        const cur = stage.firstElementChild;
-        if (cur && cur.dataset.screen === screen && cur.innerHTML === html) return;
+
+    // INSTANT FEEDBACK (fixes the "tap a tab → hangs for a moment" lag): for a real
+    // navigation (not a silent background refresh), paint the sliding frame with a
+    // lightweight skeleton IMMEDIATELY — before awaiting the screen's DB query — so
+    // the tap feels responsive like WhatsApp/Slack. The real content then fills the
+    // SAME frame in place (no second slide) once the query resolves.
+    let frame = null;
+    if (dir !== 'none') {
+        _setTab(screen);   // highlight the tapped tab right away
+        _el('mSB')?.style.setProperty('display', immersive ? 'none' : 'flex', 'important');
+        _el('mNav')?.style.setProperty('display', immersive ? 'none' : 'flex', 'important');
+        frame = document.createElement('div');
+        frame.className = `mScr ${slideClass}`.trim();
+        frame.dataset.screen = screen;
+        frame.innerHTML = _skeleton(screen);
+        stage.innerHTML = '';
+        stage.appendChild(frame);
+        _scrollTop('mStage');
     }
-    stage.innerHTML = '';
-    stage.appendChild(scr);
 
-    const immersive = screen === 'thread' || screen === 'groupChat' || screen === 'dm';
-    _el('mSB')?.style.setProperty('display', immersive ? 'none' : 'flex', 'important');
-    _el('mNav')?.style.setProperty('display', immersive ? 'none' : 'flex', 'important');
+    const html = await (fns[screen]?.(params) || Promise.resolve('<div style="padding:40px;text-align:center;">Coming soon</div>'));
+    if (myNavGen !== _navGen) return;   // user navigated again mid-load — abandon
 
-    _wireScreen(screen, params, scr);
+    if (frame) {
+        // Fill the already-visible (skeleton) frame in place — no new slide.
+        frame.innerHTML = html;
+    } else {
+        // dir==='none' silent refresh: build off-DOM and swap atomically.
+        const scr = document.createElement('div');
+        scr.className = 'mScr';
+        scr.dataset.screen = screen;
+        scr.innerHTML = html;
+        const cur = stage.firstElementChild;
+        // ANTI-FLICKER: if the fresh markup matches what's shown, don't touch the DOM.
+        if (cur && cur.dataset.screen === screen && cur.innerHTML === html) return;
+        if (cur) stage.replaceChild(scr, cur); else stage.appendChild(scr);
+        frame = scr;
+        _el('mSB')?.style.setProperty('display', immersive ? 'none' : 'flex', 'important');
+        _el('mNav')?.style.setProperty('display', immersive ? 'none' : 'flex', 'important');
+    }
+
+    _wireScreen(screen, params, frame);
     _scrollTop('mStage');
 
     if (params?.scrollTo) _scrollAndGlow(params.scrollTo);
@@ -997,6 +1015,18 @@ async function _render(screen, params, dir='forward') {
         });
     }
 }
+// Lightweight per-screen placeholder shown for the split-second before a screen's
+// data query resolves — a header bar + a few shimmer rows. Keeps navigation feeling
+// instant instead of a frozen tap. Immersive chat screens skip the header bar.
+function _skeleton(screen) {
+    const titles = { home:'Chats', activity:'Activity', notifications:'Notifications',
+        tasks:'Tasks', remind:'Reminders', marks:'Bookmarks', scheduled:'Scheduled',
+        settings:'Settings', dashboard:'Dashboard', groupMgmt:'Manage Groups' };
+    const bar = titles[screen] ? `<div class="m-hdr m-hdr-plain"><div class="m-htitle">${titles[screen]}</div></div>` : '';
+    const rows = Array.from({length:6}).map(() =>
+        `<div class="m-skrow"><div class="m-skav"></div><div class="m-sklines"><div class="m-skl"></div><div class="m-skl short"></div></div></div>`).join('');
+    return `<div class="mScr-inner">${bar}<div class="m-sk">${rows}</div></div>`;
+}
 function _scrollAndGlow(msgId, attempt=0) {
     const row = document.getElementById('row-'+msgId);
     if (!row) { if (attempt<24) setTimeout(()=>_scrollAndGlow(msgId,attempt+1), 180); return; }  // ~4.3s window — covers cross-room loads
@@ -1009,8 +1039,10 @@ function _setTab(screen) {
     const map = { home:'home', groupChat:'home', thread:'home', dm:'home',
                   activity:'activity', search:'activity',
                   tasks:'tasks', taskDetail:'tasks',
-                  remind:'remind', remindEdit:'remind' };
-    const active = map[screen] || null; // marks/scheduled/settings/dashboard live in More — no tab to highlight
+                  remind:'remind', remindEdit:'remind',
+                  settings:'more', marks:'more', scheduled:'more', scheduledEdit:'more',
+                  dashboard:'more', groupMgmt:'more' };
+    const active = map[screen] || null;
     document.querySelectorAll('.mn-btn').forEach(b => b.classList.toggle('active', active && b.id === 'mnt-'+active));
 }
 window._toggleChatSearch = function(areaId) {
@@ -1055,14 +1087,21 @@ window._showRoomMenu = function(roomId, roomName) {
 };
 window._openMoreSheet = function() {
     const sheet = _el('mSheetInner');
+    // ROLE-WISE: Bookmarks + Profile are for everyone; Scheduled Messages only for
+    // roles allowed to schedule; Dashboard (scorecard + school overview) for senior
+    // staff / admins. Gate each row so juniors don't see management surfaces.
+    const canSched = window.canSchedule?.() ?? false;
+    const canDash  = (window.isSeniorStaff?.() || window.canAccessAdmin?.()) ?? false;
+    const row = (screen, icon, color, label) =>
+        `<div class="m-sheet-row" data-action="navMore" data-screen="${screen}"><i class="fa-solid ${icon}" style="color:${color};width:22px;"></i> ${label}</div>`;
     sheet.innerHTML = `
       <div class="m-sheet-handle"></div>
       <div class="m-sheet-title">More</div>
       <div style="padding:0 8px 16px;display:flex;flex-direction:column;gap:2px;">
-        <div class="m-sheet-row" data-action="navMore" data-screen="marks"><i class="fa-solid fa-bookmark" style="color:#f59e0b;"></i> Bookmarks</div>
-        <div class="m-sheet-row" data-action="navMore" data-screen="scheduled"><i class="fa-solid fa-clock" style="color:#6366f1;"></i> Scheduled Messages</div>
-        <div class="m-sheet-row" data-action="navMore" data-screen="settings"><i class="fa-solid fa-gear" style="color:#6b7280;"></i> Profile & Settings</div>
-        <div class="m-sheet-row" data-action="navMore" data-screen="dashboard"><i class="fa-solid fa-chart-bar" style="color:#16a34a;"></i> Dashboard</div>
+        ${row('settings','fa-gear','#6b7280','Profile & Settings')}
+        ${row('marks','fa-bookmark','#f59e0b','Bookmarks')}
+        ${canSched ? row('scheduled','fa-clock','#6366f1','Scheduled Messages') : ''}
+        ${canDash  ? row('dashboard','fa-chart-bar','#16a34a','Dashboard') : ''}
       </div>`;
     _openSheet();
 };
@@ -2203,14 +2242,8 @@ async function _settings() {
         </button>`}
       </div>
 
-      <!-- 3 · QUICK ACCESS (Bookmarks / Scheduled / Dashboard were only in an
-           orphaned "More" sheet; surface them here so the Profile tab reaches them) -->
-      <div class="m-sl">QUICK ACCESS</div>
-      <div style="padding:0 16px 8px;display:flex;flex-direction:column;gap:2px;">
-        <div class="m-sheet-row" data-action="navMore" data-screen="marks"><i class="fa-solid fa-bookmark" style="color:#f59e0b;width:22px;"></i> Bookmarks</div>
-        <div class="m-sheet-row" data-action="navMore" data-screen="scheduled"><i class="fa-solid fa-clock" style="color:#6366f1;width:22px;"></i> Scheduled Messages</div>
-        <div class="m-sheet-row" data-action="navMore" data-screen="dashboard"><i class="fa-solid fa-chart-bar" style="color:#16a34a;width:22px;"></i> Dashboard</div>
-      </div>
+      <!-- Bookmarks / Scheduled / Dashboard now live in the bottom-nav "More"
+           sheet (role-gated) — removed from here to avoid duplicate entry points. -->
 
       <!-- 4 · BUTTONS -->
       <div class="m-sl">ACTIONS</div>
@@ -4335,6 +4368,17 @@ function _injectCSS(){
   display:flex;flex-direction:column;background:var(--bg-body,#fff);}
 .mScr-inner{overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:8px;}
 .mFlex{display:flex;flex-direction:column;height:100%;overflow:hidden;}
+/* Loading skeleton — shown for the split-second before a screen's data resolves */
+.m-sk{padding:8px 16px;}
+.m-skrow{display:flex;align-items:center;gap:12px;padding:12px 0;}
+.m-skav{width:44px;height:44px;border-radius:14px;flex:0 0 auto;background:var(--border-color,#e5e7eb);}
+.m-sklines{flex:1;display:flex;flex-direction:column;gap:8px;}
+.m-skl{height:11px;border-radius:6px;background:var(--border-color,#e5e7eb);width:70%;}
+.m-skl.short{width:40%;height:9px;}
+.m-skav,.m-skl{position:relative;overflow:hidden;}
+.m-skav::after,.m-skl::after{content:'';position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);animation:mshimmer 1.2s infinite;}
+@keyframes mshimmer{100%{transform:translateX(100%);}}
 .slide-fwd{animation:sfwd .25s cubic-bezier(.4,0,.2,1);}
 .slide-back{animation:sback .25s cubic-bezier(.4,0,.2,1);}
 .slide-up{animation:sup .28s cubic-bezier(.4,0,.2,1);}

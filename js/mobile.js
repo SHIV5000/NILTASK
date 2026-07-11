@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v154';
+const _MOB_VER = 'v155';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -3403,7 +3403,11 @@ function _scheduleFallback() {
 // bell like groups do.
 // BELL = attention only (mentions/replies/reactions/tasks/reminders). Per-chat
 // message unread lives on the chat rows, NOT here — that's the 3-surface split.
-function _bellTotal() { return _bellCount; }
+// Bell number = attention items (mentions/replies/reactions/tasks/reminders)
+// PLUS all unread chat messages (DM + group) — a total-unread indicator, as
+// requested (WhatsApp/Slack style). Chat rows still show each chat's own count;
+// tapping the bell opens the attention list. room_reads counts each message once.
+function _bellTotal() { return _bellCount + _sumUnread(); }
 function _renderBellBadge() {
     console.log('[act] badge bell='+_bellCount+' dot='+_activityHasNew+' rowUnread='+(typeof _sumUnread==='function'?_sumUnread():'?'));
     // 1) BELL (top-right) — the attention NUMBER.

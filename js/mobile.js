@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v161';
+const _MOB_VER = 'v162';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -351,6 +351,15 @@ window.initMobileApp = async function() {
         if (_uid) sb.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', _uid).then(() => {});
         _ensureRealtimeAlive();   // heal silently-dead realtime channels
         _refreshPresence();       // re-fetch everyone's last_seen so online dots stay live even if realtime flapped
+        // DIAGNOSTIC (crash hunt): log JS-heap MB + total DOM node count each minute.
+        // If either climbs steadily before the 5-8 min restart, it's a memory leak /
+        // DOM growth; if they stay flat and it still crashes, it points at the
+        // Tailwind CDN observer / external memory. One line/min — negligible.
+        try {
+            const mem = performance?.memory ? Math.round(performance.memory.usedJSHeapSize/1048576) : '?';
+            const nodes = document.getElementsByTagName('*').length;
+            console.log('[mem] heapMB='+mem+' domNodes='+nodes);
+        } catch (e) {}
     }, 60000);
     window.addEventListener('resize', () => {
         const m = window.isMobileView?.() ?? (window.innerWidth <= MOB);

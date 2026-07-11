@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v160';
+const _MOB_VER = 'v161';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -1289,7 +1289,7 @@ async function _activity(p) {
            <div style="margin-top:6px;">${filter!=='all' ? 'Nothing matches this filter.' : (mode==='attention' ? 'No mentions, replies, reactions, tasks or reminders for you yet.' : 'Team activity — messages, tasks and reminders — will appear here.')}</div></div>`;
 
     const hasAny = _all.length > 0;
-    return `<div class="mScr-inner">
+    const html = `<div class="mScr-inner">
       <div class="m-hdr m-hdr-plain" style="display:flex;align-items:center;justify-content:space-between;">
         <div class="m-htitle">${mode==='attention'?'🔔 Notifications':'🗞️ Activity'} ${(mode==='attention'&&unread)?`<span style="background:#2563eb;color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:30px;margin-left:6px;vertical-align:middle;">${unread} new</span>`:''}</div>
         <div style="display:flex;gap:6px;">
@@ -1308,7 +1308,19 @@ async function _activity(p) {
       </div>
       <div class="af-feed">${feed}</div>
     </div>`;
+    // ANTI-FLICKER (WhatsApp-style stable list): a background refresh (12s poll /
+    // live event) rebuilds this feed, but the ONLY thing that changed is usually the
+    // relative time ("2m"→"3m") — which made the HTML differ every tick and the DOM
+    // swap, so the list flickered. Key a cache on the actual DATA (mode/filter/sender
+    // + each item's id+read state). When the data is unchanged, return the PREVIOUS
+    // html verbatim → _render's innerHTML-equality guard skips the swap entirely →
+    // no flicker. Times refresh lazily when the item set next changes, like WhatsApp.
+    const sig = mode+'|'+filter+'|'+senderFilter+'|'+items.map(it=>it.n.id+':'+(it.n.is_read?1:0)).join(',');
+    if (_afCache.sig === sig) return _afCache.html;
+    _afCache = { sig, html };
+    return html;
 }
+let _afCache = { sig: null, html: '' };
 // Re-render whichever feed surface is open (timeline 'activity' or bell
 // 'notifications'), preserving its mode/params — so filters/clears never flip
 // the user from the bell list to the timeline.
@@ -3457,7 +3469,6 @@ function _scheduleFallback() {
 // tapping the bell opens the attention list. room_reads counts each message once.
 function _bellTotal() { return _bellCount + _sumUnread(); }
 function _renderBellBadge() {
-    console.log('[act] badge bell='+_bellCount+' dot='+_activityHasNew+' rowUnread='+(typeof _sumUnread==='function'?_sumUnread():'?'));
     // 1) BELL (top-right) — the attention NUMBER.
     const badge = _el('mNotifBadge');
     if (badge) {

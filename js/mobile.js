@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v159';
+const _MOB_VER = 'v160';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -3172,6 +3172,7 @@ function _scheduleRtReconnect() {
     }, delay);
 }
 function _initRealtime() {
+  try {
     if (!_tid) { console.error('[mob-rt] Cannot init realtime without tenant_id'); return; }
     if (_rtChannel) return;
     // Make sure the socket carries a fresh session token BEFORE we (re)subscribe, so
@@ -3243,12 +3244,16 @@ function _initRealtime() {
             document.querySelectorAll('.m-tick.sent').forEach(el => { el.className = 'm-tick read'; el.textContent = '✓✓'; });
         }
     };
-    // ── ONE channel on the shared cross-platform topic: postgres_changes (durable
-    //    DB truth) + broadcasts (instant, web↔mobile). self:false drops our own echo,
-    //    so no src filtering is needed — every remote broadcast (web 'w' / other
-    //    mobiles 'm') is processed exactly once. Handlers already de-dupe against the
-    //    postgres_changes path (_seenMsgIds, reaction re-fetch), so no double render.
-    _rtChannel = sb.channel('taskflow-bc-'+_tid, { config: { broadcast: { self: false } } })
+    // ── ONE channel on a UNIQUE mobile-only topic carrying BOTH postgres_changes
+    //    (durable DB truth) and broadcasts (instant, mobile↔mobile). It MUST NOT reuse
+    //    the web layer's 'taskflow-bc' topic: sb.channel() returns the existing
+    //    already-subscribed channel for a duplicate topic, and postgres_changes
+    //    callbacks can't be added after subscribe() (that crashed _initRealtime in
+    //    v159). Cross-platform message/reaction/notification sync still works both ways
+    //    via postgres_changes on the DB; only web↔mobile typing/read-receipt broadcasts
+    //    (cosmetic) are not bridged. self:false drops our own echo; handlers de-dupe
+    //    against the postgres path (_seenMsgIds, reaction re-fetch) so no double render.
+    _rtChannel = sb.channel('mobile-rt-'+_tid, { config: { broadcast: { self: false } } })
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => _onNewMessage(p.new))
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'reactions', filter:`tenant_id=eq.${_tid}` }, p => _onReactionChange(p.new, 'INSERT'))
         .on('postgres_changes', { event:'DELETE', schema:'public', table:'reactions' }, p => _onReactionChange(p.old, 'DELETE'))
@@ -3286,6 +3291,15 @@ function _initRealtime() {
     _refreshNotifBadge();
     _reconcileUnread();   // initial DB-derived per-chat unread (survives reload/flap)
     // Realtime badge update already wired via postgres_changes INSERT on notifications — no polling needed
+  } catch (e) {
+    // Never let a realtime setup error crash app boot (v159 lesson). Log, drop any
+    // half-built channel, and let the reconnect backoff retry — the poll keeps the
+    // app functional meanwhile.
+    console.error('[mob-rt] init failed:', e);
+    try { if (_rtChannel) sb.removeChannel(_rtChannel); } catch (e2) {}
+    _rtChannel = null;
+    if (!_rtIntentionalClose) _scheduleRtReconnect();
+  }
 }
 // Poll everyone's last_seen (lightweight) and re-render presence dots. Realtime
 // profile UPDATEs keep dots live when the channel is up, but on this school's

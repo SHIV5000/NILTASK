@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v162';
+const _MOB_VER = 'v163';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -63,6 +63,8 @@ let _activityPoll = null;    // 12s refresh while the Activity screen is open (r
 let _bellCount = 0;   // BELL = attention-only count (mentions/replies/reactions/tasks/reminders)
 let _activityHasNew = false;   // Activity TIMELINE tab: show a subtle "new" dot when unseen items exist
 let _replyMapCache = {};   // room_id -> {parentId: replyCount} so thread buttons show on instant shell render
+let _lastScrollTs = 0;     // last time the user scrolled any list — pauses background re-renders
+let _liveUnreadTs = {};    // room_id -> last live-message time; guards its badge from a lagging DB reconcile
 let _scrollFabCount = 0;
 let _oldestTs = {};      // room_id -> created_at of oldest loaded message (pagination)
 let _allLoaded = {};     // room_id -> true when no older messages remain
@@ -335,6 +337,7 @@ window.initMobileApp = async function() {
     if (_activityPoll) clearInterval(_activityPoll);
     _activityPoll = setInterval(() => {
         if (document.visibilityState !== 'visible') return;
+        if (Date.now() - _lastScrollTs < 1200) return;   // don't refresh mid-scroll
         const t = _stack[_stack.length-1];
         if (t?.screen === 'activity' || t?.screen === 'notifications') { try { _render(t.screen, t.params, 'none'); } catch(e){} }
     }, 12000);
@@ -780,6 +783,9 @@ function _buildShell() {
     // "no menu" bug). Movement is governed by _onPressMove (14px tolerance) instead.
     // Only a real scroll of the message list cancels the press.
     app.addEventListener('scroll', _onPressEnd, { passive:true, capture:true });
+    // Stamp the last scroll time so background refreshes can hold off while the user
+    // is actively scrolling a list (keeps the Activity feed / chat scroll smooth).
+    app.addEventListener('scroll', () => { _lastScrollTs = Date.now(); }, { passive:true, capture:true });
     document.addEventListener('selectionchange', _onSelectionChange);
     // Suppress native copy/cut/paste toolbar when our format bar is active
     document.addEventListener('contextmenu', e => {
@@ -1015,7 +1021,15 @@ async function _render(screen, params, dir='forward') {
         const cur = stage.firstElementChild;
         // ANTI-FLICKER: if the fresh markup matches what's shown, don't touch the DOM.
         if (cur && cur.dataset.screen === screen && cur.innerHTML === html) return;
+        // Preserve the scroll position across a silent swap so a background refresh
+        // never jerks the list back to the top mid-scroll (WhatsApp-smooth).
+        const prevScroll = cur?.querySelector('.mScr-inner')?.scrollTop
+                        || cur?.querySelector('.af-feed')?.scrollTop || 0;
         if (cur) stage.replaceChild(scr, cur); else stage.appendChild(scr);
+        if (prevScroll) {
+            const ni = scr.querySelector('.mScr-inner') || scr.querySelector('.af-feed');
+            if (ni) ni.scrollTop = prevScroll;
+        }
         frame = scr;
         _el('mSB')?.style.setProperty('display', immersive ? 'none' : 'flex', 'important');
         _el('mNav')?.style.setProperty('display', immersive ? 'none' : 'flex', 'important');
@@ -1346,7 +1360,10 @@ function _liveRefreshActivity() {
     const top = _stack[_stack.length-1];
     if (top?.screen !== 'activity' && top?.screen !== 'notifications') return;
     clearTimeout(_actRefreshTimer);
-    _actRefreshTimer = setTimeout(() => {
+    _actRefreshTimer = setTimeout(function go() {
+        // Hold off while the user is actively scrolling — re-check shortly so the
+        // update still lands the moment they stop (no jerk mid-scroll).
+        if (Date.now() - _lastScrollTs < 1200) { _actRefreshTimer = setTimeout(go, 700); return; }
         const t = _stack[_stack.length-1];
         // Re-render whichever of the two surfaces is open, preserving its mode.
         if (t?.screen === 'activity' || t?.screen === 'notifications') _render(t.screen, t.params, 'none');
@@ -3416,7 +3433,21 @@ async function _reconcileUnread() {
         const { perRoom } = await window.NFA_computeRoomUnread(sb, { uid: _uid, tid: _tid, rooms });
         // Preserve the open room at 0 (we're reading it right now).
         const top = _stack[_stack.length - 1];
-        if ((top?.screen === 'groupChat' || top?.screen === 'dm') && top.params?.room) perRoom[top.params.room] = 0;
+        const openRoom = (top?.screen === 'groupChat' || top?.screen === 'dm') ? top.params?.room : null;
+        if (openRoom) perRoom[openRoom] = 0;
+        // GRACE WINDOW: a message received via realtime in the last 10s may not yet be
+        // visible to this DB read (replication lag) — the DB would return 0 and the
+        // badge would flash then vanish. For such a room (not the open one), keep the
+        // higher of DB vs the live count so the badge sticks until the DB catches up.
+        const now = Date.now();
+        Object.keys(_liveUnreadTs).forEach(rid => {
+            if (rid === openRoom) return;
+            if (now - _liveUnreadTs[rid] < 10000) {
+                perRoom[rid] = Math.max(perRoom[rid] || 0, window.unreadCounts?.[rid] || 0);
+            } else {
+                delete _liveUnreadTs[rid];   // stale marker — let the DB be authoritative again
+            }
+        });
         window.unreadCounts = perRoom;
         _updateAppBadge();
         _renderBellBadge();   // bell/Activity reflect the reconciled per-room totals (no double, DMs included)
@@ -3654,6 +3685,7 @@ async function _onNewMessage(m) {
         // update the instant the realtime event arrives.
         window.unreadCounts = window.unreadCounts || {};
         window.unreadCounts[m.room_id] = (window.unreadCounts[m.room_id] || 0) + 1;
+        _liveUnreadTs[m.room_id] = Date.now();  // grace marker: don't let the DB reconcile wipe this before replication catches up
         _updateAppBadge();                      // per-chat unread bumped (app icon = messages + attention)
         _patchHomeUnread(m.room_id, m);         // live badge + preview on the chat-list row (no full re-render/flash)
         _activityHasNew = true; _renderBellBadge();   // a plain message lights the Activity "new" DOT, NOT the bell

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v153';
+const _MOB_VER = 'v154';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -3384,8 +3384,12 @@ function _scheduleFallback() {
     // while silently dropping events, so a 60s "healthy" poll left the UI stale for
     // up to a minute. 15s guarantees the DB truth wins within 15s regardless. 60s
     // when backgrounded to save battery.
+    // 6s while visible: the mobile socket silently drops realtime events (proven in
+    // the logs — bell moved with no react-recv/notif-recv), so a fast catch-up poll
+    // is what makes badges/bell feel near-instant despite the flaky socket. Trivial
+    // load at this scale (two count queries). 60s when backgrounded to save battery.
     const hidden = document.visibilityState !== 'visible';
-    const ms = hidden ? 60000 : 15000;
+    const ms = hidden ? 60000 : 6000;
     _fallbackTimer = setTimeout(async () => {
         try { await _fallbackPoll(); } catch (e) {}
         _scheduleFallback();   // re-evaluate cadence each tick

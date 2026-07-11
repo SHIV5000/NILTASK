@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v163';
+const _MOB_VER = 'v164';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -339,8 +339,11 @@ window.initMobileApp = async function() {
         if (document.visibilityState !== 'visible') return;
         if (Date.now() - _lastScrollTs < 1200) return;   // don't refresh mid-scroll
         const t = _stack[_stack.length-1];
-        if (t?.screen === 'activity' || t?.screen === 'notifications') { try { _render(t.screen, t.params, 'none'); } catch(e){} }
-    }, 12000);
+        // Only re-render if the feed data actually changed (sig-cache) AND the socket
+        // is down — live events already refresh it when healthy. Avoids needless swaps.
+        const socketDead = !(_rtChannel && _rtChannel.state === 'joined');
+        if (socketDead && (t?.screen === 'activity' || t?.screen === 'notifications')) { try { _render(t.screen, t.params, 'none'); } catch(e){} }
+    }, 30000);
     _showOfflineBanner(_isOffline);
     // Auto-refresh displayed timestamps every 60s + update last_seen heartbeat
     if (_tsInterval) clearInterval(_tsInterval);
@@ -3431,24 +3434,20 @@ async function _reconcileUnread() {
         // the next reconcile, so group counts flashed then vanished from the bell.
         Object.keys(window.unreadCounts || {}).forEach(rid => rooms.add(rid));
         const { perRoom } = await window.NFA_computeRoomUnread(sb, { uid: _uid, tid: _tid, rooms });
-        // Preserve the open room at 0 (we're reading it right now).
         const top = _stack[_stack.length - 1];
         const openRoom = (top?.screen === 'groupChat' || top?.screen === 'dm') ? top.params?.room : null;
-        if (openRoom) perRoom[openRoom] = 0;
-        // GRACE WINDOW: a message received via realtime in the last 10s may not yet be
-        // visible to this DB read (replication lag) — the DB would return 0 and the
-        // badge would flash then vanish. For such a room (not the open one), keep the
-        // higher of DB vs the live count so the badge sticks until the DB catches up.
-        const now = Date.now();
-        Object.keys(_liveUnreadTs).forEach(rid => {
-            if (rid === openRoom) return;
-            if (now - _liveUnreadTs[rid] < 10000) {
-                perRoom[rid] = Math.max(perRoom[rid] || 0, window.unreadCounts?.[rid] || 0);
-            } else {
-                delete _liveUnreadTs[rid];   // stale marker — let the DB be authoritative again
-            }
-        });
-        window.unreadCounts = perRoom;
+        // WhatsApp model: a chat's unread clears ONLY when YOU open it — never because
+        // a DB read momentarily returned 0. The DB reconcile is a floor (it can only
+        // ADD counts the live path missed, e.g. messages received while the app was
+        // closed); it must not WIPE a live count. This is what made GROUP badges vanish
+        // (the DB read returned 0 for the group — replication lag / read-marker skew —
+        // and the old code reset the whole map to the DB result). Merge by max, then
+        // force the open room to 0 (we're reading it right now).
+        const merged = {};
+        const allRooms = new Set([...Object.keys(perRoom), ...Object.keys(window.unreadCounts || {})]);
+        allRooms.forEach(rid => { merged[rid] = Math.max(perRoom[rid] || 0, window.unreadCounts?.[rid] || 0); });
+        if (openRoom) { merged[openRoom] = 0; delete _liveUnreadTs[openRoom]; }
+        window.unreadCounts = merged;
         _updateAppBadge();
         _renderBellBadge();   // bell/Activity reflect the reconciled per-room totals (no double, DMs included)
         // SURGICAL badge update (no screen re-render / no slide): patch each visible
@@ -4543,7 +4542,9 @@ function _injectCSS(){
 .af-div{display:flex;align-items:center;gap:10px;margin:2px 0;}
 .af-div span{font-size:11.5px;font-weight:700;color:var(--text-secondary,#64748b);background:var(--surface,#f1f5f9);padding:3px 12px;border-radius:30px;}
 .af-div .ln{flex:1;height:1px;background:var(--border,#e2e8f0);}
-.af-card{background:#FFFFFF;border-radius:16px;padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.06),0 1px 3px rgba(0,0,0,.05);border-left:4px solid #94a3b8;position:relative;animation:af-up .28s ease;}
+/* NO entrance animation on .af-card: the feed re-renders on live events/polls, and
+   an animation here replays on EVERY render → the whole feed flickered. Static. */
+.af-card{background:#FFFFFF;border-radius:16px;padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.06),0 1px 3px rgba(0,0,0,.05);border-left:4px solid #94a3b8;position:relative;}
 /* Category left-border — exact palette */
 .af-card.blue{border-left-color:#2563EB;}.af-card.orange{border-left-color:#F97316;}
 .af-card.green{border-left-color:#22C55E;}.af-card.purple{border-left-color:#A855F7;}

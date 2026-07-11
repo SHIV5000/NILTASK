@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v155';
+const _MOB_VER = 'v156';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -3344,6 +3344,10 @@ async function _reconcileUnread() {
         const rooms = new Set();
         [...DEPTS, ..._customGroups].forEach(d => rooms.add(d.id));
         (_users || []).forEach(u => { if (u.id !== _uid) rooms.add(_dmRoom(u.id)); });
+        // Also keep ANY room where unread was live-received (e.g. 'general' or a
+        // group not in _customGroups) — otherwise the allow-list drops its unread on
+        // the next reconcile, so group counts flashed then vanished from the bell.
+        Object.keys(window.unreadCounts || {}).forEach(rid => rooms.add(rid));
         const { perRoom } = await window.NFA_computeRoomUnread(sb, { uid: _uid, tid: _tid, rooms });
         // Preserve the open room at 0 (we're reading it right now).
         const top = _stack[_stack.length - 1];

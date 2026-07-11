@@ -123,13 +123,19 @@
     // Unread notification count — the ONE canonical query for the bell badge on
     // both shells (Phase 7.4). user_id only (Phase 4.1): notifications are
     // per-user, and a stray tenant_id filter previously made web/mobile disagree.
+    // Keep the LAST KNOWN count so a transient network drop can't zero the badge
+    // (advisor fix #3): "Failed to fetch" returned 0 → the bell/notification badge
+    // vanished mid-read. On error we now retain the previous value instead.
+    let _lastUnread = 0;
     async function unreadCount(sb, uid) {
         try {
-            const { count } = await sb.from('notifications')
+            const { count, error } = await sb.from('notifications')
                 .select('*', { count: 'exact', head: true })
                 .eq('user_id', uid).eq('is_read', false);
-            return count || 0;
-        } catch (e) { return 0; }
+            if (error) return _lastUnread;          // query failed → don't wipe the badge
+            _lastUnread = count || 0;
+            return _lastUnread;
+        } catch (e) { return _lastUnread; }         // network throw → keep last known
     }
 
     window.NFA_buildActivity = buildActivity;

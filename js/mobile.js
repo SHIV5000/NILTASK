@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v151';
+const _MOB_VER = 'v152';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -349,15 +349,23 @@ window.initMobileApp = async function() {
     // unread badge AND verifies the realtime channels are actually alive. Backgrounded
     // sockets can die WITHOUT emitting CLOSED — replies/reactions then stop applying
     // until a manual reopen. If any channel isn't 'joined', rebuild them.
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState !== 'visible') return;
+    // FULL foreground resync (advisor fix #1): when the app returns to view, don't
+    // just check the socket — pull the DB truth for badges, per-chat unread, the
+    // OPEN chat, and the Activity feed, so a screen that went stale while the socket
+    // was dead catches up instantly instead of waiting for the next poll tick.
+    const _foregroundResync = () => {
         try { _refreshNotifBadge(); } catch (e) {}
-        try { _reconcileUnread(); } catch (e) {}   // re-sync message unread from DB on foreground
+        try { _reconcileUnread(); } catch (e) {}
+        try { _pendingRefresh?.(); } catch (e) {}      // re-pull the currently open chat
+        try { _liveRefreshActivity(); } catch (e) {}   // re-pull the Activity/Notifications screen if open
         _ensureRealtimeAlive();
+    };
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') _foregroundResync();
     });
     // Android fires these where visibilitychange is sometimes missed — same healing.
-    window.addEventListener('focus',  () => _ensureRealtimeAlive(), { passive:true });
-    window.addEventListener('online', () => _ensureRealtimeAlive(), { passive:true });
+    window.addEventListener('focus',  _foregroundResync, { passive:true });
+    window.addEventListener('online', _foregroundResync, { passive:true });
 };
 
 // Verify realtime health; silently rebuild the channels if the socket died quietly.
@@ -3362,9 +3370,13 @@ async function _fallbackPoll() {
 // when backgrounded back off to 90s to save battery.
 function _scheduleFallback() {
     if (_fallbackTimer) clearTimeout(_fallbackTimer);
-    const hidden  = document.visibilityState !== 'visible';
-    const healthy = _rtChannel && _rtChannel.state === 'joined';
-    const ms = hidden ? 90000 : (healthy ? 60000 : 20000);
+    // STEADY 15s while visible — do NOT trust the socket's "healthy" flag to slow
+    // this down (advisor fix #2): mobile realtime frequently reports state='joined'
+    // while silently dropping events, so a 60s "healthy" poll left the UI stale for
+    // up to a minute. 15s guarantees the DB truth wins within 15s regardless. 60s
+    // when backgrounded to save battery.
+    const hidden = document.visibilityState !== 'visible';
+    const ms = hidden ? 60000 : 15000;
     _fallbackTimer = setTimeout(async () => {
         try { await _fallbackPoll(); } catch (e) {}
         _scheduleFallback();   // re-evaluate cadence each tick

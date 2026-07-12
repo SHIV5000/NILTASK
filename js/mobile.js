@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v169';
+const _MOB_VER = 'v170';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -704,14 +704,14 @@ async function _upsertRoomSettings(base, members) {
 
 function _buildShell() {
     if (_el('mobileApp')) return;
-    // Bottom nav: Chats · Activity · Saved · Schedule (schedulers only) · More.
-    // Tasks, Reminders, Settings & Dashboard live in the More sheet (role-gated).
-    const canSched = window.canSchedule?.() ?? false;
+    // Bottom nav: Chats · Tasks · Activity · Saved · More.
+    // Reminders, Schedule, Dashboard & Settings live in the More sheet (role-gated).
+    const canTask = window.canSeeTaskHub?.() ?? true;
     const tabs = [
         { id:'home',      icon:'fa-comments',   lbl:'Chats',    action:"window._navTo('home')" },
+        ...(canTask ? [{ id:'tasks', icon:'fa-list-check', lbl:'Tasks', action:"window._navTo('tasks')" }] : []),
         { id:'activity',  icon:'fa-bolt',       lbl:'Activity', action:"window._navTo('activity')" },
         { id:'marks',     icon:'fa-bookmark',   lbl:'Saved',    action:"window._navTo('marks')" },
-        ...(canSched ? [{ id:'scheduled', icon:'fa-clock', lbl:'Schedule', action:"window._navTo('scheduled')" }] : []),
         { id:'more',      icon:'fa-ellipsis',   lbl:'More',     action:"window._openMoreSheet()" },
     ];
     const app = document.createElement('div');
@@ -1078,11 +1078,11 @@ function _scrollAndGlow(msgId, attempt=0) {
 }
 function _setTab(screen) {
     const map = { home:'home', groupChat:'home', thread:'home', dm:'home',
+                  tasks:'tasks', taskDetail:'tasks',
                   activity:'activity', search:'activity',
                   marks:'marks',
-                  scheduled:'scheduled', scheduledEdit:'scheduled',
                   // More-sheet destinations highlight the More tab
-                  tasks:'more', taskDetail:'more', remind:'more', remindEdit:'more',
+                  scheduled:'more', scheduledEdit:'more', remind:'more', remindEdit:'more',
                   settings:'more', dashboard:'more', groupMgmt:'more' };
     const active = map[screen] || null;
     document.querySelectorAll('.mn-btn').forEach(b => b.classList.toggle('active', active && b.id === 'mnt-'+active));
@@ -1132,7 +1132,7 @@ window._openMoreSheet = function() {
     // ROLE-WISE: Bookmarks + Profile are for everyone; Scheduled Messages only for
     // roles allowed to schedule; Dashboard (scorecard + school overview) for senior
     // staff / admins. Gate each row so juniors don't see management surfaces.
-    const canTasks = window.canSeeTaskHub?.() ?? true;
+    const canSched = window.canSchedule?.() ?? false;
     const canDash  = (window.isSeniorStaff?.() || window.canAccessAdmin?.()) ?? false;
     const row = (screen, icon, color, label) =>
         `<div class="m-sheet-row" data-action="navMore" data-screen="${screen}"><i class="fa-solid ${icon}" style="color:${color};width:22px;"></i> ${label}</div>`;
@@ -1141,7 +1141,7 @@ window._openMoreSheet = function() {
       <div class="m-sheet-title">More</div>
       <div style="padding:0 8px 16px;display:flex;flex-direction:column;gap:2px;">
         ${row('remind','fa-bell','#ef4444','Reminders')}
-        ${canTasks ? row('tasks','fa-list-check','#0ea5e9','Tasks') : ''}
+        ${canSched ? row('scheduled','fa-clock','#6366f1','Scheduled Messages') : ''}
         ${canDash  ? row('dashboard','fa-chart-bar','#16a34a','Dashboard') : ''}
         ${row('settings','fa-gear','#6b7280','Profile & Settings')}
       </div>`;
@@ -1315,6 +1315,7 @@ async function _activity(p) {
               <div class="nf-time">${_ago(n.created_at)}</div>
             </div>
             ${n.is_read?'':'<span class="nf-dot"></span>'}
+            <button class="nf-clear" data-action="afClear" data-nid="${n.id}" title="Clear"><i class="fa-solid fa-xmark"></i></button>
         </div>`;
     };
     const timelineCard = (it) => {
@@ -3495,8 +3496,44 @@ async function _fallbackPoll() {
     _refreshNotifBadge();
     _reconcileUnread();
     if (document.visibilityState !== 'visible') return;
-    const healthy = _rtChannel && _rtChannel.state === 'joined';
-    if (!healthy) { try { _pendingRefresh?.(); } catch (e) {} }
+    // Incremental catch-up for the OPEN chat, ALWAYS (not only when the socket looks
+    // dead): the mobile socket frequently reports state='joined' while silently
+    // dropping events, so new messages/reactions/replies only showed after a manual
+    // refresh. This appends anything missed + refreshes reactions in place, flicker-
+    // free — so the open chat behaves live like Slack/WhatsApp even on a flaky socket.
+    try { await _syncOpenChat(); } catch (e) {}
+}
+let _syncingOpen = false;
+async function _syncOpenChat() {
+    if (_syncingOpen) return;
+    const top = _stack[_stack.length - 1];
+    if (!top || (top.screen !== 'groupChat' && top.screen !== 'dm')) return;
+    const room = top.params?.room; if (!room) return;
+    const areaId = top.screen === 'groupChat' ? 'mMsgArea' : 'mDMArea';
+    const area = _el(areaId); if (!area) return;
+    _syncingOpen = true;
+    try {
+        // 1) Append messages newer than the newest one on screen (missed live delivery).
+        const timed = area.querySelectorAll('[data-time]');
+        const newestTs = timed.length ? timed[timed.length - 1].getAttribute('data-time') : '';
+        let q = sb.from('messages')
+            .select('id,text,sender_id,created_at,updated_at,parent_message_id,room_id,tenant_id')
+            .eq('room_id', room).eq('tenant_id', _tid).is('deleted_at', null)
+            .order('created_at', { ascending: true }).limit(50);
+        if (newestTs) q = q.gt('created_at', newestTs);
+        const { data } = await q;
+        (data || []).forEach(m => {
+            if (m.sender_id !== _uid && !document.getElementById('row-' + m.id)) {
+                try { _onNewMessage(m); } catch (e) {}
+            }
+        });
+        // 2) Refresh reactions for the rows currently on screen (silent-drop catch-up).
+        const ids = [...area.querySelectorAll('[id^="row-"]')].map(el => el.id.slice(4)).filter(Boolean);
+        if (ids.length) {
+            const rmap = await _fetchReactions(ids);
+            ids.forEach(id => { try { _refreshChipsFromMap(id, rmap); } catch (e) {} });
+        }
+    } catch (e) { /* best-effort */ } finally { _syncingOpen = false; }
 }
 // ADAPTIVE fallback poll (the fix for "kabhi aata hai kabhi nahi" on Android):
 // realtime on mobile/tablet flaps constantly, so a fixed 60s catch-up feels
@@ -4572,6 +4609,9 @@ html[data-theme="dark"] .mn-btn.active i{background:rgba(129,140,248,.2);}
 .nf-row.unread .nf-title{font-weight:600;}
 .nf-time{font-size:11.5px;color:var(--text-secondary,#94a3b8);margin-top:3px;}
 .nf-dot{width:9px;height:9px;border-radius:50%;background:#2563eb;flex:0 0 auto;}
+.nf-clear{flex:0 0 auto;width:30px;height:30px;border-radius:50%;border:none;background:transparent;
+  color:var(--text-secondary,#9ca3af);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.nf-clear:active{background:rgba(148,163,184,.2);}
 html[data-theme="dark"] .nf-row.unread{background:rgba(37,99,235,.14);}
 html[data-theme="dark"] .nf-ic{background:#1e1e1e;}
 /* Activity timeline (persistent feed) keeps its coloured rail cards + adds a

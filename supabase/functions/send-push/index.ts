@@ -37,12 +37,13 @@ function _tsMs(ts: string | null | undefined): number {
   return isNaN(n) ? 0 : n;
 }
 
-// Total unread MESSAGES per recipient across the tenant (for the app-icon badge).
-// Group messages always count; DMs only for participants. Mirrors the client's
-// NFA_computeRoomUnread so the launcher number matches the in-app badge.
+// Number of unread CHATS (distinct rooms with new messages) per recipient — the
+// app-icon badge. Counting chats (not total messages) keeps the number small and
+// intuitive ("2 chats have new messages", WhatsApp-style), and avoids the alarming
+// large totals. Group messages always count; DMs only for participants.
 async function computeUnreadCounts(recipientIds: string[], tenantId: string): Promise<Record<string, number>> {
-  const counts: Record<string, number> = {};
-  recipientIds.forEach((id) => { counts[id] = 0; });
+  const roomsByUser: Record<string, Set<string>> = {};
+  recipientIds.forEach((id) => { roomsByUser[id] = new Set<string>(); });
   try {
     const [readsRes, msgsRes] = await Promise.all([
       supabase.from('room_reads').select('user_id,room_id,last_read_at').in('user_id', recipientIds),
@@ -61,10 +62,12 @@ async function computeUnreadCounts(recipientIds: string[], tenantId: string): Pr
       for (const uid of recipientIds) {
         if (mm.sender_id === uid) continue;
         if (isDM && !dmParts.includes(uid)) continue;
-        if (t > (marker[uid + '|' + mm.room_id] || 0)) counts[uid]++;
+        if (t > (marker[uid + '|' + mm.room_id] || 0)) roomsByUser[uid].add(mm.room_id);
       }
     });
   } catch (_e) { /* best-effort — a missing count just means no badge number */ }
+  const counts: Record<string, number> = {};
+  recipientIds.forEach((id) => { counts[id] = roomsByUser[id].size; });
   return counts;
 }
 

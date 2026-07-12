@@ -26,6 +26,48 @@ webpush.setVapidDetails(
 
 const HOOK_SECRET = Deno.env.get('PUSH_HOOK_SECRET') || '';
 
+// Parse a DB timestamp to epoch ms, treating a timezone-less value as UTC (the
+// `messages`/`room_reads` columns return no 'Z', so a naive parse is off by the
+// server's offset — the same skew that broke the client badge). Append 'Z' when
+// no tz marker is present.
+function _tsMs(ts: string | null | undefined): number {
+  if (!ts) return 0;
+  const hasTz = ts.indexOf('Z') !== -1 || /[+-]\d\d:?\d\d$/.test(ts);
+  const n = new Date(hasTz ? ts.replace(' ', 'T') : ts.replace(' ', 'T') + 'Z').getTime();
+  return isNaN(n) ? 0 : n;
+}
+
+// Total unread MESSAGES per recipient across the tenant (for the app-icon badge).
+// Group messages always count; DMs only for participants. Mirrors the client's
+// NFA_computeRoomUnread so the launcher number matches the in-app badge.
+async function computeUnreadCounts(recipientIds: string[], tenantId: string): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  recipientIds.forEach((id) => { counts[id] = 0; });
+  try {
+    const [readsRes, msgsRes] = await Promise.all([
+      supabase.from('room_reads').select('user_id,room_id,last_read_at').in('user_id', recipientIds),
+      supabase.from('messages').select('room_id,sender_id,created_at')
+        .eq('tenant_id', tenantId).is('deleted_at', null)
+        .order('created_at', { ascending: false }).limit(500),
+    ]);
+    const marker: Record<string, number> = {};
+    (readsRes.data || []).forEach((r: { user_id: string; room_id: string; last_read_at: string }) => {
+      marker[r.user_id + '|' + r.room_id] = _tsMs(r.last_read_at);
+    });
+    (msgsRes.data || []).forEach((mm: { room_id: string; sender_id: string; created_at: string }) => {
+      const t = _tsMs(mm.created_at);
+      const isDM = mm.room_id.startsWith('dm_');
+      const dmParts = isDM ? mm.room_id.replace('dm_', '').split('_') : [];
+      for (const uid of recipientIds) {
+        if (mm.sender_id === uid) continue;
+        if (isDM && !dmParts.includes(uid)) continue;
+        if (t > (marker[uid + '|' + mm.room_id] || 0)) counts[uid]++;
+      }
+    });
+  } catch (_e) { /* best-effort — a missing count just means no badge number */ }
+  return counts;
+}
+
 // ── FCM (native Android/iOS push) ─────────────────────────────────────────────
 // Uses a Firebase service-account JSON stored in the FCM_SERVICE_ACCOUNT secret.
 // If the secret is absent, getFcmAccessToken() returns null → the FCM path is a
@@ -70,11 +112,18 @@ async function getFcmAccessToken(): Promise<string | null> {
 }
 // Returns true (delivered), 'gone' (invalid token → delete), or false (other error).
 async function sendFcm(accessToken: string, projectId: string, token: string,
-  p: { title: string; body: string; room: string; url: string; priority: string; muted?: boolean }): Promise<boolean | 'gone'> {
+  p: { title: string; body: string; room: string; url: string; priority: string; muted?: boolean; badge?: number }): Promise<boolean | 'gone'> {
   try {
     // Muted recipients: deliver SILENTLY — a LOW-importance channel (no sound, no
     // heads-up, still on the lock screen) and no APNs sound. Otherwise full alert.
     const muted = !!p.muted;
+    // App-icon badge count (Option A): Android launchers paint this number on the
+    // app icon; iOS uses the APNs `badge`. Only set when we have a positive count.
+    const badge = (typeof p.badge === 'number' && p.badge > 0) ? p.badge : undefined;
+    const androidNotif: Record<string, unknown> = { channel_id: muted ? 'nfa_silent' : 'nfa_alerts', default_sound: !muted };
+    if (badge !== undefined) androidNotif.notification_count = badge;
+    const aps: Record<string, unknown> = muted ? { 'content-available': 1 } : { sound: 'default' };
+    if (badge !== undefined) aps.badge = badge;
     const res = await fetch('https://fcm.googleapis.com/v1/projects/' + projectId + '/messages:send', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
@@ -84,9 +133,9 @@ async function sendFcm(accessToken: string, projectId: string, token: string,
           notification: { title: p.title, body: (p.body || '').slice(0, 240) },
           data: { room: p.room || '', url: p.url || '/' },
           android: { priority: (p.priority === 'high' && !muted) ? 'high' : 'normal',
-            notification: { channel_id: muted ? 'nfa_silent' : 'nfa_alerts', default_sound: !muted } },
+            notification: androidNotif },
           apns: { headers: { 'apns-priority': (p.priority === 'high' && !muted) ? '10' : '5' },
-            payload: { aps: muted ? { 'content-available': 1 } : { sound: 'default' } } },
+            payload: { aps } },
         },
       }),
     });
@@ -250,6 +299,8 @@ Deno.serve(async (req) => {
           .from('push_tokens').select('token,user_id')
           .in('user_id', recipientIds);
         console.log('send-push fcm-tokens', (tokens || []).length);
+        // App-icon badge (Option A): each recipient's total unread across the tenant.
+        const badgeCounts = await computeUnreadCounts(recipientIds, tenantId);
         // Per-recipient mute state → silent channel (WhatsApp-style mute).
         const mutedIds = new Set<string>();
         try {
@@ -267,6 +318,7 @@ Deno.serve(async (req) => {
             url: '/?room=' + encodeURIComponent(room),
             priority: isMention || isDMroom ? 'high' : 'normal',
             muted: mutedIds.has(t.user_id),
+            badge: badgeCounts[t.user_id] || 0,
           });
           if (ok === true) fcmSent++;
           else {

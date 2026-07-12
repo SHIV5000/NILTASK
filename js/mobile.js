@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v164';
+const _MOB_VER = 'v165';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -339,11 +339,12 @@ window.initMobileApp = async function() {
         if (document.visibilityState !== 'visible') return;
         if (Date.now() - _lastScrollTs < 1200) return;   // don't refresh mid-scroll
         const t = _stack[_stack.length-1];
-        // Only re-render if the feed data actually changed (sig-cache) AND the socket
-        // is down — live events already refresh it when healthy. Avoids needless swaps.
-        const socketDead = !(_rtChannel && _rtChannel.state === 'joined');
-        if (socketDead && (t?.screen === 'activity' || t?.screen === 'notifications')) { try { _render(t.screen, t.params, 'none'); } catch(e){} }
-    }, 30000);
+        // Refresh the open feed every 12s as a safety net — the mobile socket silently
+        // drops events while reporting 'joined', so live-refresh alone MISSES items.
+        // This is flicker-free now: the card entrance animation is gone and _render's
+        // sig-cache / innerHTML guard skips the DOM swap when nothing changed.
+        if (t?.screen === 'activity' || t?.screen === 'notifications') { try { _render(t.screen, t.params, 'none'); } catch(e){} }
+    }, 12000);
     _showOfflineBanner(_isOffline);
     // Auto-refresh displayed timestamps every 60s + update last_seen heartbeat
     if (_tsInterval) clearInterval(_tsInterval);
@@ -3541,29 +3542,34 @@ function _updateAppBadge() {
         }
     } catch (e) { /* Badging API unsupported — ignore */ }
 }
-// Live-patch a single chat row's unread badge on the home list (no full re-render).
+// Live-patch a chat row's unread badge on the home list (no full re-render).
+// Update EVERY row matching this room, not just the first querySelector hit — a
+// group id can appear on more than one element (e.g. a picker in the DOM), and the
+// old code could patch the wrong one, so the visible home badge never updated.
 function _patchHomeUnread(room, msg) {
     try {
-        const el = document.querySelector('[data-room="' + room + '"]');
-        const row = el ? (el.closest('.m-row') || (el.classList.contains('m-row') ? el : null)) : null;
-        if (!row) return;
         const n = window.unreadCounts?.[room] || 0;
-        const holder = row.querySelector('.m-unread-badge')?.parentElement
-                    || row.querySelector('.m-chv')?.parentElement
-                    || row.lastElementChild;
-        if (holder) holder.innerHTML = n > 0
-            ? `<span class="m-unread-badge">${n > 99 ? '99+' : n}</span>`
-            : '<i class="fa-solid fa-chevron-right m-chv"></i>';
-        // Also patch the last-message preview so the list stays live without a
-        // full home re-render (which visibly flashed on every incoming message).
-        if (msg) {
-            const rs = row.querySelector('.m-rs');
-            if (rs) {
-                const sender = _users.find(u=>u.id===msg.sender_id);
-                const nm = sender ? (sender.full_name||sender.email?.split('@')[0]) : '';
-                rs.textContent = (nm ? nm+': ' : '') + _snip(msg.text, 60);
+        const els = document.querySelectorAll('[data-room="' + (window.CSS?.escape ? CSS.escape(room) : room) + '"]');
+        const seen = new Set();
+        els.forEach(el => {
+            const row = el.closest('.m-row') || (el.classList.contains('m-row') ? el : null);
+            if (!row || seen.has(row)) return;
+            seen.add(row);
+            const holder = row.querySelector('.m-unread-badge')?.parentElement
+                        || row.querySelector('.m-chv')?.parentElement
+                        || row.lastElementChild;
+            if (holder) holder.innerHTML = n > 0
+                ? `<span class="m-unread-badge">${n > 99 ? '99+' : n}</span>`
+                : '<i class="fa-solid fa-chevron-right m-chv"></i>';
+            if (msg) {
+                const rs = row.querySelector('.m-rs');
+                if (rs) {
+                    const sender = _users.find(u=>u.id===msg.sender_id);
+                    const nm = sender ? (sender.full_name||sender.email?.split('@')[0]) : '';
+                    rs.textContent = (nm ? nm+': ' : '') + _snip(msg.text, 60);
+                }
             }
-        }
+        });
     } catch (e) {}
 }
 // Open a chat by room id (from a push deep-link).

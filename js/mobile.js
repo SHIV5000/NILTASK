@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v168';
+const _MOB_VER = 'v169';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -704,12 +704,15 @@ async function _upsertRoomSettings(base, members) {
 
 function _buildShell() {
     if (_el('mobileApp')) return;
+    // Bottom nav: Chats · Activity · Saved · Schedule (schedulers only) · More.
+    // Tasks, Reminders, Settings & Dashboard live in the More sheet (role-gated).
+    const canSched = window.canSchedule?.() ?? false;
     const tabs = [
-        { id:'home',      icon:'fa-comments',      lbl:'Chats',      action:"window._navTo('home')" },
-        { id:'activity',  icon:'fa-bolt',          lbl:'Activity',   action:"window._navTo('activity')" },
-        ...(window.canSeeTaskHub?.() ?? true ? [{ id:'tasks', icon:'fa-list-check', lbl:'Tasks', action:"window._navTo('tasks')" }] : []),
-        { id:'remind',    icon:'fa-bell',          lbl:'Reminders',  action:"window._navTo('remind')" },
-        { id:'more',      icon:'fa-ellipsis',      lbl:'More',       action:"window._openMoreSheet()" },
+        { id:'home',      icon:'fa-comments',   lbl:'Chats',    action:"window._navTo('home')" },
+        { id:'activity',  icon:'fa-bolt',       lbl:'Activity', action:"window._navTo('activity')" },
+        { id:'marks',     icon:'fa-bookmark',   lbl:'Saved',    action:"window._navTo('marks')" },
+        ...(canSched ? [{ id:'scheduled', icon:'fa-clock', lbl:'Schedule', action:"window._navTo('scheduled')" }] : []),
+        { id:'more',      icon:'fa-ellipsis',   lbl:'More',     action:"window._openMoreSheet()" },
     ];
     const app = document.createElement('div');
     app.id = 'mobileApp';
@@ -717,7 +720,7 @@ function _buildShell() {
       <div id="mSB">
         <div id="mSBInfo" class="m-sb-info" onclick="window._navTo('home')">
           <div class="m-sb-user">${x(_sentenceCase(window.currentUser?.full_name || window.currentUser?.email?.split('@')[0] || 'User'))}<span id="mConnState" class="m-conn"></span></div>
-          <div class="m-sb-school-card">${x(window.currentSchoolName || 'School')} <span onclick="window._copyLogs()" title="Tap to copy console logs" style="font-size:9px;opacity:.5;font-weight:700;letter-spacing:.5px;cursor:pointer;">${_MOB_VER}</span></div>
+          <div class="m-sb-school-card">${x(window.currentSchoolName || 'School')} <span onclick="window._copyLogs()" title="Tap to copy console logs" style="font-size:9px;opacity:.5;font-weight:700;letter-spacing:.5px;cursor:pointer;">${window.APP_VER || _MOB_VER}</span></div>
         </div>
         <div id="mSBSearch" class="m-sb-search" style="display:none;">
           <input id="mSBSearchInp" placeholder="Search messages, staff…">
@@ -1076,10 +1079,11 @@ function _scrollAndGlow(msgId, attempt=0) {
 function _setTab(screen) {
     const map = { home:'home', groupChat:'home', thread:'home', dm:'home',
                   activity:'activity', search:'activity',
-                  tasks:'tasks', taskDetail:'tasks',
-                  remind:'remind', remindEdit:'remind',
-                  settings:'more', marks:'more', scheduled:'more', scheduledEdit:'more',
-                  dashboard:'more', groupMgmt:'more' };
+                  marks:'marks',
+                  scheduled:'scheduled', scheduledEdit:'scheduled',
+                  // More-sheet destinations highlight the More tab
+                  tasks:'more', taskDetail:'more', remind:'more', remindEdit:'more',
+                  settings:'more', dashboard:'more', groupMgmt:'more' };
     const active = map[screen] || null;
     document.querySelectorAll('.mn-btn').forEach(b => b.classList.toggle('active', active && b.id === 'mnt-'+active));
 }
@@ -1128,7 +1132,7 @@ window._openMoreSheet = function() {
     // ROLE-WISE: Bookmarks + Profile are for everyone; Scheduled Messages only for
     // roles allowed to schedule; Dashboard (scorecard + school overview) for senior
     // staff / admins. Gate each row so juniors don't see management surfaces.
-    const canSched = window.canSchedule?.() ?? false;
+    const canTasks = window.canSeeTaskHub?.() ?? true;
     const canDash  = (window.isSeniorStaff?.() || window.canAccessAdmin?.()) ?? false;
     const row = (screen, icon, color, label) =>
         `<div class="m-sheet-row" data-action="navMore" data-screen="${screen}"><i class="fa-solid ${icon}" style="color:${color};width:22px;"></i> ${label}</div>`;
@@ -1136,10 +1140,10 @@ window._openMoreSheet = function() {
       <div class="m-sheet-handle"></div>
       <div class="m-sheet-title">More</div>
       <div style="padding:0 8px 16px;display:flex;flex-direction:column;gap:2px;">
-        ${row('settings','fa-gear','#6b7280','Profile & Settings')}
-        ${row('marks','fa-bookmark','#f59e0b','Bookmarks')}
-        ${canSched ? row('scheduled','fa-clock','#6366f1','Scheduled Messages') : ''}
+        ${row('remind','fa-bell','#ef4444','Reminders')}
+        ${canTasks ? row('tasks','fa-list-check','#0ea5e9','Tasks') : ''}
         ${canDash  ? row('dashboard','fa-chart-bar','#16a34a','Dashboard') : ''}
+        ${row('settings','fa-gear','#6b7280','Profile & Settings')}
       </div>`;
     _openSheet();
 };
@@ -1177,7 +1181,7 @@ async function _home() {
     const _canMng = window.canManageGroups?.() ?? false;
     return `<div class="mScr-inner">
       <div class="m-sl" style="display:flex;align-items:center;justify-content:space-between;">
-        <span>CHANNELS</span>
+        <span>DEPARTMENTS</span>
         ${_canMng ? `<button data-action="navGroupMgmt" style="background:none;border:none;color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;"><i class="fa-solid fa-users-gear"></i> Manage</button>` : ''}
       </div>
       ${_customGroups.length === 0 ? `<div class="m-empty">${_canMng ? '<button data-action="navGroupMgmt" style="background:var(--accent);color:#fff;border:none;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;"><i class="fa-solid fa-plus"></i> Create your first group</button>' : 'No groups yet. Ask your principal to create one.'}</div>` : ''}
@@ -4483,14 +4487,17 @@ function _injectCSS(){
   border-top:1.5px solid var(--border-color,#e5e7eb);
   padding-bottom:env(safe-area-inset-bottom,0);flex-shrink:0;}
 .mn-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:4px;padding:9px 1px 8px;font-size:25px;
-  color:var(--text-secondary,#6b7280);border:none;background:none;
-  cursor:pointer;-webkit-tap-highlight-color:transparent;
-  transition:color .15s;min-height:60px;}
-.mn-lbl{font-size:11px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;}
+  gap:3px;padding:7px 1px 7px;font-size:21px;
+  color:var(--text-secondary,#8a90a2);border:none;background:none;
+  cursor:pointer;-webkit-tap-highlight-color:transparent;min-height:58px;}
+/* Icon sits in a pill that lights up on the active tab (Slack/WhatsApp feel). */
+.mn-btn i{padding:5px 17px;border-radius:16px;
+  transition:transform .2s cubic-bezier(.34,1.56,.64,1),background .18s ease,color .18s ease;}
+.mn-lbl{font-size:10.5px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;transition:color .18s;}
 .mn-btn.active{color:var(--accent,#6366f1);}
-.mn-btn.active i{transform:scale(1.12);}
-.mn-btn:active{opacity:.6;}
+.mn-btn.active i{background:rgba(99,102,241,.14);transform:translateY(-1px);}
+.mn-btn:active i{transform:scale(.9);}
+html[data-theme="dark"] .mn-btn.active i{background:rgba(129,140,248,.2);}
 .mn-btn i{transition:transform .2s;}
 
 .m-hdr{display:flex;align-items:center;gap:10px;padding:calc(11px + env(safe-area-inset-top,0px)) 16px 11px;flex-shrink:0;

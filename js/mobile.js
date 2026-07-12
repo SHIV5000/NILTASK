@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v173';
+const _MOB_VER = 'v174';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -648,7 +648,7 @@ async function _syncRoomSettings() {
         // Try to include members (DB column may not exist yet — fall back gracefully).
         let rs = null;
         const withMembers = await sb.from('room_settings')
-            .select('room_id,name,color,archived,members').eq('tenant_id', _tid);
+            .select('room_id,name,color,archived,members,admins').eq('tenant_id', _tid);
         if (withMembers.error) {
             const basic = await sb.from('room_settings')
                 .select('room_id,name,color,archived').eq('tenant_id', _tid);
@@ -662,6 +662,7 @@ async function _syncRoomSettings() {
                 if (r.color) _lsSet('dept_color_'+r.room_id, r.color);
                 // Hydrate members from DB so counts match across devices/users
                 if (Array.isArray(r.members)) _lsSet('dept_members_'+r.room_id, JSON.stringify(r.members));
+                if (Array.isArray(r.admins))  _lsSet('dept_admins_'+r.room_id, JSON.stringify(r.admins));
             });
             _refreshDeptNames();
             // Every non-archived, non-DM room is a group (no more hard-coded defaults).
@@ -693,20 +694,44 @@ async function _syncRoomSettings() {
     } catch {}
 }
 
-// Upsert room_settings including members; retries without members if the column doesn't exist yet.
-async function _upsertRoomSettings(base, members) {
-    if (Array.isArray(members)) {
-        const withMembers = await sb.from('room_settings').upsert({ ...base, members }, { onConflict:'room_id,tenant_id' });
-        if (!withMembers.error) return;
+// Upsert room_settings including members + co-admins; retries with fewer optional
+// columns if a column doesn't exist yet (graceful pre-migration degradation).
+async function _upsertRoomSettings(base, members, admins) {
+    const hasM = Array.isArray(members), hasA = Array.isArray(admins);
+    if (hasM || hasA) {
+        const full = { ...base };
+        if (hasM) full.members = members;
+        if (hasA) full.admins = admins;
+        const r1 = await sb.from('room_settings').upsert(full, { onConflict:'room_id,tenant_id' });
+        if (!r1.error) return;
+    }
+    if (hasM) {   // admins column may be missing — retry with members only
+        const r2 = await sb.from('room_settings').upsert({ ...base, members }, { onConflict:'room_id,tenant_id' });
+        if (!r2.error) return;
     }
     await sb.from('room_settings').upsert(base, { onConflict:'room_id,tenant_id' });
+}
+// True if the current user may manage THIS department: a tenant-wide group manager,
+// OR a co-admin named on that department (room_settings.admins → dept_admins_<id>).
+function _isDeptAdmin(gid) {
+    if (window.canManageGroups?.() ?? window.canSeeGroupGear?.()) return true;
+    try { return JSON.parse(_lsGet('dept_admins_'+gid) || '[]').includes(_uid); } catch (e) { return false; }
+}
+window._isDeptAdmin = _isDeptAdmin;
+// True if the user is a co-admin of ANY department (so they get the Manage entry
+// even without the tenant-wide group-manager role).
+function _isAnyDeptAdmin() {
+    return [...DEPTS, ..._customGroups].some(d => {
+        try { return JSON.parse(_lsGet('dept_admins_'+d.id) || '[]').includes(_uid); } catch (e) { return false; }
+    });
 }
 
 // Staff picker for the create/edit department sheets: alphabetical, shows each
 // person's designation, and a "Select all" master checkbox. Real members are the
 // .gm-mem checkboxes (the master is excluded when reading the selection).
-function _memberPickerHTML(selected) {
+function _memberPickerHTML(selected, admins) {
     const sel = new Set(selected || []);
+    const adm = new Set(admins || []);
     const sorted = [..._users].sort((a, b) =>
         (a.full_name || a.email || '').localeCompare(b.full_name || b.email || '', undefined, { sensitivity: 'base' }));
     const allOn = _users.length && _users.every(u => sel.has(u.id));
@@ -717,14 +742,26 @@ function _memberPickerHTML(selected) {
       </label>
       ${sorted.map(u => `<label style="display:flex;align-items:center;gap:9px;padding:7px 10px;cursor:pointer;">
         <input type="checkbox" class="gm-mem" value="${u.id}" ${sel.has(u.id)?'checked':''} style="accent-color:#6366f1;flex:0 0 auto;">
-        <span style="display:flex;flex-direction:column;line-height:1.25;min-width:0;">
+        <span style="display:flex;flex-direction:column;line-height:1.25;min-width:0;flex:1;">
           <span style="font-size:13.5px;font-weight:600;">${x(u.full_name || u.email?.split('@')[0] || '')}</span>
           ${u.designation ? `<span style="font-size:11px;color:var(--text-secondary);">${x(u.designation)}</span>` : ''}
         </span>
+        <button type="button" class="gm-crown${adm.has(u.id)?' on':''}" data-uid="${u.id}"
+          onclick="window._gmToggleCrown(event,this)" title="Make department admin"
+          style="flex:0 0 auto;border:none;background:none;font-size:16px;cursor:pointer;opacity:${adm.has(u.id)?'1':'.28'};filter:${adm.has(u.id)?'none':'grayscale(1)'};">👑</button>
       </label>`).join('')}`;
 }
 window._gmToggleAll = function(on) {
     document.querySelectorAll('#gmMemberList .gm-mem').forEach(cb => { cb.checked = on; });
+};
+window._gmToggleCrown = function(e, btn) {
+    e.preventDefault(); e.stopPropagation();
+    const on = !btn.classList.contains('on');
+    btn.classList.toggle('on', on);
+    btn.style.opacity = on ? '1' : '.28';
+    btn.style.filter = on ? 'none' : 'grayscale(1)';
+    // Marking someone an admin implies they're a member — tick the member box.
+    if (on) { const cb = btn.closest('label')?.querySelector('.gm-mem'); if (cb) cb.checked = true; }
 };
 
 function _buildShell() {
@@ -1129,7 +1166,7 @@ window._filterChatMsgs = function(q, areaId) {
 };
 window._showRoomMenu = function(roomId, roomName) {
     const sheet = _el('mSheetInner');
-    const canGear = window.canSeeGroupGear?.() ?? false;
+    const canGear = (window.canSeeGroupGear?.() ?? false) || _isDeptAdmin(roomId);   // role manager OR dept co-admin
     const members = (() => { try { return JSON.parse(_lsGet('dept_members_'+roomId)||'[]'); } catch { return []; } })();
     const isMuted = _lsGet('muted_'+roomId) === '1';
     sheet.innerHTML = `
@@ -1203,7 +1240,8 @@ async function _home() {
         } catch {}
     };
 
-    const _canMng = window.canManageGroups?.() ?? false;
+    const _mgrRole = window.canManageGroups?.() ?? false;
+    const _canMng = _mgrRole || _isAnyDeptAdmin();   // role manager OR a department co-admin
     return `<div class="mScr-inner">
       <div class="m-sl" style="display:flex;align-items:center;justify-content:space-between;">
         <span>DEPARTMENTS</span>
@@ -2552,11 +2590,13 @@ async function _groupMgmt() {
         const slug  = name.toLowerCase().replace(/[^a-z0-9]/g,'_').substring(0,20);
         const roomId = 'grp_'+slug+'_'+Date.now().toString(36);
         const selectedIds = [...document.querySelectorAll('#gmMemberList .gm-mem:checked')].map(el=>el.value);
+        const adminIds = [...document.querySelectorAll('#gmMemberList .gm-crown.on')].map(b=>b.dataset.uid).filter(id=>selectedIds.includes(id));
         _lsSet('dept_name_'+roomId, name);
         _lsSet('dept_color_'+roomId, color);
         if (selectedIds.length) _lsSet('dept_members_'+roomId, JSON.stringify(selectedIds));
+        _lsSet('dept_admins_'+roomId, JSON.stringify(adminIds));
         try {
-            await _upsertRoomSettings({ room_id:roomId, tenant_id:_tid, name, color, updated_at:new Date().toISOString() }, selectedIds);
+            await _upsertRoomSettings({ room_id:roomId, tenant_id:_tid, name, color, updated_at:new Date().toISOString() }, selectedIds, adminIds);
             await sb.from('messages').insert({ room_id:roomId, tenant_id:_tid, sender_id:_uid, text:`<p>📢 <strong>${x(name)}</strong> group created.</p>`, created_at:new Date().toISOString() });
             _bcSend('group_photo', { room_id:roomId, name, color });
         } catch(e) { _toast('DB error: '+e.message, 'err'); }
@@ -2570,6 +2610,7 @@ async function _groupMgmt() {
     window._openGroupEditSheet = function(gid, gname, gcol) {
         const sheet = _el('mSheetInner');
         const currentMembers = JSON.parse(_lsGet('dept_members_'+gid)||'[]');
+        const currentAdmins  = (()=>{ try { return JSON.parse(_lsGet('dept_admins_'+gid)||'[]'); } catch { return []; } })();
         sheet.innerHTML = `
           <div class="m-sheet-handle"></div>
           <div class="m-sheet-title">Edit Department</div>
@@ -2589,8 +2630,9 @@ async function _groupMgmt() {
             </div>
             <div class="m-field"><label class="m-label">Staff</label>
               <div style="max-height:200px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px;padding:0 0 4px;" id="gmMemberList">
-                ${_memberPickerHTML(currentMembers)}
+                ${_memberPickerHTML(currentMembers, currentAdmins)}
               </div>
+              <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">👑 = department co-admin (can edit this department).</div>
             </div>
             <button class="m-action-btn" style="background:#6366f1;" onclick="window._doSaveGroup()">
               <i class="fa-solid fa-save"></i> Save Changes
@@ -2601,17 +2643,20 @@ async function _groupMgmt() {
     };
 
     window._doSaveGroup = async function() {
-        if (window.guardManageGroups?.()) return;
         const gid   = _el('gmEditId')?.value;
+        // Allow a tenant-wide group manager OR a co-admin of THIS department.
+        if (!_isDeptAdmin(gid)) { _toast('You are not allowed to edit this department','err'); return; }
         const name  = (_el('gmEditName')?.value||'').trim();
         const color = _el('gmEditColor')?.value || '#6366f1';
         if (!gid || !name) { _toast('Invalid','err'); return; }
         const selectedIds = [...document.querySelectorAll('#gmMemberList .gm-mem:checked')].map(el=>el.value);
+        const adminIds = [...document.querySelectorAll('#gmMemberList .gm-crown.on')].map(b=>b.dataset.uid).filter(id=>selectedIds.includes(id));
         _lsSet('dept_name_'+gid, name);
         _lsSet('dept_color_'+gid, color);
         _lsSet('dept_members_'+gid, JSON.stringify(selectedIds));
+        _lsSet('dept_admins_'+gid, JSON.stringify(adminIds));
         try {
-            await _upsertRoomSettings({ room_id:gid, tenant_id:_tid, name, color, updated_at:new Date().toISOString() }, selectedIds);
+            await _upsertRoomSettings({ room_id:gid, tenant_id:_tid, name, color, updated_at:new Date().toISOString() }, selectedIds, adminIds);
             _bcSend('group_photo', { room_id:gid, name, color });
         } catch(e) { _toast('DB error: '+e.message, 'err'); }
         const cg = _customGroups.find(g=>g.id===gid);
@@ -2667,28 +2712,29 @@ async function _groupMgmt() {
         archived = (data||[]).filter(r => !r.room_id.startsWith('dm_'));
     } catch(e){}
 
+    const _mgr = window.canManageGroups?.() ?? false;   // role manager: full CRUD
     return `<div class="mScr-inner">
       <div class="m-hdr">
         <button class="m-back" onclick="window._back()"><i class="fa-solid fa-arrow-left"></i></button>
         <div class="m-htitle">Manage Departments</div>
       </div>
       <div style="padding:16px;">
-        <button class="m-action-btn" style="background:#7c3aed;margin-bottom:16px;" onclick="window._openGroupCreateSheet()">
-          <i class="fa-solid fa-plus"></i> Create New Group
-        </button>
+        ${_mgr ? `<button class="m-action-btn" style="background:#7c3aed;margin-bottom:16px;" onclick="window._openGroupCreateSheet()">
+          <i class="fa-solid fa-plus"></i> Create New Department
+        </button>` : `<div class="m-empty" style="margin-bottom:12px;padding:10px;">You can edit the departments you co-administer 👑</div>`}
 
-        <div class="m-sl">ACTIVE GROUPS</div>
-        ${_customGroups.length ? _customGroups.map(d=>`
+        <div class="m-sl">ACTIVE DEPARTMENTS</div>
+        ${_customGroups.filter(d=>_isDeptAdmin(d.id)).length ? _customGroups.filter(d=>_isDeptAdmin(d.id)).map(d=>`
           <div class="m-row" style="padding:10px 0;">
             <div style="width:40px;height:40px;border-radius:12px;background:${d.col};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;">${d.photo?`<img src="${d.photo}" style="width:100%;height:100%;border-radius:12px;object-fit:cover;">`:'👥'}</div>
-            <div class="m-ri"><div class="m-rn">${x(d.name)}</div><div class="m-rs" style="color:${d.col};">Group</div></div>
+            <div class="m-ri"><div class="m-rn">${x(d.name)}</div><div class="m-rs" style="color:${d.col};">Department</div></div>
             <div style="display:flex;gap:6px;">
               <button onclick="window._openGroupEditSheet('${d.id}','${window.escapeJs(d.name)}','${d.col}')"
                 style="padding:7px 13px;border-radius:9px;background:#6366f118;color:#6366f1;border:none;font-size:12.5px;font-weight:700;cursor:pointer;"><i class="fa-solid fa-pen" style="margin-right:5px;"></i>Edit</button>
-              <button onclick="window._archiveGroup('${d.id}')"
-                style="padding:7px 13px;border-radius:9px;background:#ef444418;color:#ef4444;border:none;font-size:12.5px;font-weight:700;cursor:pointer;"><i class="fa-solid fa-box-archive" style="margin-right:5px;"></i>Archive</button>
+              ${_mgr ? `<button onclick="window._archiveGroup('${d.id}')"
+                style="padding:7px 13px;border-radius:9px;background:#ef444418;color:#ef4444;border:none;font-size:12.5px;font-weight:700;cursor:pointer;"><i class="fa-solid fa-box-archive" style="margin-right:5px;"></i>Archive</button>` : ''}
             </div>
-          </div>`).join('') : '<div class="m-empty">No groups yet. Tap “Create New Group” to add one for your staff.</div>'}
+          </div>`).join('') : '<div class="m-empty">No departments to manage yet.</div>'}
 
         ${archived.length ? `
         <div class="m-sl" style="margin-top:22px;"><i class="fa-solid fa-box-archive" style="margin-right:6px;color:#f59e0b;"></i>ARCHIVED GROUPS</div>

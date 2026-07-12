@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v171';
+const _MOB_VER = 'v172';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -702,6 +702,31 @@ async function _upsertRoomSettings(base, members) {
     await sb.from('room_settings').upsert(base, { onConflict:'room_id,tenant_id' });
 }
 
+// Staff picker for the create/edit department sheets: alphabetical, shows each
+// person's designation, and a "Select all" master checkbox. Real members are the
+// .gm-mem checkboxes (the master is excluded when reading the selection).
+function _memberPickerHTML(selected) {
+    const sel = new Set(selected || []);
+    const sorted = [..._users].sort((a, b) =>
+        (a.full_name || a.email || '').localeCompare(b.full_name || b.email || '', undefined, { sensitivity: 'base' }));
+    const allOn = _users.length && _users.every(u => sel.has(u.id));
+    return `
+      <label style="display:flex;align-items:center;gap:8px;padding:9px 10px;cursor:pointer;border-bottom:1px solid var(--border-color);font-weight:700;background:var(--surface,#f8fafc);">
+        <input type="checkbox" id="gmSelectAll" ${allOn?'checked':''} onchange="window._gmToggleAll(this.checked)" style="accent-color:#6366f1;">
+        <span style="font-size:13px;">Select all staff</span>
+      </label>
+      ${sorted.map(u => `<label style="display:flex;align-items:center;gap:9px;padding:7px 10px;cursor:pointer;">
+        <input type="checkbox" class="gm-mem" value="${u.id}" ${sel.has(u.id)?'checked':''} style="accent-color:#6366f1;flex:0 0 auto;">
+        <span style="display:flex;flex-direction:column;line-height:1.25;min-width:0;">
+          <span style="font-size:13.5px;font-weight:600;">${x(u.full_name || u.email?.split('@')[0] || '')}</span>
+          ${u.designation ? `<span style="font-size:11px;color:var(--text-secondary);">${x(u.designation)}</span>` : ''}
+        </span>
+      </label>`).join('')}`;
+}
+window._gmToggleAll = function(on) {
+    document.querySelectorAll('#gmMemberList .gm-mem').forEach(cb => { cb.checked = on; });
+};
+
 function _buildShell() {
     if (_el('mobileApp')) return;
     // Bottom nav: Chats · Tasks · Activity · Saved · More.
@@ -1116,7 +1141,7 @@ window._showRoomMenu = function(roomId, roomName) {
           ${isMuted ? 'Unmute notifications' : 'Mute notifications'}
         </div>
         ${members.length ? `<div class="m-sheet-row" data-action="viewMembersSheet" data-room="${roomId}">
-          <i class="fa-solid fa-users" style="color:#0ea5e9;"></i> Members (${members.length})
+          <i class="fa-solid fa-users" style="color:#0ea5e9;"></i> Staff (${members.length})
         </div>` : ''}
         ${canGear ? `<div class="m-sheet-row" data-action="setDeptPhoto" data-dept="${roomId}">
           <i class="fa-solid fa-camera" style="color:#10b981;"></i> Change group photo
@@ -1242,12 +1267,15 @@ async function _activity(p) {
     const mode = (p && p.mode === 'attention') ? 'attention' : 'timeline';
     const filter = window._afFilter || 'all';
     const senderFilter = window._afSender || '';
+    let _prevSeen = 0;   // timeline: items at/older than this were already seen → dim them
     if (mode === 'attention') {
         // Bell = actionable. The badge PERSISTS until the user opens each item (tap →
         // marks that one read) or taps "Mark all read" — opening the panel no longer
         // auto-clears everything. (Slack/WhatsApp behaviour.)
     } else {
-        // Opening the timeline tab = clear only the subtle "new" dot.
+        // Opening the timeline tab = clear only the subtle "new" dot. Capture the
+        // PREVIOUS seen time first so already-seen items render dimmed.
+        try { _prevSeen = new Date(_normTs(localStorage.getItem('activity_seen_ts') || 0)).getTime() || 0; } catch(e){}
         try { localStorage.setItem('activity_seen_ts', new Date().toISOString()); } catch(e){}
         _activityHasNew = false;
         _el('mnActBadge')?.style.setProperty('display','none');
@@ -1320,10 +1348,11 @@ async function _activity(p) {
     };
     const timelineCard = (it) => {
         const n = it.n;
+        const seen = _prevSeen && (new Date(_normTs(n.created_at)).getTime() <= _prevSeen);
         const btn = it.act ? (it.act.k==='task'
             ? `<button class="af-btn primary" ${openData(it)}>📂 View Task</button>`
             : `<button class="af-btn primary" ${openData(it)}>🚀 Open</button>`) : '';
-        return `<div class="af-card ${it.cls}" ${openData(it)}>
+        return `<div class="af-card ${it.cls}${seen?' seen':''}" ${openData(it)}>
             <button class="af-clear" data-action="afClear" data-nid="${n.id}" title="Clear"><i class="fa-solid fa-xmark"></i></button>
             <span class="af-badge ${it.cls}">${it.badge}</span>
             <div class="af-title">${x(_snip(n.message,70))}</div>
@@ -2481,9 +2510,9 @@ async function _groupMgmt() {
         const sheet = _el('mSheetInner');
         sheet.innerHTML = `
           <div class="m-sheet-handle"></div>
-          <div class="m-sheet-title">Create Group</div>
+          <div class="m-sheet-title">Create Department</div>
           <div style="padding:0 16px 20px;display:flex;flex-direction:column;gap:12px;">
-            <div class="m-field"><label class="m-label">Group Name</label>
+            <div class="m-field"><label class="m-label">Department Name</label>
               <input class="m-inp" id="gmCreateName" placeholder="e.g. Science Department"></div>
             <div class="m-field"><label class="m-label">Color</label>
               <div style="display:flex;gap:8px;flex-wrap:wrap;" id="gmColorRow">
@@ -2492,16 +2521,13 @@ async function _groupMgmt() {
               </div>
               <input type="hidden" id="gmCreateColor" value="${PRESET_COLORS[0]}">
             </div>
-            <div class="m-field"><label class="m-label">Members</label>
-              <div style="max-height:180px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px;padding:4px 0;" id="gmMemberList">
-                ${_users.map(u=>`<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;">
-                  <input type="checkbox" value="${u.id}" style="accent-color:#6366f1;">
-                  <span style="font-size:13px;">${x(u.full_name||u.email||'')}</span>
-                </label>`).join('')}
+            <div class="m-field"><label class="m-label">Staff</label>
+              <div style="max-height:200px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px;padding:0 0 4px;" id="gmMemberList">
+                ${_memberPickerHTML([])}
               </div>
             </div>
             <button class="m-action-btn" style="background:#6366f1;" onclick="window._doCreateGroup()">
-              <i class="fa-solid fa-plus"></i> Create Group
+              <i class="fa-solid fa-plus"></i> Create Department
             </button>
           </div>`;
         _openSheet();
@@ -2525,7 +2551,7 @@ async function _groupMgmt() {
         if (!name) { _toast('Enter a group name','err'); return; }
         const slug  = name.toLowerCase().replace(/[^a-z0-9]/g,'_').substring(0,20);
         const roomId = 'grp_'+slug+'_'+Date.now().toString(36);
-        const selectedIds = [...document.querySelectorAll('#gmMemberList input:checked')].map(el=>el.value);
+        const selectedIds = [...document.querySelectorAll('#gmMemberList .gm-mem:checked')].map(el=>el.value);
         _lsSet('dept_name_'+roomId, name);
         _lsSet('dept_color_'+roomId, color);
         if (selectedIds.length) _lsSet('dept_members_'+roomId, JSON.stringify(selectedIds));
@@ -2546,11 +2572,14 @@ async function _groupMgmt() {
         const currentMembers = JSON.parse(_lsGet('dept_members_'+gid)||'[]');
         sheet.innerHTML = `
           <div class="m-sheet-handle"></div>
-          <div class="m-sheet-title">Edit Group</div>
+          <div class="m-sheet-title">Edit Department</div>
           <input type="hidden" id="gmEditId" value="${gid}">
           <div style="padding:0 16px 20px;display:flex;flex-direction:column;gap:12px;">
-            <div class="m-field"><label class="m-label">Group Name</label>
-              <input class="m-inp" id="gmEditName" value="${x(gname)}" placeholder="Group name"></div>
+            <div class="m-field"><label class="m-label">Department Name</label>
+              <input class="m-inp" id="gmEditName" value="${x(gname)}" placeholder="Department name"></div>
+            <button class="m-action-btn" style="background:#10b981;" data-action="setDeptPhoto" data-dept="${gid}">
+              <i class="fa-solid fa-camera"></i> Change Department Photo
+            </button>
             <div class="m-field"><label class="m-label">Color</label>
               <div style="display:flex;gap:8px;flex-wrap:wrap;" id="gmColorRow">
                 ${PRESET_COLORS.map(c=>`<div onclick="window._gmPickColor('${c}')" data-col="${c}"
@@ -2558,12 +2587,9 @@ async function _groupMgmt() {
               </div>
               <input type="hidden" id="gmEditColor" value="${gcol||'#6366f1'}">
             </div>
-            <div class="m-field"><label class="m-label">Members</label>
-              <div style="max-height:180px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px;padding:4px 0;" id="gmMemberList">
-                ${_users.map(u=>`<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;">
-                  <input type="checkbox" value="${u.id}" ${currentMembers.includes(u.id)?'checked':''} style="accent-color:#6366f1;">
-                  <span style="font-size:13px;">${x(u.full_name||u.email||'')}</span>
-                </label>`).join('')}
+            <div class="m-field"><label class="m-label">Staff</label>
+              <div style="max-height:200px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px;padding:0 0 4px;" id="gmMemberList">
+                ${_memberPickerHTML(currentMembers)}
               </div>
             </div>
             <button class="m-action-btn" style="background:#6366f1;" onclick="window._doSaveGroup()">
@@ -2580,7 +2606,7 @@ async function _groupMgmt() {
         const name  = (_el('gmEditName')?.value||'').trim();
         const color = _el('gmEditColor')?.value || '#6366f1';
         if (!gid || !name) { _toast('Invalid','err'); return; }
-        const selectedIds = [...document.querySelectorAll('#gmMemberList input:checked')].map(el=>el.value);
+        const selectedIds = [...document.querySelectorAll('#gmMemberList .gm-mem:checked')].map(el=>el.value);
         _lsSet('dept_name_'+gid, name);
         _lsSet('dept_color_'+gid, color);
         _lsSet('dept_members_'+gid, JSON.stringify(selectedIds));
@@ -2643,8 +2669,8 @@ async function _groupMgmt() {
 
     return `<div class="mScr-inner">
       <div class="m-hdr">
-        <button class="m-hdr-back" data-action="back"><i class="fa-solid fa-arrow-left"></i></button>
-        <div class="m-htitle">Group Management</div>
+        <button class="m-back" onclick="window._back()"><i class="fa-solid fa-arrow-left"></i></button>
+        <div class="m-htitle">Manage Departments</div>
       </div>
       <div style="padding:16px;">
         <button class="m-action-btn" style="background:#7c3aed;margin-bottom:16px;" onclick="window._openGroupCreateSheet()">
@@ -4637,6 +4663,9 @@ html[data-theme="dark"] .mn-btn.active i{background:rgba(129,140,248,.2);}
 .nf-row.unread .nf-title{font-weight:600;}
 .nf-time{font-size:11.5px;color:var(--text-secondary,#94a3b8);margin-top:3px;}
 .nf-dot{width:9px;height:9px;border-radius:50%;background:#2563eb;flex:0 0 auto;}
+/* READ notifications / already-SEEN activity dim to ~40% opacity (latest/unread stay full). */
+.nf-row:not(.unread){opacity:.55;}
+.af-card.seen{opacity:.55;}
 .nf-clear{flex:0 0 auto;width:30px;height:30px;border-radius:50%;border:none;background:transparent;
   color:var(--text-secondary,#9ca3af);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
 .nf-clear:active{background:rgba(148,163,184,.2);}

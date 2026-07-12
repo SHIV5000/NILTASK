@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v174';
+const _MOB_VER = 'v175';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -125,8 +125,11 @@ function _setConnState(online) {
     if (!el) return;
     const ok = (online !== undefined) ? online
         : (navigator.onLine && (!_rtChannel || _rtChannel.state === 'joined'));
-    el.textContent = ok ? '● Online' : '● Offline';
-    el.style.color = ok ? _ONLINE_GREEN : _OFFLINE_MAROON;
+    // A short coloured underline below the name: dark green when online, maroon when
+    // offline (replaces the "● Online/Offline" text chip).
+    el.textContent = '';
+    el.title = ok ? 'Online' : 'Offline';
+    el.style.cssText = 'display:block;height:3px;width:32px;border-radius:2px;margin-top:3px;background:' + (ok ? _ONLINE_GREEN : _OFFLINE_MAROON) + ';';
 }
 
 function _updateTypingUI(room) {
@@ -770,7 +773,7 @@ function _buildShell() {
     // Reminders, Schedule, Dashboard & Settings live in the More sheet (role-gated).
     const canTask = window.canSeeTaskHub?.() ?? true;
     const tabs = [
-        { id:'home',      icon:'fa-comments',   lbl:'Chats',    action:"window._navTo('home')" },
+        { id:'home',      icon:'fa-comments',   lbl:'Messages', action:"window._navTo('home')" },
         ...(canTask ? [{ id:'tasks', icon:'fa-list-check', lbl:'Tasks', action:"window._navTo('tasks')" }] : []),
         { id:'activity',  icon:'fa-bolt',       lbl:'Activity', action:"window._navTo('activity')" },
         { id:'marks',     icon:'fa-bookmark',   lbl:'Saved',    action:"window._navTo('marks')" },
@@ -810,6 +813,7 @@ function _buildShell() {
           </button>`).join('')}
       </div>
       <div id="mSheet"><div id="mSheetInner"></div></div>
+      <input type="file" id="mDeptPhotoInput" style="display:none;" accept="image/*">
       <div id="mFmtPopup" class="m-fmt-popup">
         <button data-fmt="bold"><i class="fa-solid fa-bold"></i></button>
         <button data-fmt="italic"><i class="fa-solid fa-italic"></i></button>
@@ -1289,7 +1293,6 @@ async function _home() {
             ${unread > 0 ? `<span class="m-unread-badge">${unread > 99 ? '99+' : unread}</span>` : '<i class="fa-solid fa-chevron-right m-chv"></i>'}
           </div>
         </div>`; }).join('') : '<div class="m-empty">No staff added yet</div>'}
-      <input type="file" id="mDeptPhotoInput" style="display:none;" accept="image/*">
     </div>`;
 }
 
@@ -1305,16 +1308,14 @@ async function _activity(p) {
     const mode = (p && p.mode === 'attention') ? 'attention' : 'timeline';
     const filter = window._afFilter || 'all';
     const senderFilter = window._afSender || '';
-    let _prevSeen = 0;   // timeline: items at/older than this were already seen → dim them
-    if (mode === 'attention') {
-        // Bell = actionable. The badge PERSISTS until the user opens each item (tap →
-        // marks that one read) or taps "Mark all read" — opening the panel no longer
-        // auto-clears everything. (Slack/WhatsApp behaviour.)
-    } else {
-        // Opening the timeline tab = clear only the subtle "new" dot. Capture the
-        // PREVIOUS seen time first so already-seen items render dimmed.
-        try { _prevSeen = new Date(_normTs(localStorage.getItem('activity_seen_ts') || 0)).getTime() || 0; } catch(e){}
-        try { localStorage.setItem('activity_seen_ts', new Date().toISOString()); } catch(e){}
+    // Items seen at/before this time render dimmed (~40%); newer ones stay full.
+    // Per-surface "last opened" timestamp, captured BEFORE we stamp the new one.
+    const _seenKey = mode === 'attention' ? 'bell_seen_ts' : 'activity_seen_ts';
+    let _prevSeen = 0;
+    try { _prevSeen = new Date(_normTs(localStorage.getItem(_seenKey) || 0)).getTime() || 0; } catch(e){}
+    try { localStorage.setItem(_seenKey, new Date().toISOString()); } catch(e){}
+    if (mode !== 'attention') {
+        // Opening the timeline tab clears the subtle "new" dot.
         _activityHasNew = false;
         _el('mnActBadge')?.style.setProperty('display','none');
     }
@@ -1374,7 +1375,8 @@ async function _activity(p) {
 
     const notifRow = (it) => {
         const n = it.n;
-        return `<div class="nf-row ${n.is_read?'':'unread'}" ${openData(it)}>
+        const seen = n.is_read || (_prevSeen && (new Date(_normTs(n.created_at)).getTime() <= _prevSeen));
+        return `<div class="nf-row ${n.is_read?'':'unread'}${seen?' seen':''}" ${openData(it)}>
             <span class="nf-ic ${it.cls}">${it.emoji||'🔔'}</span>
             <div class="nf-body">
               <div class="nf-title">${x(_snip(n.message,80))}</div>
@@ -2398,10 +2400,6 @@ async function _settings() {
         <button class="m-action-btn" style="background:transparent;color:var(--text-secondary);border:1px solid var(--border-color);" data-action="changePassword">
           <i class="fa-solid fa-key"></i> Change Password
         </button>
-        ${window.canSeeGroupGear?.() ? `
-        <button class="m-action-btn" style="background:#7c3aed;" data-action="navGroupMgmt">
-          <i class="fa-solid fa-people-group"></i> Group Management
-        </button>` : ''}
         <button class="m-action-btn" style="background:#ef4444;" data-action="confirmLogout">
           <i class="fa-solid fa-right-from-bracket"></i> Sign Out
         </button>

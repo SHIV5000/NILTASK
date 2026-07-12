@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v170';
+const _MOB_VER = 'v171';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -2622,6 +2622,24 @@ async function _groupMgmt() {
             await _render('groupMgmt', null, 'forward');
         };
     };
+    window._restoreGroup = async function(gid) {
+        if (window.guardManageGroups?.()) return;
+        try {
+            await sb.from('room_settings').upsert({ room_id:gid, tenant_id:_tid, archived:false, updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' });
+            _bcSend('group_photo', { room_id:gid });   // live: other devices re-sync and show it again
+        } catch(e) { _toast('DB error: '+e.message,'err'); return; }
+        await _syncRoomSettings();
+        _toast('Group restored');
+        await _render('groupMgmt', null, 'forward');
+    };
+
+    // Fetch archived groups so the principal can restore them here (no DB needed).
+    let archived = [];
+    try {
+        const { data } = await sb.from('room_settings')
+            .select('room_id,name,color').eq('tenant_id',_tid).eq('archived',true);
+        archived = (data||[]).filter(r => !r.room_id.startsWith('dm_'));
+    } catch(e){}
 
     return `<div class="mScr-inner">
       <div class="m-hdr">
@@ -2633,18 +2651,28 @@ async function _groupMgmt() {
           <i class="fa-solid fa-plus"></i> Create New Group
         </button>
 
-        <div class="m-sl">GROUPS</div>
+        <div class="m-sl">ACTIVE GROUPS</div>
         ${_customGroups.length ? _customGroups.map(d=>`
           <div class="m-row" style="padding:10px 0;">
             <div style="width:40px;height:40px;border-radius:12px;background:${d.col};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;">${d.photo?`<img src="${d.photo}" style="width:100%;height:100%;border-radius:12px;object-fit:cover;">`:'👥'}</div>
             <div class="m-ri"><div class="m-rn">${x(d.name)}</div><div class="m-rs" style="color:${d.col};">Group</div></div>
             <div style="display:flex;gap:6px;">
               <button onclick="window._openGroupEditSheet('${d.id}','${window.escapeJs(d.name)}','${d.col}')"
-                style="padding:6px 12px;border-radius:8px;background:#6366f120;color:#6366f1;border:none;font-size:12px;font-weight:600;cursor:pointer;">Edit</button>
+                style="padding:7px 13px;border-radius:9px;background:#6366f118;color:#6366f1;border:none;font-size:12.5px;font-weight:700;cursor:pointer;"><i class="fa-solid fa-pen" style="margin-right:5px;"></i>Edit</button>
               <button onclick="window._archiveGroup('${d.id}')"
-                style="padding:6px 12px;border-radius:8px;background:#ef444420;color:#ef4444;border:none;font-size:12px;font-weight:600;cursor:pointer;">Archive</button>
+                style="padding:7px 13px;border-radius:9px;background:#ef444418;color:#ef4444;border:none;font-size:12.5px;font-weight:700;cursor:pointer;"><i class="fa-solid fa-box-archive" style="margin-right:5px;"></i>Archive</button>
             </div>
           </div>`).join('') : '<div class="m-empty">No groups yet. Tap “Create New Group” to add one for your staff.</div>'}
+
+        ${archived.length ? `
+        <div class="m-sl" style="margin-top:22px;"><i class="fa-solid fa-box-archive" style="margin-right:6px;color:#f59e0b;"></i>ARCHIVED GROUPS</div>
+        ${archived.map(a=>`
+          <div class="m-row" style="padding:10px 0;opacity:.75;">
+            <div style="width:40px;height:40px;border-radius:12px;background:${a.color||'#94a3b8'};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;">📦</div>
+            <div class="m-ri"><div class="m-rn">${x(a.name||a.room_id)}</div><div class="m-rs">Archived</div></div>
+            <button onclick="window._restoreGroup('${a.room_id}')"
+              style="padding:7px 13px;border-radius:9px;background:#16a34a18;color:#16a34a;border:none;font-size:12.5px;font-weight:700;cursor:pointer;"><i class="fa-solid fa-rotate-left" style="margin-right:5px;"></i>Restore</button>
+          </div>`).join('')}` : ''}
       </div>
     </div>`;
 }

@@ -444,6 +444,16 @@ function renderAdminMobile() {
           <div id="tagsContainer" class="ma-tags"><span style="font-size:12px;color:var(--text-secondary);">Loading…</span></div>
           <div style="font-size:11.5px;color:var(--text-secondary);">Changes appear immediately in the reaction menu for all staff.</div>
         </section>
+
+        <section class="ma-panel" id="matab-groups" style="display:none;">
+          <div class="ma-row-tools">
+            <input type="text" id="newGroupInput" placeholder="New department / group name…" maxlength="30" class="ma-input" style="flex:1;">
+            <input type="color" id="newGroupColor" value="#6366f1" title="Group colour" class="ma-color">
+            <button class="btn-accent btn-sm" onclick="window.admCreateGroup()"><i class="fa-solid fa-plus"></i> Add</button>
+          </div>
+          <div id="groupsContainer"><span style="font-size:12px;color:var(--text-secondary);">Loading…</span></div>
+          <div style="font-size:11.5px;color:var(--text-secondary);margin-top:6px;">Create, rename, archive or restore departments. Changes sync to every staff member instantly.</div>
+        </section>
       </div>
 
       <button class="ma-fab" id="maFab" onclick="openAddStaffModal()"><i class="fa-solid fa-plus"></i> Add Staff</button>
@@ -454,6 +464,7 @@ function renderAdminMobile() {
         <button class="ma-tab"    data-tab="roles" onclick="window._admTab('roles')"><i class="fa-solid fa-shield-halved"></i>Roles</button>
         <button class="ma-tab"    data-tab="scores" onclick="window._admTab('scores')"><i class="fa-solid fa-trophy"></i>Scores</button>
         <button class="ma-tab"    data-tab="tags"  onclick="window._admTab('tags')"><i class="fa-solid fa-tag"></i>Tags</button>
+        <button class="ma-tab"    data-tab="groups" onclick="window._admTab('groups')"><i class="fa-solid fa-layer-group"></i>Groups</button>
       </nav>
     </div>`;
 
@@ -464,15 +475,92 @@ function renderAdminMobile() {
 // Switch mobile tab panels + reflect the FAB (only shown on the Staff tab).
 window._admTab = function(name) {
     _admTabCur = name;
-    ['home','staff','roles','scores','tags'].forEach(t => {
+    ['home','staff','roles','scores','tags','groups'].forEach(t => {
         const p = document.getElementById('matab-'+t);
         if (p) p.style.display = t===name ? 'flex' : 'none';
     });
     document.querySelectorAll('.ma-tab').forEach(b => b.classList.toggle('on', b.dataset.tab===name));
+    if (name === 'groups') { try { window.loadGroups(); } catch(e){} }
     const fab = document.getElementById('maFab');
     if (fab) fab.style.display = name==='staff' ? 'flex' : 'none';
     const body = document.querySelector('#adminMobile .ma-body');
     if (body) body.scrollTop = 0;
+};
+
+// ── GROUPS / DEPARTMENTS management (principal) ──────────────────────────────
+// Lists tenant groups from room_settings with create / rename / archive / restore.
+// Uses the same room_settings.archived flag the chat app reads, and broadcasts on
+// the shared channel so staff devices re-sync live.
+async function _admGroupBroadcast(roomId, extra) {
+    try {
+        const tid = window.currentTenantId;
+        sb.channel('taskflow-bc-' + tid).send({ type:'broadcast', event:'group_photo', payload:{ room_id:roomId, src:'admin', ...(extra||{}) } });
+    } catch (e) {}
+}
+window.loadGroups = async function() {
+    const box = document.getElementById('groupsContainer');
+    if (!box) return;
+    const tid = window.currentTenantId;
+    const { data, error } = await sb.from('room_settings')
+        .select('room_id,name,color,archived').eq('tenant_id', tid);
+    if (error) { box.innerHTML = '<span style="color:#dc2626;font-size:12px;">Could not load groups.</span>'; return; }
+    const groups   = (data || []).filter(r => r.room_id && !r.room_id.startsWith('dm_'));
+    const active   = groups.filter(g => !g.archived);
+    const archived = groups.filter(g => g.archived);
+    const esc  = window.escapeHtml || ((s) => s);
+    const escj = window.escapeJs   || ((s) => s);
+    const row = (g, isArch) => `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--border-color);${isArch?'opacity:.72;':''}">
+        <div style="width:34px;height:34px;border-radius:10px;background:${g.color||'#94a3b8'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">${isArch?'📦':'👥'}</div>
+        <div style="flex:1;min-width:0;font-weight:700;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(g.name || g.room_id)}</div>
+        ${isArch
+          ? `<button class="btn-outline btn-sm" onclick="window.admRestoreGroup('${g.room_id}')"><i class="fa-solid fa-rotate-left"></i> Restore</button>`
+          : `<button class="btn-outline btn-sm" title="Rename" onclick="window.admRenameGroup('${g.room_id}','${escj(g.name||'')}')"><i class="fa-solid fa-pen"></i></button>
+             <button class="btn-outline btn-sm" title="Archive" style="color:#ef4444;border-color:#ef444455;" onclick="window.admArchiveGroup('${g.room_id}','${escj(g.name||'')}')"><i class="fa-solid fa-box-archive"></i></button>`}
+      </div>`;
+    box.innerHTML = `
+      <div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--text-secondary);margin:8px 0 2px;">ACTIVE (${active.length})</div>
+      ${active.length ? active.map((g) => row(g, false)).join('') : '<div style="font-size:12px;color:var(--text-secondary);padding:8px 0;">No active groups. Add one above.</div>'}
+      ${archived.length ? `<div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--text-secondary);margin:18px 0 2px;">ARCHIVED (${archived.length})</div>${archived.map((g) => row(g, true)).join('')}` : ''}`;
+};
+window.admCreateGroup = async function() {
+    const inp = document.getElementById('newGroupInput');
+    const col = document.getElementById('newGroupColor');
+    const name = (inp?.value || '').trim();
+    if (!name) { showToast('Enter a group name', '#dc2626'); return; }
+    const tid = window.currentTenantId;
+    const roomId = 'grp_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20) + '_' + Date.now().toString(36);
+    const color = col?.value || '#6366f1';
+    const uid = window.currentUser?.id || (await sb.auth.getUser()).data?.user?.id;
+    try {
+        await sb.from('room_settings').upsert({ room_id:roomId, tenant_id:tid, name, color, archived:false, updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' });
+        if (uid) await sb.from('messages').insert({ room_id:roomId, tenant_id:tid, sender_id:uid, text:`<p>📢 <strong>${(window.escapeHtml||((s)=>s))(name)}</strong> group created.</p>`, created_at:new Date().toISOString() });
+    } catch (e) { showToast('Create failed: ' + e.message, '#dc2626'); return; }
+    if (inp) inp.value = '';
+    _admGroupBroadcast(roomId, { name, color });
+    showToast('Group “' + name + '” created ✓', '#16a34a');
+    window.loadGroups();
+};
+window.admRenameGroup = async function(roomId, cur) {
+    const name = prompt('Rename group:', cur || '');
+    if (!name || !name.trim()) return;
+    try { await sb.from('room_settings').upsert({ room_id:roomId, tenant_id:window.currentTenantId, name:name.trim(), updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' }); }
+    catch (e) { showToast('Rename failed', '#dc2626'); return; }
+    _admGroupBroadcast(roomId, { name: name.trim() });
+    showToast('Renamed ✓', '#16a34a'); window.loadGroups();
+};
+window.admArchiveGroup = async function(roomId, name) {
+    if (!confirm('Archive “' + (name || roomId) + '”?\n\nIt will be hidden from all staff. You can restore it here anytime.')) return;
+    try { await sb.from('room_settings').upsert({ room_id:roomId, tenant_id:window.currentTenantId, archived:true, updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' }); }
+    catch (e) { showToast('Archive failed', '#dc2626'); return; }
+    _admGroupBroadcast(roomId);
+    showToast('Group archived', '#f59e0b'); window.loadGroups();
+};
+window.admRestoreGroup = async function(roomId) {
+    try { await sb.from('room_settings').upsert({ room_id:roomId, tenant_id:window.currentTenantId, archived:false, updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' }); }
+    catch (e) { showToast('Restore failed', '#dc2626'); return; }
+    _admGroupBroadcast(roomId);
+    showToast('Group restored ✓', '#16a34a'); window.loadGroups();
 };
 
 // Staff as list cards (mobile). Reuses the same per-row handlers as the table.

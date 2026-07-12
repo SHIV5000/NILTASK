@@ -2,7 +2,7 @@
  * TaskFlow Service Worker — enables PWA install prompt on Android/Chrome
  * Caches core app shell for offline-capable experience
  */
-const CACHE   = 'taskflow-v172';
+const CACHE   = 'taskflow-v173';
 const PRECACHE = [
   '/',
   '/index.html',

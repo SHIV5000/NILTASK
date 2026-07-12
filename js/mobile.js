@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v172';
+const _MOB_VER = 'v173';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -744,7 +744,7 @@ function _buildShell() {
     app.innerHTML = `
       <div id="mSB">
         <div id="mSBInfo" class="m-sb-info" onclick="window._navTo('home')">
-          <div class="m-sb-user">${x(_sentenceCase(window.currentUser?.full_name || window.currentUser?.email?.split('@')[0] || 'User'))}<span id="mConnState" class="m-conn"></span></div>
+          <div class="m-sb-user">${x(window.currentUser?.full_name || window.currentUser?.email?.split('@')[0] || 'User')}<span id="mConnState" class="m-conn"></span></div>
           <div class="m-sb-school-card">${x(window.currentSchoolName || 'School')} <span onclick="window._copyLogs()" title="Tap to copy console logs" style="font-size:9px;opacity:.5;font-weight:700;letter-spacing:.5px;cursor:pointer;">${window.APP_VER || _MOB_VER}</span></div>
         </div>
         <div id="mSBSearch" class="m-sb-search" style="display:none;">
@@ -3443,6 +3443,13 @@ function _onPresenceUpdate(row) {
     if (!row?.id) return;
     const u = _users.find(x => x.id === row.id);
     if (u && row.last_seen) u.last_seen = row.last_seen;
+    // Propagate a display-name / designation change live so bubbles + lists match
+    // the person's current profile without a reload.
+    if (u && (('full_name' in row) || ('designation' in row))) {
+        if (row.full_name && u.full_name !== row.full_name) u.full_name = row.full_name;
+        if (row.designation !== undefined) u.designation = row.designation;
+        try { _saveUsersCache(_tid, _users); } catch (e) {}
+    }
     document.querySelectorAll('[data-uid="' + row.id + '"]').forEach(el => {
         const holder = el.querySelector('div[style*="position:relative"]');
         if (!holder) return;
@@ -4374,10 +4381,16 @@ async function _saveProfile() {
     _toast(error ? 'Save failed' : 'Profile saved ✓', error?'err':'ok');
     if (!error) {
         window.currentUser.full_name = full_name;
+        // Keep the users cache in sync so message bubbles / headers (which resolve
+        // names via _uname → _users) show the NEW display name, not the stale one.
+        const cu = (_users || []).find(u => u.id === _uid); if (cu) cu.full_name = full_name;
+        const gu = (window.globalUsersCache || []).find(u => u.id === _uid); if (gu) gu.full_name = full_name;
+        try { _saveUsersCache(_tid, _users); } catch (e) {}
         // Rebuild the name label WITHOUT dropping the Online/Offline chip that lives
-        // inside .m-sb-user (a bare textContent set would wipe it).
+        // inside .m-sb-user (a bare textContent set would wipe it). Show verbatim so
+        // it EQUALS the display name shown in message bubbles.
         const u = _el('mSBInfo')?.querySelector('.m-sb-user');
-        if (u) { u.innerHTML = x(_sentenceCase(full_name)) + '<span id="mConnState" class="m-conn"></span>'; try { _setConnState(); } catch(e){} }
+        if (u) { u.innerHTML = x(full_name) + '<span id="mConnState" class="m-conn"></span>'; try { _setConnState(); } catch(e){} }
         // After confirmation, return to the home screen (requested UX).
         setTimeout(() => { try { _navTo('home', null, true); } catch(e){} }, 700);
     }

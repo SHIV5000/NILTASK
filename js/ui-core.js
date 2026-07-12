@@ -77,11 +77,10 @@ window.stripHtml = function(html) {
 // escapeHtml now lives in js/utils/text.js (Phase 3 de-dup) — this file no
 // longer redefines it. window.escapeHtml is set before any module runs.
 
-// Sentence case: "hello world" → "Hello World"
-window.toSentenceCase = function(str) {
-    if (!str) return '';
-    return String(str).toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
-};
+// Display names must render EXACTLY as the user set them (e.g. "PGT Kumar",
+// "amit KUMAR", "McDonald") — the old sentence-casing mangled them into
+// "something else", which users read as the name silently changing. Passthrough.
+window.toSentenceCase = function(str) { return str == null ? '' : String(str); };
 
 // Format timestamp to IST locale string
 window.getISTTime = function(ts) {

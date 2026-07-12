@@ -16,6 +16,12 @@ function _webLsGet(k,def='') {
     }
     return def;
 }
+// May the current user manage THIS department? A tenant-wide group manager, OR a
+// per-department co-admin (room_settings.admins → dept_admins_<id>). Mirrors mobile.
+window.canManageThisGroup = function(g) {
+    if (window.canManageGroups?.() ?? window.canSeeGroupGear?.()) return true;
+    try { return JSON.parse(_webLsGet('dept_admins_'+g)||'[]').includes(window.currentUser?.id); } catch(e){ return false; }
+};
 
 let messageSubscription = null;
 let taskSubscription = null;
@@ -1072,7 +1078,7 @@ window.loadChatsList = async function() {
             // Try to include members (column may not exist yet — fall back gracefully).
             let rs = null;
             const withMembers = await sb.from('room_settings')
-                .select('room_id,name,color,archived,members')
+                .select('room_id,name,color,archived,members,admins')
                 .eq('tenant_id', window.currentTenantId);
             if (withMembers.error) {
                 const basic = await sb.from('room_settings')
@@ -1087,6 +1093,7 @@ window.loadChatsList = async function() {
                 if (r.color) _webLsSet('dept_color_'+r.room_id, r.color);
                 // Hydrate members from DB so counts match across devices/users
                 if (Array.isArray(r.members)) _webLsSet('dept_members_'+r.room_id, JSON.stringify(r.members));
+                if (Array.isArray(r.admins))  _webLsSet('dept_admins_'+r.room_id, JSON.stringify(r.admins));
                 // Every non-archived, non-DM room is a group in the sidebar.
                 if (!r.archived && !String(r.room_id).startsWith('dm_')) {
                     groups.push({ room_id: r.room_id, name: r.name || r.room_id, color: r.color || null });
@@ -1179,9 +1186,9 @@ window.loadChatsList = async function() {
                     <span class="absolute -top-1 -right-1 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center" style="background:#22c55e;">${unread > 9 ? '9+' : unread}</span>` : ''}
             </div>
             <span class="flex-1 truncate tracking-wide text-sm" style="color:var(--text-primary);">${window.escapeHtml(displayName)}</span>
-            ${window.canSeeGroupGear?.() ? `<button onclick="event.stopPropagation();window.openGroupSettings('${g}')"
+            ${window.canManageThisGroup?.(g) ? `<button onclick="event.stopPropagation();window.openGroupSettings('${g}')"
                 class="opacity-0 group-hover/dept:opacity-100 transition-opacity p-1 rounded hover:bg-gray-100 flex-shrink-0"
-                style="color:var(--text-secondary);" title="Group Settings">
+                style="color:var(--text-secondary);" title="Department Settings">
                 <i class="fa-solid fa-gear text-[10px]"></i>
             </button>` : ''}
         </div>`;

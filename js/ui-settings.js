@@ -177,7 +177,9 @@ window.saveSettings = async function() {
 }
 
 window.saveGroupSettings = async function() {
-    if (window.guardManageGroups?.()) return;
+    const _gid0 = document.getElementById('groupSettingsId')?.value;
+    // Allow a tenant-wide group manager OR a co-admin of this specific department.
+    if (!(window.canManageThisGroup?.(_gid0))) { if (window.guardManageGroups?.()) return; }
     const gid  = document.getElementById('groupSettingsId')?.value;
     const name = document.getElementById('groupSettingsName')?.value.trim();
     if (!gid || !name) { window.showCenterToast('Name cannot be empty','fa-solid fa-times','text-red-500'); return; }

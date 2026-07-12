@@ -9,7 +9,7 @@ window.sb = sb;
 
 // Single source of truth for the running build — stamped onto every warn/error
 // log row so the Live Log Monitor can tell which version a remote device runs.
-window.APP_VER = 'v177';
+window.APP_VER = 'v178';
 
 // Retire the green 'ocean-teal' theme entirely — it tinted the whole UI (and the
 // safe-area gutter) green. Reset anyone still on it BEFORE ui-core reads the value.
@@ -120,7 +120,8 @@ window.saveQuickTagsToDB = async function(tags) {
 // Global Helpers
 // escapeHtml + getSnippet now live in js/utils/text.js (Phase 3 de-dup), loaded
 // as a classic script before this module so window.escapeHtml/getSnippet exist.
-window.toSentenceCase = function(str) { if (!str) return ''; return str.toLowerCase().replace(/(^\w{1})|(\s+\w{1})/g, letter => letter.toUpperCase()); }
+// Passthrough — display names must show verbatim (see ui-core.js note).
+window.toSentenceCase = function(str) { return str == null ? '' : String(str); }
 
 window.getISTTime = function(dateStr) {
     if(!dateStr) return '';

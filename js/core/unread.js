@@ -43,10 +43,22 @@
             (reads.data || []).forEach(r => { marker[r.room_id] = new Date(r.last_read_at).getTime(); });
             (msgs.data || []).forEach(m => {
                 if (m.sender_id === uid) return;                       // my own messages aren't unread
-                if (rooms && !rooms.has(m.room_id)) return;            // outside the caller's room set
+                const rid = m.room_id || '';
+                if (rid.startsWith('dm_')) {
+                    // DM: only mine, and only if I'm a participant (privacy). The `rooms`
+                    // allow-list (if given) may also gate DMs.
+                    const parts = rid.replace('dm_', '').split('_');
+                    if (!parts.includes(uid)) return;
+                    if (rooms && !rooms.has(rid)) return;
+                } else {
+                    // GROUP: always count (the query is already tenant-scoped). Do NOT
+                    // gate groups by the caller's allow-list — a group missing from that
+                    // set (not yet in _customGroups, or added mid-session) was the reason
+                    // group badges/bell never updated while DMs did.
+                }
                 const t = new Date(m.created_at).getTime();
-                const seen = marker[m.room_id] || 0;                  // no marker → never opened → all unread
-                if (t > seen) perRoom[m.room_id] = (perRoom[m.room_id] || 0) + 1;
+                const seen = marker[rid] || 0;                        // no marker → never opened → all unread
+                if (t > seen) perRoom[rid] = (perRoom[rid] || 0) + 1;
             });
         } catch (e) { /* offline / RLS — return what we have */ }
         const total = Object.values(perRoom).reduce((a, b) => a + b, 0);

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v165';
+const _MOB_VER = 'v166';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -3449,6 +3449,9 @@ async function _reconcileUnread() {
         allRooms.forEach(rid => { merged[rid] = Math.max(perRoom[rid] || 0, window.unreadCounts?.[rid] || 0); });
         if (openRoom) { merged[openRoom] = 0; delete _liveUnreadTs[openRoom]; }
         window.unreadCounts = merged;
+        // Diagnostic: show which rooms carry unread after reconcile (groups included).
+        const _dbg = Object.entries(merged).filter(([,v])=>v>0).map(([k,v])=>k.slice(0,10)+':'+v).join(' ');
+        console.log('[unread] reconcile '+(_dbg||'(none)'));
         _updateAppBadge();
         _renderBellBadge();   // bell/Activity reflect the reconciled per-room totals (no double, DMs included)
         // SURGICAL badge update (no screen re-render / no slide): patch each visible

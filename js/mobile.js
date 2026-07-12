@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v176';
+const _MOB_VER = 'v177';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -956,6 +956,11 @@ function _buildShell() {
     };
     app.addEventListener('touchend', _swipeEnd);
     app.addEventListener('touchcancel', _swipeEnd);
+    // Swipe-left-to-clear on Activity / Notification cards (#4).
+    app.addEventListener('touchstart', _feedSwipeStart, { passive:true });
+    app.addEventListener('touchmove',  _feedSwipeMove,  { passive:true });
+    app.addEventListener('touchend',   _feedSwipeEnd);
+    app.addEventListener('touchcancel',_feedSwipeEnd);
 
     const lensInp = _el('mSBSearchInp');
     let st;
@@ -987,6 +992,45 @@ window._confirmLogout = async function() {
     window.location.href = '/';
 };
 
+// Swipe-left-to-clear for Activity / Notification cards (#4). A left drag past a
+// threshold deletes that notification row (same as the × button); short drags snap back.
+let _fsw = null;
+function _feedSwipeStart(e) {
+    const card = e.target.closest('.af-card, .nf-row');
+    if (!card) { _fsw = null; return; }
+    if (e.target.closest('.af-clear, .nf-clear, button')) { _fsw = null; return; }  // let button taps work
+    const nid = card.querySelector('[data-nid]')?.getAttribute('data-nid');
+    const t = e.touches[0];
+    _fsw = { el: card, sx: t.clientX, sy: t.clientY, nid, moved: false };
+}
+function _feedSwipeMove(e) {
+    if (!_fsw) return;
+    const t = e.touches[0];
+    const dx = t.clientX - _fsw.sx, dy = t.clientY - _fsw.sy;
+    if (!_fsw.moved && Math.abs(dy) > Math.abs(dx)) { _fsw = null; return; }   // vertical scroll wins
+    if (dx < 0) {
+        _fsw.moved = true;
+        _fsw.el.style.transform = 'translateX(' + Math.max(dx, -140) + 'px)';
+        _fsw.el.style.opacity = String(Math.max(1 - Math.abs(dx) / 180, .25));
+    }
+}
+function _feedSwipeEnd(e) {
+    if (!_fsw) return;
+    const { el, nid, sx, moved } = _fsw; _fsw = null;
+    const dx = (e.changedTouches?.[0]?.clientX ?? sx) - sx;
+    if (moved && dx < -80 && nid) {
+        el.style.transition = 'transform .18s ease,opacity .18s ease';
+        el.style.transform = 'translateX(-100%)'; el.style.opacity = '0';
+        setTimeout(() => {
+            try { sb.from('notifications').delete().eq('id', nid).eq('user_id', _uid).then(() => { _refreshNotifBadge(); }); } catch (e) {}
+            el.remove();
+        }, 180);
+    } else if (moved) {
+        el.style.transition = 'transform .15s ease,opacity .15s ease';
+        el.style.transform = ''; el.style.opacity = '';
+        setTimeout(() => { el.style.transition = ''; }, 160);
+    }
+}
 function _sameParams(a, b) {
     a = a || {}; b = b || {};
     return (a.room||'')===(b.room||'') && (a.id||'')===(b.id||'') && (a.uid||'')===(b.uid||'') && (a.filter||'')===(b.filter||'');
@@ -1427,7 +1471,7 @@ async function _activity(p) {
             <button class="af-clear" data-action="afClear" data-nid="${n.id}" title="Clear"><i class="fa-solid fa-xmark"></i></button>
             <span class="af-badge ${it.cls}">${it.badge}</span>
             <div class="af-title">${x(_snip(n.message,70))}</div>
-            <div class="af-meta"><i class="fa-regular fa-clock"></i> ${_ago(n.created_at)} · ${_fmtDateTime(n.created_at)}</div>
+            <div class="af-meta"><i class="fa-regular fa-clock"></i> ${_ago(n.created_at)}${it.sender?` · <span class="af-by">${x(it.sender)}</span>`:''} · ${_fmtDateTime(n.created_at)}</div>
             ${btn?`<div class="af-actions">${btn}</div>`:''}
         </div>`;
     };
@@ -5128,7 +5172,17 @@ html[data-theme="dark"] .m-sheet-row:active{background:#1e1e1e;}
 html[data-theme="dark"] .m-fmt-popup{background:#000000;}
 html[data-theme="dark"] .m-img-preview img{background:#1e1e1e;border-color:#262626;}
 html[data-theme="dark"] .af-feed{background:#000000;}
-html[data-theme="dark"] .af-card{background:#121212;border-color:#262626;color:#f5f5f5;}
+html[data-theme="dark"] .af-card{background:#161616;border-color:#262626;color:#ececec;box-shadow:none;}
+html[data-theme="dark"] .af-title{color:#f2f2f2;}
+html[data-theme="dark"] .af-meta{color:#9a9a9a;}
+/* Professional, muted type chips that stay legible in dark mode. */
+html[data-theme="dark"] .af-badge{background:#232323;color:#c9c9c9;}
+html[data-theme="dark"] .af-badge.blue{background:rgba(37,99,235,.22);color:#93b4ff;}
+html[data-theme="dark"] .af-badge.orange{background:rgba(249,115,22,.22);color:#ffb27a;}
+html[data-theme="dark"] .af-badge.green{background:rgba(34,197,94,.22);color:#86e0a6;}
+html[data-theme="dark"] .af-badge.purple{background:rgba(168,85,247,.22);color:#cba6f7;}
+.af-by{font-weight:600;color:var(--text,#334155);}
+html[data-theme="dark"] .af-by{color:#cfcfcf;}
 html[data-theme="dark"] .af-select{background-color:#1e1e1e;border-color:#333;color:#f5f5f5;}
 html[data-theme="dark"] .af-pill{background:#1e1e1e;color:#a8a8a8;}
 html[data-theme="dark"] .af-pill.active{background:#f5f5f5;color:#000000;}

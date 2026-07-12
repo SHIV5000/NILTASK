@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v175';
+const _MOB_VER = 'v176';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -318,7 +318,28 @@ window.initMobileApp = async function() {
     await Promise.all([_ctx(), _hydrateRoomCaches()]);
     // Principals/admins get a toggle to the Admin Panel (permission known after _ctx).
     if (window.currentPermissions?.admin_panel) _el('mSBAdmin')?.style.setProperty('display','flex');
-    await _navTo('home');
+    // Resume where the user left off last session (#7). Falls back to home if the
+    // saved screen is missing/invalid or the chat no longer exists.
+    let _resumed = false;
+    try {
+        const last = JSON.parse(localStorage.getItem('mob_last_nav') || 'null');
+        if (last && last.screen) {
+            if (last.screen === 'groupChat' && last.room && _findGroup(last.room)) {
+                const g = _findGroup(last.room);
+                await _navTo('home', null, true);
+                await _navTo('groupChat', { room:g.id, name:g.name, color:g.col });
+                _resumed = true;
+            } else if (last.screen === 'dm' && last.room && last.uid) {
+                await _navTo('home', null, true);
+                await _navTo('dm', { uid:last.uid, name:last.name || _uname(last.uid), room:last.room });
+                _resumed = true;
+            } else if (['home','activity','tasks','marks'].includes(last.screen)) {
+                await _navTo(last.screen);
+                _resumed = true;
+            }
+        }
+    } catch (e) {}
+    if (!_resumed) await _navTo('home');
     window._hideSplash?.();   // first screen painted — drop the boot splash
     _initRealtime();
     try { _setConnState(); } catch(e){}   // paint the initial Online/Offline chip
@@ -1008,6 +1029,16 @@ window._navTo = async function(screen, params, replace = false) {
     else history.pushState({ mobDepth:_stack.length }, '', location.href);
     await _render(screen, params, 'forward');
     _setTab(screen);
+    // Remember where the user is so the next app launch resumes here (#7). Only
+    // restorable, non-transient screens (a chat or a main tab), with minimal params.
+    if (['home','activity','tasks','marks','groupChat','dm'].includes(screen)) {
+        try {
+            const p = params || {};
+            localStorage.setItem('mob_last_nav', JSON.stringify({
+                screen, room:p.room||'', name:p.name||'', color:p.color||'', uid:p.uid||'',
+            }));
+        } catch (e) {}
+    }
 };
 let _lastBackAt = 0;
 window._back = function() {
@@ -2087,27 +2118,59 @@ async function _dm(p) {
     </div>`;
 }
 
+window._mobTaskFilter = (v) => { window._taskFilter = v; window._navTo('tasks', null, true); };
+window._mobTaskSort   = (v) => { window._taskSort = v;   window._navTo('tasks', null, true); };
 async function _tasks() {
-    // Offline-first: serve the cached task list when the network is unavailable,
-    // refresh the cache on every successful load.
-    let data = null, assigneeMap = {};
+    const filter = window._taskFilter || 'all';
+    const sort   = window._taskSort   || 'new';
+    // Merge tasks assigned TO me (with my per-assignee status) and tasks created BY
+    // me, keyed by task id, so a single list can be filtered By/For me etc.
+    const byId = {};
+    const assigneeMap = {};
     try {
-        const res = await sb.from('task_assignees')
-            .select('status, tasks!inner(id,title,priority,deadline,created_at,require_proof,assigned_by)')
-            .eq('assignee_id',_uid).eq('tenant_id',_tid)
-            .order('created_at',{ascending:false,foreignTable:'tasks'}).limit(50);
-        data = res.data;
-        const taskIds = (data||[]).map(r=>r.tasks.id);
-        if (taskIds.length) {
-            const { data: allAssignees } = await sb.from('task_assignees').select('task_id,assignee_id').eq('tenant_id', _tid).in('task_id', taskIds);
-            (allAssignees||[]).forEach(a => { (assigneeMap[a.task_id] = assigneeMap[a.task_id]||[]).push(_uname(a.assignee_id)); });
+        const [mine, created] = await Promise.all([
+            sb.from('task_assignees')
+                .select('status, tasks!inner(id,title,priority,deadline,created_at,require_proof,assigned_by,status)')
+                .eq('assignee_id',_uid).eq('tenant_id',_tid)
+                .order('created_at',{ascending:false,foreignTable:'tasks'}).limit(100),
+            sb.from('tasks').select('id,title,priority,deadline,created_at,require_proof,assigned_by,status')
+                .eq('tenant_id',_tid).eq('assigned_by',_uid)
+                .order('created_at',{ascending:false}).limit(100),
+        ]);
+        (mine.data||[]).forEach(r => { const t=r.tasks; byId[t.id] = { ...t, myStatus:r.status, forMe:true }; });
+        (created.data||[]).forEach(t => { byId[t.id] = { ...(byId[t.id]||{}), ...t, byMe:true, forMe:byId[t.id]?.forMe||false, myStatus:byId[t.id]?.myStatus }; });
+        const ids = Object.keys(byId);
+        if (ids.length) {
+            const { data: aa } = await sb.from('task_assignees').select('task_id,assignee_id').eq('tenant_id',_tid).in('task_id',ids);
+            (aa||[]).forEach(a => { (assigneeMap[a.task_id]=assigneeMap[a.task_id]||[]).push(_uname(a.assignee_id)); });
         }
-        if (data) window.LocalDB?.kvSet?.('tasks_cache_'+_uid, { data, assigneeMap, ts: Date.now() });
-    } catch (e) { /* offline — fall through to cache */ }
-    if (!data) {
-        const cached = await window.LocalDB?.kvGet?.('tasks_cache_'+_uid);
-        if (cached?.data) { data = cached.data; assigneeMap = cached.assigneeMap || {}; }
+        window.LocalDB?.kvSet?.('tasks_cache2_'+_uid, { byId, assigneeMap, ts:Date.now() });
+    } catch (e) {
+        const c = await window.LocalDB?.kvGet?.('tasks_cache2_'+_uid);
+        if (c?.byId) { Object.assign(byId, c.byId); Object.assign(assigneeMap, c.assigneeMap||{}); }
     }
+
+    const now = new Date();
+    const todayStr = _istFmtDate.format(now);
+    const isToday = (d) => d && _istFmtDate.format(new Date(_normTs(d))) === todayStr;
+    const doneOf = (t) => (t.myStatus||t.status) === 'accepted';
+    let list = Object.values(byId).filter(t => {
+        switch (filter) {
+            case 'pending':     return !doneOf(t);
+            case 'done':        return doneOf(t);
+            case 'today':       return isToday(t.deadline);
+            case 'byme':        return t.byMe;
+            case 'forme':       return t.forMe;
+            case 'delegate':    return (t.myStatus||t.status||'').includes('deleg');
+            case 'transferred': return (t.myStatus||t.status||'').includes('transfer');
+            default:            return true;   // all
+        }
+    });
+    list.sort((a,b) => {
+        if (sort === 'deadline') return (new Date(_normTs(a.deadline||'2999')) - new Date(_normTs(b.deadline||'2999')));
+        const ta = new Date(_normTs(a.created_at)).getTime(), tb = new Date(_normTs(b.created_at)).getTime();
+        return sort === 'old' ? ta - tb : tb - ta;   // new = desc
+    });
 
     const stMap = { pending_ack:{bg:'#fef9c3',fg:'#854d0e',lbl:'⏳ Needs Ack'},
                     in_progress:{bg:'#dbeafe',fg:'#1d4ed8',lbl:'🔄 In Progress'},
@@ -2115,13 +2178,22 @@ async function _tasks() {
                     needs_review:{bg:'#fee2e2',fg:'#991b1b',lbl:'🔄 Changes Needed'},
                     accepted:   {bg:'#dcfce7',fg:'#16a34a',lbl:'🎉 Done'},
                     overdue:    {bg:'#fee2e2',fg:'#b91c1c',lbl:'🔴 Overdue'} };
-    const now = new Date();
+    const filters = [['all','All'],['pending','Pending'],['done','Done'],['today','Today'],['byme','By Me'],['forme','For Me'],['delegate','Delegated'],['transferred','Transferred']];
+    const sorts   = [['new','Newest'],['old','Oldest'],['deadline','Deadline']];
     return `<div class="mScr-inner">
       <div class="m-hdr m-hdr-plain"><div class="m-htitle">My Tasks</div></div>
-      ${(data||[]).length ? (data||[]).map(row => {
-        const t = row.tasks;
-        const isOverdue = t.deadline && new Date(t.deadline)<now && row.status!=='accepted';
-        const st = isOverdue ? stMap.overdue : (stMap[row.status]||stMap.pending_ack);
+      <div class="af-filters af-selrow">
+        <select class="af-select" onchange="window._mobTaskFilter(this.value)">
+          ${filters.map(([k,l])=>`<option value="${k}" ${filter===k?'selected':''}>${l}</option>`).join('')}
+        </select>
+        <select class="af-select" onchange="window._mobTaskSort(this.value)">
+          ${sorts.map(([k,l])=>`<option value="${k}" ${sort===k?'selected':''}>Sort: ${l}</option>`).join('')}
+        </select>
+      </div>
+      ${list.length ? list.map(t => {
+        const st0 = t.myStatus || t.status || 'pending_ack';
+        const isOverdue = t.deadline && new Date(_normTs(t.deadline))<now && st0!=='accepted';
+        const st = isOverdue ? stMap.overdue : (stMap[st0]||stMap.pending_ack);
         const assignees = (assigneeMap[t.id]||[]).join(', ');
         return `
         <div class="m-taskcard" data-action="taskDetail" data-id="${t.id}" data-title="${x(t.title)}">
@@ -2132,14 +2204,14 @@ async function _tasks() {
           <div class="m-tc-meta">
             ${t.deadline ? `<span>📅 ${_fmtIST(t.deadline,false)}</span>` : ''}
             ${t.priority  ? `<span>⚡ ${t.priority}</span>` : ''}
-            ${t.require_proof ? `<span>📎 Proof required</span>` : ''}
+            ${t.byMe ? `<span>✍️ By me</span>` : ''}
           </div>
           <div class="m-tc-people">
             <div>👤 Created by ${x(_uname(t.assigned_by))}</div>
             ${assignees ? `<div>👥 Assigned to ${x(assignees)}</div>` : ''}
             <div>🕐 ${_fmtIST(t.created_at)}</div>
           </div>
-        </div>`; }).join('') : '<div class="m-empty">No tasks assigned to you yet.</div>'}
+        </div>`; }).join('') : '<div class="m-empty">No tasks match this filter.</div>'}
     </div>`;
 }
 

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v166';
+const _MOB_VER = 'v167';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -1226,7 +1226,7 @@ async function _home() {
     </div>`;
 }
 
-function _fmtDateTime(ds){ try { const d=new Date(ds); return _istFmtDate.format(d)+', '+_istFmt12.format(d); } catch { return ''; } }
+function _fmtDateTime(ds){ try { const d=new Date(_normTs(ds)); return _istFmtDate.format(d)+', '+_istFmt12.format(d); } catch { return ''; } }
 async function _activity(p) {
     // TWO surfaces share this renderer (3-surface model):
     //   • mode 'attention'  = the BELL → Notifications: only items aimed at ME
@@ -1284,7 +1284,7 @@ async function _activity(p) {
 
     const today = _istFmtDate.format(new Date());
     const yest  = _istFmtDate.format(new Date(Date.now()-86400000));
-    const dayLabel = (ds) => { const d=_istFmtDate.format(new Date(ds)); return d===today?'Today':d===yest?'Yesterday':d; };
+    const dayLabel = (ds) => { const d=_istFmtDate.format(new Date(_normTs(ds))); return d===today?'Today':d===yest?'Yesterday':d; };
 
     const groups = [];
     let curL=null, cur=null;

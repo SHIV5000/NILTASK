@@ -19,6 +19,23 @@
 (function () {
     'use strict';
 
+    // Normalize a DB timestamp to a correct epoch. If the column is `timestamp`
+    // (no timezone) rather than `timestamptz`, PostgREST returns it WITHOUT a 'Z',
+    // and `new Date(str)` then parses it as LOCAL time — shifting it by the local
+    // offset (e.g. −5:30 in IST). That made group message times land BEFORE the
+    // room_reads marker, so `t > seen` was false and group unread was never counted
+    // (DMs survived via the server notification path). Append 'Z' when no tz marker
+    // is present so the value is read as UTC, matching how it was written.
+    function tsMs(ts) {
+        if (!ts) return 0;
+        if (typeof ts === 'string') {
+            const hasTz = ts.indexOf('Z') !== -1 || /[+-]\d\d:?\d\d$/.test(ts);
+            ts = hasTz ? ts.replace(' ', 'T') : ts.replace(' ', 'T') + 'Z';
+        }
+        const n = new Date(ts).getTime();
+        return isNaN(n) ? 0 : n;
+    }
+
     /**
      * Compute per-room message unread from room_reads + recent messages.
      * @param {object} opts { uid, tid, rooms?:Set<string>, window?:number }
@@ -40,7 +57,7 @@
                     .order('created_at', { ascending: false }).limit(win),
             ]);
             const marker = {};
-            (reads.data || []).forEach(r => { marker[r.room_id] = new Date(r.last_read_at).getTime(); });
+            (reads.data || []).forEach(r => { marker[r.room_id] = tsMs(r.last_read_at); });
             (msgs.data || []).forEach(m => {
                 if (m.sender_id === uid) return;                       // my own messages aren't unread
                 const rid = m.room_id || '';
@@ -56,7 +73,7 @@
                     // set (not yet in _customGroups, or added mid-session) was the reason
                     // group badges/bell never updated while DMs did.
                 }
-                const t = new Date(m.created_at).getTime();
+                const t = tsMs(m.created_at);
                 const seen = marker[rid] || 0;                        // no marker → never opened → all unread
                 if (t > seen) perRoom[rid] = (perRoom[rid] || 0) + 1;
             });

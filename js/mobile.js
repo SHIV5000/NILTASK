@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v167';
+const _MOB_VER = 'v168';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -1239,9 +1239,9 @@ async function _activity(p) {
     const filter = window._afFilter || 'all';
     const senderFilter = window._afSender || '';
     if (mode === 'attention') {
-        // Opening the bell = the attention stream is now seen → clear the bell.
-        _clearBellBadge();
-        try { sb.from('notifications').update({ is_read:true }).eq('user_id',_uid).eq('is_read',false).then(()=>{}); } catch(e){}
+        // Bell = actionable. The badge PERSISTS until the user opens each item (tap →
+        // marks that one read) or taps "Mark all read" — opening the panel no longer
+        // auto-clears everything. (Slack/WhatsApp behaviour.)
     } else {
         // Opening the timeline tab = clear only the subtle "new" dot.
         try { localStorage.setItem('activity_seen_ts', new Date().toISOString()); } catch(e){}
@@ -1292,15 +1292,33 @@ async function _activity(p) {
 
     const pills = [['all','All'],['chats','💬 Chats'],['tasks','📋 Tasks'],['reminders','⏰ Reminders'],['system','🛠 System']];
 
-    const card = (it) => {
+    // Two DISTINCT looks (Slack-style separation):
+    //  • attention (BELL) → a compact "notification list": icon + text + time, unread
+    //    rows highlighted with a blue rail + dot. Tapping opens the item AND marks it
+    //    read (the badge shrinks). Cleared automatically as items are handled.
+    //  • timeline (ACTIVITY) → a "feed" of coloured rail cards on a timeline; items
+    //    PERSIST until the user clears them (× per card / Clear all), like Slack.
+    const openData = (it) => it.act ? (it.act.k==='task'
+        ? `data-action="goToTaskNotif" data-tid="${it.act.id}" data-nid="${it.n.id}"`
+        : `data-action="goToMsgNotif" data-mid="${it.act.id}" data-nid="${it.n.id}"`) : '';
+
+    const notifRow = (it) => {
         const n = it.n;
-        const data = it.act ? (it.act.k==='task'
-            ? `data-action="goToTaskNotif" data-tid="${it.act.id}"`
-            : `data-action="goToMsgNotif" data-mid="${it.act.id}"`) : '';
+        return `<div class="nf-row ${n.is_read?'':'unread'}" ${openData(it)}>
+            <span class="nf-ic ${it.cls}">${it.emoji||'🔔'}</span>
+            <div class="nf-body">
+              <div class="nf-title">${x(_snip(n.message,80))}</div>
+              <div class="nf-time">${_ago(n.created_at)}</div>
+            </div>
+            ${n.is_read?'':'<span class="nf-dot"></span>'}
+        </div>`;
+    };
+    const timelineCard = (it) => {
+        const n = it.n;
         const btn = it.act ? (it.act.k==='task'
-            ? `<button class="af-btn primary" ${data}>📂 View Task</button>`
-            : `<button class="af-btn primary" ${data}>🚀 Open</button>`) : '';
-        return `<div class="af-card ${it.cls} ${n.is_read?'':'unread'}" ${data}>
+            ? `<button class="af-btn primary" ${openData(it)}>📂 View Task</button>`
+            : `<button class="af-btn primary" ${openData(it)}>🚀 Open</button>`) : '';
+        return `<div class="af-card ${it.cls}" ${openData(it)}>
             <button class="af-clear" data-action="afClear" data-nid="${n.id}" title="Clear"><i class="fa-solid fa-xmark"></i></button>
             <span class="af-badge ${it.cls}">${it.badge}</span>
             <div class="af-title">${x(_snip(n.message,70))}</div>
@@ -1308,20 +1326,21 @@ async function _activity(p) {
             ${btn?`<div class="af-actions">${btn}</div>`:''}
         </div>`;
     };
+    const card = mode === 'attention' ? notifRow : timelineCard;
 
     const feed = groups.length ? groups.map(g => `
-        <div class="af-div"><span>🔵 ${g.label}</span><div class="ln"></div></div>
+        <div class="af-div"><span>${mode==='attention'?'':'🔵 '}${g.label}</span><div class="ln"></div></div>
         ${g.items.map(card).join('')}`).join('')
       : `<div class="af-empty"><div class="em">${mode==='attention'?'🔔':'🚀'}</div><div class="t">All caught up!</div>
            <div style="margin-top:6px;">${filter!=='all' ? 'Nothing matches this filter.' : (mode==='attention' ? 'No mentions, replies, reactions, tasks or reminders for you yet.' : 'Team activity — messages, tasks and reminders — will appear here.')}</div></div>`;
 
     const hasAny = _all.length > 0;
-    const html = `<div class="mScr-inner">
+    const html = `<div class="mScr-inner ${mode==='attention'?'nf-mode':'af-mode'}">
       <div class="m-hdr m-hdr-plain" style="display:flex;align-items:center;justify-content:space-between;">
         <div class="m-htitle">${mode==='attention'?'🔔 Notifications':'🗞️ Activity'} ${(mode==='attention'&&unread)?`<span style="background:#2563eb;color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:30px;margin-left:6px;vertical-align:middle;">${unread} new</span>`:''}</div>
         <div style="display:flex;gap:6px;">
-          ${unread?`<button class="m-hdr-action" data-action="markAllRead" title="Mark all read"><i class="fa-solid fa-check-double"></i></button>`:''}
-          ${hasAny?`<button class="m-hdr-action" data-action="afClearAll" title="Clear all"><i class="fa-solid fa-trash-can"></i></button>`:''}
+          ${mode==='attention' && unread?`<button class="m-hdr-action" data-action="markAllRead" title="Mark all read"><i class="fa-solid fa-check-double"></i></button>`:''}
+          ${mode!=='attention' && hasAny?`<button class="m-hdr-action" data-action="afClearAll" title="Clear all"><i class="fa-solid fa-trash-can"></i></button>`:''}
         </div>
       </div>
       <div class="af-filters af-selrow">
@@ -2920,8 +2939,12 @@ async function _onShellClick(e) {
         case 'openTaskFile': await _openTaskFile(a.path); break;
         case 'openNotifs': await _navTo('notifications', { mode:'attention' }); break;   // bell → attention list
         case 'openActivity': await _navTo('activity'); break;                             // bottom tab → timeline
-        case 'goToMsgNotif': await _goToMessage(a.mid); break;
-        case 'goToTaskNotif': await _goToTask(a.tid); break;
+        case 'goToMsgNotif':
+            if (a.nid) { try { await sb.from('notifications').update({ is_read:true }).eq('id',a.nid).eq('user_id',_uid); } catch(e){} _refreshNotifBadge(); }
+            await _goToMessage(a.mid); break;
+        case 'goToTaskNotif':
+            if (a.nid) { try { await sb.from('notifications').update({ is_read:true }).eq('id',a.nid).eq('user_id',_uid); } catch(e){} _refreshNotifBadge(); }
+            await _goToTask(a.tid); break;
         case 'afFilter': window._afFilter = a.f; window._afSender = ''; await window._mobRerenderActivity(); break;
         case 'afSender': window._afSender = a.s || ''; await window._mobRerenderActivity(); break;
         case 'afClear': {
@@ -3449,9 +3472,6 @@ async function _reconcileUnread() {
         allRooms.forEach(rid => { merged[rid] = Math.max(perRoom[rid] || 0, window.unreadCounts?.[rid] || 0); });
         if (openRoom) { merged[openRoom] = 0; delete _liveUnreadTs[openRoom]; }
         window.unreadCounts = merged;
-        // Diagnostic: show which rooms carry unread after reconcile (groups included).
-        const _dbg = Object.entries(merged).filter(([,v])=>v>0).map(([k,v])=>k.slice(0,10)+':'+v).join(' ');
-        console.log('[unread] reconcile '+(_dbg||'(none)'));
         _updateAppBadge();
         _renderBellBadge();   // bell/Activity reflect the reconciled per-room totals (no double, DMs included)
         // SURGICAL badge update (no screen re-render / no slide): patch each visible
@@ -4530,6 +4550,26 @@ function _injectCSS(){
 .m-bmeta{font-size:12.5px;font-weight:600;color:var(--text-secondary,#6b7280);margin-bottom:4px;}
 .m-edited{font-size:10px;font-weight:400;color:var(--text-secondary,#9ca3af);font-style:italic;margin-left:3px;}
 .m-highlight{animation:m-glow-pulse 3s ease-out;}
+/* ── BELL Notifications (attention) — a compact, actionable list, visually
+   distinct from the Activity timeline. Auto-clears as items are opened. ── */
+.nf-mode .af-feed{background:var(--bg-body,#fff);padding:6px 0 90px;gap:0;}
+.nf-mode .af-div span{background:transparent;color:var(--text-secondary,#94a3b8);font-size:11px;letter-spacing:.4px;padding-left:16px;}
+.nf-row{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--border,#eef1f5);background:transparent;position:relative;cursor:pointer;}
+.nf-row:active{background:rgba(37,99,235,.06);}
+.nf-row.unread{background:rgba(37,99,235,.055);box-shadow:inset 3px 0 0 #2563eb;}
+.nf-ic{width:38px;height:38px;flex:0 0 auto;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;background:var(--surface,#f1f5f9);}
+.nf-ic.blue{background:rgba(37,99,235,.12);}.nf-ic.orange{background:rgba(249,115,22,.14);}
+.nf-ic.green{background:rgba(34,197,94,.14);}.nf-ic.purple{background:rgba(168,85,247,.14);}
+.nf-body{flex:1;min-width:0;}
+.nf-title{font-size:14px;color:var(--text-primary,#111);line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+.nf-row.unread .nf-title{font-weight:600;}
+.nf-time{font-size:11.5px;color:var(--text-secondary,#94a3b8);margin-top:3px;}
+.nf-dot{width:9px;height:9px;border-radius:50%;background:#2563eb;flex:0 0 auto;}
+html[data-theme="dark"] .nf-row.unread{background:rgba(37,99,235,.14);}
+html[data-theme="dark"] .nf-ic{background:#1e1e1e;}
+/* Activity timeline (persistent feed) keeps its coloured rail cards + adds a
+   subtle timeline rail so it reads clearly as a "feed", not the bell list. */
+.af-mode .af-feed{position:relative;}
 /* ── Activity Feed ─────────────────────────────────────────── */
 .af-filters{display:flex;gap:8px;overflow-x:auto;padding:10px 14px;border-bottom:1px solid var(--border,#eef1f5);-ms-overflow-style:none;scrollbar-width:none;}
 .af-filters::-webkit-scrollbar{display:none;}

@@ -183,6 +183,17 @@ function renderAdmin() {
 
         <hr style="border:none;border-top:1px solid var(--border-color);margin:0 0 24px;">
 
+        <!-- DEPARTMENTS / GROUPS -->
+        <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;margin-bottom:24px;box-shadow:0 1px 4px rgba(0,0,0,.07);">
+            ${sectionHead('📚 Departments &amp; Groups','Create, rename, archive or restore departments — syncs to every staff member live','groups')}
+            <div style="padding:14px 20px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border-color);">
+                <input type="text" id="newGroupInput" placeholder="New department / group name…" maxlength="30" style="flex:1;min-width:180px;padding:9px 12px;border:1px solid var(--border-color);border-radius:9px;background:var(--bg-body);color:var(--text-primary);font-size:14px;">
+                <input type="color" id="newGroupColor" value="#6366f1" title="Group colour" style="width:42px;height:38px;border:1px solid var(--border-color);border-radius:9px;background:none;cursor:pointer;">
+                <button class="btn-accent btn-sm" onclick="window.admCreateGroup()"><i class="fa-solid fa-plus"></i> Add</button>
+            </div>
+            <div id="groupsContainer" style="padding:14px 20px;"><span style="font-size:13px;color:var(--text-secondary);">Loading…</span></div>
+        </div>
+
         <!-- ROLES & PERMISSIONS -->
         <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);border-radius:16px;overflow:hidden;margin-bottom:24px;
              box-shadow:0 1px 4px rgba(0,0,0,.07);">
@@ -664,6 +675,7 @@ let allStaff = [];
 
 async function loadAdminData() {
     await Promise.all([ loadSubscription(), loadStaff() ]);
+    try { window.loadGroups?.(); } catch (e) {}   // populate the Departments/Groups card (desktop)
 }
 
 async function loadSubscription() {

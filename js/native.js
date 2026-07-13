@@ -45,7 +45,15 @@
     var tid = window.currentTenantId;
     if (!uid || !tid || !window.sb) return; // not logged in yet — retried by the poller
     _tokenSaved = token;
+    try { window.__lastPushToken = token; } catch (e) {}
     try {
+      // A device belongs to exactly ONE signed-in user. Clear any rows that map
+      // THIS device token to a DIFFERENT user first — otherwise pushes meant for
+      // a previously-signed-in account on this phone keep landing here (the user
+      // saw "notifications for messages I sent / other people's chats"). Then
+      // upsert the token under the current user.
+      window.sb.from('push_tokens').delete().eq('token', token).neq('user_id', uid)
+        .then(function () {}, function () {});
       window.sb.from('push_tokens').upsert(
         { user_id: uid, tenant_id: tid, token: token, platform: platform, updated_at: new Date().toISOString() },
         { onConflict: 'token' }

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v179';
+const _MOB_VER = 'v180';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -30,6 +30,7 @@ let _pendingDeptPhoto = null;
 // unchanged) that carries BOTH postgres_changes AND all broadcasts. Fewer joins,
 // fewer failure points, one place to heal.
 let _rtChannel = null;
+let _presenceChannel = null;   // Supabase Presence: instant online/offline for the green/maroon dots
 // Broadcast on the single shared channel. self:false already stops our own echo, so
 // every other client (web src:'w', mobile src:'m') receives it once.
 function _bcSend(event, payload) {
@@ -99,22 +100,44 @@ function _roleChip(userId) {
 
 // Standard presence palette (per request): dark green = online, maroon = offline.
 const _ONLINE_GREEN = '#15803d', _OFFLINE_MAROON = '#7f1d1d';
+// Live-presence set, populated INSTANTLY by the Supabase presence channel
+// (join/leave). This is the authoritative "online now" signal; the last_seen
+// timestamp is only a fallback when the presence socket is momentarily down.
+const _onlineSet = new Set();
+function _isOnline(uid) {
+    if (_onlineSet.has(uid)) return true;
+    const u = _users.find(u => u.id === uid);
+    const diffMin = u?.last_seen ? (Date.now() - new Date(u.last_seen).getTime()) / 60000 : Infinity;
+    return diffMin < 3;
+}
 function _onlineStatus(uid) {
+    if (_isOnline(uid)) return `<span style="color:${_ONLINE_GREEN};font-weight:700;">● Online</span>`;
     const u = _users.find(u => u.id === uid);
     if (!u?.last_seen) return `<span style="color:${_OFFLINE_MAROON};font-weight:700;">● Offline</span>`;
     const diffMin = (Date.now() - new Date(u.last_seen).getTime()) / 60000;
-    if (diffMin < 3)    return `<span style="color:${_ONLINE_GREEN};font-weight:700;">● Online</span>`;
     if (diffMin < 60)   return `Last seen ${Math.round(diffMin)}m ago`;
     if (diffMin < 1440) return `Last seen ${Math.round(diffMin/60)}h ago`;
     return `<span style="color:${_OFFLINE_MAROON};font-weight:700;">● Offline</span>`;
 }
 
 function _onlineDot(uid) {
-    const u = _users.find(u => u.id === uid);
-    const diffMin = u?.last_seen ? (Date.now() - new Date(u.last_seen).getTime()) / 60000 : Infinity;
-    const online = diffMin < 3;
     // Dark green when online, maroon when offline — shown on every avatar.
-    return `<span class="m-presence-dot" style="background:${online ? _ONLINE_GREEN : _OFFLINE_MAROON};"></span>`;
+    return `<span class="m-presence-dot" style="background:${_isOnline(uid) ? _ONLINE_GREEN : _OFFLINE_MAROON};"></span>`;
+}
+// Repaint EVERY presence dot currently on screen (used on presence sync/join/leave).
+function _repaintAllDots() {
+    document.querySelectorAll('[data-uid]').forEach(el => {
+        const uid = el.getAttribute('data-uid');
+        const holder = el.querySelector('div[style*="position:relative"]');
+        if (!holder) return;
+        holder.querySelector('.m-presence-dot')?.remove();
+        const html = _onlineDot(uid);
+        if (html) holder.insertAdjacentHTML('beforeend', html);
+    });
+    // DM header status line, if a DM is open.
+    document.querySelectorAll('[data-online-uid]').forEach(el => {
+        el.innerHTML = _onlineStatus(el.getAttribute('data-online-uid'));
+    });
 }
 
 // Top-bar connectivity chip: dark-green "Online" when the device has a network
@@ -999,6 +1022,11 @@ window._confirmLogout = async function() {
     if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
     if (_rtOutageTimer) { clearTimeout(_rtOutageTimer); _rtOutageTimer = null; }
     _rtToastShown = false;
+    // Untrack presence so everyone sees me go offline immediately on sign-out.
+    try { if (_presenceChannel) { await sb.removeChannel(_presenceChannel); _presenceChannel = null; } } catch (e) {}
+    _onlineSet.clear();
+    // Also drop this device's push token so its next owner doesn't inherit my pushes.
+    try { const _t = window.__lastPushToken; if (_t && _uid) await sb.from('push_tokens').delete().eq('token', _t).eq('user_id', _uid); } catch (e) {}
     // Clear all tenant-scoped localStorage data
     if (_tid) {
         const prefix = _tid+'_';
@@ -1261,8 +1289,12 @@ window._filterChatMsgs = function(q, areaId) {
 };
 window._showRoomMenu = function(roomId, roomName) {
     const sheet = _el('mSheetInner');
-    const canGear = (window.canSeeGroupGear?.() ?? false) || _isDeptAdmin(roomId);   // role manager OR dept co-admin
-    const members = (() => { try { return JSON.parse(_lsGet('dept_members_'+roomId)||'[]'); } catch { return []; } })();
+    const isDM = String(roomId).startsWith('dm_');
+    // A DM has no group photo and no "manage" surface — you cannot set another
+    // person's profile photo. Only group-photo/manage/staff are gated to admins;
+    // for a DM the menu is Mute only.
+    const canManage = !isDM && ((window.canSeeGroupGear?.() ?? false) || _isDeptAdmin(roomId));
+    const members = isDM ? [] : (() => { try { return JSON.parse(_lsGet('dept_members_'+roomId)||'[]'); } catch { return []; } })();
     const isMuted = _lsGet('muted_'+roomId) === '1';
     sheet.innerHTML = `
       <div class="m-sheet-handle"></div>
@@ -1275,10 +1307,10 @@ window._showRoomMenu = function(roomId, roomName) {
         ${members.length ? `<div class="m-sheet-row" data-action="viewMembersSheet" data-room="${roomId}">
           <i class="fa-solid fa-users" style="color:#0ea5e9;"></i> Staff (${members.length})
         </div>` : ''}
-        ${canGear ? `<div class="m-sheet-row" data-action="setDeptPhoto" data-dept="${roomId}">
+        ${canManage ? `<div class="m-sheet-row" data-action="setDeptPhoto" data-dept="${roomId}">
           <i class="fa-solid fa-camera" style="color:#10b981;"></i> Change group photo
         </div>` : ''}
-        ${canGear ? `<div class="m-sheet-row" data-action="navMore" data-screen="groupMgmt">
+        ${canManage ? `<div class="m-sheet-row" data-action="navMore" data-screen="groupMgmt">
           <i class="fa-solid fa-pen" style="color:#f59e0b;"></i> Manage group
         </div>` : ''}
       </div>`;
@@ -1756,9 +1788,10 @@ function _bubbleHTML(m, reactionsMap, maxLen=150, replyMap={}, roomCtx={}) {
         const isPending = (m.id||'').startsWith('pending-');
         const otherRead = _lsGet('last_read_other_'+rCtx.room);
         const isRead = !isPending && otherRead && otherRead > (m.created_at||'');
+        // Single tick: maroon = Sent, dark-green = Read (per request).
         if (isPending) statusTick = '<span class="m-tick pending">⏳</span>';
-        else if (isRead) statusTick = '<span class="m-tick read">✓✓</span>';
-        else statusTick = '<span class="m-tick sent">✓✓</span>';
+        else if (isRead) statusTick = '<span class="m-tick read">✓</span>';
+        else statusTick = '<span class="m-tick sent">✓</span>';
     }
     const roleChip = (!me && rCtx.room) ? _roleChip(m.sender_id) : '';
     return `
@@ -2160,7 +2193,7 @@ async function _dm(p) {
         <div style="position:relative;flex-shrink:0;">${_avatarHTML(otherUser?.avatar_url, p.name, 'var(--accent)', 'm-av-sm')}${_onlineDot(p.uid)}</div>
         <div class="m-htitle-wrap">
           <div class="m-htitle">${x(p.name)} ${roleTag}</div>
-          ${onlineStat ? `<div class="m-hsubtitle">${onlineStat}</div>` : ''}
+          <div class="m-hsubtitle" data-online-uid="${p.uid}">${onlineStat}</div>
         </div>
         <button class="m-hdr-action" onclick="window._toggleChatSearch('mDMArea')"><i class="fa-solid fa-magnifying-glass"></i></button>
         <button class="m-hdr-menu" onclick="window._showRoomMenu('${p.room}','${window.escapeJs(p.name)}')"><i class="fa-solid fa-ellipsis-vertical"></i></button>
@@ -3210,7 +3243,12 @@ async function _onShellClick(e) {
         case 'navGroupMgmt':   _navTo('groupMgmt'); break;
         case 'saveProfile':    await _saveProfile(); break;
         case 'setMyPhoto':   _el('mMyPhotoInput')?.click(); break;
-        case 'setDeptPhoto': _pendingDeptPhoto = a.dept; _el('mDeptPhotoInput')?.click(); break;
+        case 'setDeptPhoto': {
+            // Never allow a DM (setting another person's photo) or a non-admin.
+            if (String(a.dept||'').startsWith('dm_')) { _toast('Not available for direct messages','err'); break; }
+            if (!((window.canSeeGroupGear?.() ?? false) || _isDeptAdmin(a.dept))) { _toast('Only a group admin can change the photo','err'); break; }
+            _pendingDeptPhoto = a.dept; _el('mDeptPhotoInput')?.click(); break;
+        }
         case 'changePassword': await _changePassword(); break;
         case 'downloadTaskPdf':
             if (typeof window.downloadTaskPDF === 'function') await window.downloadTaskPDF(a.id);
@@ -3541,7 +3579,7 @@ function _initRealtime() {
         // Upgrade tick marks to blue (read) for visible sent messages in this room
         const top = _stack[_stack.length-1];
         if (top?.params?.room === p.payload.room) {
-            document.querySelectorAll('.m-tick.sent').forEach(el => { el.className = 'm-tick read'; el.textContent = '✓✓'; });
+            document.querySelectorAll('.m-tick.sent').forEach(el => { el.className = 'm-tick read'; el.textContent = '✓'; });
         }
     };
     // ── ONE channel on a UNIQUE mobile-only topic carrying BOTH postgres_changes
@@ -3591,6 +3629,7 @@ function _initRealtime() {
     _refreshNotifBadge();
     _reconcileUnread();   // initial DB-derived per-chat unread (survives reload/flap)
     // Realtime badge update already wired via postgres_changes INSERT on notifications — no polling needed
+    _initPresence();
   } catch (e) {
     // Never let a realtime setup error crash app boot (v159 lesson). Log, drop any
     // half-built channel, and let the reconnect backoff retry — the poll keeps the
@@ -3606,6 +3645,29 @@ function _initRealtime() {
 // flaky WiFi the channel drops often and those updates are missed — so other
 // users' green dots vanished after 3 min and never came back. This re-fetch (on
 // the 60s heartbeat + on realtime recovery) keeps them accurate regardless.
+// Instant online/offline via a Supabase Presence channel. Joining the channel
+// marks me online for everyone; the socket closing (app closed/killed/offline)
+// makes the server emit a 'leave' so others see me go maroon in real time —
+// something the 60s last_seen poll can't do. self-tracked with my uid.
+function _initPresence() {
+    if (!_tid || !_uid) return;
+    try { if (_presenceChannel) { sb.removeChannel(_presenceChannel); _presenceChannel = null; } } catch (e) {}
+    const applySync = () => {
+        try {
+            const st = _presenceChannel.presenceState();
+            _onlineSet.clear();
+            Object.keys(st).forEach(k => (st[k] || []).forEach(m => { if (m.uid) _onlineSet.add(m.uid); }));
+            _repaintAllDots();
+        } catch (e) {}
+    };
+    _presenceChannel = sb.channel('presence-' + _tid, { config: { presence: { key: _uid } } })
+        .on('presence', { event: 'sync' }, applySync)
+        .on('presence', { event: 'join' },  ({ newPresences }) => { (newPresences || []).forEach(p => p.uid && _onlineSet.add(p.uid)); _repaintAllDots(); })
+        .on('presence', { event: 'leave' }, ({ leftPresences }) => { (leftPresences || []).forEach(p => p.uid && _onlineSet.delete(p.uid)); _repaintAllDots(); })
+        .subscribe(async status => {
+            if (status === 'SUBSCRIBED') { try { await _presenceChannel.track({ uid: _uid, at: Date.now() }); } catch (e) {} }
+        });
+}
 async function _refreshPresence() {
     if (!_tid || document.visibilityState !== 'visible') return;
     try {
@@ -5123,10 +5185,10 @@ html[data-theme="dark"] #mMentionBox{background:#1e1e1e;border-color:#333;}
 
 /* Message status ticks */
 .m-status-row{display:flex;justify-content:flex-end;margin-top:3px;}
-.m-tick{font-size:11px;font-weight:700;}
-.m-tick.sent{color:var(--text-secondary,#9ca3af);}
-.m-tick.read{color:var(--accent,#6366f1);}
-.m-tick.pending{font-size:12px;}
+.m-tick{font-size:13px;font-weight:800;}
+.m-tick.sent{color:#7f1d1d;}
+.m-tick.read{color:#15803d;}
+.m-tick.pending{font-size:12px;color:#7f1d1d;}
 
 /* Typing indicator */
 .m-typing-area{min-height:0;padding:0 14px;transition:min-height .2s;}

@@ -191,7 +191,7 @@ Deno.serve(async (req) => {
     if (notifRows.length) {
       try {
         await supabase.from('notifications')
-          .upsert(notifRows, { onConflict: 'user_id,message_id', ignoreDuplicates: true });
+          .upsert(notifRows, { onConflict: 'user_id,message_id,type', ignoreDuplicates: true });
       } catch (e) {
         console.log('send-push notif insert error', (e as any)?.message);
       }

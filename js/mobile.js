@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v178';
+const _MOB_VER = 'v179';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -316,6 +316,14 @@ window.initMobileApp = async function() {
     // Hydrate the room-message mirror from IndexedDB in parallel with the
     // context load — chats then open instantly with up to 150 cached messages.
     await Promise.all([_ctx(), _hydrateRoomCaches()]);
+    // NAME FIX: the shell (header) was built BEFORE _ctx resolved the display name
+    // from profiles, so repaint the name label now that window.currentUser.full_name
+    // is synced — verbatim, preserving the inline connection chip.
+    try {
+        const _u = _el('mSBInfo')?.querySelector('.m-sb-user');
+        const _nm = window.currentUser?.full_name || _uname(_uid) || window.currentUser?.email?.split('@')[0] || 'User';
+        if (_u) _u.innerHTML = x(_nm) + '<span id="mConnState" class="m-conn"></span>';
+    } catch (e) {}
     // Principals/admins get a toggle to the Admin Panel (permission known after _ctx).
     if (window.currentPermissions?.admin_panel) _el('mSBAdmin')?.style.setProperty('display','flex');
     // Resume where the user left off last session (#7). Falls back to home if the
@@ -609,6 +617,14 @@ async function _ctx() {
         }
     }
     if (_users.length) _usersLoaded = true;
+    // NAME FIX: window.currentUser is the Supabase AUTH user (no full_name), so the
+    // header fell back to the email prefix and reverted on every reload. Sync the
+    // edited display name from the profiles-backed _users list onto currentUser so
+    // the header shows the same verbatim name as the message bubbles (_uname).
+    if (_uid && window.currentUser) {
+        const me = _users.find(u => u.id === _uid);
+        if (me?.full_name) window.currentUser.full_name = me.full_name;
+    }
     if (!_tid) {
         console.error('[mob] No tenant_id found for user — aborting session');
         _toast('Account configuration error. Please contact your administrator.', 'err');
@@ -4836,9 +4852,6 @@ html[data-theme="dark"] .mn-btn.active i{background:rgba(129,140,248,.2);}
 .nf-row.unread .nf-title{font-weight:600;}
 .nf-time{font-size:11.5px;color:var(--text-secondary,#94a3b8);margin-top:3px;}
 .nf-dot{width:9px;height:9px;border-radius:50%;background:#2563eb;flex:0 0 auto;}
-/* READ notifications / already-SEEN activity dim to ~40% opacity (latest/unread stay full). */
-.nf-row:not(.unread){opacity:.55;}
-.af-card.seen{opacity:.55;}
 .nf-clear{flex:0 0 auto;width:30px;height:30px;border-radius:50%;border:none;background:transparent;
   color:var(--text-secondary,#9ca3af);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
 .nf-clear:active{background:rgba(148,163,184,.2);}

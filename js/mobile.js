@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v183';
+const _MOB_VER = 'v184';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -31,6 +31,11 @@ let _pendingDeptPhoto = null;
 // fewer failure points, one place to heal.
 let _rtChannel = null;
 let _presenceChannel = null;   // Supabase Presence: instant online/offline for the green/maroon dots
+// Rooms we've seen a live message for this session. Since Patch Set 2 removed the
+// hand-increment that used to seed window.unreadCounts, reconcile needs another way
+// to know about a room that isn't in DEPTS/_customGroups yet (e.g. a group created
+// on another device, or 'general') — otherwise its unread is never computed.
+const _seenRooms = new Set();
 // Broadcast on the single shared channel. self:false already stops our own echo, so
 // every other client (web src:'w', mobile src:'m') receives it once.
 function _bcSend(event, payload) {
@@ -3595,7 +3600,11 @@ function _initRealtime() {
     //    (cosmetic) are not bridged. self:false drops our own echo; handlers de-dupe
     //    against the postgres path (_seenMsgIds, reaction re-fetch) so no double render.
     _rtChannel = sb.channel('mobile-rt-'+_tid, { config: { broadcast: { self: false } } })
-        .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => { console.log('[MESSAGE INSERT]', p.new?.room_id, p.new?.id); _onNewMessage(p.new); })
+        .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => {
+            console.log('[MESSAGE]', { room: p.new?.room_id, sender: p.new?.sender_id, message: p.new?.id });
+            if (p.new?.room_id) _seenRooms.add(p.new.room_id);   // ensure reconcile computes unread even for rooms not in DEPTS/_customGroups
+            _onNewMessage(p.new);
+        })
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'reactions', filter:`tenant_id=eq.${_tid}` }, p => _onReactionChange(p.new, 'INSERT'))
         .on('postgres_changes', { event:'DELETE', schema:'public', table:'reactions' }, p => _onReactionChange(p.old, 'DELETE'))
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'task_assignees', filter:`tenant_id=eq.${_tid}` }, p => _onTaskAssigneeUpdate(p.new))
@@ -3744,7 +3753,6 @@ function _onNotifInsert(n) {
 // "sometimes works / mostly misbehaves": they no longer fight via a max().
 async function _refreshNotifBadge() {
     _bellCount = await window.NFA_unreadCount(sb, _uid);   // pure notification unread
-    console.log('[BELL]', { badge: _bellCount });
     _renderBellBadge();
     _updateAppBadge();
     _liveRefreshActivity();   // if the Activity screen is open, refresh it live
@@ -3777,6 +3785,10 @@ async function _reconcileUnread() {
         // group not in _customGroups) — otherwise the allow-list drops its unread on
         // the next reconcile, so group counts flashed then vanished from the bell.
         Object.keys(window.unreadCounts || {}).forEach(rid => rooms.add(rid));
+        // Rooms seen live this session (incl. groups not in DEPTS/_customGroups) — the
+        // seed the removed hand-increment used to provide (Patch Set 2 regression fix).
+        _seenRooms.forEach(rid => rooms.add(rid));
+        console.log('[ROOM IDS]', [...rooms]);
         const { perRoom } = await window.NFA_computeRoomUnread(sb, { uid: _uid, tid: _tid, rooms });
         const top = _stack[_stack.length - 1];
         const openRoom = (top?.screen === 'groupChat' || top?.screen === 'dm') ? top.params?.room : null;
@@ -3895,6 +3907,8 @@ function _renderBellBadge() {
     const badge = _el('mNotifBadge');
     if (badge) {
         const bt = _bellTotal();   // attention + all unread messages (DM + group), WhatsApp/Slack style
+        // Truthful trace: the RENDERED bell = notifications + summed message unread.
+        console.log('[BELL]', { rendered: bt, notif: _bellCount, msgUnread: _sumUnread() });
         if (bt > 0) { badge.textContent = bt > 9 ? '9+' : String(bt); badge.style.display = 'flex'; }
         else badge.style.display = 'none';
     }

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v188';
+const _MOB_VER = 'v189';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -336,9 +336,7 @@ window.initMobileApp = async function() {
         document.head.appendChild(s);
     }
     _el('root')?.style.setProperty('display', 'none', 'important');
-    // Unread store is read-only from here on: only _reconcileUnread reassigns it
-    // (frozen). No hand-increments / resets anywhere — the DB (room_reads) is truth.
-    window.unreadCounts = Object.freeze({ ...(window.unreadCounts || {}) });
+    window.unreadCounts = window.unreadCounts || {};
     _applyMobTheme();   // System (default) / Light / Dark — user-controlled from the top bar
     _injectCSS();
     _buildShell();
@@ -1111,10 +1109,12 @@ window._navTo = async function(screen, params, replace = false) {
     // activity badge from the REMAINING unread chats (sync across all surfaces),
     // and persist "read" for this room's notifications so the DB poll agrees.
     if ((screen === 'groupChat' || screen === 'dm') && params?.room) {
-        // SINGLE SOURCE OF TRUTH: never hand-set the count to 0. Mark the room read
-        // at the DB (room_reads) — the unread engine then derives 0 for it. This is
-        // what stops mobile and desktop drifting apart.
+        // Clear this room instantly, AND persist the read at the DB (room_reads) so
+        // the reconcile floor agrees and it stays cleared across reload/reconnect.
         console.log('[ROOM READ]', params.room);
+        window.unreadCounts = window.unreadCounts || {};
+        window.unreadCounts[params.room] = 0;
+        delete _liveUnreadTs[params.room];
         try { sb.from('room_reads').upsert({ user_id:_uid, room_id:params.room, tenant_id:_tid, last_read_at:new Date().toISOString() }, { onConflict:'user_id,room_id' }).then(()=>{}); } catch(e){}
         refreshNotificationUI();   // reconcile derives the correct counts (open room forced to 0)
         // Do NOT clobber _bellCount with _sumUnread() here: _sumUnread counts only
@@ -3824,9 +3824,9 @@ async function _reconcileUnread() {
         const allRooms = new Set([...Object.keys(perRoom), ...Object.keys(window.unreadCounts || {})]);
         allRooms.forEach(rid => { merged[rid] = Math.max(perRoom[rid] || 0, window.unreadCounts?.[rid] || 0); });
         if (openRoom) { merged[openRoom] = 0; delete _liveUnreadTs[openRoom]; }
-        // The ONLY place window.unreadCounts is (re)assigned. Frozen so stray manual
-        // writes elsewhere surface immediately instead of silently drifting.
-        window.unreadCounts = Object.freeze({ ...merged });
+        // Max-merge floor: reconcile can only ADD counts the live path missed; it
+        // never wipes a live increment (that's what made group badges vanish).
+        window.unreadCounts = merged;
         console.log('[UNREAD]', { rooms: Object.keys(window.unreadCounts || {}).length, counts: window.unreadCounts });
         // AUTO-DIAGNOSTIC (Patch 6 follow-up): a GROUP that has unread but is NOT in
         // the rendered group list (_customGroups ∪ DEPTS) has NOWHERE to show a badge
@@ -4109,12 +4109,15 @@ async function _onNewMessage(m) {
             // (A reply to MY message creates a notification; the single
             // refreshNotificationUI() below covers the bell — no separate call.)
         }
-        // SINGLE SOURCE OF TRUTH: do NOT hand-increment. The realtime INSERT fires
-        // AFTER the row is committed, so the unread engine (room_reads + messages)
-        // already counts it. Ask it to recompute instead of racing a manual +1 —
-        // this is what stops mobile/desktop drifting apart.
-        _patchHomeUnread(m.room_id, m);         // update the row's last-message PREVIEW now (badge follows reconcile)
-        _activityHasNew = true; refreshNotificationUI();   // reconcile → correct badge + bell + feed
+        // INSTANT per-chat badge (WhatsApp-style): bump immediately so the group/DM
+        // badge appears the moment the realtime event lands — do not wait for the DB
+        // reconcile (which reads only the newest tenant messages and can miss a busy
+        // tenant's quiet room). reconcile still runs below as a max-merge floor.
+        window.unreadCounts = window.unreadCounts || {};
+        window.unreadCounts[m.room_id] = (window.unreadCounts[m.room_id] || 0) + 1;
+        _liveUnreadTs[m.room_id] = Date.now();  // grace: reconcile must not wipe this before replication catches up
+        _patchHomeUnread(m.room_id, m);         // paint the new badge + last-message preview now
+        _activityHasNew = true; refreshNotificationUI();   // reconcile (floor) + bell + feed
 
         if (!m.parent_message_id) {
             const sender = _users.find(u=>u.id===m.sender_id);

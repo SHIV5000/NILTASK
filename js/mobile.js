@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v187';
+const _MOB_VER = 'v188';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -980,14 +980,20 @@ function _buildShell() {
             _swipeRow.style.transform = ''; _swipeRow = null; _swipeLocked = null; return;
         }
         if (_swipeLocked === 'h' && dx > 0) {
-            _swipeRow.style.transform = `translateX(${Math.min(dx, 70)}px)`;
+            // Feel: 20px dead-zone before the bubble starts moving, gentle resistance
+            // past the trigger, fires at ~70px with a haptic tick (once, on crossing).
+            const START = 20, TRIGGER = 70, MAX = 84;
+            const shift = Math.min(Math.max(0, dx - START), MAX);
+            _swipeRow.style.transform = `translateX(${shift}px)`;
             _swipeRow.style.transition = 'none';
-            _swipeTriggered = dx > 45;
+            const nowTrig = dx >= TRIGGER;
+            if (nowTrig && !_swipeTriggered) { try { navigator.vibrate?.(12); } catch(e){} }
+            _swipeTriggered = nowTrig;
         }
     }, { passive: true });
     const _swipeEnd = () => {
         if (!_swipeRow) { _swipeStart = null; _swipeLocked = null; return; }
-        _swipeRow.style.transition = 'transform .2s ease';
+        _swipeRow.style.transition = 'transform .28s cubic-bezier(.22,1,.36,1)';   // smooth spring-back
         _swipeRow.style.transform = '';
         if (_swipeTriggered) {
             const msgId = _swipeRow.id.replace('row-','');
@@ -2113,6 +2119,19 @@ async function _thread(p) {
         .is('deleted_at',null).order('created_at',{ascending:true});
 
     const reactionsMap = await _fetchReactions((replies||[]).map(m=>m.id));
+    // Parent preview: sender + first line + 📎 for attachments; "Original message
+    // unavailable" if it was deleted (instead of a blank/stale quote). Fetched fresh
+    // so a since-deleted parent is reflected.
+    let _pv;
+    try {
+        const { data: par } = await sb.from('messages').select('text,sender_id,deleted_at').eq('id', p.id).maybeSingle();
+        if (!par || par.deleted_at) {
+            _pv = { sender: p.sender || '', body: '<em style="opacity:.6;">Original message unavailable</em>' };
+        } else {
+            const plain = String(par.text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+            _pv = { sender: (_uname(par.sender_id) || p.sender || ''), body: plain ? x(_snip(plain, 140)) : '📎 Attachment' };
+        }
+    } catch (e) { _pv = { sender: p.sender || '', body: _renderLinkPills(p.text || '') }; }
     // Header reads "Reply to <Name>" (WhatsApp-style), not the generic "Thread".
     const _who = (p.sender || '').split('·')[0].split('•')[0].trim() || 'message';
 
@@ -2126,8 +2145,8 @@ async function _thread(p) {
       </div>
       <div class="m-msgs" id="mThreadArea">
         <div class="m-thread-parent">
-          <div class="m-bmeta">${x(p.sender||'')} · ${p.time||''}</div>
-          <div class="m-btext">${_renderLinkPills(p.text||'')}</div>
+          <div class="m-bmeta">${x(_pv.sender)}${p.time?` · ${p.time}`:''}</div>
+          <div class="m-btext">${_pv.body}</div>
         </div>
         ${replies?.length ? `<div class="m-thread-sep">${replies.length} ${replies.length===1?'Reply':'Replies'}</div>` : ''}
         ${(replies||[]).map(m=>_bubbleHTML(m,reactionsMap,160)).join('')}

@@ -129,9 +129,15 @@
     let _lastUnread = 0;
     async function unreadCount(sb, uid) {
         try {
+            // Count ONLY notification types that are NOT already message-unread:
+            // reply/mention/message are real chat messages → already counted in the
+            // per-room unread (_sumUnread on mobile). Counting them here too made the
+            // bell double (reply/mention showed as 2). reaction/task/reminder have no
+            // per-room unread, so they must stay on the bell.
             const { count, error } = await sb.from('notifications')
                 .select('*', { count: 'exact', head: true })
-                .eq('user_id', uid).eq('is_read', false);
+                .eq('user_id', uid).eq('is_read', false)
+                .not('type', 'in', '(reply,mention,message)');
             if (error) return _lastUnread;          // query failed → don't wipe the badge
             _lastUnread = count || 0;
             return _lastUnread;

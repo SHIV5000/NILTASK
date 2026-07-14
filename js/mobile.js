@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v186';
+const _MOB_VER = 'v187';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -1796,10 +1796,10 @@ function _bubbleHTML(m, reactionsMap, maxLen=150, replyMap={}, roomCtx={}) {
         const isPending = (m.id||'').startsWith('pending-');
         const otherRead = _lsGet('last_read_other_'+rCtx.room);
         const isRead = !isPending && otherRead && otherRead > (m.created_at||'');
-        // Single tick: maroon = Sent, dark-green = Read (per request).
-        if (isPending) statusTick = '<span class="m-tick pending">⏳</span>';
-        else if (isRead) statusTick = '<span class="m-tick read">✓</span>';
-        else statusTick = '<span class="m-tick sent">✓</span>';
+        // Text status (per request): maroon "Sent" → dark-green "Seen".
+        if (isPending) statusTick = '<span class="m-tick pending">Sending…</span>';
+        else if (isRead) statusTick = '<span class="m-tick read">Seen</span>';
+        else statusTick = '<span class="m-tick sent">Sent</span>';
     }
     const roleChip = (!me && rCtx.room) ? _roleChip(m.sender_id) : '';
     return `
@@ -3587,7 +3587,7 @@ function _initRealtime() {
         // Upgrade tick marks to blue (read) for visible sent messages in this room
         const top = _stack[_stack.length-1];
         if (top?.params?.room === p.payload.room) {
-            document.querySelectorAll('.m-tick.sent').forEach(el => { el.className = 'm-tick read'; el.textContent = '✓'; });
+            document.querySelectorAll('.m-tick.sent').forEach(el => { el.className = 'm-tick read'; el.textContent = 'Seen'; });
         }
     };
     // ── ONE channel on a UNIQUE mobile-only topic carrying BOTH postgres_changes
@@ -5221,10 +5221,10 @@ html[data-theme="dark"] #mMentionBox{background:#1e1e1e;border-color:#333;}
 
 /* Message status ticks */
 .m-status-row{display:flex;justify-content:flex-end;margin-top:3px;}
-.m-tick{font-size:13px;font-weight:800;}
-.m-tick.sent{color:#7f1d1d;}
-.m-tick.read{color:#15803d;}
-.m-tick.pending{font-size:12px;color:#7f1d1d;}
+.m-tick{font-size:10.5px;letter-spacing:.3px;text-transform:uppercase;}
+.m-tick.sent{color:#7b1e3a;font-weight:600;}
+.m-tick.read{color:#166534;font-weight:700;}
+.m-tick.pending{color:#7b1e3a;font-weight:600;text-transform:none;}
 
 /* Typing indicator */
 .m-typing-area{min-height:0;padding:0 14px;transition:min-height .2s;}

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v180';
+const _MOB_VER = 'v181';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -437,10 +437,8 @@ window.initMobileApp = async function() {
     // OPEN chat, and the Activity feed, so a screen that went stale while the socket
     // was dead catches up instantly instead of waiting for the next poll tick.
     const _foregroundResync = () => {
-        try { _refreshNotifBadge(); } catch (e) {}
-        try { _reconcileUnread(); } catch (e) {}
+        refreshNotificationUI();                       // bell + unread + app badge + feed, together
         try { _pendingRefresh?.(); } catch (e) {}      // re-pull the currently open chat
-        try { _liveRefreshActivity(); } catch (e) {}   // re-pull the Activity/Notifications screen if open
         _ensureRealtimeAlive();
     };
     document.addEventListener('visibilitychange', () => {
@@ -1102,7 +1100,7 @@ window._navTo = async function(screen, params, replace = false) {
         window.unreadCounts = window.unreadCounts || {};
         window.unreadCounts[params.room] = 0;
         _updateAppBadge();
-        _renderBellBadge();   // instant: drop this room's messages from the bell/Activity count now
+        refreshNotificationUI();   // instant: drop this room's messages from the bell/Activity count now (badge+unread+feed together)
         // Do NOT clobber _bellCount with _sumUnread() here: _sumUnread counts only
         // MESSAGE unread, so it would wrongly wipe the count coming from reaction/
         // reply/mention notifications (which have no per-chat unread), then the 60s
@@ -3726,10 +3724,8 @@ async function _markRoomNotifsRead(room) {
 // attention stream only — the gap where a reaction/task gave NO mobile alert.
 function _onNotifInsert(n) {
     console.log('[act] notif-recv type='+(n&&n.type)+' mid='+(n&&n.message_id));   // confirms the notifications realtime channel fired
-    _refreshNotifBadge();                 // bell (attention) recomputed from DB
     _activityHasNew = true;               // it also shows in the timeline → light the dot
-    _renderBellBadge();
-    _liveRefreshActivity();
+    refreshNotificationUI();              // bell + per-chat unread + app badge + feed, together
     if (!n || !n.message) return;
     if (n.type === 'mention') return;                 // de-dup with _onNewMessage heads-up
     if (window._isDND?.()) return;                    // Do Not Disturb — silent
@@ -3746,6 +3742,20 @@ async function _refreshNotifBadge() {
     _renderBellBadge();
     _updateAppBadge();
     _liveRefreshActivity();   // if the Activity screen is open, refresh it live
+}
+// Consolidated notification-surface refresh. Keeps the bell badge, per-chat message
+// unread, the app-icon badge and the Activity screen updating TOGETHER, so the bell
+// can never move independently of the counts/feed (the root of "bell sometimes
+// right, mostly wrong"). Call this from event handlers instead of a bare
+// _renderBellBadge(). NOTE: never call it from inside _refreshNotifBadge or
+// _reconcileUnread themselves — that would recurse.
+async function refreshNotificationUI() {
+    try {
+        await _refreshNotifBadge();
+        await _reconcileUnread();
+        _updateAppBadge();
+        _liveRefreshActivity();
+    } catch (err) { console.error('refreshNotificationUI failed:', err); }
 }
 // Reconcile per-chat MESSAGE unread from the DB (room_reads + messages) — the
 // durable source of truth, so counts are correct after reload, realtime flaps
@@ -4056,7 +4066,7 @@ async function _onNewMessage(m) {
         _liveUnreadTs[m.room_id] = Date.now();  // grace marker: don't let the DB reconcile wipe this before replication catches up
         _updateAppBadge();                      // per-chat unread bumped (app icon = messages + attention)
         _patchHomeUnread(m.room_id, m);         // live badge + preview on the chat-list row (no full re-render/flash)
-        _activityHasNew = true; _renderBellBadge();   // a plain message lights the Activity "new" DOT, NOT the bell
+        _activityHasNew = true; refreshNotificationUI();   // plain message: lights Activity dot + keeps counts/feed in lockstep
 
         if (!m.parent_message_id) {
             const sender = _users.find(u=>u.id===m.sender_id);

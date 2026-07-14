@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v181';
+const _MOB_VER = 'v182';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -331,6 +331,9 @@ window.initMobileApp = async function() {
         document.head.appendChild(s);
     }
     _el('root')?.style.setProperty('display', 'none', 'important');
+    // Unread store is read-only from here on: only _reconcileUnread reassigns it
+    // (frozen). No hand-increments / resets anywhere — the DB (room_reads) is truth.
+    window.unreadCounts = Object.freeze({ ...(window.unreadCounts || {}) });
     _applyMobTheme();   // System (default) / Light / Dark — user-controlled from the top bar
     _injectCSS();
     _buildShell();
@@ -1097,10 +1100,11 @@ window._navTo = async function(screen, params, replace = false) {
     // activity badge from the REMAINING unread chats (sync across all surfaces),
     // and persist "read" for this room's notifications so the DB poll agrees.
     if ((screen === 'groupChat' || screen === 'dm') && params?.room) {
-        window.unreadCounts = window.unreadCounts || {};
-        window.unreadCounts[params.room] = 0;
-        _updateAppBadge();
-        refreshNotificationUI();   // instant: drop this room's messages from the bell/Activity count now (badge+unread+feed together)
+        // SINGLE SOURCE OF TRUTH: never hand-set the count to 0. Mark the room read
+        // at the DB (room_reads) — the unread engine then derives 0 for it. This is
+        // what stops mobile and desktop drifting apart.
+        try { sb.from('room_reads').upsert({ user_id:_uid, room_id:params.room, tenant_id:_tid, last_read_at:new Date().toISOString() }, { onConflict:'user_id,room_id' }).then(()=>{}); } catch(e){}
+        refreshNotificationUI();   // reconcile derives the correct counts (open room forced to 0)
         // Do NOT clobber _bellCount with _sumUnread() here: _sumUnread counts only
         // MESSAGE unread, so it would wrongly wipe the count coming from reaction/
         // reply/mention notifications (which have no per-chat unread), then the 60s
@@ -3785,7 +3789,9 @@ async function _reconcileUnread() {
         const allRooms = new Set([...Object.keys(perRoom), ...Object.keys(window.unreadCounts || {})]);
         allRooms.forEach(rid => { merged[rid] = Math.max(perRoom[rid] || 0, window.unreadCounts?.[rid] || 0); });
         if (openRoom) { merged[openRoom] = 0; delete _liveUnreadTs[openRoom]; }
-        window.unreadCounts = merged;
+        // The ONLY place window.unreadCounts is (re)assigned. Frozen so stray manual
+        // writes elsewhere surface immediately instead of silently drifting.
+        window.unreadCounts = Object.freeze({ ...merged });
         _updateAppBadge();
         _renderBellBadge();   // bell/Activity reflect the reconciled per-room totals (no double, DMs included)
         // SURGICAL badge update (no screen re-render / no slide): patch each visible
@@ -4058,15 +4064,12 @@ async function _onNewMessage(m) {
             // (real time) rather than on the 15s poll. Harmless no-op if not for me.
             try { _refreshNotifBadge(); } catch (e) {}
         }
-        // Per-chat unread badge (this chat isn't open) — WhatsApp-style count.
-        // Runs for every received message (incl. replies) so the badges + bell
-        // update the instant the realtime event arrives.
-        window.unreadCounts = window.unreadCounts || {};
-        window.unreadCounts[m.room_id] = (window.unreadCounts[m.room_id] || 0) + 1;
-        _liveUnreadTs[m.room_id] = Date.now();  // grace marker: don't let the DB reconcile wipe this before replication catches up
-        _updateAppBadge();                      // per-chat unread bumped (app icon = messages + attention)
-        _patchHomeUnread(m.room_id, m);         // live badge + preview on the chat-list row (no full re-render/flash)
-        _activityHasNew = true; refreshNotificationUI();   // plain message: lights Activity dot + keeps counts/feed in lockstep
+        // SINGLE SOURCE OF TRUTH: do NOT hand-increment. The realtime INSERT fires
+        // AFTER the row is committed, so the unread engine (room_reads + messages)
+        // already counts it. Ask it to recompute instead of racing a manual +1 —
+        // this is what stops mobile/desktop drifting apart.
+        _patchHomeUnread(m.room_id, m);         // update the row's last-message PREVIEW now (badge follows reconcile)
+        _activityHasNew = true; refreshNotificationUI();   // reconcile → correct badge + bell + feed
 
         if (!m.parent_message_id) {
             const sender = _users.find(u=>u.id===m.sender_id);

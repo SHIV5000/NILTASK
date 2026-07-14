@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v185';
+const _MOB_VER = 'v188';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -980,14 +980,20 @@ function _buildShell() {
             _swipeRow.style.transform = ''; _swipeRow = null; _swipeLocked = null; return;
         }
         if (_swipeLocked === 'h' && dx > 0) {
-            _swipeRow.style.transform = `translateX(${Math.min(dx, 70)}px)`;
+            // Feel: 20px dead-zone before the bubble starts moving, gentle resistance
+            // past the trigger, fires at ~70px with a haptic tick (once, on crossing).
+            const START = 20, TRIGGER = 70, MAX = 84;
+            const shift = Math.min(Math.max(0, dx - START), MAX);
+            _swipeRow.style.transform = `translateX(${shift}px)`;
             _swipeRow.style.transition = 'none';
-            _swipeTriggered = dx > 45;
+            const nowTrig = dx >= TRIGGER;
+            if (nowTrig && !_swipeTriggered) { try { navigator.vibrate?.(12); } catch(e){} }
+            _swipeTriggered = nowTrig;
         }
     }, { passive: true });
     const _swipeEnd = () => {
         if (!_swipeRow) { _swipeStart = null; _swipeLocked = null; return; }
-        _swipeRow.style.transition = 'transform .2s ease';
+        _swipeRow.style.transition = 'transform .28s cubic-bezier(.22,1,.36,1)';   // smooth spring-back
         _swipeRow.style.transform = '';
         if (_swipeTriggered) {
             const msgId = _swipeRow.id.replace('row-','');
@@ -1072,7 +1078,7 @@ function _feedSwipeEnd(e) {
         el.style.transition = 'transform .18s ease,opacity .18s ease';
         el.style.transform = 'translateX(-100%)'; el.style.opacity = '0';
         setTimeout(() => {
-            try { sb.from('notifications').delete().eq('id', nid).eq('user_id', _uid).then(() => { _refreshNotifBadge(); }); } catch (e) {}
+            try { sb.from('notifications').delete().eq('id', nid).eq('user_id', _uid).then(() => { refreshNotificationUI(); }); } catch (e) {}
             el.remove();
         }, 180);
     } else if (moved) {
@@ -1796,10 +1802,10 @@ function _bubbleHTML(m, reactionsMap, maxLen=150, replyMap={}, roomCtx={}) {
         const isPending = (m.id||'').startsWith('pending-');
         const otherRead = _lsGet('last_read_other_'+rCtx.room);
         const isRead = !isPending && otherRead && otherRead > (m.created_at||'');
-        // Single tick: maroon = Sent, dark-green = Read (per request).
-        if (isPending) statusTick = '<span class="m-tick pending">⏳</span>';
-        else if (isRead) statusTick = '<span class="m-tick read">✓</span>';
-        else statusTick = '<span class="m-tick sent">✓</span>';
+        // Text status (per request): maroon "Sent" → dark-green "Seen".
+        if (isPending) statusTick = '<span class="m-tick pending">Sending…</span>';
+        else if (isRead) statusTick = '<span class="m-tick read">Seen</span>';
+        else statusTick = '<span class="m-tick sent">Sent</span>';
     }
     const roleChip = (!me && rCtx.room) ? _roleChip(m.sender_id) : '';
     return `
@@ -2113,6 +2119,19 @@ async function _thread(p) {
         .is('deleted_at',null).order('created_at',{ascending:true});
 
     const reactionsMap = await _fetchReactions((replies||[]).map(m=>m.id));
+    // Parent preview: sender + first line + 📎 for attachments; "Original message
+    // unavailable" if it was deleted (instead of a blank/stale quote). Fetched fresh
+    // so a since-deleted parent is reflected.
+    let _pv;
+    try {
+        const { data: par } = await sb.from('messages').select('text,sender_id,deleted_at').eq('id', p.id).maybeSingle();
+        if (!par || par.deleted_at) {
+            _pv = { sender: p.sender || '', body: '<em style="opacity:.6;">Original message unavailable</em>' };
+        } else {
+            const plain = String(par.text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+            _pv = { sender: (_uname(par.sender_id) || p.sender || ''), body: plain ? x(_snip(plain, 140)) : '📎 Attachment' };
+        }
+    } catch (e) { _pv = { sender: p.sender || '', body: _renderLinkPills(p.text || '') }; }
     // Header reads "Reply to <Name>" (WhatsApp-style), not the generic "Thread".
     const _who = (p.sender || '').split('·')[0].split('•')[0].trim() || 'message';
 
@@ -2126,8 +2145,8 @@ async function _thread(p) {
       </div>
       <div class="m-msgs" id="mThreadArea">
         <div class="m-thread-parent">
-          <div class="m-bmeta">${x(p.sender||'')} · ${p.time||''}</div>
-          <div class="m-btext">${_renderLinkPills(p.text||'')}</div>
+          <div class="m-bmeta">${x(_pv.sender)}${p.time?` · ${p.time}`:''}</div>
+          <div class="m-btext">${_pv.body}</div>
         </div>
         ${replies?.length ? `<div class="m-thread-sep">${replies.length} ${replies.length===1?'Reply':'Replies'}</div>` : ''}
         ${(replies||[]).map(m=>_bubbleHTML(m,reactionsMap,160)).join('')}
@@ -3216,23 +3235,23 @@ async function _onShellClick(e) {
         case 'openNotifs': await _navTo('notifications', { mode:'attention' }); break;   // bell → attention list
         case 'openActivity': await _navTo('activity'); break;                             // bottom tab → timeline
         case 'goToMsgNotif':
-            if (a.nid) { try { await sb.from('notifications').update({ is_read:true }).eq('id',a.nid).eq('user_id',_uid); } catch(e){} _refreshNotifBadge(); }
+            if (a.nid) { try { await sb.from('notifications').update({ is_read:true }).eq('id',a.nid).eq('user_id',_uid); } catch(e){} refreshNotificationUI(); }
             await _goToMessage(a.mid); break;
         case 'goToTaskNotif':
-            if (a.nid) { try { await sb.from('notifications').update({ is_read:true }).eq('id',a.nid).eq('user_id',_uid); } catch(e){} _refreshNotifBadge(); }
+            if (a.nid) { try { await sb.from('notifications').update({ is_read:true }).eq('id',a.nid).eq('user_id',_uid); } catch(e){} refreshNotificationUI(); }
             await _goToTask(a.tid); break;
         case 'afFilter': window._afFilter = a.f; window._afSender = ''; await window._mobRerenderActivity(); break;
         case 'afSender': window._afSender = a.s || ''; await window._mobRerenderActivity(); break;
         case 'afClear': {
             try { await sb.from('notifications').delete().eq('id',a.nid).eq('user_id',_uid); } catch(e){}
-            await _refreshNotifBadge();
+            await refreshNotificationUI();
             await window._mobRerenderActivity();
             break;
         }
         case 'afClearAll': {
             try { await sb.from('notifications').delete().eq('user_id',_uid).eq('tenant_id',_tid); } catch(e){}
             _clearBellBadge();
-            await _refreshNotifBadge();
+            await refreshNotificationUI();
             await window._mobRerenderActivity();
             break;
         }
@@ -3243,7 +3262,7 @@ async function _onShellClick(e) {
                     .eq('user_id',_uid).eq('is_read',false);
             } catch(e){}
             _clearBellBadge();
-            await _refreshNotifBadge();
+            await refreshNotificationUI();
             await window._mobRerenderActivity();
             break;
         }
@@ -3587,7 +3606,7 @@ function _initRealtime() {
         // Upgrade tick marks to blue (read) for visible sent messages in this room
         const top = _stack[_stack.length-1];
         if (top?.params?.room === p.payload.room) {
-            document.querySelectorAll('.m-tick.sent').forEach(el => { el.className = 'm-tick read'; el.textContent = '✓'; });
+            document.querySelectorAll('.m-tick.sent').forEach(el => { el.className = 'm-tick read'; el.textContent = 'Seen'; });
         }
     };
     // ── ONE channel on a UNIQUE mobile-only topic carrying BOTH postgres_changes
@@ -3633,14 +3652,12 @@ function _initRealtime() {
                     // keeps it silent when nothing actually changed.
                     try { _pendingRefresh?.(); } catch (e) {}
                     _refreshPresence();
-                    _refreshNotifBadge();
-                    _reconcileUnread();
+                    refreshNotificationUI();   // reconcile → bell, in the synchronized order
                 }
             }
             if ((status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') && !_rtIntentionalClose) _scheduleRtReconnect();
         });
-    _refreshNotifBadge();
-    _reconcileUnread();   // initial DB-derived per-chat unread (survives reload/flap)
+    refreshNotificationUI();   // initial DB-derived per-chat unread + bell (synchronized order)
     // Realtime badge update already wired via postgres_changes INSERT on notifications — no polling needed
     _initPresence();
   } catch (e) {
@@ -3728,7 +3745,7 @@ async function _markRoomNotifsRead(room) {
     } catch (e) {}
     // Recompute the bell/activity/app badge from the DB truth AFTER marking read,
     // so the count actually goes down on chat-open instead of lagging a poll cycle.
-    try { await _refreshNotifBadge(); } catch (e) {}
+    try { await refreshNotificationUI(); } catch (e) {}
 }
 // In-app alert when a notification row lands (reaction/reply/task/reminder for
 // ME). Always refreshes the badge + feed. Also shows a toast + sound UNLESS:
@@ -3811,6 +3828,15 @@ async function _reconcileUnread() {
         // writes elsewhere surface immediately instead of silently drifting.
         window.unreadCounts = Object.freeze({ ...merged });
         console.log('[UNREAD]', { rooms: Object.keys(window.unreadCounts || {}).length, counts: window.unreadCounts });
+        // AUTO-DIAGNOSTIC (Patch 6 follow-up): a GROUP that has unread but is NOT in
+        // the rendered group list (_customGroups ∪ DEPTS) has NOWHERE to show a badge
+        // — the exact "one group never gets a badge" symptom. Surface it explicitly.
+        try {
+            const listed = new Set([...DEPTS, ..._customGroups].map(g => g.id));
+            const orphans = Object.keys(window.unreadCounts).filter(rid =>
+                !rid.startsWith('dm_') && (window.unreadCounts[rid] > 0) && !listed.has(rid));
+            if (orphans.length) console.warn('[UNREAD ORPHAN GROUPS]', orphans, 'listed=', [..._customGroups.map(g=>g.id)]);
+        } catch (e) {}
         _updateAppBadge();
         _renderBellBadge();   // bell/Activity reflect the reconciled per-room totals (no double, DMs included)
         // SURGICAL badge update (no screen re-render / no slide): patch each visible
@@ -3827,8 +3853,7 @@ async function _reconcileUnread() {
 // it also re-pulls the open chat so a new message still lands within the poll
 // window. Skipped while backgrounded to save battery/network.
 async function _fallbackPoll() {
-    _refreshNotifBadge();
-    _reconcileUnread();
+    await refreshNotificationUI();   // reconcile → bell, synchronized order
     if (document.visibilityState !== 'visible') return;
     // Incremental catch-up for the OPEN chat, ALWAYS (not only when the socket looks
     // dead): the mobile socket frequently reports state='joined' while silently
@@ -4081,9 +4106,8 @@ async function _onNewMessage(m) {
                     console.log('[act] reply-recv thread-link INSERTED');
                 }
             }
-            // A reply to MY message creates a notification — refresh the bell now
-            // (real time) rather than on the 15s poll. Harmless no-op if not for me.
-            try { _refreshNotifBadge(); } catch (e) {}
+            // (A reply to MY message creates a notification; the single
+            // refreshNotificationUI() below covers the bell — no separate call.)
         }
         // SINGLE SOURCE OF TRUTH: do NOT hand-increment. The realtime INSERT fires
         // AFTER the row is committed, so the unread engine (room_reads + messages)
@@ -4099,11 +4123,8 @@ async function _onNewMessage(m) {
             const isDM = m.room_id?.startsWith('dm_');
             const roomLabel = dept ? dept.name : (isDM ? 'a direct message' : 'a group');
             if (!(window._isDND?.()) && !mentionsMe) _showHeadsUp(m, name, isDM, dept);
-            // The notifications ROW is now created server-side by the send-push edge
-            // function (reliable for online/offline/reconnect) — see plan.md Phase 1.
-            // Just refresh the DB-backed badge; the realtime notifications INSERT sub
-            // also fires _refreshNotifBadge when the server row lands.
-            _refreshNotifBadge();
+            // (The notifications ROW is created server-side by send-push; the
+            // refreshNotificationUI() above already refreshed the bell — no extra call.)
         }
         return;
     }
@@ -4145,7 +4166,7 @@ async function _onReactionChange(r, eventType) {
     // arrives in real time (unlike the notifications channel, which may not be in
     // the realtime publication) — so re-pull the bell now instead of waiting up to
     // 15s for the fallback poll. Only for others' reactions (not my own toggles).
-    if (!isDelete && r.user_id && r.user_id !== _uid) { try { _refreshNotifBadge(); } catch (e) {} }
+    if (!isDelete && r.user_id && r.user_id !== _uid) { try { refreshNotificationUI(); } catch (e) {} }
     if (!document.getElementById('row-'+r.message_id)) return;   // not on screen — cached above, render later
     // Render through the SAME reliable path the sender uses (re-fetch from DB +
     // cache, canonical placement, scroll-into-view). This replaced a fragile
@@ -5219,10 +5240,10 @@ html[data-theme="dark"] #mMentionBox{background:#1e1e1e;border-color:#333;}
 
 /* Message status ticks */
 .m-status-row{display:flex;justify-content:flex-end;margin-top:3px;}
-.m-tick{font-size:13px;font-weight:800;}
-.m-tick.sent{color:#7f1d1d;}
-.m-tick.read{color:#15803d;}
-.m-tick.pending{font-size:12px;color:#7f1d1d;}
+.m-tick{font-size:10.5px;letter-spacing:.3px;text-transform:uppercase;}
+.m-tick.sent{color:#7b1e3a;font-weight:600;}
+.m-tick.read{color:#166534;font-weight:700;}
+.m-tick.pending{color:#7b1e3a;font-weight:600;text-transform:none;}
 
 /* Typing indicator */
 .m-typing-area{min-height:0;padding:0 14px;transition:min-height .2s;}

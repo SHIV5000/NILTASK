@@ -148,15 +148,19 @@ Deno.serve(async (req) => {
     const isDMroom = room.startsWith('dm_');
     const isReply = !!m.parent_message_id;
 
-    // Friendly title: DM → sender's name; group → "Sender · GroupName" (not the raw room id).
+    // UNIFORM FORMAT (WhatsApp-style) for every push:
+    //   DM    → title = sender name,  body = message
+    //   Group → title = group name,   body = "Sender: message"
     let title = senderName;
+    let bodyText = text;
     let groupName = '';
     if (!isDMroom) {
       const { data: rs } = await supabase
         .from('room_settings').select('name')
         .eq('room_id', room).eq('tenant_id', tenantId).maybeSingle();
       groupName = rs?.name || room.replace(/^grp_/, '').replace(/_[a-z0-9]+$/, '').replace(/_/g, ' ');
-      title = `${senderName} · ${groupName}`;
+      title = groupName;
+      bodyText = `${senderName}: ${text}`;
     }
 
     // ── Server-authoritative in-app notifications (bell + Activity feed) ──────
@@ -196,11 +200,11 @@ Deno.serve(async (req) => {
         console.log('send-push notif insert error', (e as any)?.message);
       }
     }
-    const basePayload = { body: text, tag: room, room, url: '/?room=' + encodeURIComponent(room) };
+    const basePayload = { body: bodyText, tag: room, room, url: '/?room=' + encodeURIComponent(room) };
     const payload = JSON.stringify({ ...basePayload, title });
-    // Distinct high-priority payload for users who were @mentioned.
+    // Mentions keep the SAME shape (title = DM sender / group name), body flags the mention.
     const mentionPayload = JSON.stringify({
-      ...basePayload, title: `📣 ${senderName} mentioned you${isDMroom ? '' : ' · ' + groupName}`,
+      ...basePayload, title, body: `📣 ${bodyText}`,
       tag: room + ':mention', priority: 'high',
     });
 
@@ -217,6 +221,14 @@ Deno.serve(async (req) => {
       });
     } catch (_e) { /* table missing → push to everyone */ }
 
+    // DEDUP: a user with a native FCM token gets the FCM push below; do NOT also
+    // send them a Web-Push, or they'd receive TWO notifications for one message.
+    const fcmUserIds = new Set<string>();
+    try {
+      const { data: tk } = await supabase.from('push_tokens').select('user_id').in('user_id', recipientIds);
+      (tk || []).forEach((t: { user_id: string }) => fcmUserIds.add(t.user_id));
+    } catch (_e) { /* table missing → no native users */ }
+
     const { data: subs } = await supabase
       .from('push_subscriptions').select('endpoint,subscription,user_id')
       .in('user_id', recipientIds);
@@ -224,6 +236,7 @@ Deno.serve(async (req) => {
 
     let sent = 0, failed = 0, skipped = 0;
     await Promise.all((subs || []).map(async (s: { endpoint: string; subscription: unknown; user_id: string }) => {
+      if (fcmUserIds.has(s.user_id)) { skipped++; return; }   // native user → FCM only, no double push
       // Skip if the user has already read up to this message — unless mentioned.
       if (!mentionedIds.has(s.user_id) && readUpTo[s.user_id] && readUpTo[s.user_id] >= msgTs) {
         skipped++; return;
@@ -266,8 +279,8 @@ Deno.serve(async (req) => {
           if (!mentionedIds.has(t.user_id) && readUpTo[t.user_id] && readUpTo[t.user_id] >= msgTs) return;
           const isMention = mentionedIds.has(t.user_id);
           const ok = await sendFcm(accessToken, FCM_PROJECT_ID, t.token, {
-            title: isMention ? `📣 ${senderName} mentioned you${isDMroom ? '' : ' · ' + groupName}` : title,
-            body: text,
+            title,
+            body: isMention ? `📣 ${bodyText}` : bodyText,
             room,
             url: '/?room=' + encodeURIComponent(room),
             priority: isMention || isDMroom ? 'high' : 'normal',

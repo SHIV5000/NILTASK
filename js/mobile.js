@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v184';
+const _MOB_VER = 'v185';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -3601,6 +3601,7 @@ function _initRealtime() {
     //    against the postgres path (_seenMsgIds, reaction re-fetch) so no double render.
     _rtChannel = sb.channel('mobile-rt-'+_tid, { config: { broadcast: { self: false } } })
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => {
+            console.log('[RAW MESSAGE]', p.new?.room_id, p.new?.sender_id, p.new?.id);
             console.log('[MESSAGE]', { room: p.new?.room_id, sender: p.new?.sender_id, message: p.new?.id });
             if (p.new?.room_id) _seenRooms.add(p.new.room_id);   // ensure reconcile computes unread even for rooms not in DEPTS/_customGroups
             _onNewMessage(p.new);
@@ -3765,8 +3766,11 @@ async function _refreshNotifBadge() {
 // _reconcileUnread themselves — that would recurse.
 async function refreshNotificationUI() {
     try {
-        await _refreshNotifBadge();
+        // ORDER MATTERS (Patch 4): reconcile the unread map FIRST, then paint the
+        // bell — the bell total includes summed message unread, so painting it
+        // before reconciliation would show a stale number for one frame.
         await _reconcileUnread();
+        await _refreshNotifBadge();
         _updateAppBadge();
         _liveRefreshActivity();
     } catch (err) { console.error('refreshNotificationUI failed:', err); }

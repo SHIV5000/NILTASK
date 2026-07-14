@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v182';
+const _MOB_VER = 'v183';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -1103,6 +1103,7 @@ window._navTo = async function(screen, params, replace = false) {
         // SINGLE SOURCE OF TRUTH: never hand-set the count to 0. Mark the room read
         // at the DB (room_reads) — the unread engine then derives 0 for it. This is
         // what stops mobile and desktop drifting apart.
+        console.log('[ROOM READ]', params.room);
         try { sb.from('room_reads').upsert({ user_id:_uid, room_id:params.room, tenant_id:_tid, last_read_at:new Date().toISOString() }, { onConflict:'user_id,room_id' }).then(()=>{}); } catch(e){}
         refreshNotificationUI();   // reconcile derives the correct counts (open room forced to 0)
         // Do NOT clobber _bellCount with _sumUnread() here: _sumUnread counts only
@@ -3594,7 +3595,7 @@ function _initRealtime() {
     //    (cosmetic) are not bridged. self:false drops our own echo; handlers de-dupe
     //    against the postgres path (_seenMsgIds, reaction re-fetch) so no double render.
     _rtChannel = sb.channel('mobile-rt-'+_tid, { config: { broadcast: { self: false } } })
-        .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => _onNewMessage(p.new))
+        .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => { console.log('[MESSAGE INSERT]', p.new?.room_id, p.new?.id); _onNewMessage(p.new); })
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'reactions', filter:`tenant_id=eq.${_tid}` }, p => _onReactionChange(p.new, 'INSERT'))
         .on('postgres_changes', { event:'DELETE', schema:'public', table:'reactions' }, p => _onReactionChange(p.old, 'DELETE'))
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'task_assignees', filter:`tenant_id=eq.${_tid}` }, p => _onTaskAssigneeUpdate(p.new))
@@ -3743,6 +3744,7 @@ function _onNotifInsert(n) {
 // "sometimes works / mostly misbehaves": they no longer fight via a max().
 async function _refreshNotifBadge() {
     _bellCount = await window.NFA_unreadCount(sb, _uid);   // pure notification unread
+    console.log('[BELL]', { badge: _bellCount });
     _renderBellBadge();
     _updateAppBadge();
     _liveRefreshActivity();   // if the Activity screen is open, refresh it live
@@ -3792,6 +3794,7 @@ async function _reconcileUnread() {
         // The ONLY place window.unreadCounts is (re)assigned. Frozen so stray manual
         // writes elsewhere surface immediately instead of silently drifting.
         window.unreadCounts = Object.freeze({ ...merged });
+        console.log('[UNREAD]', { rooms: Object.keys(window.unreadCounts || {}).length, counts: window.unreadCounts });
         _updateAppBadge();
         _renderBellBadge();   // bell/Activity reflect the reconciled per-room totals (no double, DMs included)
         // SURGICAL badge update (no screen re-render / no slide): patch each visible

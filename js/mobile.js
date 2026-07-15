@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v194';
+const _MOB_VER = 'v195';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -4227,15 +4227,18 @@ async function _onReactionChange(r, eventType) {
             (async () => {
                 try {
                     const { data: msg } = await sb.from('messages').select('sender_id').eq('id', r.message_id).maybeSingle();
+                    console.log('[v194][REACTION] recv mine=' + (msg?.sender_id === _uid) + ' mid=' + r.message_id + ' from=' + r.user_id);
                     if (msg?.sender_id === _uid) {   // only if the reacted message is MINE
                         const reactor = _uname(r.user_id) || 'Someone';
-                        await sb.from('notifications').insert({
+                        const ins = await sb.from('notifications').insert({
                             user_id: _uid, type: 'reaction',
                             message: `${r.value || '👍'} ${reactor} reacted to your message`,
                             message_id: r.message_id, tenant_id: _tid, is_read: false
-                        });
+                        }).select();
+                        // DECISIVE: prints whether the insert succeeded or was RLS-blocked.
+                        console.log('[v194][REACTION] self-insert ok=' + !ins.error + (ins.error ? ' ERR=' + ins.error.message : ''));
                     }
-                } catch (e) { /* dup / offline — ignore */ }
+                } catch (e) { console.log('[v194][REACTION] self-insert threw ' + (e?.message || e)); }
                 try { refreshNotificationUI(); } catch (e) {}
             })();
         } else { try { refreshNotificationUI(); } catch (e) {} }

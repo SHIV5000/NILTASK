@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v192';
+const _MOB_VER = 'v193';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -4202,7 +4202,10 @@ async function _onReactionChange(r, eventType) {
     // by default RLS, so reactions work with NO migration. Deduped per (message,
     // reactor) so the twin delivery (postgres_changes + broadcast) inserts once.
     if (!isDelete && r.user_id && r.user_id !== _uid) {
-        const _rk = r.message_id + '|' + r.user_id;
+        // Key on message + reactor + VALUE so the twin delivery (postgres_changes +
+        // broadcast) of the SAME reaction dedupes, but different emojis (👍 ❤️ 😂)
+        // from the same person each notify.
+        const _rk = r.message_id + '|' + r.user_id + '|' + (r.value || '');
         if (!_reactNotifSeen.has(_rk)) {
             _reactNotifSeen.add(_rk);
             if (_reactNotifSeen.size > 400) _reactNotifSeen.delete(_reactNotifSeen.values().next().value);

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v190';
+const _MOB_VER = 'v191';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -1834,7 +1834,7 @@ function _fileCardHTML(actionAttrs, name, ext) {
     else if (['mp4','mov','webm','mkv'].includes(ext)){icon='fa-file-video';col='#db2777';label='Video';}
     else if (['mp3','wav','m4a','ogg'].includes(ext)){icon='fa-file-audio';col='#0891b2';label='Audio';}
     else if (['txt','md'].includes(ext)){icon='fa-file-lines';col='#64748b';label='Text';}
-    return `<div class="m-file-card" ${actionAttrs} style="display:flex;align-items:center;gap:11px;background:var(--bg-sidebar,#f6f8fa);border:1px solid var(--border-color,#e5e7eb);border-radius:13px;padding:9px 11px;margin:4px 0;cursor:pointer;max-width:270px;">
+    return `<div class="m-file-card" ${actionAttrs} style="display:flex;align-items:center;gap:11px;background:var(--bg-sidebar,#f6f8fa);border:1px solid var(--border-color,#e5e7eb);border-radius:13px;padding:9px 11px;margin:4px 0;cursor:pointer;width:270px;max-width:100%;box-sizing:border-box;">
         <div style="width:40px;height:40px;border-radius:10px;background:${col}22;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="fa-solid ${icon}" style="color:${col};font-size:19px;"></i></div>
         <div style="min-width:0;flex:1;">
             <div style="font-size:13px;font-weight:700;color:var(--text-primary,#111);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${x(name)}</div>
@@ -4485,7 +4485,11 @@ function _appendOwnMessage(areaId, m, maxLen=150) {
     if (!area) return;
     area.insertAdjacentHTML('beforeend', _bubbleHTML(m, {}, maxLen));
     area.scrollTo({ top: area.scrollHeight, behavior:'smooth' });
-    // Update room cache
+    // Update room cache — but NEVER cache a REPLY in the main-list cache: the main
+    // list only shows top-level messages (parent_message_id IS NULL), so caching a
+    // reply here made it flash as a top-level bubble in the group chat until the next
+    // DB refetch dropped it. Replies live only under their parent (thread + count).
+    if (m.parent_message_id) return;
     const cached = _loadRoomCache(m.room_id) || [];
     cached.push(m);
     _saveRoomCache(m.room_id, cached);
@@ -4801,13 +4805,18 @@ function _showHeadsUp(m, name, isDM, dept, isMention) {
     const avatar = isDM
         ? _avatarHTML(sender?.avatar_url, name, 'var(--accent)', 'm-av-sm')
         : _avatarHTML(_lsGet('dept_photo_'+m.room_id) || dept?.photo, dept?.name || name, dept?.col || 'var(--accent)', 'm-av-sm sq');
+    // Same shape as the OS push (WhatsApp-style):
+    //   DM    → title = sender,      body = message
+    //   Group → title = group name,  body = "Sender: message"
+    const groupName = dept?.name || 'Group';
     const line1 = isMention
-        ? `📣 ${x(name)} mentioned you${isDM ? '' : ' · ' + x(dept?.name || 'Group')}`
-        : (isDM ? x(name) : `${x(name)} · ${x(dept?.name || 'Group')}`);
+        ? `📣 ${x(name)} mentioned you${isDM ? '' : ' · ' + x(groupName)}`
+        : (isDM ? x(name) : x(groupName));
+    const bodyTxt = isDM ? x(_snip(m.text, 90)) : `${x(name)}: ${x(_snip(m.text, 90))}`;
     el.innerHTML =
         `<div class="m-hu-ico">${avatar}</div>
          <div class="m-hu-txt"><div class="m-hu-title">${line1}</div>
-           <div class="m-hu-body">${x(_snip(m.text, 90))}</div></div>`;
+           <div class="m-hu-body">${isMention ? '📣 ' : ''}${bodyTxt}</div></div>`;
     // Tap → open the chat.
     el.onclick = () => {
         _dismissHeadsUp();
@@ -4967,7 +4976,7 @@ html[data-theme="dark"] .mn-btn.active i{background:rgba(129,140,248,.2);}
 .m-bubble-row.snt{justify-content:flex-end;}
 .m-bubble-row.rcv{justify-content:flex-start;}
 .m-bubble{width:90%;max-width:90%;min-width:0;padding:12px 15px 13px;border-radius:14px;position:relative;
-  font-size:16px;line-height:1.5;word-break:break-word;
+  font-size:16px;line-height:1.5;word-break:break-word;overflow:hidden;
   background:var(--card-bg,#fff);box-shadow:var(--card-shadow,0 2px 8px rgba(0,0,0,.07));
   border:1px solid var(--border-color,#e5e7eb);
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
@@ -5055,8 +5064,9 @@ html[data-theme="dark"] .nf-ic{background:#1e1e1e;}
 }
 .m-link-pill{white-space:normal!important;word-break:break-word;max-width:100%;height:auto!important;text-align:left;}
 .m-btext{font-size:18px;line-height:1.55;color:var(--text-primary,#111);
-  word-break:break-word;overflow-wrap:break-word;
+  word-break:break-word;overflow-wrap:anywhere;min-width:0;max-width:100%;
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+.m-btext .m-img-preview,.m-btext .m-file-card,.m-btext img{max-width:100%;box-sizing:border-box;}
 .m-divider{text-align:center;font-size:11px;color:var(--text-secondary);padding:8px 0;}
 .m-bubble-pending{opacity:.55;transition:opacity .3s ease;}
 .m-pending-indicator{display:flex;justify-content:flex-end;margin-top:4px;color:var(--text-secondary,#9ca3af);}

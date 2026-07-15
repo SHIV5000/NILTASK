@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v193';
+const _MOB_VER = 'v194';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -3811,17 +3811,32 @@ async function _refreshNotifBadge() {
 // right, mostly wrong"). Call this from event handlers instead of a bare
 // _renderBellBadge(). NOTE: never call it from inside _refreshNotifBadge or
 // _reconcileUnread themselves — that would recurse.
+// ===== v193 PATCH BEGIN (PATCH 11: coalesce duplicate refreshes) =====
+// Many event paths (realtime message/reaction, poll, foreground resync) can fire
+// refreshNotificationUI() in a burst. Overlapping runs each hit the DB reconcile
+// and re-render — wasteful and the source of the doubled [BELL]/[UNREAD] bursts.
+// Guard so concurrent calls collapse into ONE run, with a single trailing re-run
+// if a call arrived while a run was in flight (no missed update). Same behaviour,
+// far fewer redundant reconciles.
+let _notifRefreshing = false, _notifRefreshPending = false;
 async function refreshNotificationUI() {
+    if (_notifRefreshing) { _notifRefreshPending = true; return; }
+    _notifRefreshing = true;
     try {
-        // ORDER MATTERS (Patch 4): reconcile the unread map FIRST, then paint the
-        // bell — the bell total includes summed message unread, so painting it
-        // before reconciliation would show a stale number for one frame.
-        await _reconcileUnread();
-        await _refreshNotifBadge();
-        _updateAppBadge();
-        _liveRefreshActivity();
+        do {
+            _notifRefreshPending = false;
+            // ORDER MATTERS (Patch 4): reconcile the unread map FIRST, then paint the
+            // bell — the bell total includes summed message unread, so painting it
+            // before reconciliation would show a stale number for one frame.
+            await _reconcileUnread();
+            await _refreshNotifBadge();
+            _updateAppBadge();
+            _liveRefreshActivity();
+        } while (_notifRefreshPending);   // a call landed mid-run → run once more
     } catch (err) { console.error('refreshNotificationUI failed:', err); }
+    finally { _notifRefreshing = false; }
 }
+// ===== v193 PATCH END =====
 // Reconcile per-chat MESSAGE unread from the DB (room_reads + messages) — the
 // durable source of truth, so counts are correct after reload, realtime flaps
 // and reconnects (not just from ephemeral realtime increments). Only counts
@@ -4225,6 +4240,24 @@ async function _onReactionChange(r, eventType) {
             })();
         } else { try { refreshNotificationUI(); } catch (e) {} }
     }
+    // ===== v193 PATCH BEGIN (PATCH 13: reaction removal → remove notification) =====
+    // When someone UN-reacts to my message, delete the reaction notification I
+    // self-inserted (self-delete, RLS-safe) and clear the dedupe key so a re-add
+    // notifies again. Keeps the bell + Activity feed in sync with the live reaction.
+    if (isDelete && r.user_id && r.user_id !== _uid) {
+        _reactNotifSeen.delete(r.message_id + '|' + r.user_id + '|' + (r.value || ''));
+        (async () => {
+            try {
+                const { data: msg } = await sb.from('messages').select('sender_id').eq('id', r.message_id).maybeSingle();
+                if (msg?.sender_id === _uid) {
+                    await sb.from('notifications').delete()
+                        .eq('user_id', _uid).eq('message_id', r.message_id).eq('type', 'reaction');
+                }
+            } catch (e) { /* offline — ignore */ }
+            try { refreshNotificationUI(); } catch (e) {}
+        })();
+    }
+    // ===== v193 PATCH END =====
     if (!document.getElementById('row-'+r.message_id)) return;   // not on screen — cached above, render later
     // Render through the SAME reliable path the sender uses (re-fetch from DB +
     // cache, canonical placement, scroll-into-view). This replaced a fragile

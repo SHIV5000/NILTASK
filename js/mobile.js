@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v189';
+const _MOB_VER = 'v190';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -3718,6 +3718,11 @@ function _onPresenceUpdate(row) {
         if (row.designation !== undefined) u.designation = row.designation;
         try { _saveUsersCache(_tid, _users); } catch (e) {}
     }
+    // Universal avatar sync: a profile photo changed on another device → update the
+    // one cache and repaint every avatar for this user (lists, bubbles, headers,
+    // activity, reply previews). Only fires when the URL actually changed, so the
+    // 60s presence heartbeats don't trigger re-renders.
+    if ('avatar_url' in row) _onAvatarChanged(row.id, row.avatar_url || '');
     document.querySelectorAll('[data-uid="' + row.id + '"]').forEach(el => {
         const holder = el.querySelector('div[style*="position:relative"]');
         if (!holder) return;
@@ -3728,6 +3733,28 @@ function _onPresenceUpdate(row) {
 }
 function _sumUnread() {
     return Object.values(window.unreadCounts || {}).reduce((a, b) => a + (b || 0), 0);
+}
+// ONE canonical avatar-change handler (universal realtime avatars). Updates the
+// single source (_users / globalUsersCache / persisted cache) and repaints avatars.
+// profiles.avatar_url is the source of truth everywhere; _avatarHTML reads from it.
+let _avatarRepaintT = null;
+function _onAvatarChanged(uid, newUrl) {
+    const u = _users.find(x => x.id === uid);
+    if (u) { if ((u.avatar_url || '') === newUrl) return; u.avatar_url = newUrl; }   // no change → skip
+    else if (!newUrl) return;
+    const gc = window.globalUsersCache?.find(x => x.id === uid);
+    if (gc) gc.avatar_url = newUrl;
+    if (uid === _uid && window.currentUser) window.currentUser.avatar_url = newUrl;
+    try { _saveUsersCache(_tid, _users); } catch (e) {}
+    // Debounced re-render of the current LIST screen so avatars refresh app-wide.
+    // Open chat screens are left to refresh on reopen (a full re-render there would
+    // disrupt scroll/composer) — their bubbles pick up the new photo next visit.
+    clearTimeout(_avatarRepaintT);
+    _avatarRepaintT = setTimeout(() => {
+        const top = _stack[_stack.length - 1];
+        const SAFE = ['home', 'activity', 'settings', 'members', 'groupMgmt', 'marks', 'tasks'];
+        if (top && SAFE.includes(top.screen)) { try { _render(top.screen, top.params); } catch (e) {} }
+    }, 350);
 }
 // Persist "read" for a room the user just opened: notifications rows carry only a
 // message_id, so resolve the room's recent message ids first. Fire-and-forget —
@@ -4288,12 +4315,10 @@ function _wireScreen(screen, params, container) {
         catch(e) { _toast('Could not read that image','err'); return; }
         const { error: dbErr } = await sb.from('profiles').update({ avatar_url: dataUrl }).eq('id',_uid);
         if (dbErr) { _toast('Could not save photo: '+dbErr.message,'err'); return; }
-        const cached = _users.find(u=>u.id===_uid);
-        if (cached) cached.avatar_url = dataUrl;
-        if (window.globalUsersCache) {
-            const gc = window.globalUsersCache.find(u=>u.id===_uid);
-            if (gc) gc.avatar_url = dataUrl;
-        }
+        // Route through the one avatar coordinator: updates cache + currentUser and
+        // repaints everywhere. The DB update also fans out to other devices via the
+        // profiles UPDATE realtime → _onPresenceUpdate → _onAvatarChanged.
+        _onAvatarChanged(_uid, dataUrl);
         _toast('Photo updated ✓');
         await _navTo('settings',null,true);
     };

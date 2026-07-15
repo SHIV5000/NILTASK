@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v195';
+const _MOB_VER = 'v196';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -1481,12 +1481,16 @@ async function _activity(p) {
         logError: (m, d) => window.logger?.sb?.(m, d),
     });
 
+    // v196: merge locally-stored reaction notifications (DB-independent) and sort by time.
+    const _feedAll = _feed.concat(_localReactFeedItems())
+        .sort((a, b) => new Date(_normTs(b.n.created_at)).getTime() - new Date(_normTs(a.n.created_at)).getTime());
+    if (mode === 'attention') _markLocalReactRead();   // opening the bell clears their unread count
     // ATTENTION view = notification-sourced items only (mentions/replies/reactions/
     // tasks/reminders). Timeline view = everything (also raw messages + task trails,
     // which NFA_buildActivity tags with 'msg:'/'trail:' id prefixes).
     const _all = mode === 'attention'
-        ? _feed.filter(it => { const id = String(it.n?.id || ''); return !id.startsWith('msg:') && !id.startsWith('trail:'); })
-        : _feed;
+        ? _feedAll.filter(it => { const id = String(it.n?.id || ''); return !id.startsWith('msg:') && !id.startsWith('trail:'); })
+        : _feedAll;
 
     let items = _all.filter(it => filter==='all' || it.cat===filter);
     // Distinct senders present in the (category-filtered) feed, for the sender chips.
@@ -3246,12 +3250,14 @@ async function _onShellClick(e) {
         case 'afFilter': window._afFilter = a.f; window._afSender = ''; await window._mobRerenderActivity(); break;
         case 'afSender': window._afSender = a.s || ''; await window._mobRerenderActivity(); break;
         case 'afClear': {
-            try { await sb.from('notifications').delete().eq('id',a.nid).eq('user_id',_uid); } catch(e){}
+            if (String(a.nid).startsWith('lrn_')) _removeLRNById(a.nid);   // v196: local reaction card
+            else { try { await sb.from('notifications').delete().eq('id',a.nid).eq('user_id',_uid); } catch(e){} }
             await refreshNotificationUI();
             await window._mobRerenderActivity();
             break;
         }
         case 'afClearAll': {
+            try { _saveLRN([]); } catch(e){}   // v196: clear local reaction notifications too
             try { await sb.from('notifications').delete().eq('user_id',_uid).eq('tenant_id',_tid); } catch(e){}
             _clearBellBadge();
             await refreshNotificationUI();
@@ -3737,6 +3743,39 @@ function _onPresenceUpdate(row) {
 function _sumUnread() {
     return Object.values(window.unreadCounts || {}).reduce((a, b) => a + (b || 0), 0);
 }
+// ===== v196 PATCH BEGIN (client-side reaction notifications — no DB/RLS dependency) =====
+// Reactions never surfaced in the bell/Activity feed because the notifications-table
+// INSERT is rejected on this deployment (bell "notif" was 0 for weeks across every
+// type). Rather than depend on DB/RLS, store a reaction-to-MY-message notification
+// LOCALLY the moment the reaction event arrives, and surface it in the bell + feed.
+// Purely additive; the DB self-insert path is still attempted and harmless if it works.
+function _lrnKey() { return (_tid || '') + '_local_react_notifs'; }
+function _loadLRN() { try { return JSON.parse(localStorage.getItem(_lrnKey()) || '[]'); } catch (e) { return []; } }
+function _saveLRN(a) { try { localStorage.setItem(_lrnKey(), JSON.stringify(a.slice(-100))); } catch (e) {} }
+function _addLRN(o) {
+    const a = _loadLRN();
+    const k = o.message_id + '|' + o.reactor_id + '|' + o.value;
+    if (a.some(x => (x.message_id + '|' + x.reactor_id + '|' + x.value) === k)) return;   // dedupe twin delivery
+    a.push({ ...o, id: 'lrn_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), is_read: false });
+    _saveLRN(a);
+}
+function _removeLRN(message_id, reactor_id, value) {
+    const a = _loadLRN(), k = message_id + '|' + reactor_id + '|' + value;
+    const n = a.filter(x => (x.message_id + '|' + x.reactor_id + '|' + x.value) !== k);
+    if (n.length !== a.length) _saveLRN(n);
+}
+function _removeLRNById(id) { const a = _loadLRN(); const n = a.filter(x => x.id !== id); if (n.length !== a.length) _saveLRN(n); }
+function _localReactUnread() { return _loadLRN().filter(x => !x.is_read).length; }
+function _markLocalReactRead() { const a = _loadLRN(); let c = false; a.forEach(x => { if (!x.is_read) { x.is_read = true; c = true; } }); if (c) _saveLRN(a); }
+// Feed items in the SAME shape NFA_buildActivity emits, for the Activity screen.
+function _localReactFeedItems() {
+    return _loadLRN().map(x => ({
+        n: { id: x.id, message: x.message, message_id: x.message_id, created_at: x.created_at, is_read: x.is_read },
+        cat: 'chats', cls: 'blue', badge: '❤️ Reaction', emoji: '❤️',
+        act: { k: 'msg', id: x.message_id }, sender: x.reactor_name || ''
+    }));
+}
+// ===== v196 PATCH END =====
 // ONE canonical avatar-change handler (universal realtime avatars). Updates the
 // single source (_users / globalUsersCache / persisted cache) and repaints avatars.
 // profiles.avatar_url is the source of truth everywhere; _avatarHTML reads from it.
@@ -3975,7 +4014,8 @@ function _scheduleFallback() {
 // PLUS all unread chat messages (DM + group) — a total-unread indicator, as
 // requested (WhatsApp/Slack style). Chat rows still show each chat's own count;
 // tapping the bell opens the attention list. room_reads counts each message once.
-function _bellTotal() { return _bellCount + _sumUnread(); }
+// v196: + locally-stored reaction notifications (bypasses the RLS-blocked table).
+function _bellTotal() { return _bellCount + _sumUnread() + _localReactUnread(); }
 function _renderBellBadge() {
     // 1) BELL (top-right) — the attention NUMBER.
     const badge = _el('mNotifBadge');
@@ -4226,16 +4266,24 @@ async function _onReactionChange(r, eventType) {
             if (_reactNotifSeen.size > 400) _reactNotifSeen.delete(_reactNotifSeen.values().next().value);
             (async () => {
                 try {
-                    const { data: msg } = await sb.from('messages').select('sender_id').eq('id', r.message_id).maybeSingle();
+                    const { data: msg } = await sb.from('messages').select('sender_id,room_id').eq('id', r.message_id).maybeSingle();
                     console.log('[v194][REACTION] recv mine=' + (msg?.sender_id === _uid) + ' mid=' + r.message_id + ' from=' + r.user_id);
                     if (msg?.sender_id === _uid) {   // only if the reacted message is MINE
                         const reactor = _uname(r.user_id) || 'Someone';
+                        // v196: store LOCALLY first — this is what makes the reaction show in
+                        // the bell + Activity feed regardless of the notifications-table RLS.
+                        _addLRN({
+                            message_id: r.message_id, reactor_id: r.user_id, reactor_name: reactor,
+                            value: r.value || '👍', room_id: msg.room_id || '',
+                            message: `${r.value || '👍'} ${reactor} reacted to your message`,
+                            created_at: new Date().toISOString()
+                        });
+                        // Best-effort DB insert too (works if RLS allows; harmless otherwise).
                         const ins = await sb.from('notifications').insert({
                             user_id: _uid, type: 'reaction',
                             message: `${r.value || '👍'} ${reactor} reacted to your message`,
                             message_id: r.message_id, tenant_id: _tid, is_read: false
                         }).select();
-                        // DECISIVE: prints whether the insert succeeded or was RLS-blocked.
                         console.log('[v194][REACTION] self-insert ok=' + !ins.error + (ins.error ? ' ERR=' + ins.error.message : ''));
                     }
                 } catch (e) { console.log('[v194][REACTION] self-insert threw ' + (e?.message || e)); }
@@ -4249,6 +4297,7 @@ async function _onReactionChange(r, eventType) {
     // notifies again. Keeps the bell + Activity feed in sync with the live reaction.
     if (isDelete && r.user_id && r.user_id !== _uid) {
         _reactNotifSeen.delete(r.message_id + '|' + r.user_id + '|' + (r.value || ''));
+        _removeLRN(r.message_id, r.user_id, r.value || '👍');   // v196: drop the local reaction notification
         (async () => {
             try {
                 const { data: msg } = await sb.from('messages').select('sender_id').eq('id', r.message_id).maybeSingle();

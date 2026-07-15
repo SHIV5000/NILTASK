@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v191';
+const _MOB_VER = 'v192';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -36,6 +36,9 @@ let _presenceChannel = null;   // Supabase Presence: instant online/offline for 
 // to know about a room that isn't in DEPTS/_customGroups yet (e.g. a group created
 // on another device, or 'general') — otherwise its unread is never computed.
 const _seenRooms = new Set();
+// De-dupes the author's self-inserted reaction notification against the twin
+// delivery (postgres_changes + broadcast) for the same (message_id, reactor).
+const _reactNotifSeen = new Set();
 // Broadcast on the single shared channel. self:false already stops our own echo, so
 // every other client (web src:'w', mobile src:'m') receives it once.
 function _bcSend(event, payload) {
@@ -4192,11 +4195,33 @@ async function _onReactionChange(r, eventType) {
     // for a chat that isn't currently open is still cached and shows instantly when
     // the user opens/scrolls to that message (no wait for a DB round-trip).
     _saveReactionEntry(r.message_id, r.value, r.type, r.user_id, isDelete);
-    // A reaction to MY message creates a notification for me. That reaction event
-    // arrives in real time (unlike the notifications channel, which may not be in
-    // the realtime publication) — so re-pull the bell now instead of waiting up to
-    // 15s for the fallback poll. Only for others' reactions (not my own toggles).
-    if (!isDelete && r.user_id && r.user_id !== _uid) { try { refreshNotificationUI(); } catch (e) {} }
+    // A reaction to MY message must show in MY bell + Activity feed. The reactor
+    // CANNOT reliably insert that row (cross-user insert is RLS-blocked unless a
+    // special policy/trigger is applied). So the AUTHOR self-inserts it here, on
+    // receiving the reaction event — a SELF insert (user_id = me) is always allowed
+    // by default RLS, so reactions work with NO migration. Deduped per (message,
+    // reactor) so the twin delivery (postgres_changes + broadcast) inserts once.
+    if (!isDelete && r.user_id && r.user_id !== _uid) {
+        const _rk = r.message_id + '|' + r.user_id;
+        if (!_reactNotifSeen.has(_rk)) {
+            _reactNotifSeen.add(_rk);
+            if (_reactNotifSeen.size > 400) _reactNotifSeen.delete(_reactNotifSeen.values().next().value);
+            (async () => {
+                try {
+                    const { data: msg } = await sb.from('messages').select('sender_id').eq('id', r.message_id).maybeSingle();
+                    if (msg?.sender_id === _uid) {   // only if the reacted message is MINE
+                        const reactor = _uname(r.user_id) || 'Someone';
+                        await sb.from('notifications').insert({
+                            user_id: _uid, type: 'reaction',
+                            message: `${r.value || '👍'} ${reactor} reacted to your message`,
+                            message_id: r.message_id, tenant_id: _tid, is_read: false
+                        });
+                    }
+                } catch (e) { /* dup / offline — ignore */ }
+                try { refreshNotificationUI(); } catch (e) {}
+            })();
+        } else { try { refreshNotificationUI(); } catch (e) {} }
+    }
     if (!document.getElementById('row-'+r.message_id)) return;   // not on screen — cached above, render later
     // Render through the SAME reliable path the sender uses (re-fetch from DB +
     // cache, canonical placement, scroll-into-view). This replaced a fragile

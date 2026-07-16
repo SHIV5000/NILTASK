@@ -139,7 +139,7 @@ window.sendMessage = async function() {
             const newId  = msgData.id;
             const newTime = window.getISTTime ? window.getISTTime(msgData.created_at) : new Date(msgData.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
             const nameInitial = (window.currentUser?.user_metadata?.full_name || window.currentUser?.email || 'Y').charAt(0).toUpperCase();
-            const roleStr = window.currentDesignation || window.currentRoleName || 'Staff';
+            const roleStr = window.currentDesignation || '';   // designation only (no 'Staff' fallback)
             const snippetText = window.getSnippet ? window.getSnippet(text) : text.replace(/<[^>]*>/g,'').substring(0,50);
             const escapedSnippet = snippetText.replace(/'/g,"\\'").replace(/"/g,'&quot;');
 
@@ -184,7 +184,7 @@ window.sendMessage = async function() {
   <div class="bubble sent">
     <div class="b-header">
       <div class="b-avatar sent-av">${nameInitial}</div>
-      <div class="b-name">You <span class="b-role">· ${roleStr}</span></div>
+      <div class="b-name">You${roleStr ? ` <span class="b-role">· ${roleStr}</span>` : ''}</div>
       <span class="b-time">${newTime} <span class="b-tick">✓✓</span></span>
       <div class="menu-wrap">
         <button class="dot-btn" onclick="window.toggleDropdown('dd-${newId}')" aria-label="Options"><i class="ti ti-dots-vertical"></i></button>
@@ -579,9 +579,10 @@ window.renderMessages = function(messages) {
         const avatarHTML = avatarUrl
             ? `<div class="${avClass}" style="overflow:hidden;padding:0;background:transparent;"><img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none';this.nextElementSibling&&(this.nextElementSibling.style.display='')"><span style="display:none">${avatarInitial}</span></div>`
             : `<div class="${avClass}">${avatarInitial}</div>`;
-        const rawRole = msg.profiles?.designation || msg.profiles?.role || 'Staff';
-        const roleStr = isSent ? (window.currentDesignation || window.currentRoleName || 'Staff')
-            : rawRole.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+        // Show the DESIGNATION only (not the RBAC role, not a "Staff" fallback) so the
+        // bubble reads "Display Name · Designation". Empty when the user has none.
+        const _dz = isSent ? (window.currentDesignation || '') : (msg.profiles?.designation || '');
+        const roleStr = _dz ? _dz.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()) : '';
         const tickHTML = isSent ? `<span class="b-tick">✓✓</span>` : '';
         const replyCount = replies[msg.id] ? replies[msg.id].length : 0;
         const isBookmarked = window.bookmarkedSet.has(msg.id);
@@ -666,7 +667,7 @@ window.renderMessages = function(messages) {
           <div class="${bubbleClass}">
             <div class="b-header">
               ${avatarHTML}
-              <div class="b-name">${window.escapeHtml(senderName)} <span class="b-role">· ${roleStr}</span></div>
+              <div class="b-name">${window.escapeHtml(senderName)}${roleStr ? ` <span class="b-role">· ${roleStr}</span>` : ''}</div>
               <span class="b-time">${time}${msg.updated_at && msg.updated_at > msg.created_at ? ' <span style="font-size:10px;font-style:italic;opacity:.65;">(edited)</span>' : ''} ${tickHTML}</span>
               <div class="menu-wrap">
                 <button class="dot-btn" onclick="window.toggleDropdown('dd-${msg.id}')" aria-label="Options"><i class="ti ti-dots-vertical"></i></button>

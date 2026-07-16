@@ -522,7 +522,7 @@ function _loadUsersCache(tid) {
 // Cheap signature of what the home/DM list actually shows, so we only re-render when
 // something visible changed (new/removed staff, renamed, avatar added/changed).
 function _usersSig(list) {
-    return (list||[]).map(u => u.id+'|'+(u.full_name||'')+'|'+(u.designation||'')+'|'+(u.avatar_url?'a':'')).sort().join(',');
+    return (list||[]).map(u => u.id+'|'+(u.full_name||'')+'|'+(u.designation||'')+'|'+(u.avatar_url ? (u.avatar_url.length + ':' + u.avatar_url.slice(0,32)) : '')).sort().join(',');
 }
 async function _refreshUsers(tid) {
     try {
@@ -573,6 +573,7 @@ async function _hydrateAvatars(tid) {
         (_users||[]).forEach(u => { if (byId[u.id] && u.avatar_url !== byId[u.id]) { u.avatar_url = byId[u.id]; changed = true; } });
         if (changed) {
             window.globalUsersCache = _users;
+            try { _saveUsersCache(tid, _users); } catch (e) {}
             const top = _stack[_stack.length-1];
             if (top && (top.screen === 'home' || top.screen === 'dm' || top.screen === 'groupChat')) {
                 try { _render(top.screen, top.params, 'none'); } catch {}   // silent, no second slide-in
@@ -3646,6 +3647,7 @@ function _initRealtime() {
         .on('broadcast', { event:'new_message' }, _hNewMessage)
         .on('broadcast', { event:'reaction' }, _hReaction)
         .on('broadcast', { event:'group_photo' }, _hGroupPhoto)
+        .on('broadcast', { event:'profile_update' }, _hProfileUpdate)
         .on('broadcast', { event:'typing' }, _hTyping)
         .on('broadcast', { event:'room_read' }, _hRoomRead)
         .subscribe(status => {
@@ -3692,6 +3694,12 @@ function _initRealtime() {
 // marks me online for everyone; the socket closing (app closed/killed/offline)
 // makes the server emit a 'leave' so others see me go maroon in real time —
 // something the 60s last_seen poll can't do. self-tracked with my uid.
+function _hProfileUpdate(p) {
+    const row = p?.payload || p;
+    if (!row || row.src === 'm') return;
+    _onPresenceUpdate(row);
+}
+
 function _initPresence() {
     if (!_tid || !_uid) return;
     try { if (_presenceChannel) { sb.removeChannel(_presenceChannel); _presenceChannel = null; } } catch (e) {}
@@ -3798,7 +3806,7 @@ function _onAvatarChanged(uid, newUrl) {
     clearTimeout(_avatarRepaintT);
     _avatarRepaintT = setTimeout(() => {
         const top = _stack[_stack.length - 1];
-        const SAFE = ['home', 'activity', 'settings', 'members', 'groupMgmt', 'marks', 'tasks'];
+        const SAFE = ['home', 'activity', 'settings', 'members', 'groupMgmt', 'marks', 'tasks', 'groupChat', 'dm'];
         if (top && SAFE.includes(top.screen)) { try { _render(top.screen, top.params); } catch (e) {} }
     }, 350);
 }
@@ -4432,6 +4440,7 @@ function _wireScreen(screen, params, container) {
         catch(e) { _toast('Could not read that image','err'); return; }
         const { error: dbErr } = await sb.from('profiles').update({ avatar_url: dataUrl }).eq('id',_uid);
         if (dbErr) { _toast('Could not save photo: '+dbErr.message,'err'); return; }
+        _bcSend('profile_update', { id:_uid, tenant_id:_tid, full_name:window.currentUser?.full_name || window.currentUser?.email, avatar_url:dataUrl });
         // Route through the one avatar coordinator: updates cache + currentUser and
         // repaints everywhere. The DB update also fans out to other devices via the
         // profiles UPDATE realtime → _onPresenceUpdate → _onAvatarChanged.

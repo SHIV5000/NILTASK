@@ -153,6 +153,14 @@ window.saveSettings = async function() {
     if (avatarDataUrl) {
         await sb.from('profiles').update({ avatar_url: avatarDataUrl }).eq('id', window.currentUser.id);
     }
+    try {
+        const payload = {
+            id: window.currentUser.id, tenant_id: window.currentTenantId,
+            full_name: name, designation: desig, avatar_url: avatarDataUrl || null, src: 'w'
+        };
+        window._onProfileRealtime?.(payload);
+        window._sharedBroadcast?.send({ type:'broadcast', event:'profile_update', payload });
+    } catch(e) {}
 
     // Update sidebar DOM immediately — no page reload needed
     window._userAvatarUrl = avatarDataUrl;

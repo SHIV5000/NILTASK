@@ -21,6 +21,12 @@
   }
   window.IS_NATIVE = true;
   var P = Cap.Plugins || {};
+  // Expose a tiny exit hook for the ES-module mobile shell. The native plugin
+  // bridge is only available to this classic script, but the app-level back
+  // stack lives in js/mobile.js. Without this bridge, double-back at the mobile
+  // root could only call window.close()/about:blank, which leaves Capacitor
+  // shells on a blank page instead of closing the Android activity.
+  try { window.__nativeExitApp = function () { P.App && P.App.exitApp && P.App.exitApp(); }; } catch (e) {}
   var platform = (Cap.getPlatform && Cap.getPlatform()) || 'android';
 
   // ── Status bar + splash ────────────────────────────────────────────────

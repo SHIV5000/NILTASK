@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 import logger from './utils/logger.js';
 
-// v1.51.0 - Departments/Staff sidebar, unread badges, search fix, cross-room scroll
+// v1.53.0 - Cross-platform group/DM profile photo sync and build bump
 
 // ─── TENANT-NAMESPACED localStorage HELPERS ───────────────────────────────────
 function _webLsKey(k) { return (window.currentTenantId ? window.currentTenantId+'_' : '')+k; }
@@ -189,7 +189,17 @@ window.saveNewGroup = async function() {
     const memberIds = [window.currentUser.id, ..._ngSelectedMembers];
     _webLsSet('dept_name_'+roomId, name);
     _webLsSet('dept_color_'+roomId, _ngColor);
-    if (_ngPhotoDataUrl) _webLsSet('dept_photo_'+roomId, _ngPhotoDataUrl);
+    if (_ngPhotoDataUrl) {
+        _webLsSet('dept_photo_'+roomId, _ngPhotoDataUrl);
+        _webLsSet('dept_photo_ts_'+roomId, String(Date.now()));
+        try {
+            const blob = await fetch(_ngPhotoDataUrl).then(r => r.blob());
+            await sb.storage.from('task-proofs').upload(`group-photos/${window.currentTenantId}/${roomId}.jpg`, blob, { upsert:true, contentType:'image/jpeg' });
+            localStorage.removeItem(_webLsKey('dept_photo_none_'+roomId));
+        } catch (e) {
+            console.warn('[group-photo] create upload failed; keeping local preview', e);
+        }
+    }
     _webLsSet('dept_members_'+roomId, JSON.stringify(memberIds));
 
     // Persist to DB so all users see the group in their sidebar
@@ -1121,17 +1131,32 @@ window.loadChatsList = async function() {
     // into the cache; subsequent renders (room open, list refresh) pick them up.
     const {data: users} = await sb.from('profiles').select('id, email, full_name, designation, last_seen').eq('tenant_id', window.currentTenantId);
     window.globalUsersCache = users || [];
-    (async () => {
-        try {
-            const { data: av } = await sb.from('profiles')
-                .select('id, avatar_url').eq('tenant_id', window.currentTenantId)
-                .not('avatar_url', 'is', null);
-            if (av?.length) {
-                const byId = {}; av.forEach(r => { byId[r.id] = r.avatar_url; });
-                (window.globalUsersCache || []).forEach(u => { if (byId[u.id]) u.avatar_url = byId[u.id]; });
-            }
-        } catch (e) {}
-    })();
+    if (!window._webAvatarsHydrated) {
+        window._webAvatarsHydrated = true;
+        (async () => {
+            try {
+                const { data: av } = await sb.from('profiles')
+                    .select('id, avatar_url').eq('tenant_id', window.currentTenantId)
+                    .not('avatar_url', 'is', null);
+                if (av?.length) {
+                    const byId = {}; av.forEach(r => { byId[r.id] = r.avatar_url; });
+                    let changed = false;
+                    (window.globalUsersCache || []).forEach(u => {
+                        if (byId[u.id] && u.avatar_url !== byId[u.id]) { u.avatar_url = byId[u.id]; changed = true; }
+                    });
+                    if (changed) {
+                        if (typeof window.loadChatsList === 'function') window.loadChatsList();
+                        if (window._roomMsgs?.length && typeof window.renderMessages === 'function') {
+                            window._roomMsgs = window._roomMsgs.map(m => byId[m.sender_id] ? { ...m, profiles: { ...(m.profiles || {}), avatar_url: byId[m.sender_id] } } : m);
+                            window.renderMessages(window._roomMsgs);
+                        }
+                    }
+                } else {
+                    window._webAvatarsHydrated = false;
+                }
+            } catch (e) { window._webAvatarsHydrated = false; }
+        })();
+    }
 
     // Fallback colours / initials for the legacy fixed room ids.
     const deptColors = { general: '#6366f1', math: '#0ea5e9', science: '#10b981', leadership: '#f59e0b' };
@@ -1464,10 +1489,58 @@ window.startSubscriptions = async function() {
     };
     window._onBcGroupPhoto = function(payload) {
         if (payload?.room_id) {
+            localStorage.removeItem(_webLsKey('dept_photo_' + payload.room_id));
+            localStorage.removeItem(_webLsKey('dept_photo_ts_' + payload.room_id));
+            localStorage.removeItem(_webLsKey('dept_photo_none_' + payload.room_id));
+            // Also clear legacy non-tenant keys left by older builds.
             localStorage.removeItem('dept_photo_' + payload.room_id);
             localStorage.removeItem('dept_photo_ts_' + payload.room_id);
+            localStorage.removeItem('dept_photo_none_' + payload.room_id);
             if (payload.name) _webLsSet('dept_name_' + payload.room_id, payload.name);
+            if (payload.color) _webLsSet('dept_color_' + payload.room_id, payload.color);
             if (typeof window.loadChatsList === 'function') window.loadChatsList();
+        }
+    };
+
+    // Profile photo/name realtime for web + PWA. Supabase profile UPDATE events are
+    // the durable path; the explicit broadcast sent by Settings is the instant path
+    // for browsers whose postgres_changes socket is lagging. Keep the in-memory user
+    // cache authoritative, then repaint the sidebar and currently-open message list.
+    window._onProfileRealtime = function(row) {
+        if (!row?.id || (row.tenant_id && row.tenant_id !== window.currentTenantId)) return;
+        const users = window.globalUsersCache || [];
+        let u = users.find(x => x.id === row.id);
+        if (!u) { u = { id: row.id }; users.push(u); window.globalUsersCache = users; }
+        ['full_name','email','designation','last_seen','avatar_url'].forEach(k => {
+            if (Object.prototype.hasOwnProperty.call(row, k)) u[k] = row[k];
+        });
+        if (row.id === window.currentUser?.id) {
+            if (Object.prototype.hasOwnProperty.call(row, 'avatar_url')) {
+                window._userAvatarUrl = row.avatar_url || null;
+                try {
+                    if (row.avatar_url) localStorage.setItem('mpgs_avatar_' + row.id, row.avatar_url);
+                    else localStorage.removeItem('mpgs_avatar_' + row.id);
+                } catch (e) {}
+            }
+            const av = document.getElementById('sidebarAvatar');
+            if (av && Object.prototype.hasOwnProperty.call(row, 'avatar_url')) {
+                av.innerHTML = row.avatar_url
+                    ? `<img src="${row.avatar_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+                    : ((row.full_name || window.currentUser?.email || '?').charAt(0).toUpperCase());
+            }
+            const nm = document.getElementById('sidebarNameDisplay');
+            if (nm && row.full_name) nm.textContent = (window.toSentenceCase?.(row.full_name) || row.full_name);
+            const sp = document.getElementById('settingsPhotoPreview');
+            const ph = document.getElementById('settingsPhotoPlaceholder');
+            if (sp && Object.prototype.hasOwnProperty.call(row, 'avatar_url')) {
+                if (row.avatar_url) { sp.src = row.avatar_url; sp.style.display = 'block'; if (ph) ph.style.display = 'none'; }
+                else { sp.style.display = 'none'; if (ph) ph.style.display = 'flex'; }
+            }
+        }
+        if (typeof window.loadChatsList === 'function') window.loadChatsList();
+        if (window._roomMsgs?.length && typeof window.renderMessages === 'function') {
+            window._roomMsgs = window._roomMsgs.map(m => m.sender_id === row.id ? { ...m, profiles: { ...(m.profiles || {}), ...u } } : m);
+            window.renderMessages(window._roomMsgs);
         }
     };
     window._onBcTyping = function(payload) {
@@ -1494,17 +1567,22 @@ window.startSubscriptions = async function() {
         .on('broadcast', { event: 'typing' }, ({ payload }) => window._onBcTyping(payload))
         .subscribe();
 
-    // Shared cross-platform channel (mobile ↔ web) — v33. Ignore src:'w' (own platform,
-    // already delivered via the legacy channel). Reaction uses a single event with isDelete flag.
-    window._sharedBroadcast = sb.channel('taskflow-bc-' + window.currentTenantId, { config: { broadcast: { self: false } } });
-    window._sharedBroadcast
-        .on('broadcast', { event: 'reaction' }, ({ payload: p }) => {
-            if (!p || p.src === 'w') return;
-            if (p.isDelete) window._onBcReactionRemove(p); else window._onBcReactionAdd(p);
-        })
-        .on('broadcast', { event: 'group_photo' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onBcGroupPhoto(p); })
-        .on('broadcast', { event: 'typing' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onBcTyping(p); })
-        .subscribe();
+    // Shared cross-platform channel (mobile ↔ web). On mobile view, mobile.js owns
+    // this taskflow-bc topic so it can register broadcast handlers before subscribe;
+    // the desktop web shell keeps the topic for web/PWA ↔ mobile sync.
+    if (!window.isMobileView?.()) {
+        window._sharedBroadcast = sb.channel('taskflow-bc-' + window.currentTenantId, { config: { broadcast: { self: false } } });
+        window._sharedBroadcast
+            .on('postgres_changes', { event:'UPDATE', schema:'public', table:'profiles', filter:`tenant_id=eq.${window.currentTenantId}` }, p => window._onProfileRealtime(p.new))
+            .on('broadcast', { event: 'reaction' }, ({ payload: p }) => {
+                if (!p || p.src === 'w') return;
+                if (p.isDelete) window._onBcReactionRemove(p); else window._onBcReactionAdd(p);
+            })
+            .on('broadcast', { event: 'group_photo' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onBcGroupPhoto(p); })
+            .on('broadcast', { event: 'profile_update' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onProfileRealtime(p); })
+            .on('broadcast', { event: 'typing' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onBcTyping(p); })
+            .subscribe();
+    }
 
     // Scheduled messages: notify sender when status changes to 'sent'
     let scheduledSubscription = null;

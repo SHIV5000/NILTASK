@@ -1,6 +1,6 @@
 {
   "name": "noted-for-action",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "private": true,
   "description": "Noted For Action \u2014 native shell (Capacitor remote-URL wrapper). The web app itself is served from Vercel; this only builds the Android/iOS apps.",
   "scripts": {

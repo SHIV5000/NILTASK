@@ -1130,7 +1130,7 @@ window.loadChatsList = async function() {
     // reload, which is why web showed initials while mobile still showed photos.
     const prevAvatars = new Map((window.globalUsersCache || [])
         .filter(u => u.avatar_url).map(u => [u.id, u.avatar_url]));
-    const {data: users} = await sb.from('profiles').select('id, email, full_name, designation, last_seen, avatar_url').eq('tenant_id', window.currentTenantId);
+    const {data: users} = await sb.from('profiles').select('id, email, full_name, designation, role, last_seen, avatar_url').eq('tenant_id', window.currentTenantId);
     window.globalUsersCache = (users || []).map(u => ({ ...u, avatar_url: u.avatar_url || prevAvatars.get(u.id) || '' }));
     if (!window._webAvatarsHydrated || (window.globalUsersCache || []).some(u => !u.avatar_url)) {
         window._webAvatarsHydrated = true;
@@ -1243,7 +1243,7 @@ window.loadChatsList = async function() {
             </div>
             <div class="flex-1 min-w-0 flex items-center gap-2">
                 <span class="truncate tracking-wide text-sm" style="color:var(--text-primary);">${window.escapeHtml(name)}</span>
-                ${u.designation ? `<span style="flex-shrink:0;font-size:10px;color:var(--text-secondary);background:var(--bg-body);border:1px solid var(--border-color);border-radius:8px;padding:1px 7px;white-space:nowrap;">${window.escapeHtml(u.designation)}</span>` : ''}
+                ${u.role ? `<span style="flex-shrink:0;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#fff;background:var(--accent);border-radius:8px;padding:1px 7px;white-space:nowrap;">${window.escapeHtml(u.role)}</span>` : ''}
             </div>
         </div>`;
     });
@@ -1396,6 +1396,17 @@ window.startSubscriptions = async function() {
         .on('postgres_changes', {event:'INSERT', schema:'public', table:'reactions', filter:'tenant_id=eq.'+window.currentTenantId}, p => {
             try { window.logger?.logReact?.('pg-recv', { et:'INSERT', hasMid:!!p.new?.message_id, rowFound:!!(p.new?.message_id && document.getElementById('row-'+p.new.message_id)) }); } catch(e){}
             window._onBcReactionAdd?.(p.new);
+            // A reaction to MY message creates a notification server-side (trigger).
+            // The notifications table may not be in the realtime publication, so the
+            // notification subscription won't fire on web — re-seed the bell from the
+            // DB shortly after so reactions update the web bell + feed live (mirrors
+            // how mobile re-counts on every reaction event).
+            if (p.new?.user_id && p.new.user_id !== window.currentUser?.id) {
+                setTimeout(() => { try {
+                    window.NFA_unreadCount(sb, window.currentUser.id).then(c => window._setBellBadge?.(c));
+                    if (window._activityFeedOpen && typeof window._loadActivityFeed === 'function') window._loadActivityFeed();
+                } catch(e){} }, 900);
+            }
         })
         .on('postgres_changes', {event:'DELETE', schema:'public', table:'reactions'}, p => {
             try { window.logger?.logReact?.('pg-recv', { et:'DELETE', hasMid:!!p.old?.message_id, rowFound:!!(p.old?.message_id && document.getElementById('row-'+p.old.message_id)) }); } catch(e){}

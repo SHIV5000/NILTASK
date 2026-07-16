@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v201';
+const _MOB_VER = 'v202';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -105,6 +105,8 @@ function _roleChip(userId) {
     const c = cfg[r] || { bg:'#6b7280', label:r };
     return `<span class="m-role-chip" style="background:${c.bg};">${x(c.label)}</span>`;
 }
+// Sender's designation (job title) for the message-bubble meta line.
+function _udesig(uid) { const u = (_users || []).find(x => x.id === uid); return u?.designation || ''; }
 
 // Standard presence palette (per request): dark green = online, maroon = offline.
 const _ONLINE_GREEN = '#15803d', _OFFLINE_MAROON = '#7f1d1d';
@@ -1494,16 +1496,14 @@ async function _activity(p) {
         logError: (m, d) => window.logger?.sb?.(m, d),
     });
 
-    // v199: merge locally-stored reaction notifications (DB-independent) and sort by time.
-    const _feedAll = _feed.concat(_localReactFeedItems())
-        .sort((a, b) => new Date(_normTs(b.n.created_at)).getTime() - new Date(_normTs(a.n.created_at)).getTime());
-    if (mode === 'attention') _markLocalReactRead();   // opening the bell clears their unread count
+    // v201: reactions come from the DB feed (NFA_buildActivity) now — the v196 local
+    // merge is removed to stop double entries in the Activity feed.
     // ATTENTION view = notification-sourced items only (mentions/replies/reactions/
     // tasks/reminders). Timeline view = everything (also raw messages + task trails,
     // which NFA_buildActivity tags with 'msg:'/'trail:' id prefixes).
     const _all = mode === 'attention'
-        ? _feedAll.filter(it => { const id = String(it.n?.id || ''); return !id.startsWith('msg:') && !id.startsWith('trail:'); })
-        : _feedAll;
+        ? _feed.filter(it => { const id = String(it.n?.id || ''); return !id.startsWith('msg:') && !id.startsWith('trail:'); })
+        : _feed;
 
     let items = _all.filter(it => filter==='all' || it.cat===filter);
     // Distinct senders present in the (category-filtered) feed, for the sender chips.
@@ -1832,7 +1832,7 @@ function _bubbleHTML(m, reactionsMap, maxLen=150, replyMap={}, roomCtx={}) {
       <div class="m-bubble-row ${me?'snt':'rcv'}" id="row-${m.id}" data-time="${m.created_at}">
         ${!me ? _avatarHTML(sender?.avatar_url, nm, 'var(--accent)', 'm-av-tiny') : ''}
         <div class="m-bubble ${me?'snt':'rcv'}">
-          <div class="m-bmeta" data-ts="${m.created_at}" data-label="${x(nm)}">${x(nm)} · ${_ago(m.created_at)}${m.updated_at && m.updated_at > (m.created_at||'').replace(/\..*$/,'.005Z') ? ' <span class="m-edited">edited</span>' : ''}</div>
+          <div class="m-bmeta" data-ts="${m.created_at}" data-label="${x(nm)}${!me && _udesig(m.sender_id) ? ' · '+x(_udesig(m.sender_id)) : ''}">${x(nm)}${!me && _udesig(m.sender_id) ? ' · '+x(_udesig(m.sender_id)) : ''} · ${_ago(m.created_at)}${m.updated_at && m.updated_at > (m.created_at||'').replace(/\..*$/,'.005Z') ? ' <span class="m-edited">edited</span>' : ''}</div>
           ${roleChip ? `<div style="margin:-2px 0 4px;">${roleChip}</div>` : ''}
           <div class="m-btext">${cl}</div>
           ${_chipsHTML(m.id, reactionsMap)}
@@ -4049,7 +4049,10 @@ function _scheduleFallback() {
 // requested (WhatsApp/Slack style). Chat rows still show each chat's own count;
 // tapping the bell opens the attention list. room_reads counts each message once.
 // v199: + locally-stored reaction notifications (bypasses the RLS-blocked table).
-function _bellTotal() { return _bellCount + _sumUnread() + _localReactUnread(); }
+// v201: the DB notification path for reactions now works (reactions in the realtime
+// publication + server trigger creates the row), so the v196 client-side local store
+// is REMOVED from the count — keeping it double-counted every reaction (bell + feed).
+function _bellTotal() { return _bellCount + _sumUnread(); }
 function _renderBellBadge() {
     // 1) BELL (top-right) — the attention NUMBER.
     const badge = _el('mNotifBadge');
@@ -4304,23 +4307,17 @@ async function _onReactionChange(r, eventType) {
                     console.log('[v194][REACTION] recv mine=' + (msg?.sender_id === _uid) + ' mid=' + r.message_id + ' from=' + r.user_id);
                     if (msg?.sender_id === _uid) {   // only if the reacted message is MINE
                         const reactor = _uname(r.user_id) || 'Someone';
-                        // v199: store LOCALLY first — this is what makes the reaction show in
-                        // the bell + Activity feed regardless of the notifications-table RLS.
-                        _addLRN({
-                            message_id: r.message_id, reactor_id: r.user_id, reactor_name: reactor,
-                            value: r.value || '👍', room_id: msg.room_id || '',
-                            message: `${r.value || '👍'} ${reactor} reacted to your message`,
-                            created_at: new Date().toISOString()
-                        });
-                        // Best-effort DB insert too (works if RLS allows; harmless otherwise).
-                        const ins = await sb.from('notifications').insert({
+                        // v201: fallback self-insert for deployments WITHOUT the server
+                        // reaction trigger. Upsert-ignore so it's a silent no-op when the
+                        // trigger already created the row (no more duplicate-key errors,
+                        // and no double count — the local store is gone).
+                        await sb.from('notifications').upsert({
                             user_id: _uid, type: 'reaction',
                             message: `${r.value || '👍'} ${reactor} reacted to your message`,
                             message_id: r.message_id, tenant_id: _tid, is_read: false
-                        }).select();
-                        console.log('[v194][REACTION] self-insert ok=' + !ins.error + (ins.error ? ' ERR=' + ins.error.message : ''));
+                        }, { onConflict: 'user_id,message_id,type', ignoreDuplicates: true });
                     }
-                } catch (e) { console.log('[v194][REACTION] self-insert threw ' + (e?.message || e)); }
+                } catch (e) { /* trigger already created it / offline — ignore */ }
                 try { refreshNotificationUI(); } catch (e) {}
             })();
         } else { try { refreshNotificationUI(); } catch (e) {} }
@@ -4331,7 +4328,6 @@ async function _onReactionChange(r, eventType) {
     // notifies again. Keeps the bell + Activity feed in sync with the live reaction.
     if (isDelete && r.user_id && r.user_id !== _uid) {
         _reactNotifSeen.delete(r.message_id + '|' + r.user_id + '|' + (r.value || ''));
-        _removeLRN(r.message_id, r.user_id, r.value || '👍');   // v199: drop the local reaction notification
         (async () => {
             try {
                 const { data: msg } = await sb.from('messages').select('sender_id').eq('id', r.message_id).maybeSingle();

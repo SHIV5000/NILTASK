@@ -23,13 +23,12 @@ let _tsInterval = null;
 let _users  = [];
 let _pendingUploadTaskId = null;
 let _pendingDeptPhoto = null;
-// SINGLE realtime channel (v159). Previously three channels (mobile-rt postgres +
-// mobile-bc broadcast + taskflow-bc shared) rode the one WebSocket; any one erroring
-// on a flaky phone triggered a full teardown/reconnect. Collapsed into ONE channel
-// on the cross-platform topic 'taskflow-bc-'+tid (so the web↔mobile bridge is
-// unchanged) that carries BOTH postgres_changes AND all broadcasts. Fewer joins,
-// fewer failure points, one place to heal.
+// Primary mobile realtime channel carries DB changes. A second lightweight bridge
+// channel uses the same taskflow-bc topic as web/PWA for cross-platform broadcasts;
+// keeping DB callbacks off the bridge avoids the duplicate-topic/late-callback issue
+// while still syncing photos, reactions, typing, and read receipts across platforms.
 let _rtChannel = null;
+let _bridgeChannel = null;
 let _presenceChannel = null;   // Supabase Presence: instant online/offline for the green/maroon dots
 // Rooms we've seen a live message for this session. Since Patch Set 2 removed the
 // hand-increment that used to seed window.unreadCounts, reconcile needs another way
@@ -39,10 +38,11 @@ const _seenRooms = new Set();
 // De-dupes the author's self-inserted reaction notification against the twin
 // delivery (postgres_changes + broadcast) for the same (message_id, reactor).
 const _reactNotifSeen = new Set();
-// Broadcast on the single shared channel. self:false already stops our own echo, so
+// Broadcast on the cross-platform bridge. self:false already stops our own echo, so
 // every other client (web src:'w', mobile src:'m') receives it once.
 function _bcSend(event, payload) {
-    try { _rtChannel?.send({ type:'broadcast', event, payload:{ ...payload, src:'m' } }); } catch {}
+    const msg = { type:'broadcast', event, payload:{ ...payload, src:'m' } };
+    try { (_bridgeChannel || _rtChannel)?.send(msg); } catch {}
 }
 // Refresh the Realtime socket's auth token from the current session — an expired JWT
 // can silently wedge postgres_changes delivery until a full reconnect. Cheap; call
@@ -3546,6 +3546,7 @@ function _scheduleRtReconnect() {
         await _refreshRtAuth();   // freshen token so the rebuilt socket authenticates cleanly
         _rtIntentionalClose = true;
         if (_rtChannel) { try { await sb.removeChannel(_rtChannel); } catch {} _rtChannel = null; }
+        if (_bridgeChannel) { try { await sb.removeChannel(_bridgeChannel); } catch {} _bridgeChannel = null; }
         _rtIntentionalClose = false;
         _initRealtime();
     }, delay);
@@ -3553,7 +3554,7 @@ function _scheduleRtReconnect() {
 function _initRealtime() {
   try {
     if (!_tid) { console.error('[mob-rt] Cannot init realtime without tenant_id'); return; }
-    if (_rtChannel) return;
+    if (_rtChannel || _bridgeChannel) return;
     // Make sure the socket carries a fresh session token BEFORE we (re)subscribe, so
     // postgres_changes RLS keeps delivering after the 1h JWT would otherwise expire.
     _refreshRtAuth();
@@ -3652,7 +3653,7 @@ function _initRealtime() {
         .on('broadcast', { event:'typing' }, _hTyping)
         .on('broadcast', { event:'room_read' }, _hRoomRead)
         .subscribe(status => {
-            console.log('[mob-rt] channel status='+status); window.logger?.logRt('taskflow-bc', status);
+            console.log('[mob-rt] channel status='+status); window.logger?.logRt('mobile-rt', status);
             try { _setConnState(); } catch(e){}   // reflect socket health in the top-bar Online/Offline chip
             if (status === 'SUBSCRIBED') {
                 if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
@@ -3682,7 +3683,9 @@ function _initRealtime() {
     // app functional meanwhile.
     console.error('[mob-rt] init failed:', e);
     try { if (_rtChannel) sb.removeChannel(_rtChannel); } catch (e2) {}
+    try { if (_bridgeChannel) sb.removeChannel(_bridgeChannel); } catch (e3) {}
     _rtChannel = null;
+    _bridgeChannel = null;
     if (!_rtIntentionalClose) _scheduleRtReconnect();
   }
 }

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 import logger from './utils/logger.js';
 
-// v1.52.0 - Cross-platform group/DM profile photo sync and build bump
+// v1.54.0 - Keep web/mobile staff avatars in sync and visible
 
 // ─── TENANT-NAMESPACED localStorage HELPERS ───────────────────────────────────
 function _webLsKey(k) { return (window.currentTenantId ? window.currentTenantId+'_' : '')+k; }
@@ -1073,7 +1073,7 @@ window.ensureUsersLoaded = async function(force) {
     if (!force && window.globalUsersCache?.length) return window.globalUsersCache;
     if (!window.currentTenantId) return window.globalUsersCache || [];
     const { data } = await sb.from('profiles')
-        .select('id, email, full_name, designation')
+        .select('id, email, full_name, designation, avatar_url')
         .eq('tenant_id', window.currentTenantId);
     if (data?.length) window.globalUsersCache = data;
     return window.globalUsersCache || [];
@@ -1125,13 +1125,14 @@ window.loadChatsList = async function() {
     // Expose for other modules (e.g. the forward modal).
     window._groupsCache = groups;
 
-    // PERF (Phase 2.1): load light columns for the immediate cache — avatar_url is
-    // a base64 data-URL (tens of KB each) that made this query ~1MB and slowed the
-    // sidebar + first message paint. Hydrate avatars in the background and merge
-    // into the cache; subsequent renders (room open, list refresh) pick them up.
-    const {data: users} = await sb.from('profiles').select('id, email, full_name, designation, last_seen').eq('tenant_id', window.currentTenantId);
-    window.globalUsersCache = users || [];
-    if (!window._webAvatarsHydrated) {
+    // Load avatar_url with the staff rows. The previous light-query + one-shot
+    // background hydration could wipe already-hydrated avatars on the next sidebar
+    // reload, which is why web showed initials while mobile still showed photos.
+    const prevAvatars = new Map((window.globalUsersCache || [])
+        .filter(u => u.avatar_url).map(u => [u.id, u.avatar_url]));
+    const {data: users} = await sb.from('profiles').select('id, email, full_name, designation, last_seen, avatar_url').eq('tenant_id', window.currentTenantId);
+    window.globalUsersCache = (users || []).map(u => ({ ...u, avatar_url: u.avatar_url || prevAvatars.get(u.id) || '' }));
+    if (!window._webAvatarsHydrated || (window.globalUsersCache || []).some(u => !u.avatar_url)) {
         window._webAvatarsHydrated = true;
         (async () => {
             try {
@@ -1567,19 +1568,22 @@ window.startSubscriptions = async function() {
         .on('broadcast', { event: 'typing' }, ({ payload }) => window._onBcTyping(payload))
         .subscribe();
 
-    // Shared cross-platform channel (mobile ↔ web) — v33. Ignore src:'w' (own platform,
-    // already delivered via the legacy channel). Reaction uses a single event with isDelete flag.
-    window._sharedBroadcast = sb.channel('taskflow-bc-' + window.currentTenantId, { config: { broadcast: { self: false } } });
-    window._sharedBroadcast
-        .on('postgres_changes', { event:'UPDATE', schema:'public', table:'profiles', filter:`tenant_id=eq.${window.currentTenantId}` }, p => window._onProfileRealtime(p.new))
-        .on('broadcast', { event: 'reaction' }, ({ payload: p }) => {
-            if (!p || p.src === 'w') return;
-            if (p.isDelete) window._onBcReactionRemove(p); else window._onBcReactionAdd(p);
-        })
-        .on('broadcast', { event: 'group_photo' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onBcGroupPhoto(p); })
-        .on('broadcast', { event: 'profile_update' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onProfileRealtime(p); })
-        .on('broadcast', { event: 'typing' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onBcTyping(p); })
-        .subscribe();
+    // Shared cross-platform channel (mobile ↔ web). On mobile view, mobile.js owns
+    // this taskflow-bc topic so it can register broadcast handlers before subscribe;
+    // the desktop web shell keeps the topic for web/PWA ↔ mobile sync.
+    if (!window.isMobileView?.()) {
+        window._sharedBroadcast = sb.channel('taskflow-bc-' + window.currentTenantId, { config: { broadcast: { self: false } } });
+        window._sharedBroadcast
+            .on('postgres_changes', { event:'UPDATE', schema:'public', table:'profiles', filter:`tenant_id=eq.${window.currentTenantId}` }, p => window._onProfileRealtime(p.new))
+            .on('broadcast', { event: 'reaction' }, ({ payload: p }) => {
+                if (!p || p.src === 'w') return;
+                if (p.isDelete) window._onBcReactionRemove(p); else window._onBcReactionAdd(p);
+            })
+            .on('broadcast', { event: 'group_photo' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onBcGroupPhoto(p); })
+            .on('broadcast', { event: 'profile_update' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onProfileRealtime(p); })
+            .on('broadcast', { event: 'typing' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onBcTyping(p); })
+            .subscribe();
+    }
 
     // Scheduled messages: notify sender when status changes to 'sent'
     let scheduledSubscription = null;

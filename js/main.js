@@ -1241,7 +1241,10 @@ window.loadChatsList = async function() {
                 ${unread > 0 ? `<span class="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full" style="background:#22c55e;"></span>
                     <span class="absolute -top-1 -right-1 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center" style="background:#22c55e;">${unread > 9 ? '9+' : unread}</span>` : ''}
             </div>
-            <span class="flex-1 truncate tracking-wide text-sm" style="color:var(--text-primary);">${window.escapeHtml(name)}</span>
+            <div class="flex-1 min-w-0 flex items-center gap-2">
+                <span class="truncate tracking-wide text-sm" style="color:var(--text-primary);">${window.escapeHtml(name)}</span>
+                ${u.designation ? `<span style="flex-shrink:0;font-size:10px;color:var(--text-secondary);background:var(--bg-body);border:1px solid var(--border-color);border-radius:8px;padding:1px 7px;white-space:nowrap;">${window.escapeHtml(u.designation)}</span>` : ''}
+            </div>
         </div>`;
     });
 

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 import logger from './utils/logger.js';
 
-// v1.51.0 - Departments/Staff sidebar, unread badges, search fix, cross-room scroll
+// v1.52.0 - Cross-platform group/DM profile photo sync and build bump
 
 // ─── TENANT-NAMESPACED localStorage HELPERS ───────────────────────────────────
 function _webLsKey(k) { return (window.currentTenantId ? window.currentTenantId+'_' : '')+k; }
@@ -189,7 +189,17 @@ window.saveNewGroup = async function() {
     const memberIds = [window.currentUser.id, ..._ngSelectedMembers];
     _webLsSet('dept_name_'+roomId, name);
     _webLsSet('dept_color_'+roomId, _ngColor);
-    if (_ngPhotoDataUrl) _webLsSet('dept_photo_'+roomId, _ngPhotoDataUrl);
+    if (_ngPhotoDataUrl) {
+        _webLsSet('dept_photo_'+roomId, _ngPhotoDataUrl);
+        _webLsSet('dept_photo_ts_'+roomId, String(Date.now()));
+        try {
+            const blob = await fetch(_ngPhotoDataUrl).then(r => r.blob());
+            await sb.storage.from('task-proofs').upload(`group-photos/${window.currentTenantId}/${roomId}.jpg`, blob, { upsert:true, contentType:'image/jpeg' });
+            localStorage.removeItem(_webLsKey('dept_photo_none_'+roomId));
+        } catch (e) {
+            console.warn('[group-photo] create upload failed; keeping local preview', e);
+        }
+    }
     _webLsSet('dept_members_'+roomId, JSON.stringify(memberIds));
 
     // Persist to DB so all users see the group in their sidebar
@@ -1479,9 +1489,15 @@ window.startSubscriptions = async function() {
     };
     window._onBcGroupPhoto = function(payload) {
         if (payload?.room_id) {
+            localStorage.removeItem(_webLsKey('dept_photo_' + payload.room_id));
+            localStorage.removeItem(_webLsKey('dept_photo_ts_' + payload.room_id));
+            localStorage.removeItem(_webLsKey('dept_photo_none_' + payload.room_id));
+            // Also clear legacy non-tenant keys left by older builds.
             localStorage.removeItem('dept_photo_' + payload.room_id);
             localStorage.removeItem('dept_photo_ts_' + payload.room_id);
+            localStorage.removeItem('dept_photo_none_' + payload.room_id);
             if (payload.name) _webLsSet('dept_name_' + payload.room_id, payload.name);
+            if (payload.color) _webLsSet('dept_color_' + payload.room_id, payload.color);
             if (typeof window.loadChatsList === 'function') window.loadChatsList();
         }
     };

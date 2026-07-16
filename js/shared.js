@@ -9,7 +9,7 @@ window.sb = sb;
 
 // Single source of truth for the running build — stamped onto every warn/error
 // log row so the Live Log Monitor can tell which version a remote device runs.
-window.APP_VER = 'v196';
+window.APP_VER = 'v197';
 
 // Retire the green 'ocean-teal' theme entirely — it tinted the whole UI (and the
 // safe-area gutter) green. Reset anyone still on it BEFORE ui-core reads the value.

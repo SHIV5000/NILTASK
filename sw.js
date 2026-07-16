@@ -2,7 +2,7 @@
  * TaskFlow Service Worker — enables PWA install prompt on Android/Chrome
  * Caches core app shell for offline-capable experience
  */
-const CACHE   = 'taskflow-v196';
+const CACHE   = 'taskflow-v199';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -35,13 +35,21 @@ const PRECACHE = [
   '/icons/badge-96.png',
 ];
 
-// Install — cache core files
+// Install — cache core files. Do not let one missing/temporarily unavailable
+// optional asset make the entire service-worker install fail; on mobile that
+// strands users on the previous cached build and prevents offline fallback updates.
 self.addEventListener('install', e => {
-  e.waitUntil(
-    caches.open(CACHE)
-      .then(cache => cache.addAll(PRECACHE))
-      .then(() => self.skipWaiting())
-  );
+  e.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    await Promise.all(PRECACHE.map(async url => {
+      try {
+        await cache.add(url);
+      } catch (err) {
+        console.warn('[sw] precache skipped', url, err && err.message ? err.message : err);
+      }
+    }));
+    await self.skipWaiting();
+  })());
 });
 
 // Activate — clean up old caches

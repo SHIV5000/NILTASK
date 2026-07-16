@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v196';
+const _MOB_VER = 'v197';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -718,14 +718,20 @@ async function _syncRoomSettings() {
         // Try to include members (DB column may not exist yet — fall back gracefully).
         let rs = null;
         const withMembers = await sb.from('room_settings')
-            .select('room_id,name,color,archived,members,admins').eq('tenant_id', _tid);
+            .select('room_id,name,color,archived,members,admins,updated_at').eq('tenant_id', _tid);
         if (withMembers.error) {
             const basic = await sb.from('room_settings')
-                .select('room_id,name,color,archived').eq('tenant_id', _tid);
+                .select('room_id,name,color,archived,updated_at').eq('tenant_id', _tid);
             rs = basic.data;
         } else {
             rs = withMembers.data;
         }
+        // Map room_id → last-modified time so the photo cache can be refreshed
+        // CHANGE-BASED (not just time-based): if the DB row is newer than our cached
+        // photo, re-fetch immediately even within the 30-min / 24h guards. This is
+        // what makes a group photo changed on ANOTHER device (incl. web) converge fast.
+        const _rsUpd = {};
+        (rs || []).forEach(r => { _rsUpd[r.room_id] = r.updated_at ? Date.parse(r.updated_at) : 0; });
         if (rs?.length) {
             rs.forEach(r => {
                 if (r.name)  _lsSet('dept_name_'+r.room_id, r.name);
@@ -747,8 +753,10 @@ async function _syncRoomSettings() {
         await Promise.all(_customGroups.map(async g => {
             const ts = parseInt(_lsGet('dept_photo_ts_'+g.id)||'0');
             const noneTs = parseInt(_lsGet('dept_photo_none_'+g.id)||'0');
-            if (g.photo && ts && (Date.now()-ts < 1800000)) return;          // fresh cache
-            if (!g.photo && noneTs && (Date.now()-noneTs < 86400000)) return; // known "no photo"
+            const dbTs = _rsUpd[g.id] || 0;
+            const stale = dbTs > Math.max(ts, noneTs);   // DB changed after our last fetch → must re-fetch
+            if (!stale && g.photo && ts && (Date.now()-ts < 1800000)) return;          // fresh cache
+            if (!stale && !g.photo && noneTs && (Date.now()-noneTs < 86400000)) return; // known "no photo"
             try {
                 const { data: sd, error } = await sb.storage.from('task-proofs')
                     .createSignedUrl(`group-photos/${_tid}/${g.id}.jpg`, 3600);
@@ -3639,6 +3647,12 @@ function _initRealtime() {
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'task_assignees', filter:`tenant_id=eq.${_tid}` }, p => _onTaskAssigneeUpdate(p.new))
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`user_id=eq.${_uid}` }, p => _onNotifInsert(p.new))
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'profiles', filter:`tenant_id=eq.${_tid}` }, p => _onPresenceUpdate(p.new))
+        // Live group name/photo/member/archive changes (incl. web-originated) → re-sync
+        // + re-fetch photos. Needs room_settings in the realtime publication to fire live;
+        // cold-start still converges via the change-based re-fetch either way.
+        .on('postgres_changes', { event:'*', schema:'public', table:'room_settings', filter:`tenant_id=eq.${_tid}` }, () => {
+            _syncRoomSettings().then(() => { const t=_stack[_stack.length-1]; if (t?.screen==='home') _render('home', null, 'none'); });
+        })
         .on('broadcast', { event:'new_message' }, _hNewMessage)
         .on('broadcast', { event:'reaction' }, _hReaction)
         .on('broadcast', { event:'group_photo' }, _hGroupPhoto)
@@ -4454,6 +4468,10 @@ function _wireScreen(screen, params, container) {
                 _lsSet('dept_photo_'+deptId, dataUrl);
                 _lsSet('dept_photo_ts_'+deptId, String(Date.now()));
                 try { localStorage.removeItem(_lsKey('dept_photo_none_'+deptId)); } catch(e){}
+                // CHANGE-BASED SYNC: bump room_settings.updated_at so every other device
+                // (incl. cold-start and web-originated) detects the photo changed and
+                // re-fetches — the room_settings realtime UPDATE also fires live.
+                try { await sb.from('room_settings').upsert({ room_id:deptId, tenant_id:_tid, updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' }); } catch(e){}
                 // Broadcast so other devices drop their cache and re-fetch the new photo.
                 _bcSend('group_photo', { room_id:deptId });
             } else {

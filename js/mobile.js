@@ -1150,6 +1150,10 @@ window._back = function() {
     if (_stack.length > 1) { history.back(); return; }
     const now = Date.now();
     if (now - _lastBackAt < 2000) {
+        if (window.IS_NATIVE && typeof window.__nativeExitApp === 'function') {
+            window.__nativeExitApp();
+            return;
+        }
         window.close();
         setTimeout(() => { window.location.href = 'about:blank'; }, 100);
     } else {

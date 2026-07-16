@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 import logger from './utils/logger.js';
 
-// v1.53.0 - Cross-platform group/DM profile photo sync and build bump
+// v1.52.0 - Cross-platform group/DM profile photo sync and build bump
 
 // ─── TENANT-NAMESPACED localStorage HELPERS ───────────────────────────────────
 function _webLsKey(k) { return (window.currentTenantId ? window.currentTenantId+'_' : '')+k; }
@@ -1567,22 +1567,19 @@ window.startSubscriptions = async function() {
         .on('broadcast', { event: 'typing' }, ({ payload }) => window._onBcTyping(payload))
         .subscribe();
 
-    // Shared cross-platform channel (mobile ↔ web). On mobile view, mobile.js owns
-    // this taskflow-bc topic so it can register broadcast handlers before subscribe;
-    // the desktop web shell keeps the topic for web/PWA ↔ mobile sync.
-    if (!window.isMobileView?.()) {
-        window._sharedBroadcast = sb.channel('taskflow-bc-' + window.currentTenantId, { config: { broadcast: { self: false } } });
-        window._sharedBroadcast
-            .on('postgres_changes', { event:'UPDATE', schema:'public', table:'profiles', filter:`tenant_id=eq.${window.currentTenantId}` }, p => window._onProfileRealtime(p.new))
-            .on('broadcast', { event: 'reaction' }, ({ payload: p }) => {
-                if (!p || p.src === 'w') return;
-                if (p.isDelete) window._onBcReactionRemove(p); else window._onBcReactionAdd(p);
-            })
-            .on('broadcast', { event: 'group_photo' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onBcGroupPhoto(p); })
-            .on('broadcast', { event: 'profile_update' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onProfileRealtime(p); })
-            .on('broadcast', { event: 'typing' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onBcTyping(p); })
-            .subscribe();
-    }
+    // Shared cross-platform channel (mobile ↔ web) — v33. Ignore src:'w' (own platform,
+    // already delivered via the legacy channel). Reaction uses a single event with isDelete flag.
+    window._sharedBroadcast = sb.channel('taskflow-bc-' + window.currentTenantId, { config: { broadcast: { self: false } } });
+    window._sharedBroadcast
+        .on('postgres_changes', { event:'UPDATE', schema:'public', table:'profiles', filter:`tenant_id=eq.${window.currentTenantId}` }, p => window._onProfileRealtime(p.new))
+        .on('broadcast', { event: 'reaction' }, ({ payload: p }) => {
+            if (!p || p.src === 'w') return;
+            if (p.isDelete) window._onBcReactionRemove(p); else window._onBcReactionAdd(p);
+        })
+        .on('broadcast', { event: 'group_photo' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onBcGroupPhoto(p); })
+        .on('broadcast', { event: 'profile_update' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onProfileRealtime(p); })
+        .on('broadcast', { event: 'typing' }, ({ payload: p }) => { if (!p || p.src === 'w') return; window._onBcTyping(p); })
+        .subscribe();
 
     // Scheduled messages: notify sender when status changes to 'sent'
     let scheduledSubscription = null;

@@ -508,7 +508,25 @@ async function _admGroupBroadcast(roomId, extra) {
         sb.channel('taskflow-bc-' + tid).send({ type:'broadcast', event:'group_photo', payload:{ room_id:roomId, src:'admin', ...(extra||{}) } });
     } catch (e) {}
 }
+// The admin panel previously only SENT group broadcasts — it never listened, so a
+// group created/renamed/archived/photographed from the MOBILE app never refreshed
+// the admin group list live (mobile→web was one-way). Subscribe once so ANY device's
+// group change re-loads the list. Idempotent.
+let _admGroupChannel = null;
+function _admSubscribeGroups() {
+    const tid = window.currentTenantId;
+    if (!tid || _admGroupChannel) return;
+    try {
+        _admGroupChannel = sb.channel('taskflow-bc-' + tid, { config:{ broadcast:{ self:false } } })
+            .on('broadcast', { event:'group_photo' }, () => { try { window.loadGroups?.(); } catch(e){} })
+            // Belt-and-suspenders: a direct room_settings DB change (needs the table in
+            // the realtime publication to fire live). Cold reloads catch it regardless.
+            .on('postgres_changes', { event:'*', schema:'public', table:'room_settings', filter:'tenant_id=eq.'+tid }, () => { try { window.loadGroups?.(); } catch(e){} })
+            .subscribe();
+    } catch (e) {}
+}
 window.loadGroups = async function() {
+    _admSubscribeGroups();   // ensure we hear live group changes from mobile/other devices
     const box = document.getElementById('groupsContainer');
     if (!box) return;
     const tid = window.currentTenantId;

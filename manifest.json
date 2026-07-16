@@ -41,29 +41,6 @@
       "purpose": "any"
     }
   ],
-  "screenshots": [
-    {
-      "src": "/screenshots/mobile-home.png",
-      "sizes": "1080x1920",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Home — Departments & Messages"
-    },
-    {
-      "src": "/screenshots/mobile-chat.png",
-      "sizes": "1080x1920",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Group Chat with Reactions"
-    },
-    {
-      "src": "/screenshots/mobile-tasks.png",
-      "sizes": "1080x1920",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Tasks & Assignments"
-    }
-  ],
   "share_target": {
     "action": "/share-target",
     "method": "POST",

@@ -349,6 +349,15 @@ window.renderMainApp = async function() {
                             style="color:var(--text-secondary);">
                             <i class="fa-solid fa-sliders text-xs"></i>
                         </button>
+                        <!-- Available to EVERY group member (not just admins): mute + view members. -->
+                        <button id="groupMembersBtn" onclick="window.viewGroupMembers()" title="View members"
+                            class="ml-1 w-6 h-6 rounded items-center justify-center hover:bg-gray-100 transition-colors" style="display:none;color:var(--text-secondary);">
+                            <i class="fa-solid fa-users text-xs"></i>
+                        </button>
+                        <button id="groupMuteBtn" onclick="window.toggleRoomMute()" title="Mute notifications"
+                            class="ml-1 w-6 h-6 rounded items-center justify-center hover:bg-gray-100 transition-colors" style="display:none;color:var(--text-secondary);">
+                            <i class="fa-solid fa-bell text-xs"></i>
+                        </button>
                     </div>
                     <div class="flex items-center gap-4" style="color:var(--text-secondary);">
                         ${window.currentPermissions?.admin_panel ? `
@@ -1080,6 +1089,19 @@ window.ensureUsersLoaded = async function(force) {
 };
 
 // ─── LOAD CHATS LIST (Departments + Staff Members) ─────────────────────────
+// Colored role tag for DM rows — matches the mobile role-chip palette.
+window._webRoleTag = function(role) {
+    const r = String(role || '').toLowerCase().trim();
+    if (!r) return '';
+    const cfg = {
+        principal: { bg:'#dc2626', label:'Principal' },
+        hod:       { bg:'#ea580c', label:'HOD' },
+        teacher:   { bg:'#2563eb', label:'Teacher' },
+        student:   { bg:'#6b7280', label:'Student' },
+    };
+    const c = cfg[r] || { bg:'#6b7280', label: r.replace(/_/g,' ').replace(/\b\w/g,ch=>ch.toUpperCase()) };
+    return `<span style="display:inline-block;margin-top:3px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#fff;background:${c.bg};border-radius:8px;padding:1px 7px;white-space:nowrap;">${window.escapeHtml(c.label)}</span>`;
+};
 window.loadChatsList = async function() {
     // Build the group list purely from room_settings — no hard-coded departments.
     let groups = [];
@@ -1241,9 +1263,9 @@ window.loadChatsList = async function() {
                 ${unread > 0 ? `<span class="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full" style="background:#22c55e;"></span>
                     <span class="absolute -top-1 -right-1 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center" style="background:#22c55e;">${unread > 9 ? '9+' : unread}</span>` : ''}
             </div>
-            <div class="flex-1 min-w-0 flex items-center gap-2">
-                <span class="truncate tracking-wide text-sm" style="color:var(--text-primary);">${window.escapeHtml(name)}</span>
-                ${u.role ? `<span style="flex-shrink:0;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#fff;background:var(--accent);border-radius:8px;padding:1px 7px;white-space:nowrap;">${window.escapeHtml(u.role)}</span>` : ''}
+            <div class="flex-1 min-w-0">
+                <div class="truncate tracking-wide text-sm" style="color:var(--text-primary);">${window.escapeHtml(name)}</div>
+                ${window._webRoleTag ? window._webRoleTag(u.role) : ''}
             </div>
         </div>`;
     });
@@ -1290,7 +1312,14 @@ window.loadChatsList = async function() {
                         chip.style.background = 'var(--accent-muted,rgba(99,102,241,0.1))';
                         chip.style.color = 'var(--accent)';
                         chip.style.display = '';
+                        // Group: show Mute + Members to everyone; reflect current mute state.
+                        const memBtn = document.getElementById('groupMembersBtn');
+                        const muteBtn = document.getElementById('groupMuteBtn');
+                        if (memBtn) memBtn.style.display = 'flex';
+                        if (muteBtn) { muteBtn.style.display = 'flex'; const muted = localStorage.getItem('muted_'+roomId)==='1'; muteBtn.querySelector('i').className = 'fa-solid '+(muted?'fa-bell-slash':'fa-bell')+' text-xs'; muteBtn.title = muted?'Unmute notifications':'Mute notifications'; }
                     } else {
+                        document.getElementById('groupMembersBtn')?.style.setProperty('display','none');
+                        document.getElementById('groupMuteBtn')?.style.setProperty('display','none');
                         // DM — show the other user's online/last-seen status
                         const otherId = roomId.replace('dm_', '').split('_').find(id => id !== window.currentUser.id);
                         const other = (window.globalUsersCache || []).find(u => u.id === otherId);
@@ -1343,6 +1372,37 @@ window.isDmParticipant = function(roomId) {
         && roomId.split('_').includes(window.currentUser?.id);
 };
 
+// Per-room mute (matches mobile 'muted_<room>'). Any group member can toggle it.
+window.isRoomMuted = function(room) { return !!room && localStorage.getItem('muted_' + room) === '1'; };
+window.toggleRoomMute = function() {
+    const room = window.currentRoom; if (!room) return;
+    const k = 'muted_' + room; const wasMuted = localStorage.getItem(k) === '1';
+    if (wasMuted) localStorage.removeItem(k); else localStorage.setItem(k, '1');
+    const btn = document.getElementById('groupMuteBtn');
+    if (btn) { const muted = !wasMuted; btn.querySelector('i').className = 'fa-solid ' + (muted ? 'fa-bell-slash' : 'fa-bell') + ' text-xs'; btn.title = muted ? 'Unmute notifications' : 'Mute notifications'; }
+    window.showCenterToast?.(wasMuted ? 'Notifications unmuted' : 'Notifications muted', wasMuted ? 'fa-solid fa-bell' : 'fa-solid fa-bell-slash', 'text-indigo-400');
+};
+// View members — available to EVERY group member (mirrors mobile's Staff sheet).
+window.viewGroupMembers = function() {
+    const room = window.currentRoom; if (!room || room.startsWith('dm_')) return;
+    let ids = null; try { ids = JSON.parse(localStorage.getItem('dept_members_' + room) || 'null'); } catch (e) {}
+    if (!Array.isArray(ids) || !ids.length) ids = (window.globalUsersCache || []).map(u => u.id);
+    const esc = window.escapeHtml || (s => s);
+    const rows = ids.map(id => {
+        const u = (window.globalUsersCache || []).find(x => x.id === id); if (!u) return '';
+        const av = u.avatar_url ? `background:url('${u.avatar_url}') center/cover;color:transparent;` : 'background:var(--accent);';
+        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--border-color);">
+            <div style="width:30px;height:30px;border-radius:50%;${av}display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;flex-shrink:0;">${u.avatar_url ? '' : esc((u.full_name || '?').charAt(0).toUpperCase())}</div>
+            <div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;color:var(--text-primary);">${esc(u.full_name || u.email || '—')}</div>${window._webRoleTag ? window._webRoleTag(u.role) : ''}</div></div>`;
+    }).join('') || '<div style="padding:12px;color:var(--text-secondary);font-size:13px;">No members.</div>';
+    document.getElementById('webMembersModal')?.remove();
+    const ov = document.createElement('div');
+    ov.id = 'webMembersModal';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px;';
+    ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+    ov.innerHTML = `<div style="background:var(--bg-sidebar,#fff);border-radius:16px;max-width:360px;width:100%;max-height:70vh;overflow:auto;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.3);"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;"><div style="font-size:15px;font-weight:700;color:var(--text-primary);">Members</div><button onclick="document.getElementById('webMembersModal')?.remove()" style="border:none;background:transparent;font-size:20px;line-height:1;cursor:pointer;color:var(--text-secondary);">&times;</button></div>${rows}</div>`;
+    document.body.appendChild(ov);
+};
 // ─── SOUNDS ────────────────────────────────────────────────────────────────
 window._soundLastPlayed = {};
 // Global mute helpers — respected by sound, vibration, and notifications.
@@ -1431,7 +1491,7 @@ window.startSubscriptions = async function() {
             if (incomingRoom === window.currentRoom) {
                 // Skip full reload for own messages — optimistic row already in DOM
                 if (!isMine && typeof window.loadMessages === 'function') window.loadMessages();
-                if (!isMine) {
+                if (!isMine && !window.isRoomMuted?.(incomingRoom)) {   // per-room mute
                     window.playSound('message');
                     if (typeof window.triggerMessageNotification === 'function')
                         window.triggerMessageNotification(p.new);
@@ -1449,7 +1509,7 @@ window.startSubscriptions = async function() {
 
                 // On mobile, mobile.js `_onNewMessage` owns notifications + bell; running
                 // this web path too double-counts (most visible on DMs). Skip on mobile.
-                if (!isMine && isDmForMe && !window.isMobileView?.()) {
+                if (!isMine && isDmForMe && !window.isMobileView?.() && !window.isRoomMuted?.(incomingRoom)) {
                     if (typeof window.triggerMessageNotification === 'function')
                         window.triggerMessageNotification(p.new);
 

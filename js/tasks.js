@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 import logger from './utils/logger.js';
 
-// v1.58.0 - Rich text update input, task sort, data-task-id cards
+// v1.59.0 - Professional task trail UI + rich text update input
 
 // ─── UNIVERSAL NOTIFY HELPER ───────────────────────────────────────────────
 // type: 'message' | 'task' | 'reminder' | 'general'
@@ -106,7 +106,8 @@ window.downloadTaskPDF = async function(taskId) {
     const wrapper = document.createElement('div');
     wrapper.style.cssText = 'padding:30px;font-family:Inter,sans-serif;color:#111b21;background:#ffffff;position:relative;overflow:hidden;';
     wrapper.innerHTML = `
-        <div style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;display:flex;align-items:center;justify-content:center;opacity:0.06;transform:rotate(-35deg);font-size:45px;font-weight:800;color:#000;text-align:center;white-space:nowrap;">
+        <div style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;display:flex;align-items:center;justify-content:center;opacity:0.06;transform:rotate(-35deg);font-size:120px;font-weight:bold;white-space:nowrap;">NOTED FOR ACTION</div>
+        <div style="position:absolute;bottom:10px;right:15px;font-size:10px;color:#999;text-align:right;">
             DOWNLOADED BY: ${window.escapeHtml(userNameDisplay).toUpperCase()}<br>IP: ${ip}<br>${dateStr}
         </div>
         <div style="position:relative;z-index:1;">
@@ -126,7 +127,7 @@ window.downloadTaskPDF = async function(taskId) {
                     const tName = window.toSentenceCase((t.profiles?.full_name || t.profiles?.email || 'System').split('@')[0]);
                     const tTime = window.getISTTime(t.created_at); const tDate = window.getISTDate(t.created_at);
                     let cmt = t.comment || ''; if (t.action === 'FILE' && cmt.includes('|')) cmt = cmt.split('|')[0];
-                    return `<tr><td style="padding:10px;border:1px solid #ccc;white-space:nowrap;">${tDate}<br>${tTime}</td><td style="padding:10px;border:1px solid #ccc;font-weight:bold;">${window.escapeHtml(tName)}</td><td style="padding:10px;border:1px solid #ccc;"><b>${window.escapeHtml(t.action)}</b>${cmt ? `<br><i>${window.escapeHtml(cmt)}</i>` : ''}</td></tr>`;
+                    return `<tr><td style="padding:10px;border:1px solid #ccc;white-space:nowrap;">${tDate}<br>${tTime}</td><td style="padding:10px;border:1px solid #ccc;font-weight:bold;">${window.escapeHtml(tName)}</td><td style="padding:10px;border:1px solid #ccc;">${window.escapeHtml(cmt)}</td></tr>`;
                 }).join('')}
             </table>
         </div>`;
@@ -221,7 +222,7 @@ window.taskAction = async function(taskId, assigneeId, action, requireProof = fa
         if (progressContainer) setTimeout(() => { progressContainer.classList.add('hidden'); progressBar.style.width = '0%'; }, 500);
     } else if (action === 'submit') {
         if (requireProof) {
-            const { data: ftrails } = await sb.from('task_trails').select('*').eq('task_id', taskId).eq('tenant_id', window.currentTenantId).eq('user_id', window.currentUser.id).eq('action', 'FILE');
+            const { data: ftrails } = await sb.from('task_trails').select('*').eq('task_id', taskId).eq('tenant_id', window.currentTenantId).eq('user_id', window.currentUser.id).eq('action', 'FILE').limit(1);
             if (!ftrails || ftrails.length === 0) return window.showCenterToast('Proof required — please attach a file.', 'fa-solid fa-exclamation-triangle', 'text-red-500');
         }
         newStatus = 'submitted'; actionText = 'UPDATE'; comment = 'Submitted for Review';
@@ -354,7 +355,7 @@ window.loadTasksForPanel = async function() {
         });
     }
 
-    // ── SORT ────────────────────────────────────────────────────────────────
+    // ── SORT ──────────────────────────────────────────────────────────────
     filteredTasks.sort((a, b) => {
         const noDeadline = (t) => !t.deadline;
         if (sortVal === 'deadline_asc') {
@@ -431,24 +432,26 @@ window.loadTasksForPanel = async function() {
             const st = myAss.status;
             const uId = window.currentUser.id;
             if (st === 'pending_ack') {
-                actionsHtml += `<button id="ack-btn-${task.id}-${uId}" onclick="window.taskAction('${task.id}', '${uId}', 'ack')" class="btn-primary w-full bg-yellow-500 hover:bg-yellow-600 transition-colors">Acknowledge Task</button>`;
+                actionsHtml += `<button id="ack-btn-${task.id}-${uId}" onclick="window.taskAction('${task.id}', '${uId}', 'ack')" class="btn-primary w-full bg-yellow-500 hover:bg-yellow-600 transition-colors px-4 py-2 rounded-lg text-white font-bold">
+                    <i class="fa-solid fa-check-circle"></i> Acknowledge Task
+                </button>`;
             } else if (st === 'in_progress' || st === 'needs_review') {
                 actionsHtml += `
                 <div class="flex flex-wrap gap-2 mb-2">
-                    <button onclick="document.getElementById('comment-box-${task.id}-${uId}').classList.toggle('hidden')" class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-semibold border border-indigo-100"><i class="fa-solid fa-edit"></i> Update</button>
-                    <button onclick="document.getElementById('upload-box-${task.id}-${uId}').click()" class="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-semibold border border-emerald-100"><i class="fa-solid fa-paperclip"></i> Upload</button>
-                    <button onclick="document.getElementById('delegate-box-${task.id}-${uId}').classList.toggle('hidden')" class="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-lg text-xs font-semibold border border-purple-100"><i class="fa-solid fa-user-plus"></i> Delegate</button>
-                    <button onclick="window.taskAction('${task.id}', '${uId}', 'submit', ${task.require_proof})" class="btn-primary ${st === 'needs_review' ? 'bg-orange-600' : 'bg-blue-600'} text-white ml-auto">${st === 'needs_review' ? 'Resubmit' : 'Submit for Review'}</button>
+                    <button onclick="document.getElementById('comment-box-${task.id}-${uId}').classList.toggle('hidden')" class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-bold transition-colors"><i class="fa-solid fa-comment"></i> Comment</button>
+                    <button onclick="document.getElementById('upload-box-${task.id}-${uId}').click()" class="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold transition-colors"><i class="fa-solid fa-upload"></i> Upload</button>
+                    <button onclick="document.getElementById('delegate-box-${task.id}-${uId}').classList.toggle('hidden')" class="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-lg text-xs font-bold transition-colors"><i class="fa-solid fa-person-arrow-down-to-line"></i> Delegate</button>
+                    <button onclick="window.taskAction('${task.id}', '${uId}', 'submit', ${task.require_proof})" class="btn-primary ${st === 'needs_review' ? 'bg-orange-600' : 'bg-blue-600'} text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"><i class="fa-solid fa-paper-plane"></i> Submit</button>
                 </div>
                 <div id="comment-box-${task.id}-${uId}" class="hidden flex-col gap-2 mt-2">
                     <div class="border rounded-xl overflow-hidden" style="border-color:var(--border-color);">
                         <div class="flex gap-1 px-2 pt-2 pb-1 border-b flex-wrap" style="border-color:var(--border-color);background:var(--bg-body);">
                             <button type="button" onclick="window.taskFmtCmd('bold','${task.id}-${uId}')" class="w-6 h-6 rounded text-xs font-black hover:bg-gray-100 flex items-center justify-center transition-colors" title="Bold"><b>B</b></button>
                             <button type="button" onclick="window.taskFmtCmd('italic','${task.id}-${uId}')" class="w-6 h-6 rounded text-xs font-black hover:bg-gray-100 flex items-center justify-center transition-colors" title="Italic"><i>I</i></button>
-                            <button type="button" onclick="window.taskFmtCmd('underline','${task.id}-${uId}')" class="w-6 h-6 rounded text-xs font-black hover:bg-gray-100 flex items-center justify-center transition-colors" title="Underline"><u>U</u></button>
+                            <button type="button" onclick="window.taskFmtCmd('underline','${task.id}-${uId}')" class="w-6 h-6 rounded text-xs hover:bg-gray-100 flex items-center justify-center transition-colors" title="Underline"><u>U</u></button>
                             <span class="w-px bg-gray-200 mx-1 self-stretch"></span>
-                            <button type="button" onclick="window.taskFmtList('ul','${task.id}-${uId}')" class="w-6 h-6 rounded text-xs hover:bg-gray-100 flex items-center justify-center transition-colors" title="Bullet list"><i class="fa-solid fa-list-ul" style="font-size:9px;"></i></button>
-                            <button type="button" onclick="window.taskFmtList('ol','${task.id}-${uId}')" class="w-6 h-6 rounded text-xs hover:bg-gray-100 flex items-center justify-center transition-colors" title="Numbered list"><i class="fa-solid fa-list-ol" style="font-size:9px;"></i></button>
+                            <button type="button" onclick="window.taskFmtList('ul','${task.id}-${uId}')" class="w-6 h-6 rounded text-xs hover:bg-gray-100 flex items-center justify-center transition-colors" title="Bullet list"><i class="fa-solid fa-list-ul"></i></button>
+                            <button type="button" onclick="window.taskFmtList('ol','${task.id}-${uId}')" class="w-6 h-6 rounded text-xs hover:bg-gray-100 flex items-center justify-center transition-colors" title="Numbered list"><i class="fa-solid fa-list-ol"></i></button>
                         </div>
                         <div id="update-txt-${task.id}-${uId}" contenteditable="true"
                             data-placeholder="Type update..."
@@ -457,14 +460,14 @@ window.loadTasksForPanel = async function() {
                         ></div>
                     </div>
                     <div class="flex gap-2 justify-end">
-                        <button onclick="document.getElementById('comment-box-${task.id}-${uId}').classList.add('hidden');document.getElementById('comment-box-${task.id}-${uId}').classList.remove('flex');" class="text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors" style="color:var(--text-secondary);border-color:var(--border-color);">Cancel</button>
+                        <button onclick="document.getElementById('comment-box-${task.id}-${uId}').classList.add('hidden')" class="text-xs font-bold px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors">Cancel</button>
                         <button onclick="window.taskAction('${task.id}', '${uId}', 'update')" class="text-xs font-bold px-3 py-1.5 rounded-lg text-white" style="background:var(--accent);">Post Update</button>
                     </div>
                     <p class="text-[9px]" style="color:var(--text-secondary);">Ctrl+Enter to post</p>
                 </div>
                 <input type="file" id="upload-box-${task.id}-${uId}" class="hidden" onchange="window.taskAction('${task.id}', '${uId}', 'upload')">
                 <div id="upload-progress-container-${task.id}-${uId}" class="hidden w-full mt-2 bg-white p-2 rounded border border-gray-200">
-                    <div class="w-full bg-gray-200 rounded-full h-1.5"><div id="upload-progress-bar-${task.id}-${uId}" class="bg-blue-600 h-1.5 rounded-full transition-all duration-300" style="width:0%"></div></div>
+                    <div class="w-full bg-gray-200 rounded-full h-1.5"><div id="upload-progress-bar-${task.id}-${uId}" class="bg-blue-600 h-1.5 rounded-full transition-all duration-300" style="width:0%;"></div></div>
                     <p class="text-[9px] text-gray-500 mt-1 text-center font-bold">Uploading Secure File...</p>
                 </div>
                 <div id="delegate-box-${task.id}-${uId}" class="hidden flex gap-2 mt-2">
@@ -482,70 +485,51 @@ window.loadTasksForPanel = async function() {
                 <div class="bg-orange-50 p-2 rounded border border-orange-100 mt-2">
                     <div class="text-xs font-bold text-orange-800 mb-2">Review required for: ${window.escapeHtml(sName)}</div>
                     <div class="flex flex-wrap gap-2">
-                        <button onclick="window.taskAction('${task.id}', '${sa.assignee_id}', 'accept')" class="btn-primary bg-green-600 hover:bg-green-700 text-white">Accept</button>
-                        <button onclick="document.getElementById('review-box-${task.id}-${sa.assignee_id}').classList.toggle('hidden')" class="btn-primary bg-red-600 hover:bg-red-700 text-white">Review Again</button>
-                        <button onclick="document.getElementById('transfer-box-${task.id}-${sa.assignee_id}').classList.toggle('hidden')" class="btn-outline bg-white border border-gray-300 hover:bg-gray-50">Transfer</button>
+                        <button onclick="window.taskAction('${task.id}', '${sa.assignee_id}', 'accept')" class="btn-primary bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold transition-colors"><i class="fa-solid fa-circle-check"></i> Accept</button>
+                        <button onclick="document.getElementById('review-box-${task.id}-${sa.assignee_id}').classList.toggle('hidden')" class="btn-primary bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold transition-colors"><i class="fa-solid fa-circle-xmark"></i> Reject</button>
+                        <button onclick="document.getElementById('transfer-box-${task.id}-${sa.assignee_id}').classList.toggle('hidden')" class="btn-outline bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs px-3 py-1.5 rounded-lg font-bold transition-colors"><i class="fa-solid fa-arrow-right-arrow-left"></i> Transfer</button>
                     </div>
                     <div id="review-box-${task.id}-${sa.assignee_id}" class="hidden flex gap-2 mt-2">
                         <input type="text" id="review-txt-${task.id}-${sa.assignee_id}" placeholder="Mandatory feedback..." class="ui-input flex-1 text-xs px-2 py-1 rounded border border-red-300">
-                        <button onclick="window.taskAction('${task.id}', '${sa.assignee_id}', 'review_again')" class="btn-primary bg-red-600 hover:bg-red-700">Submit</button>
+                        <button onclick="window.taskAction('${task.id}', '${sa.assignee_id}', 'review_again')" class="btn-primary bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold transition-colors">Submit</button>
                     </div>
                     <div id="transfer-box-${task.id}-${sa.assignee_id}" class="hidden flex flex-col gap-2 mt-2">
                         <select id="transfer-sel-${task.id}-${sa.assignee_id}" class="ui-input flex-1 text-xs px-2 py-1.5 rounded">${transferOptions}</select>
                         <div class="flex gap-2">
                             <input type="text" id="transfer-txt-${task.id}-${sa.assignee_id}" placeholder="Mandatory reason..." class="ui-input flex-1 text-xs px-2 py-1 rounded border border-orange-300">
-                            <button onclick="window.taskAction('${task.id}', '${sa.assignee_id}', 'transfer')" class="btn-primary bg-orange-600 hover:bg-orange-700 text-white">Confirm</button>
+                            <button onclick="window.taskAction('${task.id}', '${sa.assignee_id}', 'transfer')" class="btn-primary bg-orange-600 hover:bg-orange-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold transition-colors">Confirm</button>
                         </div>
                     </div>
                 </div>`;
             });
         }
 
-        const trailRows = trlList.map((t, _ti) => {
-            // Serial number: latest-first list, newest = highest number
-            const tName = '#' + (trlList.length - _ti) + ' · ' + window.toSentenceCase((t.profiles?.full_name || t.profiles?.email || 'System').split('@')[0]);
-            const tTime = window.getISTTime(t.created_at);
-            let content = '';
-            if (t.action === 'FILE') {
-                let fName = t.comment || '', fPath = t.comment || '';
-                if (t.comment && t.comment.includes('|')) {
-                    const parts = t.comment.split('|');
-                    fName = parts[0]; fPath = parts[1];
+        // ═══ PROFESSIONAL TRAIL RENDERING ════════════════════════════════
+        const trailHtml = window.renderProfessionalTrail ? 
+            window.renderProfessionalTrail(trlList) : 
+            trlList.map((t, _ti) => {
+                const tName = '#' + (trlList.length - _ti) + ' · ' + window.toSentenceCase((t.profiles?.full_name || t.profiles?.email || 'System').split('@')[0]);
+                const tTime = window.getISTTime(t.created_at);
+                let content = '';
+                if (t.action === 'FILE') {
+                    let fName = t.comment || '', fPath = t.comment || '';
+                    if (t.comment && t.comment.includes('|')) {
+                        const parts = t.comment.split('|');
+                        fName = parts[0]; fPath = parts[1];
+                    }
+                    const safePath = window.escapeHtml(fPath);
+                    const safeName = window.escapeHtml(fName);
+                    content = `<span style="cursor:pointer;text-decoration:underline;color:blue;" onclick="window.openSecureFile('${safePath}')">${safeName}</span>`;
+                } else if (t.action === 'UPDATE') {
+                    content = `${window.escapeHtml(t.comment)}`;
+                } else {
+                    content = `${window.escapeHtml(t.action)} ${t.comment ? `- ${window.escapeHtml(t.comment)}` : ''}`;
                 }
-                const ext = (fName.split('.').pop() || '').toLowerCase();
-                const fileIcon = ext === 'pdf'                           ? 'fa-file-pdf'
-                    : ['jpg','jpeg','png','gif','webp','heic'].includes(ext) ? 'fa-file-image'
-                    : ['doc','docx'].includes(ext)                           ? 'fa-file-word'
-                    : ['xls','xlsx','csv'].includes(ext)                     ? 'fa-file-excel'
-                    : ['ppt','pptx'].includes(ext)                           ? 'fa-file-powerpoint'
-                    : ['mp4','mov','avi','mkv'].includes(ext)                ? 'fa-file-video'
-                    : 'fa-file';
-                const iconColor = ext === 'pdf' ? '#ef4444'
-                    : ['jpg','jpeg','png','gif','webp','heic'].includes(ext) ? '#10b981'
-                    : ['doc','docx'].includes(ext) ? '#2563eb'
-                    : ['xls','xlsx','csv'].includes(ext) ? '#16a34a'
-                    : '#6366f1';
-                const safePath = window.escapeHtml(fPath);
-                const safeName = window.escapeHtml(fName);
-                content = `<div onclick="window.openSecureFile('${safePath}')" 
-                    style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:10px;
-                           background:${iconColor}10;border:1px solid ${iconColor}30;cursor:pointer;
-                           max-width:260px;text-decoration:none;" title="Click to open ${safeName}">
-                    <i class="fa-solid ${fileIcon}" style="color:${iconColor};font-size:18px;flex-shrink:0;"></i>
-                    <span style="font-size:12px;font-weight:600;color:var(--text-primary);overflow:hidden;
-                                 text-overflow:ellipsis;white-space:nowrap;">${safeName}</span>
-                    <i class="fa-solid fa-arrow-up-right-from-square" style="color:${iconColor};font-size:10px;opacity:.7;flex-shrink:0;"></i>
+                return `<div class="text-[12px] leading-snug border-l-2 border-indigo-200 pl-2 ml-1 mb-2.5">
+                    <span class="text-gray-400 text-[10px]">[${tTime}]</span> <span class="font-bold text-gray-800">${window.escapeHtml(tName)}</span>:<br>
+                    <div class="mt-0.5">${content}</div>
                 </div>`;
-            } else if (t.action === 'UPDATE') {
-                content = `UPDATE - <span class="text-gray-700">${window.escapeHtml(t.comment)}</span>`;
-            } else {
-                content = `${window.escapeHtml(t.action)} ${t.comment ? `- ${window.escapeHtml(t.comment)}` : ''}`;
-            }
-            return `<div class="text-[12px] leading-snug border-l-2 border-indigo-200 pl-2 ml-1 mb-2.5">
-                <span class="text-gray-400 text-[10px]">[${tTime}]</span> <span class="font-bold text-gray-800">${window.escapeHtml(tName)}</span>:<br>
-                <div class="mt-0.5">${content}</div>
-            </div>`;
-        }).join('');
+            }).join('');
 
         // Completed tasks get 60% opacity
         const cardOpacity = globalState === 'accepted' ? '0.6' : '1';
@@ -556,8 +540,8 @@ window.loadTasksForPanel = async function() {
                     <div class="font-bold text-gray-800 text-[16px] flex items-start gap-2">
                         <i class="fa-solid fa-thumbtack text-gray-400 mt-1"></i> ${window.escapeHtml(task.title)}
                     </div>
-                    <button onclick="window.downloadTaskPDF('${task.id}')" title="Download PDF" class="text-gray-400 hover:text-red-500 transition-colors p-1 rounded hover:bg-gray-100">
-                        <i class="fa-solid fa-file-pdf"></i>
+                    <button onclick="window.downloadTaskPDF('${task.id}')" title="Download PDF Audit Report" class="text-gray-400 hover:text-red-500 transition-colors p-1 rounded hover:bg-gray-100">
+                        <i class="fa-solid fa-file-pdf text-lg"></i>
                     </button>
                 </div>
                 <div class="text-[12px] text-gray-700 space-y-1.5 mb-4">
@@ -570,10 +554,10 @@ window.loadTasksForPanel = async function() {
                 ${actionsHtml ? `<div class="border-t border-gray-100 pt-3 pb-1">${actionsHtml}</div>` : ''}
                 <div class="mt-2 pt-3 border-t border-gray-100">
                     <button onclick="window.toggleTrail('${task.id}')" class="text-[12px] font-bold text-gray-500 hover:text-gray-800 flex items-center gap-1 transition-colors w-full text-left">
-                        <i class="fa-solid fa-history"></i> Trail (${trlList.length}) <i class="fa-solid fa-chevron-down ml-auto"></i>
+                        <i class="fa-solid fa-history"></i> Audit Trail (${trlList.length}) <i class="fa-solid fa-chevron-down ml-auto" style="transition: transform 0.3s;"></i>
                     </button>
-                    <div id="trail-${task.id}" class="task-trail-box bg-gray-50 p-3 rounded-lg mt-2 space-y-2" style="display:none;">
-                        ${trailRows || '<div class="text-xs text-gray-400 italic">No activity yet.</div>'}
+                    <div id="trail-${task.id}" class="task-trail-box mt-3 space-y-1 max-h-96 overflow-y-auto" style="display:none;">
+                        ${trailHtml}
                     </div>
                 </div>
             </div>

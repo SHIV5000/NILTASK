@@ -87,6 +87,54 @@ const TRAIL_ACTION_CONFIG = {
         textColor: '#831843',     // pink-800
         severity: 'warning',
         label: 'Transferred'
+    },
+    'REMINDER': {
+        icon: 'fa-bell',
+        bgColor: '#fff7ed',
+        borderColor: '#f97316',
+        textColor: '#9a3412',
+        severity: 'warning',
+        label: 'Reminder Sent'
+    },
+    'DEADLINE': {
+        icon: 'fa-calendar-check',
+        bgColor: '#e0f2fe',
+        borderColor: '#0284c7',
+        textColor: '#075985',
+        severity: 'info',
+        label: 'Deadline Changed'
+    },
+    'EXTENSION_REQUEST': {
+        icon: 'fa-calendar-plus',
+        bgColor: '#fef3c7',
+        borderColor: '#d97706',
+        textColor: '#92400e',
+        severity: 'warning',
+        label: 'Extension Requested'
+    },
+    'EXTENSION_APPROVED': {
+        icon: 'fa-calendar-check',
+        bgColor: '#dcfce7',
+        borderColor: '#16a34a',
+        textColor: '#166534',
+        severity: 'success',
+        label: 'Extension Approved'
+    },
+    'EXTENSION_REJECTED': {
+        icon: 'fa-calendar-xmark',
+        bgColor: '#fee2e2',
+        borderColor: '#dc2626',
+        textColor: '#991b1b',
+        severity: 'error',
+        label: 'Extension Declined'
+    },
+    'CANCEL': {
+        icon: 'fa-ban',
+        bgColor: '#f1f5f9',
+        borderColor: '#64748b',
+        textColor: '#334155',
+        severity: 'error',
+        label: 'Task Cancelled'
     }
 };
 
@@ -107,6 +155,7 @@ function _getInitials(fullName, email) {
  * Determine action type from trail entry
  */
 function _detectActionType(trail) {
+    if (TRAIL_ACTION_CONFIG[trail.action]) return trail.action;
     if (trail.action === 'FILE') return 'FILE';
     if (trail.comment?.includes('Acknowledged')) return 'ACKNOWLEDGE';
     if (trail.comment?.includes('Submitted')) return 'SUBMIT';

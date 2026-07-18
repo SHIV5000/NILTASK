@@ -335,9 +335,9 @@ function installTaskUIStyles() {
     style.textContent = `
         .nt-task-card {
             background: var(--bg-body, #ffffff);
-            border: 1px solid var(--border-color, #e5e7eb);
+            border: 2px solid var(--border-color, #dbe2ea);
             border-radius: 20px;
-            margin: 0 0 14px;
+            margin: 0 0 24px;
             overflow: hidden;
             box-shadow:
                 0 2px 4px rgba(15, 23, 42, .04),
@@ -2340,6 +2340,267 @@ function(
     });
 };
 
+
+window.sendTaskReminder = async function(taskId, assigneeId) {
+    const { error } = await sb.rpc('send_task_reminder', {
+        p_task_id: taskId,
+        p_assignee_id: assigneeId,
+        p_tenant_id: tenantId(),
+        p_sender_id: currentUserId()
+    });
+
+    if (error) {
+        showToast(
+            `Reminder failed: ${error.message}`,
+            'fa-solid fa-circle-xmark',
+            'text-red-500'
+        );
+        return false;
+    }
+
+    showToast(
+        `Reminder sent to ${getDisplayName(
+            (window.globalUsersCache || []).find(user => user.id === assigneeId)
+        )}.`,
+        'fa-solid fa-bell',
+        'text-green-500'
+    );
+
+    await window.loadTasksForPanel();
+    return true;
+};
+
+window.remindAllTaskPending = async function(taskId) {
+    const { data: assignments, error } = await sb
+        .from('task_assignees')
+        .select('assignee_id,status,state,acked')
+        .eq('tenant_id', tenantId())
+        .eq('task_id', taskId);
+
+    if (error) {
+        showToast(error.message, 'fa-solid fa-times', 'text-red-500');
+        return;
+    }
+
+    const pending = (assignments || []).filter(assignment => {
+        const status = getEffectiveAssigneeStatus(assignment);
+        return !CLOSED_TASK_STATUSES.has(status) && status !== 'accepted';
+    });
+
+    if (!pending.length) {
+        showToast('No pending assignees.', 'fa-solid fa-circle-info', 'text-blue-500');
+        return;
+    }
+
+    let sent = 0;
+    for (const assignment of pending) {
+        if (await window.sendTaskReminder(taskId, assignment.assignee_id)) {
+            sent += 1;
+        }
+    }
+
+    showToast(
+        `Reminder sent to ${sent} assignee(s).`,
+        'fa-solid fa-bell',
+        'text-green-500'
+    );
+};
+
+window.openTaskExtensionRequest = function(taskId, assigneeId) {
+    openTaskActionLayer({
+        title: 'Request Deadline Extension',
+        body: `
+            <div class="nt-action-field">
+                <label class="nt-action-label">Requested deadline</label>
+                <input id="ntRequestedDeadline" class="nt-action-input" type="date">
+            </div>
+            <div class="nt-action-field">
+                <label class="nt-action-label">Reason</label>
+                <textarea id="ntExtensionReason" class="nt-action-input"
+                    placeholder="Explain why more time is required..."></textarea>
+            </div>
+        `,
+        primaryLabel: 'Send Request',
+        primaryIcon: 'fa-solid fa-calendar-plus',
+        onPrimary: async () => {
+            const requestedDate =
+                document.getElementById('ntRequestedDeadline')?.value;
+            const reason =
+                (document.getElementById('ntExtensionReason')?.value || '').trim();
+
+            if (!requestedDate || !reason) {
+                showToast(
+                    'Requested date and reason are required.',
+                    'fa-solid fa-triangle-exclamation',
+                    'text-orange-500'
+                );
+                return false;
+            }
+
+            await addTaskTrail(
+                taskId,
+                'EXTENSION_REQUEST',
+                `${getDisplayName(window.currentUser)} requested ${
+                    new Date(requestedDate).toLocaleDateString('en-IN')
+                } — ${reason}`
+            );
+
+            showToast(
+                'Deadline-extension request sent.',
+                'fa-solid fa-calendar-plus',
+                'text-green-500'
+            );
+
+            await window.loadTasksForPanel();
+            return true;
+        }
+    });
+};
+
+window.openTaskDeadlineAction = function(taskId) {
+    openTaskActionLayer({
+        title: 'Change Deadline',
+        body: `
+            <div class="nt-action-field">
+                <label class="nt-action-label">New deadline</label>
+                <input id="ntNewDeadline" class="nt-action-input" type="date">
+            </div>
+            <div class="nt-action-field">
+                <label class="nt-action-label">Reason</label>
+                <textarea id="ntDeadlineReason" class="nt-action-input"
+                    placeholder="Explain why the deadline is changing..."></textarea>
+            </div>
+        `,
+        primaryLabel: 'Update Deadline',
+        primaryIcon: 'fa-solid fa-calendar-check',
+        onPrimary: async () => {
+            const deadline = document.getElementById('ntNewDeadline')?.value;
+            const reason =
+                (document.getElementById('ntDeadlineReason')?.value || '').trim();
+
+            if (!deadline || !reason) {
+                showToast(
+                    'New deadline and reason are required.',
+                    'fa-solid fa-triangle-exclamation',
+                    'text-orange-500'
+                );
+                return false;
+            }
+
+            const { error } = await sb
+                .from('tasks')
+                .update({ deadline })
+                .eq('tenant_id', tenantId())
+                .eq('id', taskId)
+                .eq('assigned_by', currentUserId());
+
+            if (error) {
+                showToast(error.message, 'fa-solid fa-times', 'text-red-500');
+                return false;
+            }
+
+            await addTaskTrail(
+                taskId,
+                'DEADLINE',
+                `Deadline changed to ${
+                    new Date(deadline).toLocaleDateString('en-IN')
+                } — ${reason}`
+            );
+
+            showToast(
+                'Deadline updated.',
+                'fa-solid fa-calendar-check',
+                'text-green-500'
+            );
+
+            await window.loadTasksForPanel();
+            return true;
+        }
+    });
+};
+
+window.openTaskCancelAction = function(taskId) {
+    openTaskActionLayer({
+        title: 'Cancel Task',
+        body: `
+            <div class="nt-action-field">
+                <label class="nt-action-label">Cancellation reason</label>
+                <textarea id="ntCancelReason" class="nt-action-input"
+                    placeholder="Explain why this task is being cancelled..."></textarea>
+            </div>
+            <div style="padding:12px;border-radius:12px;background:#fef2f2;color:#991b1b;font-size:11px;line-height:1.55;">
+                Cancellation keeps the task and complete audit history.
+            </div>
+        `,
+        primaryLabel: 'Cancel Task',
+        primaryIcon: 'fa-solid fa-ban',
+        onPrimary: async () => {
+            const reason =
+                (document.getElementById('ntCancelReason')?.value || '').trim();
+
+            if (!reason) {
+                showToast(
+                    'Cancellation reason is required.',
+                    'fa-solid fa-triangle-exclamation',
+                    'text-orange-500'
+                );
+                return false;
+            }
+
+            const task = await getTenantTask(taskId);
+            if (!task) return false;
+
+            if (task.assigned_by !== currentUserId()) {
+                showToast(
+                    'Only the task creator can cancel this task.',
+                    'fa-solid fa-lock',
+                    'text-red-500'
+                );
+                return false;
+            }
+
+            const { error: taskError } = await sb
+                .from('tasks')
+                .update({ status: 'cancelled' })
+                .eq('tenant_id', tenantId())
+                .eq('id', taskId)
+                .eq('assigned_by', currentUserId());
+
+            if (taskError) {
+                showToast(taskError.message, 'fa-solid fa-times', 'text-red-500');
+                return false;
+            }
+
+            const { error: assignmentError } = await sb
+                .from('task_assignees')
+                .update({ status: 'cancelled', state: 'closed' })
+                .eq('tenant_id', tenantId())
+                .eq('task_id', taskId)
+                .not('status', 'in', '("accepted","transferred","cancelled")');
+
+            if (assignmentError) {
+                showToast(
+                    assignmentError.message,
+                    'fa-solid fa-times',
+                    'text-red-500'
+                );
+                return false;
+            }
+
+            await addTaskTrail(taskId, 'CANCEL', reason);
+
+            showToast(
+                'Task cancelled. History has been preserved.',
+                'fa-solid fa-ban',
+                'text-green-500'
+            );
+
+            await window.loadTasksForPanel();
+            return true;
+        }
+    });
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TASK CARD INTERACTIONS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2369,32 +2630,140 @@ function(taskId) {
     }
 };
 
-window.openOriginalTaskMessage =
-function(messageId) {
-    if (!messageId) {
+window.openTaskOriginalMessage = async function(taskId) {
+    if (!taskId || !tenantId()) return;
+
+    const { data: task, error: taskError } = await sb
+        .from('tasks')
+        .select('id,original_message_id,tenant_id')
+        .eq('tenant_id', tenantId())
+        .eq('id', taskId)
+        .single();
+
+    if (taskError || !task?.original_message_id) {
         showToast(
-            'No original message is linked.',
+            'No original message is linked to this task.',
             'fa-solid fa-message',
             'text-orange-500'
         );
-
         return;
     }
 
-    const elementId =
-        `msg-${messageId}`;
+    const { data: message, error: messageError } = await sb
+        .from('messages')
+        .select('id,room_id,sender_id,text,tenant_id')
+        .eq('tenant_id', tenantId())
+        .eq('id', task.original_message_id)
+        .maybeSingle();
 
-    if (window.scrollToAndHighlight) {
-        window.scrollToAndHighlight(
-            elementId
-        );
-    } else {
+    if (messageError || !message) {
         showToast(
-            'Open the related chat to view the message.',
+            'The original message is unavailable or was deleted.',
             'fa-solid fa-message',
-            'text-blue-500'
+            'text-orange-500'
         );
+        return;
     }
+
+    const roomId = message.room_id;
+
+    if (
+        (window.innerWidth <= 768 || window.IS_NATIVE) &&
+        typeof window._navTo === 'function'
+    ) {
+        const isDirectMessage = String(roomId).startsWith('dm_');
+
+        if (isDirectMessage) {
+            const otherId = String(roomId)
+                .replace('dm_', '')
+                .split('_')
+                .find(id => id !== currentUserId());
+
+            const otherUser = (window.globalUsersCache || [])
+                .find(user => user.id === otherId);
+
+            await window._navTo('dm', {
+                room: roomId,
+                uid: otherId || '',
+                name: otherUser?.full_name || otherUser?.email || 'Direct Message',
+                scrollTo: message.id
+            });
+        } else {
+            const group = typeof window._findGroup === 'function'
+                ? window._findGroup(roomId)
+                : null;
+
+            await window._navTo('groupChat', {
+                room: roomId,
+                name: group?.name || roomId,
+                color: group?.col || group?.color || 'var(--accent)',
+                scrollTo: message.id
+            });
+        }
+
+        setTimeout(() => {
+            const row = document.getElementById(`row-${message.id}`)
+                || document.getElementById(`msg-${message.id}`);
+            row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 700);
+        return;
+    }
+
+    if (typeof window.openRoomById === 'function') {
+        await window.openRoomById(roomId, message.id);
+        return;
+    }
+
+    if (typeof window.openChatRoom === 'function') {
+        await window.openChatRoom(roomId);
+        setTimeout(() => {
+            const row = document.getElementById(`msg-${message.id}`)
+                || document.getElementById(`row-${message.id}`);
+            row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 700);
+        return;
+    }
+
+    window.location.hash =
+        `room=${encodeURIComponent(roomId)}&message=${encodeURIComponent(message.id)}`;
+
+    setTimeout(() => {
+        const row = document.getElementById(`msg-${message.id}`)
+            || document.getElementById(`row-${message.id}`);
+        row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        row?.classList.add('message-highlight');
+        setTimeout(() => row?.classList.remove('message-highlight'), 3000);
+    }, 700);
+};
+
+// Backward-compatible alias.
+window.openOriginalTaskMessage = async function(taskOrMessageId) {
+    const directTask = document.querySelector(
+        `[data-task-id="${CSS.escape(String(taskOrMessageId || ''))}"]`
+    );
+
+    if (directTask) {
+        await window.openTaskOriginalMessage(taskOrMessageId);
+        return;
+    }
+
+    const { data: task } = await sb
+        .from('tasks')
+        .select('id')
+        .eq('tenant_id', tenantId())
+        .eq('original_message_id', taskOrMessageId)
+        .maybeSingle();
+
+    if (task?.id) {
+        await window.openTaskOriginalMessage(task.id);
+        return;
+    }
+
+    showToast(
+        'The linked task or original message could not be resolved.',
+        'fa-solid fa-message',
+        'text-orange-500'
+    );
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2965,44 +3334,60 @@ function renderSecondaryActionMenu(
 ) {
     if (!myAssignment) return '';
 
-    const status =
-        getEffectiveAssigneeStatus(
-            myAssignment
-        );
+    const status = getEffectiveAssigneeStatus(myAssignment);
 
     if (
-        status !== 'in_progress' &&
-        status !== 'needs_review'
+        status === 'accepted' ||
+        status === 'submitted' ||
+        status === 'transferred' ||
+        status === 'cancelled'
     ) {
         return '';
     }
 
+    const workingActions =
+        status === 'in_progress' ||
+        status === 'needs_review'
+            ? `
+                <button
+                    type="button"
+                    class="nt-task-button nt-task-button-secondary nt-task-button-icon"
+                    onclick="window.openTaskUpdateAction('${task.id}','${currentUserId()}')"
+                    title="Progress Update"
+                >
+                    <i class="fa-solid fa-comment-dots"></i>
+                </button>
+
+                <button
+                    type="button"
+                    class="nt-task-button nt-task-button-secondary nt-task-button-icon"
+                    onclick="window.openTaskUploadAction('${task.id}','${currentUserId()}')"
+                    title="Upload Proof"
+                >
+                    <i class="fa-solid fa-paperclip"></i>
+                </button>
+
+                <button
+                    type="button"
+                    class="nt-task-button nt-task-button-secondary nt-task-button-icon"
+                    onclick="window.openTaskDelegateAction('${task.id}','${currentUserId()}')"
+                    title="Delegate"
+                >
+                    <i class="fa-solid fa-user-plus"></i>
+                </button>
+            `
+            : '';
+
     return `
-        <button
-            type="button"
-            class="nt-task-button nt-task-button-secondary nt-task-button-icon"
-            onclick="window.openTaskUpdateAction('${task.id}','${currentUserId()}')"
-            title="Progress Update"
-        >
-            <i class="fa-solid fa-comment-dots"></i>
-        </button>
+        ${workingActions}
 
         <button
             type="button"
             class="nt-task-button nt-task-button-secondary nt-task-button-icon"
-            onclick="window.openTaskUploadAction('${task.id}','${currentUserId()}')"
-            title="Upload Proof"
+            onclick="window.openTaskExtensionRequest('${task.id}','${currentUserId()}')"
+            title="Request Deadline Extension"
         >
-            <i class="fa-solid fa-paperclip"></i>
-        </button>
-
-        <button
-            type="button"
-            class="nt-task-button nt-task-button-secondary nt-task-button-icon"
-            onclick="window.openTaskDelegateAction('${task.id}','${currentUserId()}')"
-            title="Delegate"
-        >
-            <i class="fa-solid fa-user-plus"></i>
+            <i class="fa-solid fa-calendar-plus"></i>
         </button>
     `;
 }
@@ -3426,7 +3811,7 @@ async function() {
 
     container.innerHTML =
         visibleTasks
-            .map(task => {
+            .map((task, taskIndex) => {
                 const assignments =
                     assigneesByTask[
                         task.id
@@ -3537,6 +3922,61 @@ async function() {
                         0
                     );
 
+                const creatorManagementHtml =
+                    isCreator
+                        ? `
+                            <div class="nt-task-section">
+                                <div class="nt-task-section-title">
+                                    <i class="fa-solid fa-screwdriver-wrench"></i>
+                                    Creator Controls
+                                </div>
+
+                                <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                                    <button
+                                        class="nt-task-button nt-task-button-secondary"
+                                        onclick="window.remindAllTaskPending('${task.id}')"
+                                    >
+                                        <i class="fa-solid fa-bell"></i>
+                                        Remind Pending
+                                    </button>
+
+                                    <button
+                                        class="nt-task-button nt-task-button-secondary"
+                                        onclick="window.openTaskDeadlineAction('${task.id}')"
+                                    >
+                                        <i class="fa-solid fa-calendar-days"></i>
+                                        Change Deadline
+                                    </button>
+
+                                    <button
+                                        class="nt-task-button nt-task-button-secondary"
+                                        onclick="window.openTaskOriginalMessage('${task.id}')"
+                                    >
+                                        <i class="fa-regular fa-message"></i>
+                                        Original Message
+                                    </button>
+
+                                    <button
+                                        class="nt-task-button nt-task-button-secondary"
+                                        onclick="window.downloadTaskPDF('${task.id}')"
+                                    >
+                                        <i class="fa-solid fa-file-pdf"></i>
+                                        PDF Report
+                                    </button>
+
+                                    <button
+                                        class="nt-task-button nt-task-button-secondary"
+                                        style="color:#b91c1c;background:#fef2f2;border-color:#fecaca;"
+                                        onclick="window.openTaskCancelAction('${task.id}')"
+                                    >
+                                        <i class="fa-solid fa-ban"></i>
+                                        Cancel Task
+                                    </button>
+                                </div>
+                            </div>
+                        `
+                        : '';
+
                 const creatorReviewHtml =
                     isCreator &&
                     submittedAssignments.length
@@ -3632,6 +4072,15 @@ async function() {
                         ></div>
 
                         <div class="nt-task-body">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;">
+                                <span style="color:var(--accent,#4f46e5);font-size:11px;font-weight:900;letter-spacing:.06em;">
+                                    TASK #${taskIndex + 1}
+                                </span>
+                                <span style="color:var(--text-secondary,#64748b);font-size:10px;font-weight:700;">
+                                    ${escapeHtml(new Date(task.created_at).toLocaleString('en-IN', { timeZone:'Asia/Kolkata', dateStyle:'medium', timeStyle:'short' }))}
+                                </span>
+                            </div>
+
                             <div class="nt-task-header">
                                 <div class="nt-task-title-wrap">
                                     <h3 class="nt-task-title">
@@ -3788,6 +4237,8 @@ async function() {
                                 ${renderAssigneeList(assignments)}
                             </div>
 
+                            ${creatorManagementHtml}
+
                             ${creatorReviewHtml}
 
                             <div class="nt-task-section">
@@ -3810,7 +4261,7 @@ async function() {
                             >
                                 <button
                                     class="nt-task-button nt-task-button-secondary"
-                                    onclick="window.openOriginalTaskMessage('${task.original_message_id || ''}')"
+                                    onclick="window.openTaskOriginalMessage('${task.id}')"
                                 >
                                     <i class="fa-regular fa-message"></i>
                                     Original Message

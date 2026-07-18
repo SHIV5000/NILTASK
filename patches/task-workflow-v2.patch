@@ -1,0 +1,171 @@
+--- a/js/tasks.js
++++ b/js/tasks.js
+@@ -180,6 +180,46 @@
+     window.loadTasksForPanel();
+ };
+ 
++const TASK_TERMINAL_STATUSES = new Set(['accepted', 'transferred', 'cancelled']);
++const TASK_ACTIVE_STATUSES = new Set(['pending_ack', 'acknowledged', 'in_progress', 'submitted', 'needs_review']);
++
++function getTaskStatusSummary(assignees = []) {
++    const active = assignees.filter(a => !['transferred', 'cancelled'].includes(a.status));
++    const counts = active.reduce((acc, a) => {
++        acc[a.status] = (acc[a.status] || 0) + 1;
++        return acc;
++    }, {});
++    const total = active.length;
++    const engaged = active.filter(a => a.status !== 'pending_ack').length;
++    const completed = active.filter(a => a.status === 'accepted').length;
++    const unique = Object.keys(counts);
++    return {
++        counts,
++        total,
++        engaged,
++        completed,
++        engagementPct: total ? Math.round((engaged / total) * 100) : 0,
++        completionPct: total ? Math.round((completed / total) * 100) : 0,
++        state: total === 0 ? 'empty' : (unique.length === 1 ? unique[0] : 'mixed')
++    };
++}
++
++function getTaskStateLabel(state) {
++    return ({
++        empty: 'No Active Assignees',
++        mixed: 'Mixed Progress',
++        pending_ack: 'Needs Acknowledgement',
++        acknowledged: 'Acknowledged',
++        in_progress: 'In Progress',
++        submitted: 'Pending Review',
++        needs_review: 'Changes Needed',
++        accepted: 'Completed',
++        transferred: 'Transferred',
++        cancelled: 'Cancelled'
++    })[state] || 'Unknown';
++}
++
+ window.taskAction = async function(taskId, assigneeId, action, requireProof = false) {
+@@ -192,8 +232,11 @@
+     const creatorId = taskData.assigned_by;
+ 
+     if (action === 'ack') {
+-        newStatus = 'in_progress'; actionText = 'UPDATE'; comment = 'Acknowledged the task';
++        newStatus = 'acknowledged'; actionText = 'ACKNOWLEDGE'; comment = 'Acknowledged the task';
+         await window.notifyUser(creatorId, `✅ Task Acknowledged: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
++    } else if (action === 'start') {
++        newStatus = 'in_progress'; actionText = 'START'; comment = 'Started work';
++        await window.notifyUser(creatorId, `▶️ Work Started: ${taskData.title}`, taskData.original_message_id, 'task', taskId);
+     } else if (action === 'update') {
+@@ -240,8 +283,17 @@
+     } else if (action === 'delegate') {
+         const newAssignee = document.getElementById(`delegate-sel-${taskId}-${assigneeId}`).value;
+         if (!newAssignee) return window.showCenterToast('Select user to delegate', 'fa-solid fa-times', 'text-red-500');
+-        actionText = 'UPDATE'; comment = 'Delegated task';
+-        await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, tenant_id: window.currentTenantId, status: 'pending_ack', state: 'pending' });
++        actionText = 'DELEGATE'; comment = `Delegated task to ${newAssignee}`;
++        await sb.from('task_assignees').insert({
++            task_id: taskId,
++            assignee_id: newAssignee,
++            tenant_id: window.currentTenantId,
++            status: 'pending_ack',
++            state: 'pending',
++            assignment_role: 'delegate',
++            delegated_by: window.currentUser.id,
++            delegated_from: assigneeId
++        });
+@@ -252,9 +304,22 @@
+         if (!comment) return window.showCenterToast('Reason is mandatory for transfer!', 'fa-solid fa-times', 'text-red-500');
+         if (!confirm(`Transfer this task to the selected user?\nReason: ${comment}\n\nThis action cannot be undone.`)) return;
+-        actionText = 'UPDATE';
+-        await sb.from('task_assignees').delete().eq('task_id', taskId).eq('assignee_id', assigneeId).eq('tenant_id', window.currentTenantId);
+-        await sb.from('task_assignees').insert({ task_id: taskId, assignee_id: newAssignee, tenant_id: window.currentTenantId, status: 'pending_ack', state: 'pending' });
++        actionText = 'TRANSFER';
++        await sb.from('task_assignees')
++            .update({ status: 'transferred', state: 'closed' })
++            .eq('task_id', taskId)
++            .eq('assignee_id', assigneeId)
++            .eq('tenant_id', window.currentTenantId);
++        await sb.from('task_assignees').insert({
++            task_id: taskId,
++            assignee_id: newAssignee,
++            tenant_id: window.currentTenantId,
++            status: 'pending_ack',
++            state: 'pending',
++            assignment_role: 'transferred',
++            delegated_by: window.currentUser.id,
++            delegated_from: assigneeId
++        });
+@@ -299,7 +364,7 @@
+     const { data: assignees } = await sb.from('task_assignees')
+-        .select('task_id, assignee_id, status, profiles!assignee_id(full_name, email)')
++        .select('task_id, assignee_id, status, assignment_role, delegated_by, delegated_from, profiles!assignee_id(full_name, email)')
+@@ -311,7 +376,7 @@
+-        assigneesMap[a.task_id].push({ assignee_id: a.assignee_id, status: a.status, profiles: a.profiles });
++        assigneesMap[a.task_id].push({ assignee_id: a.assignee_id, status: a.status, assignment_role: a.assignment_role, delegated_by: a.delegated_by, delegated_from: a.delegated_from, profiles: a.profiles });
+@@ -336,7 +401,7 @@
+-            const activeAssignees = asgList.filter(a => a.status !== 'delegated' && a.status !== 'transferred');
++            const activeAssignees = asgList.filter(a => !['delegated', 'transferred', 'cancelled'].includes(a.status));
+@@ -386,23 +451,19 @@
+-        const activeAssignees = asgList.filter(a => a.status !== 'delegated' && a.status !== 'transferred');
++        const activeAssignees = asgList.filter(a => !['delegated', 'transferred', 'cancelled'].includes(a.status));
+         const allAccepted = activeAssignees.length > 0 && activeAssignees.every(a => a.status === 'accepted');
+ 
+-        let globalState = 'pending_ack';
+-        if (asgList.length > 0) {
+-            const statuses = asgList.map(a => a.status);
+-            if (statuses.every(s => s === 'accepted' || s === 'transferred')) globalState = 'accepted';
+-            else if (statuses.includes('submitted')) globalState = 'submitted';
+-            else if (statuses.includes('needs_review')) globalState = 'needs_review';
+-            else if (statuses.includes('in_progress')) globalState = 'in_progress';
+-        }
++        const statusSummary = getTaskStatusSummary(asgList);
++        const globalState = statusSummary.state;
+ 
+-        let badgeClass = 'badge-pending', badgeText = '⏳ Needs Ack', borderClass = '#ea580c';
++        let badgeClass = 'badge-pending', badgeText = `⏳ ${getTaskStateLabel(globalState)}`, borderClass = '#ea580c';
++        if (globalState === 'acknowledged') { badgeClass = 'badge-progress'; badgeText = '✅ Acknowledged'; borderClass = '#2563eb'; }
+         if (globalState === 'in_progress') { badgeClass = 'badge-progress'; badgeText = '⚙️ In Progress'; }
+         if (globalState === 'submitted') { badgeClass = 'badge-review'; badgeText = '📬 Pending Review'; }
+         if (globalState === 'needs_review') { badgeClass = 'badge-changes'; badgeText = '🔄 Changes Needed'; borderClass = '#dc2626'; }
+-        if (globalState === 'accepted') { badgeClass = 'badge-done'; badgeText = '🎉 Done'; borderClass = '#166534'; }
++        if (globalState === 'accepted') { badgeClass = 'badge-done'; badgeText = '🎉 Completed'; borderClass = '#166534'; }
++        if (globalState === 'mixed') { badgeClass = 'badge-progress'; badgeText = '👥 Mixed Progress'; borderClass = '#7c3aed'; }
+@@ -420,6 +481,21 @@
+         }).join(', ');
+ 
++        const c = statusSummary.counts;
++        const summaryHtml = `
++            <div class="rounded-xl p-3 mb-3 border border-gray-100 bg-gray-50">
++                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
++                    <div>⏳ Awaiting: <b>${c.pending_ack || 0}</b></div>
++                    <div>✅ Acknowledged: <b>${c.acknowledged || 0}</b></div>
++                    <div>⚙️ Working: <b>${c.in_progress || 0}</b></div>
++                    <div>📬 Submitted: <b>${c.submitted || 0}</b></div>
++                    <div>🔄 Rework: <b>${c.needs_review || 0}</b></div>
++                    <div>🎉 Completed: <b>${c.accepted || 0}</b></div>
++                </div>
++                <div class="mt-2 text-[10px] text-gray-600">
++                    Engaged <b>${statusSummary.engagementPct}%</b> · Completed <b>${statusSummary.completionPct}%</b>
++                </div>
++            </div>`;
+@@ -435,13 +511,17 @@
+                 actionsHtml += `<button id="ack-btn-${task.id}-${uId}" onclick="window.taskAction('${task.id}', '${uId}', 'ack')" class="btn-primary w-full bg-yellow-500 hover:bg-yellow-600 transition-colors px-4 py-2 rounded-lg text-white font-bold">
+                     <i class="fa-solid fa-check-circle"></i> Acknowledge Task
+                 </button>`;
++            } else if (st === 'acknowledged') {
++                actionsHtml += `<button onclick="window.taskAction('${task.id}', '${uId}', 'start')" class="btn-primary w-full bg-blue-600 hover:bg-blue-700 transition-colors px-4 py-2 rounded-lg text-white font-bold">
++                    <i class="fa-solid fa-play"></i> Start Work
++                </button>`;
+             } else if (st === 'in_progress' || st === 'needs_review') {
+@@ -440,10 +520,10 @@
+-                    <button onclick="document.getElementById('comment-box-${task.id}-${uId}').classList.toggle('hidden')" class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-bold transition-colors"><i class="fa-solid fa-comment"></i> Comment</button>
++                    <button onclick="document.getElementById('comment-box-${task.id}-${uId}').classList.toggle('hidden')" class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-bold transition-colors"><i class="fa-solid fa-comment"></i> Progress Update</button>
+@@
+-                    <button onclick="window.taskAction('${task.id}', '${uId}', 'submit', ${task.require_proof})" class="btn-primary ${st === 'needs_review' ? 'bg-orange-600' : 'bg-blue-600'} text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"><i class="fa-solid fa-paper-plane"></i> Submit</button>
++                    <button onclick="window.taskAction('${task.id}', '${uId}', 'submit', ${task.require_proof})" class="btn-primary ${st === 'needs_review' ? 'bg-orange-600' : 'bg-blue-600'} text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"><i class="fa-solid fa-paper-plane"></i> Submit for Review</button>
+@@ -486,7 +566,7 @@
+-                        <button onclick="document.getElementById('review-box-${task.id}-${sa.assignee_id}').classList.toggle('hidden')" class="btn-primary bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold transition-colors"><i class="fa-solid fa-circle-xmark"></i> Reject</button>
++                        <button onclick="document.getElementById('review-box-${task.id}-${sa.assignee_id}').classList.toggle('hidden')" class="btn-primary bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold transition-colors"><i class="fa-solid fa-circle-xmark"></i> Return for Changes</button>
+@@ -551,6 +631,7 @@
+                 </div>
++                ${summaryHtml}
+                 ${actionsHtml ? `<div class="border-t border-gray-100 pt-3 pb-1">${actionsHtml}</div>` : ''}

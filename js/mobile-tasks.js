@@ -406,22 +406,34 @@ function installMobileTaskStyles() {
         }
 
         .nmt-list {
-            padding:13px 12px 90px;
+            padding:18px 12px 100px;
         }
 
         .nmt-card {
-            margin-bottom:14px;
-            overflow:hidden;
-            border:1px solid var(--border-color,#e5e7eb);
+            position:relative;
+            margin-bottom:24px;
+            overflow:visible;
+            border:2px solid var(--border-color,#dbe2ea);
             border-radius:20px;
             background:var(--bg-body,#fff);
             box-shadow:
-                0 2px 5px rgba(15,23,42,.04),
-                0 10px 26px rgba(15,23,42,.07);
+                0 4px 10px rgba(15,23,42,.08),
+                0 16px 32px rgba(15,23,42,.08);
         }
 
         .nmt-card.completed {
             opacity:.73;
+        }
+
+        .nmt-card:not(:last-child)::after {
+            content:'';
+            position:absolute;
+            left:14px;
+            right:14px;
+            bottom:-14px;
+            height:2px;
+            border-radius:999px;
+            background:var(--border-color,#d1d5db);
         }
 
         .nmt-card-accent {
@@ -446,8 +458,8 @@ function installMobileTaskStyles() {
         .nmt-task-title {
             margin:0;
             color:var(--text-primary,#111827);
-            font-size:15px;
-            line-height:1.35;
+            font-size:17px;
+            line-height:1.4;
             font-weight:900;
             overflow-wrap:anywhere;
         }
@@ -455,8 +467,8 @@ function installMobileTaskStyles() {
         .nmt-task-meta {
             margin-top:5px;
             color:var(--text-secondary,#64748b);
-            font-size:10.5px;
-            line-height:1.45;
+            font-size:12px;
+            line-height:1.5;
         }
 
         .nmt-priority {
@@ -480,10 +492,11 @@ function installMobileTaskStyles() {
             display:inline-flex;
             align-items:center;
             gap:6px;
-            padding:7px 10px;
+            min-height:36px;
+            padding:8px 12px;
             border:1px solid;
             border-radius:999px;
-            font-size:10px;
+            font-size:11px;
             font-weight:800;
         }
 
@@ -492,7 +505,7 @@ function installMobileTaskStyles() {
             align-items:center;
             gap:5px;
             color:var(--text-secondary,#64748b);
-            font-size:10px;
+            font-size:12px;
             font-weight:700;
         }
 
@@ -578,16 +591,16 @@ function installMobileTaskStyles() {
         }
 
         .nmt-button {
-            min-height:40px;
+            min-height:48px;
             border:0;
             border-radius:12px;
             display:inline-flex;
             align-items:center;
             justify-content:center;
             gap:7px;
-            padding:9px 12px;
+            padding:11px 14px;
             cursor:pointer;
-            font-size:11px;
+            font-size:13px;
             font-weight:900;
         }
 
@@ -604,7 +617,7 @@ function installMobileTaskStyles() {
         }
 
         .nmt-button.icon {
-            width:40px;
+            width:48px;
             padding:0;
         }
 
@@ -633,7 +646,7 @@ function installMobileTaskStyles() {
             gap:7px;
             margin-bottom:11px;
             color:var(--text-primary,#111827);
-            font-size:11px;
+            font-size:13px;
             font-weight:900;
             text-transform:uppercase;
             letter-spacing:.035em;
@@ -643,7 +656,8 @@ function installMobileTaskStyles() {
             display:flex;
             align-items:center;
             gap:9px;
-            padding:10px 0;
+            min-height:58px;
+            padding:12px 0;
             border-bottom:1px solid var(--border-color,#eef2f7);
         }
 
@@ -675,14 +689,14 @@ function installMobileTaskStyles() {
             text-overflow:ellipsis;
             white-space:nowrap;
             color:var(--text-primary,#111827);
-            font-size:12px;
+            font-size:14px;
             font-weight:800;
         }
 
         .nmt-person-state {
             margin-top:3px;
             color:var(--text-secondary,#64748b);
-            font-size:9px;
+            font-size:11px;
         }
 
         .nmt-person-actions {
@@ -693,12 +707,12 @@ function installMobileTaskStyles() {
         }
 
         .nmt-mini-button {
-            min-height:31px;
+            min-height:40px;
             border:0;
             border-radius:9px;
-            padding:7px 9px;
+            padding:9px 12px;
             cursor:pointer;
-            font-size:9px;
+            font-size:11px;
             font-weight:800;
         }
 
@@ -729,8 +743,8 @@ function installMobileTaskStyles() {
 
         .nmt-trail-row {
             display:flex;
-            gap:9px;
-            padding:9px 0;
+            gap:11px;
+            padding:13px 0;
             border-bottom:1px solid var(--border-color,#eef2f7);
         }
 
@@ -739,8 +753,8 @@ function installMobileTaskStyles() {
         }
 
         .nmt-trail-number {
-            width:25px;
-            height:25px;
+            width:32px;
+            height:32px;
             border-radius:50%;
             flex-shrink:0;
             display:flex;
@@ -748,7 +762,7 @@ function installMobileTaskStyles() {
             justify-content:center;
             color:#4338ca;
             background:#eef2ff;
-            font-size:9px;
+            font-size:11px;
             font-weight:900;
         }
 
@@ -759,7 +773,7 @@ function installMobileTaskStyles() {
 
         .nmt-trail-meta {
             color:var(--text-primary,#111827);
-            font-size:10px;
+            font-size:12px;
             font-weight:800;
         }
 
@@ -769,10 +783,10 @@ function installMobileTaskStyles() {
         }
 
         .nmt-trail-comment {
-            margin-top:4px;
+            margin-top:5px;
             color:var(--text-secondary,#475569);
-            font-size:10px;
-            line-height:1.45;
+            font-size:12px;
+            line-height:1.55;
             overflow-wrap:anywhere;
         }
 
@@ -1734,76 +1748,65 @@ async function sendTaskReminder(
     taskId,
     assigneeId
 ) {
-    const task = await fetchTask(taskId);
+    const tenantId = getTenantId();
+    const senderId = getCurrentUserId();
 
-    if (!task) return;
+    if (!tenantId || !senderId || !taskId || !assigneeId) {
+        showToast('Reminder information is incomplete.', 'warning');
+        return false;
+    }
 
-    await notifyUser(
-        assigneeId,
-        task,
-        `🔔 Reminder: Action pending on task — ${task.title}`
+    const { error } = await sb.rpc(
+        'send_task_reminder',
+        {
+            p_task_id: taskId,
+            p_assignee_id: assigneeId,
+            p_tenant_id: tenantId,
+            p_sender_id: senderId
+        }
     );
 
-    await addTrail(
-        taskId,
-        'REMINDER',
-        `Reminder sent to ${getUserName(assigneeId)}`
-    );
+    if (error) {
+        showToast(`Reminder failed: ${error.message}`, 'error');
+        return false;
+    }
 
-    showToast('Reminder sent.', 'success');
-
+    showToast(`Reminder sent to ${getUserName(assigneeId)}.`, 'success');
     await refreshCurrentMobileTaskScreen();
+    return true;
 }
 
 async function remindAllPending(
     taskId
 ) {
-    const task = await fetchTask(taskId);
+    const assignments = await fetchTaskAssignments([taskId]);
 
-    if (!task) return;
-
-    const assignments =
-        await fetchTaskAssignments([taskId]);
-
-    const pending = assignments.filter(
-        assignment => {
-            const status =
-                getEffectiveStatus(assignment);
-
-            return (
-                !isClosedAssignment(assignment) &&
-                status !== 'accepted'
-            );
-        }
-    );
+    const pending = assignments.filter(assignment => {
+        const status = getEffectiveStatus(assignment);
+        return !isClosedAssignment(assignment) && status !== 'accepted';
+    });
 
     if (!pending.length) {
-        showToast(
-            'No pending assignees.',
-            'info'
-        );
-
+        showToast('No pending assignees.', 'info');
         return;
     }
 
+    let sent = 0;
+    const failures = [];
+
     for (const assignment of pending) {
-        await notifyUser(
-            assignment.assignee_id,
-            task,
-            `🔔 Reminder: Action pending on task — ${task.title}`
-        );
+        const ok = await sendTaskReminder(taskId, assignment.assignee_id);
+        if (ok) sent += 1;
+        else failures.push(getProfileName(assignment.profiles));
     }
 
-    await addTrail(
-        taskId,
-        'REMINDER',
-        `Reminder sent to ${pending.length} pending assignee(s)`
-    );
+    if (sent) {
+        showToast(`Reminder sent to ${sent} assignee(s).`, 'success');
+    }
 
-    showToast(
-        `Reminder sent to ${pending.length} assignee(s).`,
-        'success'
-    );
+    if (failures.length) {
+        showToast(`Reminder failed for: ${failures.join(', ')}`, 'warning');
+    }
 
     await refreshCurrentMobileTaskScreen();
 }
@@ -2263,35 +2266,135 @@ function openDeadlineChange(taskId) {
     });
 }
 
+
+function openDeadlineExtensionRequest(
+    taskId,
+    assigneeId
+) {
+    openOverlay({
+        title: 'Request Deadline Extension',
+        body: `
+            <div class="nmt-field">
+                <label class="nmt-label">Requested deadline</label>
+                <input id="nmtRequestedDeadline" class="nmt-input" type="date">
+            </div>
+            <div class="nmt-field">
+                <label class="nmt-label">Reason</label>
+                <textarea id="nmtExtensionReason" class="nmt-input"
+                    placeholder="Explain why more time is required..."></textarea>
+            </div>
+        `,
+        primaryLabel: 'Send Request',
+        primaryIcon: 'fa-solid fa-calendar-plus',
+        onPrimary: async () => {
+            const requestedDate = document.getElementById('nmtRequestedDeadline')?.value;
+            const reason = (document.getElementById('nmtExtensionReason')?.value || '').trim();
+
+            if (!requestedDate) {
+                showToast('Select the requested deadline.', 'warning');
+                return false;
+            }
+
+            if (!reason) {
+                showToast('A reason is required.', 'warning');
+                return false;
+            }
+
+            const task = await fetchTask(taskId);
+            if (!task) return false;
+
+            await addTrail(
+                taskId,
+                'EXTENSION_REQUEST',
+                `${getUserName(assigneeId)} requested ${formatDate(requestedDate)} — ${reason}`
+            );
+
+            showToast('Deadline-extension request sent.', 'success');
+            await refreshCurrentMobileTaskScreen();
+            return true;
+        }
+    });
+}
+
+function openCancelTask(taskId) {
+    openOverlay({
+        title: 'Cancel Task',
+        body: `
+            <div class="nmt-field">
+                <label class="nmt-label">Cancellation reason</label>
+                <textarea id="nmtCancelReason" class="nmt-input"
+                    placeholder="Explain why this task is being cancelled..."></textarea>
+            </div>
+            <div style="padding:11px;border-radius:12px;background:#fef2f2;color:#991b1b;font-size:11px;line-height:1.55;">
+                Cancellation keeps the task and its complete audit history. It does not delete records.
+            </div>
+        `,
+        primaryLabel: 'Cancel Task',
+        primaryIcon: 'fa-solid fa-ban',
+        onPrimary: async () => {
+            const reason = (document.getElementById('nmtCancelReason')?.value || '').trim();
+
+            if (!reason) {
+                showToast('Cancellation reason is required.', 'warning');
+                return false;
+            }
+
+            const task = await fetchTask(taskId);
+            if (!task) return false;
+
+            if (task.assigned_by !== getCurrentUserId()) {
+                showToast('Only the task creator can cancel this task.', 'error');
+                return false;
+            }
+
+            const { error: taskError } = await sb
+                .from('tasks')
+                .update({ status: 'cancelled' })
+                .eq('tenant_id', getTenantId())
+                .eq('id', taskId)
+                .eq('assigned_by', getCurrentUserId());
+
+            if (taskError) {
+                showToast(taskError.message, 'error');
+                return false;
+            }
+
+            const { error: assignmentError } = await sb
+                .from('task_assignees')
+                .update({ status: 'cancelled', state: 'closed' })
+                .eq('tenant_id', getTenantId())
+                .eq('task_id', taskId)
+                .not('status', 'in', '("accepted","transferred","cancelled")');
+
+            if (assignmentError) {
+                showToast(assignmentError.message, 'error');
+                return false;
+            }
+
+            await addTrail(taskId, 'CANCEL', reason);
+            showToast('Task cancelled. History has been preserved.', 'success');
+            await refreshCurrentMobileTaskScreen();
+            return true;
+        }
+    });
+}
+
 /* -------------------------------------------------------------------------- */
 /* Original message and file opening                                          */
 /* -------------------------------------------------------------------------- */
 
-function openOriginalMessage(task) {
-    if (!task?.original_message_id) {
-        showToast(
-            'No original message is linked.',
-            'info'
-        );
-
+async function openOriginalMessage(task) {
+    if (!task?.id) {
+        showToast('Task information is unavailable.', 'warning');
         return;
     }
 
-    if (
-        typeof window.scrollToAndHighlight ===
-        'function'
-    ) {
-        window.scrollToAndHighlight(
-            `msg-${task.original_message_id}`
-        );
-
+    if (typeof window.openTaskOriginalMessage === 'function') {
+        await window.openTaskOriginalMessage(task.id);
         return;
     }
 
-    showToast(
-        'Open the related chat to view the original message.',
-        'info'
-    );
+    showToast('Original-message navigation is unavailable.', 'warning');
 }
 
 async function openTaskFile(path) {
@@ -2380,6 +2483,17 @@ function renderPrimaryCardAction(
             status === 'needs_review'
         ) {
             return `
+                <button
+                    type="button"
+                    class="nmt-button secondary"
+                    data-nmt-action="request-extension"
+                    data-task="${escapeAttribute(task.id)}"
+                    data-assignee="${escapeAttribute(getCurrentUserId())}"
+                >
+                    <i class="fa-solid fa-calendar-plus"></i>
+                    Extension
+                </button>
+
                 <button
                     type="button"
                     class="nmt-button primary"
@@ -2603,7 +2717,7 @@ async function renderMobileTasks() {
         }
     );
 
-    const cards = visibleTasks.map(task => {
+    const cards = visibleTasks.map((task, taskIndex) => {
         const taskAssignments =
             assignmentsByTask[task.id] || [];
 
@@ -2684,6 +2798,15 @@ async function renderMobileTasks() {
                 ></div>
 
                 <div class="nmt-card-content">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;">
+                        <span style="color:var(--accent,#4f46e5);font-size:11px;font-weight:900;letter-spacing:.06em;">
+                            TASK #${taskIndex + 1}
+                        </span>
+                        <span style="color:var(--text-secondary,#64748b);font-size:10px;font-weight:700;">
+                            ${escapeHtml(formatDateTime(task.created_at))}
+                        </span>
+                    </div>
+
                     <div class="nmt-title-row">
                         <div class="nmt-title-area">
                             <h3 class="nmt-task-title">
@@ -2996,6 +3119,17 @@ function renderAssigneeMainActions(
                 <i class="fa-solid fa-check"></i>
                 Acknowledge Task
             </button>
+            <button
+                type="button"
+                class="nmt-button secondary"
+                data-nmt-action="request-extension"
+                data-task="${escapeAttribute(task.id)}"
+                data-assignee="${escapeAttribute(getCurrentUserId())}"
+                style="margin-top:8px;width:100%;"
+            >
+                <i class="fa-solid fa-calendar-plus"></i>
+                Request Deadline Extension
+            </button>
         `;
     }
 
@@ -3010,6 +3144,17 @@ function renderAssigneeMainActions(
             >
                 <i class="fa-solid fa-play"></i>
                 Start Work
+            </button>
+            <button
+                type="button"
+                class="nmt-button secondary"
+                data-nmt-action="request-extension"
+                data-task="${escapeAttribute(task.id)}"
+                data-assignee="${escapeAttribute(getCurrentUserId())}"
+                style="margin-top:8px;width:100%;"
+            >
+                <i class="fa-solid fa-calendar-plus"></i>
+                Request Deadline Extension
             </button>
         `;
     }
@@ -3478,6 +3623,16 @@ async function renderMobileTaskDetail(params) {
                                             <i class="fa-solid fa-file-pdf"></i>
                                             PDF Report
                                         </button>
+                                        <button
+                                            type="button"
+                                            class="nmt-manage-option"
+                                            data-nmt-action="cancel-task"
+                                            data-task="${escapeAttribute(task.id)}"
+                                        >
+                                            <i class="fa-solid fa-ban"></i>
+                                            Cancel Task
+                                        </button>
+
                                     </div>
                                 </div>
                             `
@@ -3610,6 +3765,16 @@ async function openManageSheet(taskId) {
                     <i class="fa-solid fa-file-pdf"></i>
                     PDF Report
                 </button>
+                                        <button
+                                            type="button"
+                                            class="nmt-manage-option"
+                                            data-nmt-action="cancel-task"
+                                            data-task="${escapeAttribute(task.id)}"
+                                        >
+                                            <i class="fa-solid fa-ban"></i>
+                                            Cancel Task
+                                        </button>
+
             </div>
         `
     });
@@ -3754,6 +3919,16 @@ async function handleMobileTaskClick(event) {
 
     if (action === 'deadline') {
         openDeadlineChange(taskId);
+        return;
+    }
+
+    if (action === 'request-extension') {
+        openDeadlineExtensionRequest(taskId, assigneeId || getCurrentUserId());
+        return;
+    }
+
+    if (action === 'cancel-task') {
+        openCancelTask(taskId);
         return;
     }
 

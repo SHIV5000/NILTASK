@@ -1189,6 +1189,50 @@ async function fetchTaskTrails(taskId) {
     return data || [];
 }
 
+
+async function fetchTaskExtensionRequests(taskId) {
+    const { data, error } = await sb
+        .from('task_extension_requests')
+        .select('id,task_id,assignee_id,requested_deadline,reason,status,created_at,profiles!assignee_id(full_name,email)')
+        .eq('tenant_id', getTenantId())
+        .eq('task_id', taskId)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.warn('[mobile-tasks] extension request fetch failed', error);
+        return [];
+    }
+
+    return data || [];
+}
+
+async function respondTaskExtension(requestId, approve) {
+    const decisionReason = approve
+        ? 'Approved by task creator'
+        : (prompt('Reason for declining this extension request:') || '').trim();
+
+    if (!approve && !decisionReason) return;
+
+    const { error } = await sb.rpc('respond_task_extension', {
+        p_request_id: requestId,
+        p_approve: Boolean(approve),
+        p_decision_reason: decisionReason,
+        p_tenant_id: getTenantId()
+    });
+
+    if (error) {
+        showToast(`Could not process extension request: ${error.message}`, 'error');
+        return;
+    }
+
+    showToast(
+        approve ? 'Deadline extension approved.' : 'Deadline extension declined.',
+        approve ? 'success' : 'warning'
+    );
+
+    await refreshCurrentMobileTaskScreen();
+}
+
 async function updateAssignment(
     taskId,
     assigneeId,
@@ -2302,12 +2346,18 @@ function openDeadlineExtensionRequest(
 
             const task = await fetchTask(taskId);
             if (!task) return false;
+            const { error } = await sb.rpc('request_task_extension', {
+                p_task_id: taskId,
+                p_requested_deadline: requestedDate,
+                p_reason: reason,
+                p_tenant_id: getTenantId()
+            });
 
-            await addTrail(
-                taskId,
-                'EXTENSION_REQUEST',
-                `${getUserName(assigneeId)} requested ${formatDate(requestedDate)} — ${reason}`
-            );
+            if (error) {
+                showToast(`Extension request failed: ${error.message}`, 'error');
+                return false;
+            }
+
 
             showToast('Deadline-extension request sent.', 'success');
             await refreshCurrentMobileTaskScreen();
@@ -3268,6 +3318,13 @@ async function renderMobileTaskDetail(params) {
     const trails =
         await fetchTaskTrails(task.id);
 
+    const extensionRequests =
+        await fetchTaskExtensionRequests(task.id);
+
+    const pendingExtensionRequests = extensionRequests.filter(
+        request => request.status === 'pending'
+    );
+
     const summary =
         summariseAssignments(assignments);
 
@@ -3338,6 +3395,25 @@ async function renderMobileTaskDetail(params) {
             `;
         }
     ).join('');
+
+    const extensionRequestRows = pendingExtensionRequests.map(request => `
+        <div class="nmt-person" style="align-items:flex-start;">
+            <div class="nmt-avatar"><i class="fa-solid fa-calendar-plus"></i></div>
+            <div class="nmt-person-info">
+                <div class="nmt-person-name">${escapeHtml(getProfileName(request.profiles))}</div>
+                <div class="nmt-person-state" style="font-size:12px;line-height:1.5;">
+                    Requested: <b>${escapeHtml(formatDate(request.requested_deadline))}</b><br>
+                    ${escapeHtml(request.reason || '')}
+                </div>
+            </div>
+            <div class="nmt-person-actions">
+                <button type="button" class="nmt-mini-button nmt-mini-green"
+                    data-nmt-action="approve-extension" data-request="${escapeAttribute(request.id)}">Approve</button>
+                <button type="button" class="nmt-mini-button nmt-mini-red"
+                    data-nmt-action="reject-extension" data-request="${escapeAttribute(request.id)}">Decline</button>
+            </div>
+        </div>
+    `).join('');
 
     const trailRows = trails.map(
         (trail, index) => {
@@ -3634,6 +3710,20 @@ async function renderMobileTaskDetail(params) {
                                         </button>
 
                                     </div>
+                                </div>
+                            `
+                            : ''
+                    }
+
+                    ${
+                        isCreator && extensionRequestRows
+                            ? `
+                                <div class="nmt-section">
+                                    <div class="nmt-section-title">
+                                        <i class="fa-solid fa-calendar-plus"></i>
+                                        Deadline Extension Requests
+                                    </div>
+                                    ${extensionRequestRows}
                                 </div>
                             `
                             : ''
@@ -3958,6 +4048,16 @@ async function handleMobileTaskClick(event) {
             );
         }
 
+        return;
+    }
+
+    if (action === 'approve-extension') {
+        await respondTaskExtension(button.dataset.request, true);
+        return;
+    }
+
+    if (action === 'reject-extension') {
+        await respondTaskExtension(button.dataset.request, false);
         return;
     }
 

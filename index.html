@@ -97,6 +97,16 @@
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="./css/theme.css">
   <link rel="stylesheet" href="./css/mobile.css">
+
+    <style id="mobileTaskPrepaintGuard">
+      @media (max-width: 768px) {
+        #mStage .mScr[data-screen="tasks"]:not(:has(.nmt-screen)),
+        #mStage .mScr[data-screen="taskDetail"]:not(:has(.nmt-screen)) {
+          visibility: hidden !important;
+        }
+      }
+    </style>
+
   <style>
     /* ── GLOBAL FONT: Inter — no other font anywhere in the app ── */
     html, body, input, select, textarea, button, h1, h2, h3, h4, h5, h6,

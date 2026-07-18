@@ -2436,14 +2436,22 @@ window.openTaskExtensionRequest = function(taskId, assigneeId) {
                 );
                 return false;
             }
+            const { error } = await sb.rpc('request_task_extension', {
+                p_task_id: taskId,
+                p_requested_deadline: requestedDate,
+                p_reason: reason,
+                p_tenant_id: tenantId()
+            });
 
-            await addTaskTrail(
-                taskId,
-                'EXTENSION_REQUEST',
-                `${getDisplayName(window.currentUser)} requested ${
-                    new Date(requestedDate).toLocaleDateString('en-IN')
-                } — ${reason}`
-            );
+            if (error) {
+                showToast(
+                    `Extension request failed: ${error.message}`,
+                    'fa-solid fa-times',
+                    'text-red-500'
+                );
+                return false;
+            }
+
 
             showToast(
                 'Deadline-extension request sent.',
@@ -2455,6 +2463,39 @@ window.openTaskExtensionRequest = function(taskId, assigneeId) {
             return true;
         }
     });
+};
+
+
+window.respondTaskExtension = async function(requestId, approve) {
+    const reason = approve
+        ? 'Approved by task creator'
+        : (prompt('Reason for declining this extension request:') || '').trim();
+
+    if (!approve && !reason) return;
+
+    const { error } = await sb.rpc('respond_task_extension', {
+        p_request_id: requestId,
+        p_approve: Boolean(approve),
+        p_decision_reason: reason,
+        p_tenant_id: tenantId()
+    });
+
+    if (error) {
+        showToast(
+            `Could not process extension request: ${error.message}`,
+            'fa-solid fa-times',
+            'text-red-500'
+        );
+        return;
+    }
+
+    showToast(
+        approve ? 'Deadline extension approved.' : 'Deadline extension declined.',
+        approve ? 'fa-solid fa-calendar-check' : 'fa-solid fa-calendar-xmark',
+        approve ? 'text-green-500' : 'text-orange-500'
+    );
+
+    await window.loadTasksForPanel();
 };
 
 window.openTaskDeadlineAction = function(taskId) {
@@ -3539,8 +3580,20 @@ async function() {
         );
     }
 
+    const { data: extensionRequests, error: extensionError } = await sb
+        .from('task_extension_requests')
+        .select('id,task_id,assignee_id,requested_deadline,reason,status,created_at,profiles!assignee_id(full_name,email)')
+        .eq('tenant_id', tenantId())
+        .in('task_id', taskIds)
+        .order('created_at', { ascending: false });
+
+    if (extensionError) {
+        logger?.warn?.('Task extension request load failed', extensionError);
+    }
+
     const assigneesByTask = {};
     const trailsByTask = {};
+    const extensionRequestsByTask = {};
 
     for (const assignee of assignees || []) {
         if (
@@ -3572,6 +3625,14 @@ async function() {
         trailsByTask[
             trail.task_id
         ].push(trail);
+    }
+
+
+    for (const request of extensionRequests || []) {
+        if (!extensionRequestsByTask[request.task_id]) {
+            extensionRequestsByTask[request.task_id] = [];
+        }
+        extensionRequestsByTask[request.task_id].push(request);
     }
 
     let visibleTasks =
@@ -3824,6 +3885,11 @@ async function() {
                     ] ||
                     [];
 
+
+                const pendingExtensionRequests =
+                    (extensionRequestsByTask[task.id] || [])
+                        .filter(request => request.status === 'pending');
+
                 const summary =
                     getTaskStatusSummary(
                         assignments
@@ -3973,6 +4039,40 @@ async function() {
                                         Cancel Task
                                     </button>
                                 </div>
+                            </div>
+                        `
+                        : '';
+
+                const creatorExtensionHtml =
+                    isCreator && pendingExtensionRequests.length
+                        ? `
+                            <div class="nt-task-section">
+                                <div class="nt-task-section-title">
+                                    <i class="fa-solid fa-calendar-plus"></i>
+                                    Deadline Extension Requests
+                                </div>
+
+                                ${pendingExtensionRequests.map(request => `
+                                    <div style="padding:11px 0;border-bottom:1px solid var(--border-color,#e5e7eb);">
+                                        <div style="font-size:12px;font-weight:800;color:var(--text-primary,#111827);">
+                                            ${escapeHtml(getDisplayName(request.profiles))}
+                                        </div>
+                                        <div style="margin-top:4px;font-size:11px;color:var(--text-secondary,#64748b);line-height:1.5;">
+                                            Requested: <b>${escapeHtml(formatTaskDeadline(request.requested_deadline).text)}</b><br>
+                                            ${escapeHtml(request.reason || '')}
+                                        </div>
+                                        <div style="display:flex;gap:8px;margin-top:9px;flex-wrap:wrap;">
+                                            <button class="nt-task-button nt-task-button-primary" style="flex:initial;background:#16a34a;"
+                                                onclick="window.respondTaskExtension('${request.id}',true)">
+                                                <i class="fa-solid fa-check"></i> Approve
+                                            </button>
+                                            <button class="nt-task-button nt-task-button-secondary" style="color:#b91c1c;background:#fef2f2;"
+                                                onclick="window.respondTaskExtension('${request.id}',false)">
+                                                <i class="fa-solid fa-xmark"></i> Decline
+                                            </button>
+                                        </div>
+                                    </div>
+                                `).join('')}
                             </div>
                         `
                         : '';
@@ -4238,6 +4338,8 @@ async function() {
                             </div>
 
                             ${creatorManagementHtml}
+
+                            ${creatorExtensionHtml}
 
                             ${creatorReviewHtml}
 

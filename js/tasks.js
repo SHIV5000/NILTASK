@@ -1,23 +1,854 @@
 import { sb } from './shared.js';
 import logger from './utils/logger.js';
 
-// v1.60.0 - Multi-assignee workflow, mixed progress and tenant-safe actions
+// v1.61.0
+// Responsive Task Cards + Mobile Bottom Sheet + Desktop Action Drawer
+// Multi-tenant: every database operation is scoped using currentTenantId.
 
-// ─── RICH TEXT HELPERS ──────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// COMMON HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
 
-window.taskFmtCmd = function(cmd, boxId) {
-    const el = document.getElementById('update-txt-' + boxId);
-    if (!el) return;
+const CLOSED_TASK_STATUSES = new Set([
+    'transferred',
+    'cancelled'
+]);
 
-    el.focus();
-    document.execCommand(cmd, false, null);
+function tenantId() {
+    return window.currentTenantId || null;
+}
+
+function currentUserId() {
+    return window.currentUser?.id || null;
+}
+
+function escapeHtml(value = '') {
+    return window.escapeHtml
+        ? window.escapeHtml(String(value))
+        : String(value)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#039;');
+}
+
+function sentenceCase(value = '') {
+    return window.toSentenceCase
+        ? window.toSentenceCase(value)
+        : value;
+}
+
+function showToast(
+    message,
+    icon = 'fa-solid fa-circle-info',
+    className = 'text-blue-500'
+) {
+    if (window.showCenterToast) {
+        window.showCenterToast(
+            message,
+            icon,
+            className
+        );
+    } else {
+        alert(message);
+    }
+}
+
+function getDisplayName(profile) {
+    const raw =
+        profile?.full_name ||
+        profile?.email?.split('@')[0] ||
+        'Unknown';
+
+    return sentenceCase(raw);
+}
+
+function isMobileTaskUI() {
+    return window.matchMedia(
+        '(max-width: 768px)'
+    ).matches;
+}
+
+function getEffectiveAssigneeStatus(assignee) {
+    if (!assignee) return 'pending_ack';
+
+    /*
+     * We avoid adding a new database status value.
+     *
+     * Acknowledged is represented as:
+     * status = pending_ack
+     * state = acknowledged
+     * acked = true
+     */
+    if (
+        assignee.status === 'pending_ack' &&
+        (
+            assignee.state === 'acknowledged' ||
+            assignee.acked === true
+        )
+    ) {
+        return 'acknowledged';
+    }
+
+    return assignee.status || 'pending_ack';
+}
+
+function isClosedAssignee(assignee) {
+    return CLOSED_TASK_STATUSES.has(
+        getEffectiveAssigneeStatus(assignee)
+    );
+}
+
+function getStatusLabel(status) {
+    const labels = {
+        pending_ack: 'Awaiting Acknowledgement',
+        acknowledged: 'Acknowledged',
+        in_progress: 'In Progress',
+        submitted: 'Waiting for Review',
+        needs_review: 'Changes Required',
+        accepted: 'Completed',
+        transferred: 'Transferred',
+        cancelled: 'Cancelled',
+        mixed: 'Mixed Progress',
+        empty: 'No Active Assignees'
+    };
+
+    return labels[status] || 'Unknown';
+}
+
+function getStatusIcon(status) {
+    const icons = {
+        pending_ack: 'fa-regular fa-clock',
+        acknowledged: 'fa-solid fa-check',
+        in_progress: 'fa-solid fa-spinner',
+        submitted: 'fa-solid fa-paper-plane',
+        needs_review: 'fa-solid fa-rotate-left',
+        accepted: 'fa-solid fa-circle-check',
+        transferred: 'fa-solid fa-arrow-right-arrow-left',
+        cancelled: 'fa-solid fa-ban',
+        mixed: 'fa-solid fa-users',
+        empty: 'fa-solid fa-user-slash'
+    };
+
+    return icons[status] || 'fa-solid fa-circle';
+}
+
+function getStatusColour(status) {
+    const colours = {
+        pending_ack: {
+            background: '#fff7ed',
+            text: '#c2410c',
+            border: '#fb923c'
+        },
+        acknowledged: {
+            background: '#eff6ff',
+            text: '#1d4ed8',
+            border: '#60a5fa'
+        },
+        in_progress: {
+            background: '#eef2ff',
+            text: '#4338ca',
+            border: '#818cf8'
+        },
+        submitted: {
+            background: '#fdf4ff',
+            text: '#a21caf',
+            border: '#d946ef'
+        },
+        needs_review: {
+            background: '#fef2f2',
+            text: '#b91c1c',
+            border: '#ef4444'
+        },
+        accepted: {
+            background: '#f0fdf4',
+            text: '#166534',
+            border: '#22c55e'
+        },
+        transferred: {
+            background: '#f8fafc',
+            text: '#64748b',
+            border: '#94a3b8'
+        },
+        cancelled: {
+            background: '#f8fafc',
+            text: '#475569',
+            border: '#64748b'
+        },
+        mixed: {
+            background: '#faf5ff',
+            text: '#7e22ce',
+            border: '#a855f7'
+        },
+        empty: {
+            background: '#f8fafc',
+            text: '#64748b',
+            border: '#cbd5e1'
+        }
+    };
+
+    return colours[status] || colours.empty;
+}
+
+function getTaskStatusSummary(assignees = []) {
+    const active = assignees.filter(
+        assignee => !isClosedAssignee(assignee)
+    );
+
+    const counts = {};
+
+    for (const assignee of active) {
+        const status =
+            getEffectiveAssigneeStatus(assignee);
+
+        counts[status] =
+            (counts[status] || 0) + 1;
+    }
+
+    const total = active.length;
+
+    const engaged = active.filter(
+        assignee =>
+            getEffectiveAssigneeStatus(assignee) !==
+            'pending_ack'
+    ).length;
+
+    const completed = active.filter(
+        assignee =>
+            getEffectiveAssigneeStatus(assignee) ===
+            'accepted'
+    ).length;
+
+    const uniqueStatuses = Object.keys(counts);
+
+    let state = 'empty';
+
+    if (total > 0) {
+        state =
+            uniqueStatuses.length === 1
+                ? uniqueStatuses[0]
+                : 'mixed';
+    }
+
+    return {
+        active,
+        counts,
+        total,
+        engaged,
+        completed,
+        engagementPercentage:
+            total > 0
+                ? Math.round(
+                    (engaged / total) * 100
+                )
+                : 0,
+        completionPercentage:
+            total > 0
+                ? Math.round(
+                    (completed / total) * 100
+                )
+                : 0,
+        state
+    };
+}
+
+function formatTaskDeadline(deadline) {
+    if (!deadline) {
+        return {
+            text: 'No deadline',
+            overdue: false
+        };
+    }
+
+    const displayDate = window.getISTDate
+        ? window.getISTDate(deadline)
+        : new Date(deadline).toLocaleDateString(
+            'en-IN'
+        );
+
+    const dueDate = new Date(deadline);
+
+    dueDate.setHours(
+        23,
+        59,
+        59,
+        999
+    );
+
+    return {
+        text: displayDate,
+        overdue: dueDate < new Date()
+    };
+}
+
+function getPriorityData(priority = '') {
+    const normalised =
+        String(priority).toLowerCase();
+
+    if (
+        normalised === 'high' ||
+        normalised === 'urgent'
+    ) {
+        return {
+            label: 'HIGH',
+            background: '#fef2f2',
+            text: '#b91c1c'
+        };
+    }
+
+    if (
+        normalised === 'low'
+    ) {
+        return {
+            label: 'LOW',
+            background: '#f0fdf4',
+            text: '#166534'
+        };
+    }
+
+    return {
+        label: 'NORMAL',
+        background: '#eff6ff',
+        text: '#1d4ed8'
+    };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TASK UI STYLE
+// ─────────────────────────────────────────────────────────────────────────────
+
+function installTaskUIStyles() {
+    if (
+        document.getElementById(
+            'niltask-task-ui-v2-styles'
+        )
+    ) {
+        return;
+    }
+
+    const style =
+        document.createElement('style');
+
+    style.id = 'niltask-task-ui-v2-styles';
+
+    style.textContent = `
+        .nt-task-card {
+            background: var(--bg-body, #ffffff);
+            border: 1px solid var(--border-color, #e5e7eb);
+            border-radius: 20px;
+            margin: 0 0 14px;
+            overflow: hidden;
+            box-shadow:
+                0 2px 4px rgba(15, 23, 42, .04),
+                0 10px 30px rgba(15, 23, 42, .06);
+            transition:
+                transform .2s ease,
+                box-shadow .2s ease;
+        }
+
+        .nt-task-card:hover {
+            transform: translateY(-1px);
+            box-shadow:
+                0 3px 6px rgba(15, 23, 42, .05),
+                0 14px 34px rgba(15, 23, 42, .09);
+        }
+
+        .nt-task-card-completed {
+            opacity: .72;
+        }
+
+        .nt-task-accent {
+            height: 5px;
+            width: 100%;
+        }
+
+        .nt-task-body {
+            padding: 16px;
+        }
+
+        .nt-task-header {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            justify-content: space-between;
+        }
+
+        .nt-task-title-wrap {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .nt-task-title {
+            margin: 0;
+            color: var(--text-primary, #111827);
+            font-size: 15px;
+            line-height: 1.35;
+            font-weight: 800;
+            overflow-wrap: anywhere;
+        }
+
+        .nt-task-subtitle {
+            margin-top: 5px;
+            color: var(--text-secondary, #64748b);
+            font-size: 11px;
+            line-height: 1.45;
+        }
+
+        .nt-task-priority {
+            flex-shrink: 0;
+            border-radius: 999px;
+            font-size: 9px;
+            line-height: 1;
+            font-weight: 900;
+            letter-spacing: .08em;
+            padding: 7px 9px;
+        }
+
+        .nt-task-status-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 13px;
+        }
+
+        .nt-task-status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid;
+            border-radius: 999px;
+            padding: 7px 10px;
+            font-size: 10px;
+            font-weight: 800;
+        }
+
+        .nt-task-due {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 10px;
+            color: var(--text-secondary, #64748b);
+            font-weight: 700;
+        }
+
+        .nt-task-due-overdue {
+            color: #b91c1c;
+        }
+
+        .nt-task-stat-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+            margin-top: 14px;
+        }
+
+        .nt-task-stat {
+            min-width: 0;
+            border-radius: 13px;
+            padding: 10px 7px;
+            text-align: center;
+            background: var(--bg-sidebar, #f8fafc);
+            border: 1px solid var(--border-color, #eef2f7);
+        }
+
+        .nt-task-stat-value {
+            display: block;
+            color: var(--text-primary, #111827);
+            font-size: 15px;
+            line-height: 1;
+            font-weight: 900;
+        }
+
+        .nt-task-stat-label {
+            display: block;
+            margin-top: 5px;
+            color: var(--text-secondary, #64748b);
+            font-size: 8px;
+            line-height: 1.25;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+        }
+
+        .nt-task-progress-wrap {
+            margin-top: 14px;
+        }
+
+        .nt-task-progress-labels {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            color: var(--text-secondary, #64748b);
+            font-size: 9px;
+            font-weight: 700;
+        }
+
+        .nt-task-progress-track {
+            position: relative;
+            height: 7px;
+            margin-top: 7px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: #e5e7eb;
+        }
+
+        .nt-task-progress-engaged,
+        .nt-task-progress-complete {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            border-radius: inherit;
+            transition: width .3s ease;
+        }
+
+        .nt-task-progress-engaged {
+            background: #c4b5fd;
+        }
+
+        .nt-task-progress-complete {
+            background: #22c55e;
+        }
+
+        .nt-task-action-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        .nt-task-button {
+            appearance: none;
+            border: 0;
+            border-radius: 12px;
+            min-height: 40px;
+            padding: 9px 13px;
+            cursor: pointer;
+            font-size: 11px;
+            line-height: 1.1;
+            font-weight: 800;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            transition:
+                transform .15s ease,
+                opacity .15s ease,
+                background .15s ease;
+        }
+
+        .nt-task-button:active {
+            transform: scale(.98);
+        }
+
+        .nt-task-button-primary {
+            flex: 1;
+            color: #ffffff;
+            background: var(--accent, #4f46e5);
+        }
+
+        .nt-task-button-secondary {
+            color: var(--text-primary, #334155);
+            background: var(--bg-sidebar, #f1f5f9);
+            border: 1px solid var(--border-color, #e2e8f0);
+        }
+
+        .nt-task-button-icon {
+            width: 40px;
+            padding: 0;
+        }
+
+        .nt-task-expanded {
+            display: none;
+            border-top: 1px solid var(--border-color, #e5e7eb);
+            padding: 15px 16px 17px;
+            background: var(--bg-sidebar, #fafafa);
+        }
+
+        .nt-task-expanded.nt-open {
+            display: block;
+        }
+
+        .nt-task-section {
+            border-radius: 14px;
+            background: var(--bg-body, #ffffff);
+            border: 1px solid var(--border-color, #e5e7eb);
+            padding: 12px;
+            margin-bottom: 10px;
+        }
+
+        .nt-task-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .nt-task-section-title {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin-bottom: 10px;
+            color: var(--text-primary, #111827);
+            font-size: 11px;
+            font-weight: 900;
+        }
+
+        .nt-task-person-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .nt-task-person {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            min-width: 0;
+        }
+
+        .nt-task-avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            color: #ffffff;
+            background: #6366f1;
+            font-size: 10px;
+            font-weight: 900;
+        }
+
+        .nt-task-person-name {
+            min-width: 0;
+            flex: 1;
+            color: var(--text-primary, #111827);
+            font-size: 11px;
+            font-weight: 700;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .nt-task-person-status {
+            flex-shrink: 0;
+            border-radius: 999px;
+            padding: 5px 7px;
+            font-size: 8px;
+            font-weight: 800;
+        }
+
+        .nt-task-trail {
+            max-height: 280px;
+            overflow-y: auto;
+        }
+
+        .nt-task-empty {
+            padding: 28px 16px;
+            color: var(--text-secondary, #64748b);
+            text-align: center;
+            font-size: 12px;
+        }
+
+        #ntTaskActionLayer {
+            position: fixed;
+            inset: 0;
+            z-index: 12000;
+            display: none;
+        }
+
+        #ntTaskActionLayer.nt-open {
+            display: block;
+        }
+
+        .nt-action-backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, .48);
+            backdrop-filter: blur(3px);
+        }
+
+        .nt-action-panel {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-body, #ffffff);
+            box-shadow: 0 24px 60px rgba(15, 23, 42, .28);
+        }
+
+        .nt-action-panel-header {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: space-between;
+            padding: 17px 18px;
+            border-bottom: 1px solid var(--border-color, #e5e7eb);
+        }
+
+        .nt-action-panel-title {
+            color: var(--text-primary, #111827);
+            font-size: 15px;
+            font-weight: 900;
+        }
+
+        .nt-action-panel-close {
+            border: 0;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            cursor: pointer;
+            color: var(--text-primary, #334155);
+            background: var(--bg-sidebar, #f1f5f9);
+        }
+
+        .nt-action-panel-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 18px;
+        }
+
+        .nt-action-label {
+            display: block;
+            margin: 0 0 7px;
+            color: var(--text-primary, #334155);
+            font-size: 10px;
+            font-weight: 800;
+        }
+
+        .nt-action-input {
+            width: 100%;
+            min-height: 43px;
+            box-sizing: border-box;
+            border-radius: 12px;
+            border: 1px solid var(--border-color, #cbd5e1);
+            padding: 10px 11px;
+            color: var(--text-primary, #111827);
+            background: var(--bg-body, #ffffff);
+            outline: none;
+            font-family: inherit;
+            font-size: 12px;
+        }
+
+        textarea.nt-action-input {
+            min-height: 110px;
+            resize: vertical;
+        }
+
+        .nt-action-field {
+            margin-bottom: 14px;
+        }
+
+        .nt-action-footer {
+            display: flex;
+            gap: 9px;
+            padding: 14px 18px;
+            border-top: 1px solid var(--border-color, #e5e7eb);
+        }
+
+        .nt-action-footer .nt-task-button {
+            flex: 1;
+        }
+
+        @media (max-width: 768px) {
+            .nt-task-body {
+                padding: 14px;
+            }
+
+            .nt-task-title {
+                font-size: 14px;
+            }
+
+            .nt-task-stat-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+
+            .nt-action-panel {
+                left: 0;
+                right: 0;
+                bottom: 0;
+                max-height: 88vh;
+                border-radius: 24px 24px 0 0;
+                animation: ntTaskSheetIn .22s ease-out;
+            }
+
+            .nt-action-panel::before {
+                content: '';
+                display: block;
+                width: 42px;
+                height: 4px;
+                margin: 9px auto -2px;
+                border-radius: 999px;
+                background: #cbd5e1;
+            }
+
+            @keyframes ntTaskSheetIn {
+                from {
+                    transform: translateY(100%);
+                }
+
+                to {
+                    transform: translateY(0);
+                }
+            }
+        }
+
+        @media (min-width: 769px) {
+            .nt-action-panel {
+                top: 0;
+                right: 0;
+                bottom: 0;
+                width: min(430px, 92vw);
+                animation: ntTaskDrawerIn .2s ease-out;
+            }
+
+            @keyframes ntTaskDrawerIn {
+                from {
+                    transform: translateX(100%);
+                }
+
+                to {
+                    transform: translateX(0);
+                }
+            }
+        }
+    `;
+
+    document.head.appendChild(style);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RICH TEXT HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+window.taskFmtCmd = function(command, boxId) {
+    const element =
+        document.getElementById(
+            'update-txt-' + boxId
+        );
+
+    if (!element) return;
+
+    element.focus();
+    document.execCommand(
+        command,
+        false,
+        null
+    );
 };
 
-window.taskFmtList = function(listType, boxId) {
-    const el = document.getElementById('update-txt-' + boxId);
-    if (!el) return;
+window.taskFmtList = function(
+    listType,
+    boxId
+) {
+    const element =
+        document.getElementById(
+            'update-txt-' + boxId
+        );
 
-    el.focus();
+    if (!element) return;
+
+    element.focus();
 
     document.execCommand(
         listType === 'ul'
@@ -28,7 +859,9 @@ window.taskFmtList = function(listType, boxId) {
     );
 };
 
-// ─── NOTIFICATION HELPERS ──────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────────────────────────────────────
 
 window.notifyUser = async function(
     userId,
@@ -37,25 +870,30 @@ window.notifyUser = async function(
     type = 'task',
     taskId = null
 ) {
-    if (!userId || !message || !window.currentTenantId) return;
+    if (
+        !tenantId() ||
+        !userId ||
+        !message
+    ) {
+        return;
+    }
 
     try {
-        const cleanMsg = window.stripHtml
-            ? window.stripHtml(message)
-            : message;
+        const cleanMessage =
+            window.stripHtml
+                ? window.stripHtml(message)
+                : message;
 
         const payload = {
             user_id: userId,
-            type,
-            message: cleanMsg.substring(0, 200),
+            tenant_id: tenantId(),
+            message:
+                cleanMessage.substring(0, 200),
             message_id: messageId || null,
-            tenant_id: window.currentTenantId,
+            task_id: taskId || null,
+            type,
             is_read: false
         };
-
-        if (taskId) {
-            payload.task_id = taskId;
-        }
 
         const { error } = await sb
             .from('notifications')
@@ -63,13 +901,15 @@ window.notifyUser = async function(
 
         if (
             error &&
-            !error.message?.includes('duplicate') &&
-            !error.code?.includes('23505')
+            error.code !== '23505'
         ) {
             throw error;
         }
     } catch (error) {
-        logger?.warn?.('Task notification failed', error);
+        logger?.warn?.(
+            'Task notification failed',
+            error
+        );
     }
 };
 
@@ -81,112 +921,136 @@ window.notifyGroupMembers = async function(
     type = 'message'
 ) {
     if (
+        !tenantId() ||
         !roomId ||
-        !senderId ||
-        !window.currentTenantId
+        !senderId
     ) {
         return;
     }
 
     try {
-        const { data: members, error } = await sb
+        const { data, error } = await sb
             .from('messages')
             .select('sender_id')
+            .eq('tenant_id', tenantId())
             .eq('room_id', roomId)
-            .eq('tenant_id', window.currentTenantId)
             .neq('sender_id', senderId);
 
         if (error) throw error;
 
-        const uniqueIds = [
+        const memberIds = [
             ...new Set(
-                (members || []).map(member => member.sender_id)
+                (data || []).map(
+                    item => item.sender_id
+                )
             )
         ];
 
-        for (const userId of uniqueIds) {
+        for (const memberId of memberIds) {
             await window.notifyUser(
-                userId,
+                memberId,
                 message,
                 messageId,
                 type
             );
         }
     } catch (error) {
-        logger?.warn?.('Group notification failed', error);
+        logger?.warn?.(
+            'Group task notification failed',
+            error
+        );
     }
 };
 
-// ─── TASK MODAL ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// CREATE TASK MODAL
+// ─────────────────────────────────────────────────────────────────────────────
 
-window.openTaskModal = async function(messageId, text) {
-    if (window.guardCreateTask?.()) return;
+window.openTaskModal = async function(
+    messageId,
+    messageText
+) {
+    if (window.guardCreateTask?.()) {
+        return;
+    }
 
     window.currentMessageId = messageId;
 
-    const tempElement = document.createElement('div');
-    tempElement.innerHTML = text;
+    const temporaryElement =
+        document.createElement('div');
+
+    temporaryElement.innerHTML =
+        messageText || '';
 
     const plainText = (
-        tempElement.textContent ||
-        tempElement.innerText ||
+        temporaryElement.textContent ||
+        temporaryElement.innerText ||
         ''
     ).trim();
 
     window.currentMessageTextRaw =
         plainText.substring(0, 60) +
-        (plainText.length > 60 ? '...' : '');
+        (
+            plainText.length > 60
+                ? '...'
+                : ''
+        );
 
     document
         .querySelectorAll('.msg-menu-dropdown')
-        .forEach(menu => menu.remove());
+        .forEach(element => element.remove());
 
-    const modal = document.getElementById('taskModal');
+    const modal =
+        document.getElementById('taskModal');
 
     modal?.classList.remove('hidden');
     modal?.classList.add('flex');
 
-    const titleInput = document.getElementById('taskTitle');
+    const titleInput =
+        document.getElementById('taskTitle');
 
     if (titleInput) {
         titleInput.value = plainText;
     }
 
-    const users = (window.globalUsersCache || []).filter(
-        user => user.id !== window.currentUser?.id
+    const userList =
+        document.getElementById(
+            'assigneeCheckboxList'
+        );
+
+    const users = (
+        window.globalUsersCache || []
+    ).filter(
+        user => user.id !== currentUserId()
     );
 
-    const list = document.getElementById(
-        'assigneeCheckboxList'
-    );
+    if (userList) {
+        userList.innerHTML = users
+            .map(user => {
+                const name =
+                    getDisplayName(user);
 
-    if (list) {
-        list.innerHTML = users.map(user => {
-            const userName = window.toSentenceCase(
-                user.full_name ||
-                user.email?.split('@')[0] ||
-                'Unknown'
-            );
+                return `
+                    <label class="assignee-item flex items-center gap-2 text-[13px] p-1.5 hover:bg-gray-100 rounded cursor-pointer transition-colors">
+                        <input
+                            type="checkbox"
+                            value="${escapeHtml(user.id)}"
+                            class="assignee-cb w-4 h-4 accent-[var(--accent)]"
+                        >
 
-            return `
-                <label class="assignee-item flex items-center gap-2 text-[13px] p-1.5 hover:bg-gray-100 rounded cursor-pointer transition-colors">
-                    <input
-                        type="checkbox"
-                        value="${user.id}"
-                        class="assignee-cb w-4 h-4 accent-[var(--accent)]"
-                    >
-
-                    <span class="assignee-name font-medium text-gray-700">
-                        ${window.escapeHtml(userName)}
-                    </span>
-                </label>
-            `;
-        }).join('');
+                        <span class="assignee-name font-medium text-gray-700">
+                            ${escapeHtml(name)}
+                        </span>
+                    </label>
+                `;
+            })
+            .join('');
     }
 
-    const searchInput = document.getElementById(
-        'assigneeSearch'
-    );
+    const searchInput =
+        document.getElementById(
+            'assigneeSearch'
+        );
 
     if (searchInput) {
         searchInput.value = '';
@@ -194,349 +1058,55 @@ window.openTaskModal = async function(messageId, text) {
 };
 
 window.filterAssignees = function() {
-    const input = document.getElementById(
-        'assigneeSearch'
-    );
-
-    const term = (
-        input?.value ||
+    const searchTerm = (
+        document.getElementById(
+            'assigneeSearch'
+        )?.value ||
         ''
     ).toLowerCase();
 
     document
         .querySelectorAll('.assignee-item')
         .forEach(element => {
-            const name =
-                element
-                    .querySelector('.assignee-name')
-                    ?.innerText
-                    ?.toLowerCase() ||
-                '';
+            const name = (
+                element.querySelector(
+                    '.assignee-name'
+                )?.innerText ||
+                ''
+            ).toLowerCase();
 
             element.style.display =
-                name.includes(term)
+                name.includes(searchTerm)
                     ? 'flex'
                     : 'none';
         });
 };
 
 window.closeTaskModal = function() {
-    const modal = document.getElementById('taskModal');
+    const modal =
+        document.getElementById('taskModal');
 
     modal?.classList.add('hidden');
     modal?.classList.remove('flex');
 };
 
-// ─── PDF AUDIT REPORT ──────────────────────────────────────────────────────
-
-window.downloadTaskPDF = async function(taskId) {
-    if (!taskId || !window.currentTenantId) return;
-
-    window.showCenterToast(
-        'Generating PDF Report...',
-        'fa-solid fa-spinner fa-spin',
-        'text-blue-500'
-    );
-
-    const { data: task, error: taskError } = await sb
-        .from('tasks')
-        .select(`
-            *,
-            creator:profiles!assigned_by(
-                full_name,
-                email
-            )
-        `)
-        .eq('id', taskId)
-        .eq('tenant_id', window.currentTenantId)
-        .single();
-
-    if (taskError || !task) {
-        window.showCenterToast(
-            'Task not found in this organisation.',
-            'fa-solid fa-times',
-            'text-red-500'
-        );
-
-        return;
-    }
-
-    const { data: trailList, error: trailError } = await sb
-        .from('task_trails')
-        .select(`
-            *,
-            profiles(
-                full_name,
-                email
-            )
-        `)
-        .eq('task_id', taskId)
-        .eq('tenant_id', window.currentTenantId)
-        .order('created_at', {
-            ascending: true
-        });
-
-    if (trailError) {
-        window.showCenterToast(
-            'Could not load the task audit trail.',
-            'fa-solid fa-times',
-            'text-red-500'
-        );
-
-        return;
-    }
-
-    let ipAddress = 'Unavailable';
-
-    try {
-        const response = await fetch(
-            'https://api.ipify.org?format=json'
-        );
-
-        const result = await response.json();
-
-        ipAddress = result.ip || 'Unavailable';
-    } catch (error) {
-        // IP address is optional.
-    }
-
-    const downloadedAt = new Date().toLocaleString(
-        'en-IN',
-        {
-            timeZone: 'Asia/Kolkata'
-        }
-    );
-
-    const downloadedBy =
-        window.currentUser?.user_metadata?.full_name ||
-        window.currentUser?.email?.split('@')[0] ||
-        'User';
-
-    const wrapper = document.createElement('div');
-
-    wrapper.style.cssText = `
-        padding:30px;
-        font-family:Inter,sans-serif;
-        color:#111b21;
-        background:#ffffff;
-        position:relative;
-        overflow:hidden;
-    `;
-
-    const trailRows = (trailList || []).map(trail => {
-        const trailUser = window.toSentenceCase(
-            (
-                trail.profiles?.full_name ||
-                trail.profiles?.email ||
-                'System'
-            ).split('@')[0]
-        );
-
-        const trailTime = window.getISTTime(
-            trail.created_at
-        );
-
-        const trailDate = window.getISTDate(
-            trail.created_at
-        );
-
-        let trailComment = trail.comment || '';
-
-        if (
-            trail.action === 'FILE' &&
-            trailComment.includes('|')
-        ) {
-            trailComment = trailComment.split('|')[0];
-        }
-
-        return `
-            <tr>
-                <td style="padding:10px;border:1px solid #ccc;white-space:nowrap;">
-                    ${trailDate}<br>
-                    ${trailTime}
-                </td>
-
-                <td style="padding:10px;border:1px solid #ccc;font-weight:bold;">
-                    ${window.escapeHtml(trailUser)}
-                </td>
-
-                <td style="padding:10px;border:1px solid #ccc;">
-                    ${window.escapeHtml(trailComment)}
-                </td>
-            </tr>
-        `;
-    }).join('');
-
-    wrapper.innerHTML = `
-        <div
-            style="
-                position:absolute;
-                inset:0;
-                z-index:0;
-                pointer-events:none;
-                display:flex;
-                align-items:center;
-                justify-content:center;
-                opacity:0.06;
-                transform:rotate(-35deg);
-                font-size:120px;
-                font-weight:bold;
-                white-space:nowrap;
-            "
-        >
-            NOTED FOR ACTION
-        </div>
-
-        <div
-            style="
-                position:absolute;
-                bottom:10px;
-                right:15px;
-                font-size:10px;
-                color:#999;
-                text-align:right;
-            "
-        >
-            DOWNLOADED BY:
-            ${window.escapeHtml(downloadedBy).toUpperCase()}
-            <br>
-
-            IP:
-            ${window.escapeHtml(ipAddress)}
-            <br>
-
-            ${window.escapeHtml(downloadedAt)}
-        </div>
-
-        <div style="position:relative;z-index:1;">
-            <h2
-                style="
-                    color:#800000;
-                    border-bottom:2px solid #800000;
-                    padding-bottom:10px;
-                    margin-bottom:20px;
-                "
-            >
-                Noted For Action — Audit Report
-            </h2>
-
-            <h3 style="margin-bottom:15px;">
-                Task:
-                ${window.escapeHtml(task.title)}
-            </h3>
-
-            <p style="margin-bottom:5px;">
-                <b>Created By:</b>
-                ${window.escapeHtml(
-                    task.creator?.full_name ||
-                    task.creator?.email ||
-                    'Unknown'
-                )}
-            </p>
-
-            <p style="margin-bottom:5px;">
-                <b>Deadline:</b>
-                ${
-                    task.deadline
-                        ? window.getISTDate(task.deadline)
-                        : 'None'
-                }
-            </p>
-
-            <p style="margin-bottom:5px;">
-                <b>Priority:</b>
-                ${window.escapeHtml(task.priority || 'Normal')}
-            </p>
-
-            <p style="margin-bottom:20px;">
-                <b>Organisation:</b>
-                ${window.escapeHtml(window.currentTenantId)}
-            </p>
-
-            <h4 style="margin-bottom:10px;color:#444;">
-                Complete Audit Trail
-            </h4>
-
-            <table
-                style="
-                    width:100%;
-                    border-collapse:collapse;
-                    font-size:12px;
-                "
-            >
-                <tr style="background-color:#f0f2f5;">
-                    <th style="padding:10px;border:1px solid #ccc;text-align:left;">
-                        Timestamp (IST)
-                    </th>
-
-                    <th style="padding:10px;border:1px solid #ccc;text-align:left;">
-                        User
-                    </th>
-
-                    <th style="padding:10px;border:1px solid #ccc;text-align:left;">
-                        Action / Comment
-                    </th>
-                </tr>
-
-                ${trailRows}
-            </table>
-        </div>
-    `;
-
-    if (!window.html2pdf) {
-        await new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-
-            script.src =
-                'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-
-            script.onload = resolve;
-            script.onerror = reject;
-
-            document.head.appendChild(script);
-        });
-    }
-
-    await html2pdf()
-        .from(wrapper)
-        .set({
-            margin: 10,
-            filename: `Task_Audit_${taskId}.pdf`,
-            html2canvas: {
-                scale: 2,
-                useCORS: true
-            },
-            jsPDF: {
-                unit: 'mm',
-                format: 'a4',
-                orientation: 'portrait'
-            }
-        })
-        .save();
-
-    window.showCenterToast(
-        'PDF Downloaded!',
-        'fa-solid fa-file-pdf',
-        'text-green-500'
-    );
-};
-
-// ─── CREATE TASK ────────────────────────────────────────────────────────────
-
-window.saveTaskMultiAssignee = async function() {
-    if (!window.currentTenantId) {
-        return window.showCenterToast(
+window.saveTaskMultiAssignee =
+async function() {
+    if (!tenantId()) {
+        showToast(
             'Organisation could not be identified.',
             'fa-solid fa-ban',
             'text-red-500'
         );
+
+        return;
     }
 
     if (
         window.canCreateTask &&
         !window.canCreateTask()
     ) {
-        window.showCenterToast(
+        showToast(
             'You do not have permission to create tasks.',
             'fa-solid fa-ban',
             'text-red-500'
@@ -546,7 +1116,9 @@ window.saveTaskMultiAssignee = async function() {
     }
 
     const title = (
-        document.getElementById('taskTitle')?.value ||
+        document.getElementById(
+            'taskTitle'
+        )?.value ||
         ''
     ).trim();
 
@@ -554,73 +1126,110 @@ window.saveTaskMultiAssignee = async function() {
         document.querySelectorAll(
             '.assignee-cb:checked'
         )
-    ).map(checkbox => checkbox.value);
+    ).map(
+        checkbox => checkbox.value
+    );
 
-    if (!title || assigneeIds.length === 0) {
-        return window.showCenterToast(
-            'Need Title and Assignee',
-            'fa-solid fa-times',
+    if (
+        !title ||
+        assigneeIds.length === 0
+    ) {
+        showToast(
+            'Enter a title and select assignees.',
+            'fa-solid fa-triangle-exclamation',
             'text-red-500'
         );
+
+        return;
     }
 
-    logger.logAction('createTask', {
-        title,
-        tenantId: window.currentTenantId,
-        assigneeCount: assigneeIds.length
-    });
+    const deadline =
+        document.getElementById(
+            'taskDeadline'
+        )?.value ||
+        null;
 
-    const { data: task, error: taskError } = await sb
-        .from('tasks')
-        .insert({
-            original_message_id: window.currentMessageId,
+    const priority =
+        document.getElementById(
+            'taskPriority'
+        )?.value ||
+        'normal';
+
+    const requireProof =
+        Boolean(
+            document.getElementById(
+                'taskRequireProof'
+            )?.checked
+        );
+
+    logger?.logAction?.(
+        'createTask',
+        {
             title,
-            assigned_by: window.currentUser.id,
-            tenant_id: window.currentTenantId,
-            deadline:
-                document.getElementById('taskDeadline')
-                    ?.value ||
-                null,
-            priority:
-                document.getElementById('taskPriority')
-                    ?.value ||
-                'normal',
-            require_proof:
-                document.getElementById(
-                    'taskRequireProof'
-                )?.checked ||
-                false,
-            status: 'pending'
-        })
-        .select()
-        .single();
+            tenantId: tenantId(),
+            assigneeCount:
+                assigneeIds.length
+        }
+    );
 
-    if (taskError || !task) {
-        return window.showCenterToast(
+    const { data: task, error } =
+        await sb
+            .from('tasks')
+            .insert({
+                original_message_id:
+                    window.currentMessageId ||
+                    null,
+                title,
+                assigned_by:
+                    currentUserId(),
+                tenant_id:
+                    tenantId(),
+                deadline,
+                priority,
+                require_proof:
+                    requireProof,
+                status: 'pending'
+            })
+            .select()
+            .single();
+
+    if (error || !task) {
+        showToast(
+            error?.message ||
             'Failed to create task.',
             'fa-solid fa-times',
             'text-red-500'
         );
+
+        return;
     }
 
-    const assignmentRows = assigneeIds.map(
-        assigneeId => ({
-            task_id: task.id,
-            assignee_id: assigneeId,
-            tenant_id: window.currentTenantId,
-            status: 'pending_ack',
-            state: 'pending',
-            acked: false
-        })
-    );
+    const assignmentRows =
+        assigneeIds.map(
+            assigneeId => ({
+                task_id: task.id,
+                assignee_id:
+                    assigneeId,
+                tenant_id:
+                    tenantId(),
+                status:
+                    'pending_ack',
+                state:
+                    'pending',
+                acked:
+                    false
+            })
+        );
 
-    const { error: assigneeError } = await sb
+    const {
+        error: assignmentError
+    } = await sb
         .from('task_assignees')
         .insert(assignmentRows);
 
-    if (assigneeError) {
-        window.showCenterToast(
-            `Task created, but assigning staff failed: ${assigneeError.message}`,
+    if (assignmentError) {
+        showToast(
+            assignmentError.message,
             'fa-solid fa-times',
             'text-red-500'
         );
@@ -632,8 +1241,8 @@ window.saveTaskMultiAssignee = async function() {
         .from('task_trails')
         .insert({
             task_id: task.id,
-            user_id: window.currentUser.id,
-            tenant_id: window.currentTenantId,
+            user_id: currentUserId(),
+            tenant_id: tenantId(),
             action: 'CREATE',
             comment: 'Task Created'
         });
@@ -648,113 +1257,239 @@ window.saveTaskMultiAssignee = async function() {
         );
     }
 
-    window.showCenterToast(
-        'Task Created Successfully'
+    window.closeTaskModal();
+
+    showToast(
+        'Task created successfully.',
+        'fa-solid fa-check',
+        'text-green-500'
     );
 
-    window.closeTaskModal();
-    window.loadTasksForPanel();
+    await window.loadTasksForPanel();
 };
 
-// ─── STATUS HELPERS ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTION LAYER
+// ─────────────────────────────────────────────────────────────────────────────
 
-const TASK_CLOSED_STATUSES = new Set([
-    'transferred',
-    'cancelled'
-]);
+function ensureTaskActionLayer() {
+    installTaskUIStyles();
 
-function getEffectiveAssigneeStatus(assignee) {
-    if (
-        assignee?.state === 'acknowledged' &&
-        assignee?.status === 'pending_ack'
-    ) {
-        return 'acknowledged';
+    let layer =
+        document.getElementById(
+            'ntTaskActionLayer'
+        );
+
+    if (layer) return layer;
+
+    layer = document.createElement('div');
+
+    layer.id = 'ntTaskActionLayer';
+
+    layer.innerHTML = `
+        <div
+            class="nt-action-backdrop"
+            onclick="window.closeTaskActionLayer()"
+        ></div>
+
+        <section
+            class="nt-action-panel"
+            role="dialog"
+            aria-modal="true"
+        >
+            <div class="nt-action-panel-header">
+                <div
+                    id="ntTaskActionTitle"
+                    class="nt-action-panel-title"
+                >
+                    Task Action
+                </div>
+
+                <button
+                    class="nt-action-panel-close"
+                    onclick="window.closeTaskActionLayer()"
+                    aria-label="Close"
+                >
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div
+                id="ntTaskActionBody"
+                class="nt-action-panel-body"
+            ></div>
+
+            <div
+                id="ntTaskActionFooter"
+                class="nt-action-footer"
+            ></div>
+        </section>
+    `;
+
+    document.body.appendChild(layer);
+
+    return layer;
+}
+
+window.closeTaskActionLayer = function() {
+    const layer =
+        document.getElementById(
+            'ntTaskActionLayer'
+        );
+
+    layer?.classList.remove('nt-open');
+
+    document.body.style.overflow = '';
+};
+
+function openTaskActionLayer({
+    title,
+    body,
+    primaryLabel,
+    primaryIcon = 'fa-solid fa-check',
+    onPrimary
+}) {
+    const layer =
+        ensureTaskActionLayer();
+
+    document.getElementById(
+        'ntTaskActionTitle'
+    ).textContent = title;
+
+    document.getElementById(
+        'ntTaskActionBody'
+    ).innerHTML = body;
+
+    const footer =
+        document.getElementById(
+            'ntTaskActionFooter'
+        );
+
+    footer.innerHTML = `
+        <button
+            type="button"
+            class="nt-task-button nt-task-button-secondary"
+            onclick="window.closeTaskActionLayer()"
+        >
+            Cancel
+        </button>
+
+        <button
+            type="button"
+            id="ntTaskActionPrimary"
+            class="nt-task-button nt-task-button-primary"
+        >
+            <i class="${primaryIcon}"></i>
+            ${escapeHtml(primaryLabel)}
+        </button>
+    `;
+
+    const primaryButton =
+        document.getElementById(
+            'ntTaskActionPrimary'
+        );
+
+    primaryButton.onclick =
+        async function() {
+            primaryButton.disabled = true;
+            primaryButton.style.opacity = '.65';
+
+            try {
+                const success =
+                    await onPrimary();
+
+                if (success !== false) {
+                    window.closeTaskActionLayer();
+                }
+            } finally {
+                primaryButton.disabled = false;
+                primaryButton.style.opacity = '';
+            }
+        };
+
+    layer.classList.add('nt-open');
+
+    document.body.style.overflow = 'hidden';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TASK ACTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function getTenantTask(taskId) {
+    const { data, error } = await sb
+        .from('tasks')
+        .select('*')
+        .eq('id', taskId)
+        .eq('tenant_id', tenantId())
+        .single();
+
+    if (error || !data) {
+        showToast(
+            'Task was not found in this organisation.',
+            'fa-solid fa-lock',
+            'text-red-500'
+        );
+
+        return null;
     }
 
-    return assignee?.status || 'pending_ack';
+    return data;
 }
 
-function getTaskStatusSummary(assignees = []) {
-    const activeAssignees = assignees.filter(
-        assignee =>
-            !TASK_CLOSED_STATUSES.has(
-                getEffectiveAssigneeStatus(assignee)
-            )
-    );
+async function updateTenantAssignment(
+    taskId,
+    assigneeId,
+    payload
+) {
+    const { data, error } = await sb
+        .from('task_assignees')
+        .update(payload)
+        .eq('tenant_id', tenantId())
+        .eq('task_id', taskId)
+        .eq('assignee_id', assigneeId)
+        .select();
 
-    const counts = activeAssignees.reduce(
-        (result, assignee) => {
-            const status =
-                getEffectiveAssigneeStatus(assignee);
+    if (
+        error ||
+        !data ||
+        data.length === 0
+    ) {
+        showToast(
+            error?.message ||
+            'Could not update task assignment.',
+            'fa-solid fa-lock',
+            'text-red-500'
+        );
 
-            result[status] =
-                (result[status] || 0) + 1;
+        return false;
+    }
 
-            return result;
-        },
-        {}
-    );
-
-    const total = activeAssignees.length;
-
-    const engaged = activeAssignees.filter(
-        assignee =>
-            getEffectiveAssigneeStatus(assignee) !==
-            'pending_ack'
-    ).length;
-
-    const completed = activeAssignees.filter(
-        assignee =>
-            getEffectiveAssigneeStatus(assignee) ===
-            'accepted'
-    ).length;
-
-    const uniqueStatuses = Object.keys(counts);
-
-    return {
-        counts,
-        total,
-        engaged,
-        completed,
-        engagementPct:
-            total > 0
-                ? Math.round(
-                    (engaged / total) * 100
-                )
-                : 0,
-        completionPct:
-            total > 0
-                ? Math.round(
-                    (completed / total) * 100
-                )
-                : 0,
-        state:
-            total === 0
-                ? 'empty'
-                : uniqueStatuses.length === 1
-                    ? uniqueStatuses[0]
-                    : 'mixed'
-    };
+    return true;
 }
 
-function getTaskStateLabel(state) {
-    const labels = {
-        empty: 'No Active Assignees',
-        mixed: 'Mixed Progress',
-        pending_ack: 'Needs Acknowledgement',
-        acknowledged: 'Acknowledged',
-        in_progress: 'In Progress',
-        submitted: 'Pending Review',
-        needs_review: 'Changes Needed',
-        accepted: 'Completed',
-        transferred: 'Transferred',
-        cancelled: 'Cancelled'
-    };
+async function addTaskTrail(
+    taskId,
+    action,
+    comment = ''
+) {
+    const { error } = await sb
+        .from('task_trails')
+        .insert({
+            task_id: taskId,
+            user_id: currentUserId(),
+            tenant_id: tenantId(),
+            action,
+            comment
+        });
 
-    return labels[state] || 'Unknown';
+    if (error) {
+        logger?.warn?.(
+            'Task trail insert failed',
+            error
+        );
+    }
 }
-
-// ─── TASK ACTIONS ───────────────────────────────────────────────────────────
 
 window.taskAction = async function(
     taskId,
@@ -763,594 +1498,920 @@ window.taskAction = async function(
     requireProof = false
 ) {
     if (
+        !tenantId() ||
         !taskId ||
-        !assigneeId ||
-        !window.currentTenantId
+        !assigneeId
     ) {
         return;
     }
 
-    let actionText = '';
-    let newStatus = '';
-    let comment = '';
+    const task =
+        await getTenantTask(taskId);
 
-    const acknowledgementButton =
-        document.getElementById(
-            `ack-btn-${taskId}-${assigneeId}`
-        );
+    if (!task) return;
 
-    if (action === 'ack' && acknowledgementButton) {
-        acknowledgementButton.disabled = true;
-
-        acknowledgementButton.innerHTML = `
-            <i class="fa-solid fa-spinner fa-spin"></i>
-            Acknowledging...
-        `;
-    }
-
-    const { data: taskData, error: taskError } = await sb
-        .from('tasks')
-        .select('*')
-        .eq('id', taskId)
-        .eq('tenant_id', window.currentTenantId)
-        .single();
-
-    if (taskError || !taskData) {
-        window.showCenterToast(
-            'Task was not found in this organisation.',
-            'fa-solid fa-lock',
-            'text-red-500'
-        );
-
-        return;
-    }
-
-    const creatorId = taskData.assigned_by;
+    const creatorId =
+        task.assigned_by;
 
     if (action === 'ack') {
-        newStatus = 'acknowledged';
-        actionText = 'ACKNOWLEDGE';
-        comment = 'Acknowledged the task';
+        const success =
+            await updateTenantAssignment(
+                taskId,
+                assigneeId,
+                {
+                    status:
+                        'pending_ack',
+                    state:
+                        'acknowledged',
+                    acked:
+                        true
+                }
+            );
+
+        if (!success) return;
+
+        await addTaskTrail(
+            taskId,
+            'ACKNOWLEDGE',
+            'Acknowledged the task'
+        );
 
         await window.notifyUser(
             creatorId,
-            `✅ Task Acknowledged: ${taskData.title}`,
-            taskData.original_message_id,
+            `✅ Task Acknowledged: ${task.title}`,
+            task.original_message_id,
             'task',
             taskId
+        );
+
+        showToast(
+            'Task acknowledged.',
+            'fa-solid fa-check',
+            'text-green-500'
         );
     }
 
     else if (action === 'start') {
-        newStatus = 'in_progress';
-        actionText = 'START';
-        comment = 'Started work';
-
-        await window.notifyUser(
-            creatorId,
-            `▶️ Work Started: ${taskData.title}`,
-            taskData.original_message_id,
-            'task',
-            taskId
-        );
-    }
-
-    else if (action === 'update') {
-        const input = document.getElementById(
-            `update-txt-${taskId}-${assigneeId}`
-        );
-
-        comment = input
-            ? (
-                input.contentEditable === 'true'
-                    ? (
-                        input.innerText ||
-                        input.textContent ||
-                        ''
-                    ).trim()
-                    : (
-                        input.value ||
-                        ''
-                    ).trim()
-            )
-            : '';
-
-        if (
-            !comment ||
-            comment === '<br>' ||
-            comment === '<div><br></div>'
-        ) {
-            return window.showCenterToast(
-                'Update cannot be empty.',
-                'fa-solid fa-times',
-                'text-red-500'
+        const success =
+            await updateTenantAssignment(
+                taskId,
+                assigneeId,
+                {
+                    status:
+                        'in_progress',
+                    state:
+                        'in_progress',
+                    acked:
+                        true
+                }
             );
-        }
 
-        const plainComment = window.stripHtml
-            ? window.stripHtml(comment)
-            : comment;
+        if (!success) return;
 
-        actionText = 'UPDATE';
+        await addTaskTrail(
+            taskId,
+            'START',
+            'Started work'
+        );
 
         await window.notifyUser(
             creatorId,
-            `💬 Task Update: ${taskData.title} — ${plainComment.substring(0, 60)}`,
-            taskData.original_message_id,
+            `▶️ Work Started: ${task.title}`,
+            task.original_message_id,
             'task',
             taskId
         );
 
-        if (input) {
-            if (input.contentEditable === 'true') {
-                input.innerHTML = '';
-            } else {
-                input.value = '';
-            }
-        }
-
-        document
-            .getElementById(
-                `comment-box-${taskId}-${assigneeId}`
-            )
-            ?.classList.add('hidden');
-    }
-
-    else if (action === 'upload') {
-        const fileInput = document.getElementById(
-            `upload-box-${taskId}-${assigneeId}`
+        showToast(
+            'Work started.',
+            'fa-solid fa-play',
+            'text-blue-500'
         );
-
-        if (!fileInput?.files?.length) {
-            return window.showCenterToast(
-                'Select a file.',
-                'fa-solid fa-times',
-                'text-red-500'
-            );
-        }
-
-        const file = fileInput.files[0];
-
-        const safeName = file.name.replace(
-            /[^a-zA-Z0-9.\-_]/g,
-            '_'
-        );
-
-        const filePath =
-            `tasks/${window.currentTenantId}/${taskId}/${Date.now()}_${safeName}`;
-
-        const progressContainer =
-            document.getElementById(
-                `upload-progress-container-${taskId}-${assigneeId}`
-            );
-
-        const progressBar =
-            document.getElementById(
-                `upload-progress-bar-${taskId}-${assigneeId}`
-            );
-
-        if (progressContainer && progressBar) {
-            progressContainer.classList.remove('hidden');
-            progressBar.style.width = '30%';
-        }
-
-        const { error: uploadError } = await sb
-            .storage
-            .from('task-proofs')
-            .upload(
-                filePath,
-                file
-            );
-
-        if (uploadError) {
-            progressContainer?.classList.add('hidden');
-
-            return window.showCenterToast(
-                `Upload Failed: ${uploadError.message}`,
-                'fa-solid fa-times',
-                'text-red-500'
-            );
-        }
-
-        if (progressBar) {
-            progressBar.style.width = '100%';
-        }
-
-        actionText = 'FILE';
-        comment = `${file.name}|${filePath}`;
-
-        await window.notifyUser(
-            creatorId,
-            `📎 File uploaded on task: ${taskData.title}`,
-            taskData.original_message_id,
-            'task',
-            taskId
-        );
-
-        fileInput.value = '';
-
-        if (progressContainer && progressBar) {
-            setTimeout(() => {
-                progressContainer.classList.add(
-                    'hidden'
-                );
-
-                progressBar.style.width = '0%';
-            }, 500);
-        }
     }
 
     else if (action === 'submit') {
         if (requireProof) {
-            const { data: proofTrails } = await sb
+            const {
+                data: proofRows
+            } = await sb
                 .from('task_trails')
                 .select('id')
+                .eq('tenant_id', tenantId())
                 .eq('task_id', taskId)
-                .eq('tenant_id', window.currentTenantId)
-                .eq('user_id', window.currentUser.id)
+                .eq('user_id', currentUserId())
                 .eq('action', 'FILE')
                 .limit(1);
 
             if (
-                !proofTrails ||
-                proofTrails.length === 0
+                !proofRows ||
+                proofRows.length === 0
             ) {
-                return window.showCenterToast(
-                    'Proof required — please attach a file.',
-                    'fa-solid fa-exclamation-triangle',
+                showToast(
+                    'Upload proof before submitting.',
+                    'fa-solid fa-paperclip',
                     'text-red-500'
                 );
+
+                return;
             }
         }
 
-        newStatus = 'submitted';
-        actionText = 'SUBMIT';
-        comment = 'Submitted for Review';
+        const success =
+            await updateTenantAssignment(
+                taskId,
+                assigneeId,
+                {
+                    status:
+                        'submitted',
+                    state:
+                        'submitted'
+                }
+            );
+
+        if (!success) return;
+
+        await addTaskTrail(
+            taskId,
+            'SUBMIT',
+            'Submitted for Review'
+        );
 
         await window.notifyUser(
             creatorId,
-            `📬 Task Submitted for Review: ${taskData.title}`,
-            taskData.original_message_id,
+            `📬 Task Submitted for Review: ${task.title}`,
+            task.original_message_id,
             'task',
             taskId
+        );
+
+        showToast(
+            'Submitted for review.',
+            'fa-solid fa-paper-plane',
+            'text-green-500'
         );
     }
 
     else if (action === 'accept') {
-        newStatus = 'accepted';
-        actionText = 'ACCEPT';
-        comment = 'Accepted completion';
-
-        await window.notifyUser(
-            assigneeId,
-            `🎉 Task Accepted: ${taskData.title}`,
-            taskData.original_message_id,
-            'task',
-            taskId
-        );
-    }
-
-    else if (action === 'review_again') {
-        const feedbackInput =
-            document.getElementById(
-                `review-txt-${taskId}-${assigneeId}`
-            );
-
-        comment = (
-            feedbackInput?.value ||
-            ''
-        ).trim();
-
-        if (!comment) {
-            return window.showCenterToast(
-                'Feedback is mandatory for rework.',
-                'fa-solid fa-times',
-                'text-red-500'
-            );
-        }
-
-        newStatus = 'needs_review';
-        actionText = 'RETURN';
-
-        await window.notifyUser(
-            assigneeId,
-            `🔄 Task Needs Changes: ${taskData.title} — ${comment.substring(0, 60)}`,
-            taskData.original_message_id,
-            'task',
-            taskId
-        );
-
-        document
-            .getElementById(
-                `review-box-${taskId}-${assigneeId}`
-            )
-            ?.classList.add('hidden');
-    }
-
-    else if (action === 'delegate') {
-        const newAssignee = document
-            .getElementById(
-                `delegate-sel-${taskId}-${assigneeId}`
-            )
-            ?.value;
-
-        if (!newAssignee) {
-            return window.showCenterToast(
-                'Select user to delegate.',
-                'fa-solid fa-times',
-                'text-red-500'
-            );
-        }
-
-        const { data: existingAssignment } = await sb
-            .from('task_assignees')
-            .select('assignee_id')
-            .eq('task_id', taskId)
-            .eq('assignee_id', newAssignee)
-            .eq('tenant_id', window.currentTenantId)
-            .maybeSingle();
-
-        if (existingAssignment) {
-            return window.showCenterToast(
-                'This user is already assigned to the task.',
-                'fa-solid fa-exclamation-triangle',
-                'text-orange-500'
-            );
-        }
-
-        actionText = 'DELEGATE';
-        comment = `Delegated to user ${newAssignee}`;
-
-        const { error: delegateError } = await sb
-            .from('task_assignees')
-            .insert({
-                task_id: taskId,
-                assignee_id: newAssignee,
-                tenant_id: window.currentTenantId,
-                status: 'pending_ack',
-                state: 'pending',
-                acked: false
-            });
-
-        if (delegateError) {
-            return window.showCenterToast(
-                `Could not delegate task: ${delegateError.message}`,
-                'fa-solid fa-times',
-                'text-red-500'
-            );
-        }
-
-        await window.notifyUser(
-            newAssignee,
-            `👤 Task Delegated to you: ${taskData.title}`,
-            taskData.original_message_id,
-            'task',
-            taskId
-        );
-
-        await window.notifyUser(
-            creatorId,
-            `↗️ Task Delegated: ${taskData.title}`,
-            taskData.original_message_id,
-            'task',
-            taskId
-        );
-
-        document
-            .getElementById(
-                `delegate-box-${taskId}-${assigneeId}`
-            )
-            ?.classList.add('hidden');
-    }
-
-    else if (action === 'transfer') {
-        const newAssignee = document
-            .getElementById(
-                `transfer-sel-${taskId}-${assigneeId}`
-            )
-            ?.value;
-
-        const reasonInput = document
-            .getElementById(
-                `transfer-txt-${taskId}-${assigneeId}`
-            );
-
-        comment = (
-            reasonInput?.value ||
-            ''
-        ).trim();
-
-        if (!newAssignee) {
-            return window.showCenterToast(
-                'Select user to transfer.',
-                'fa-solid fa-times',
-                'text-red-500'
-            );
-        }
-
-        if (!comment) {
-            return window.showCenterToast(
-                'Reason is mandatory for transfer.',
-                'fa-solid fa-times',
-                'text-red-500'
-            );
-        }
-
-        const confirmed = confirm(
-            `Transfer this task to the selected user?\n\nReason: ${comment}\n\nThe previous assignment will remain in the audit history.`
-        );
-
-        if (!confirmed) return;
-
-        const { data: existingAssignment } = await sb
-            .from('task_assignees')
-            .select('assignee_id')
-            .eq('task_id', taskId)
-            .eq('assignee_id', newAssignee)
-            .eq('tenant_id', window.currentTenantId)
-            .maybeSingle();
-
-        if (existingAssignment) {
-            return window.showCenterToast(
-                'The selected user is already assigned.',
-                'fa-solid fa-exclamation-triangle',
-                'text-orange-500'
-            );
-        }
-
-        actionText = 'TRANSFER';
-
-        const { error: closeError } = await sb
-            .from('task_assignees')
-            .update({
-                status: 'transferred',
-                state: 'closed'
-            })
-            .eq('task_id', taskId)
-            .eq('assignee_id', assigneeId)
-            .eq('tenant_id', window.currentTenantId);
-
-        if (closeError) {
-            return window.showCenterToast(
-                `Could not close previous assignment: ${closeError.message}`,
-                'fa-solid fa-times',
-                'text-red-500'
-            );
-        }
-
-        const { error: transferError } = await sb
-            .from('task_assignees')
-            .insert({
-                task_id: taskId,
-                assignee_id: newAssignee,
-                tenant_id: window.currentTenantId,
-                status: 'pending_ack',
-                state: 'pending',
-                acked: false
-            });
-
-        if (transferError) {
-            await sb
-                .from('task_assignees')
-                .update({
-                    status: 'submitted',
-                    state: 'submitted'
-                })
-                .eq('task_id', taskId)
-                .eq('assignee_id', assigneeId)
-                .eq('tenant_id', window.currentTenantId);
-
-            return window.showCenterToast(
-                `Could not transfer task: ${transferError.message}`,
-                'fa-solid fa-times',
-                'text-red-500'
-            );
-        }
-
-        await window.notifyUser(
-            newAssignee,
-            `🔁 Task Transferred to you: ${taskData.title}`,
-            taskData.original_message_id,
-            'task',
-            taskId
-        );
-
-        await window.notifyUser(
-            assigneeId,
-            `🔁 Your task was transferred: ${taskData.title}`,
-            taskData.original_message_id,
-            'task',
-            taskId
-        );
-    }
-
-    if (newStatus) {
-        const updatePayload =
-            action === 'ack'
-                ? {
-                    status: 'pending_ack',
-                    state: 'acknowledged',
-                    acked: true
+        const success =
+            await updateTenantAssignment(
+                taskId,
+                assigneeId,
+                {
+                    status:
+                        'accepted',
+                    state:
+                        'accepted'
                 }
-                : {
-                    status: newStatus,
-                    state: newStatus
-                };
-
-        const { data: updatedRows, error: updateError } =
-            await sb
-                .from('task_assignees')
-                .update(updatePayload)
-                .eq('task_id', taskId)
-                .eq('assignee_id', assigneeId)
-                .eq('tenant_id', window.currentTenantId)
-                .select();
-
-        if (
-            updateError ||
-            !updatedRows ||
-            updatedRows.length === 0
-        ) {
-            window.showCenterToast(
-                'Could not update task. Please try again.',
-                'fa-solid fa-lock',
-                'text-red-500'
             );
 
-            if (
-                action === 'ack' &&
-                acknowledgementButton
-            ) {
-                acknowledgementButton.disabled = false;
-                acknowledgementButton.innerHTML =
-                    'Acknowledge Task';
-            }
+        if (!success) return;
 
-            return;
-        }
+        await addTaskTrail(
+            taskId,
+            'ACCEPT',
+            'Completion accepted'
+        );
+
+        await window.notifyUser(
+            assigneeId,
+            `🎉 Task Accepted: ${task.title}`,
+            task.original_message_id,
+            'task',
+            taskId
+        );
+
+        showToast(
+            'Completion accepted.',
+            'fa-solid fa-check',
+            'text-green-500'
+        );
     }
 
-    if (actionText) {
-        await sb
-            .from('task_trails')
-            .insert({
-                task_id: taskId,
-                user_id: window.currentUser.id,
-                tenant_id: window.currentTenantId,
-                action: actionText,
-                comment
-            });
-    }
-
-    window.loadTasksForPanel();
+    await window.loadTasksForPanel();
 };
 
-// ─── LOAD AND RENDER TASKS ─────────────────────────────────────────────────
+window.openTaskUpdateAction = function(
+    taskId,
+    assigneeId
+) {
+    openTaskActionLayer({
+        title: 'Progress Update',
+        body: `
+            <div class="nt-action-field">
+                <label class="nt-action-label">
+                    What progress has been made?
+                </label>
 
-window.loadTasksForPanel = async function() {
-    if (!window.currentTenantId) return;
+                <textarea
+                    id="ntTaskUpdateText"
+                    class="nt-action-input"
+                    placeholder="Write a clear progress update..."
+                ></textarea>
+            </div>
+        `,
+        primaryLabel: 'Post Update',
+        primaryIcon:
+            'fa-solid fa-paper-plane',
+        onPrimary: async () => {
+            const comment = (
+                document.getElementById(
+                    'ntTaskUpdateText'
+                )?.value ||
+                ''
+            ).trim();
 
-    if (
-        window.canSeeTaskHub &&
-        !window.canSeeTaskHub()
-    ) {
-        const panel = document.getElementById(
-            'tasksPanel'
+            if (!comment) {
+                showToast(
+                    'Progress update cannot be empty.',
+                    'fa-solid fa-triangle-exclamation',
+                    'text-red-500'
+                );
+
+                return false;
+            }
+
+            const task =
+                await getTenantTask(taskId);
+
+            if (!task) return false;
+
+            await addTaskTrail(
+                taskId,
+                'UPDATE',
+                comment
+            );
+
+            await window.notifyUser(
+                task.assigned_by,
+                `💬 Task Update: ${task.title} — ${comment.substring(0, 60)}`,
+                task.original_message_id,
+                'task',
+                taskId
+            );
+
+            showToast(
+                'Progress update posted.',
+                'fa-solid fa-check',
+                'text-green-500'
+            );
+
+            await window.loadTasksForPanel();
+
+            return true;
+        }
+    });
+};
+
+window.openTaskUploadAction = function(
+    taskId,
+    assigneeId
+) {
+    openTaskActionLayer({
+        title: 'Upload Proof',
+        body: `
+            <div class="nt-action-field">
+                <label class="nt-action-label">
+                    Select file
+                </label>
+
+                <input
+                    id="ntTaskUploadFile"
+                    class="nt-action-input"
+                    type="file"
+                >
+            </div>
+
+            <div
+                style="
+                    color:var(--text-secondary,#64748b);
+                    font-size:10px;
+                    line-height:1.6;
+                "
+            >
+                The file will be stored in a tenant-specific
+                and task-specific storage path.
+            </div>
+        `,
+        primaryLabel: 'Upload',
+        primaryIcon:
+            'fa-solid fa-upload',
+        onPrimary: async () => {
+            const file =
+                document.getElementById(
+                    'ntTaskUploadFile'
+                )?.files?.[0];
+
+            if (!file) {
+                showToast(
+                    'Select a file.',
+                    'fa-solid fa-paperclip',
+                    'text-red-500'
+                );
+
+                return false;
+            }
+
+            const safeName =
+                file.name.replace(
+                    /[^a-zA-Z0-9.\-_]/g,
+                    '_'
+                );
+
+            const filePath =
+                `tasks/${tenantId()}/${taskId}/${Date.now()}_${safeName}`;
+
+            const { error } = await sb
+                .storage
+                .from('task-proofs')
+                .upload(
+                    filePath,
+                    file
+                );
+
+            if (error) {
+                showToast(
+                    error.message,
+                    'fa-solid fa-times',
+                    'text-red-500'
+                );
+
+                return false;
+            }
+
+            await addTaskTrail(
+                taskId,
+                'FILE',
+                `${file.name}|${filePath}`
+            );
+
+            const task =
+                await getTenantTask(taskId);
+
+            if (task) {
+                await window.notifyUser(
+                    task.assigned_by,
+                    `📎 File uploaded on task: ${task.title}`,
+                    task.original_message_id,
+                    'task',
+                    taskId
+                );
+            }
+
+            showToast(
+                'File uploaded successfully.',
+                'fa-solid fa-check',
+                'text-green-500'
+            );
+
+            await window.loadTasksForPanel();
+
+            return true;
+        }
+    });
+};
+
+window.openTaskDelegateAction =
+function(
+    taskId,
+    assigneeId
+) {
+    const options = (
+        window.globalUsersCache || []
+    )
+        .filter(user =>
+            user.id !== currentUserId()
+        )
+        .map(user => `
+            <option value="${escapeHtml(user.id)}">
+                ${escapeHtml(getDisplayName(user))}
+            </option>
+        `)
+        .join('');
+
+    openTaskActionLayer({
+        title: 'Delegate Task',
+        body: `
+            <div class="nt-action-field">
+                <label class="nt-action-label">
+                    Delegate to
+                </label>
+
+                <select
+                    id="ntTaskDelegateUser"
+                    class="nt-action-input"
+                >
+                    <option value="">
+                        Select staff member
+                    </option>
+
+                    ${options}
+                </select>
+            </div>
+
+            <div class="nt-action-field">
+                <label class="nt-action-label">
+                    Comment
+                </label>
+
+                <textarea
+                    id="ntTaskDelegateComment"
+                    class="nt-action-input"
+                    placeholder="Explain what the delegate should do..."
+                ></textarea>
+            </div>
+
+            <div
+                style="
+                    padding:11px;
+                    border-radius:12px;
+                    background:#faf5ff;
+                    color:#6b21a8;
+                    font-size:10px;
+                    line-height:1.5;
+                "
+            >
+                You remain accountable. The selected person
+                receives a separate pending assignment.
+            </div>
+        `,
+        primaryLabel: 'Delegate',
+        primaryIcon:
+            'fa-solid fa-user-plus',
+        onPrimary: async () => {
+            const newAssigneeId =
+                document.getElementById(
+                    'ntTaskDelegateUser'
+                )?.value;
+
+            const comment = (
+                document.getElementById(
+                    'ntTaskDelegateComment'
+                )?.value ||
+                ''
+            ).trim();
+
+            if (!newAssigneeId) {
+                showToast(
+                    'Select a staff member.',
+                    'fa-solid fa-user',
+                    'text-red-500'
+                );
+
+                return false;
+            }
+
+            const {
+                data: existing
+            } = await sb
+                .from('task_assignees')
+                .select('assignee_id')
+                .eq('tenant_id', tenantId())
+                .eq('task_id', taskId)
+                .eq(
+                    'assignee_id',
+                    newAssigneeId
+                )
+                .maybeSingle();
+
+            if (existing) {
+                showToast(
+                    'This person is already assigned.',
+                    'fa-solid fa-user-check',
+                    'text-orange-500'
+                );
+
+                return false;
+            }
+
+            const { error } = await sb
+                .from('task_assignees')
+                .insert({
+                    task_id: taskId,
+                    assignee_id:
+                        newAssigneeId,
+                    tenant_id:
+                        tenantId(),
+                    status:
+                        'pending_ack',
+                    state:
+                        'pending',
+                    acked:
+                        false
+                });
+
+            if (error) {
+                showToast(
+                    error.message,
+                    'fa-solid fa-times',
+                    'text-red-500'
+                );
+
+                return false;
+            }
+
+            await addTaskTrail(
+                taskId,
+                'DELEGATE',
+                comment ||
+                `Delegated to ${newAssigneeId}`
+            );
+
+            const task =
+                await getTenantTask(taskId);
+
+            if (task) {
+                await window.notifyUser(
+                    newAssigneeId,
+                    `👤 Task Delegated to you: ${task.title}`,
+                    task.original_message_id,
+                    'task',
+                    taskId
+                );
+
+                await window.notifyUser(
+                    task.assigned_by,
+                    `↗️ Task Delegated: ${task.title}`,
+                    task.original_message_id,
+                    'task',
+                    taskId
+                );
+            }
+
+            showToast(
+                'Task delegated.',
+                'fa-solid fa-check',
+                'text-green-500'
+            );
+
+            await window.loadTasksForPanel();
+
+            return true;
+        }
+    });
+};
+
+window.openTaskReturnAction =
+function(
+    taskId,
+    assigneeId
+) {
+    openTaskActionLayer({
+        title: 'Return for Changes',
+        body: `
+            <div class="nt-action-field">
+                <label class="nt-action-label">
+                    Feedback
+                </label>
+
+                <textarea
+                    id="ntTaskReturnFeedback"
+                    class="nt-action-input"
+                    placeholder="Clearly explain the required changes..."
+                ></textarea>
+            </div>
+        `,
+        primaryLabel:
+            'Return Task',
+        primaryIcon:
+            'fa-solid fa-rotate-left',
+        onPrimary: async () => {
+            const feedback = (
+                document.getElementById(
+                    'ntTaskReturnFeedback'
+                )?.value ||
+                ''
+            ).trim();
+
+            if (!feedback) {
+                showToast(
+                    'Feedback is required.',
+                    'fa-solid fa-comment',
+                    'text-red-500'
+                );
+
+                return false;
+            }
+
+            const success =
+                await updateTenantAssignment(
+                    taskId,
+                    assigneeId,
+                    {
+                        status:
+                            'needs_review',
+                        state:
+                            'needs_review'
+                    }
+                );
+
+            if (!success) return false;
+
+            await addTaskTrail(
+                taskId,
+                'RETURN',
+                feedback
+            );
+
+            const task =
+                await getTenantTask(taskId);
+
+            if (task) {
+                await window.notifyUser(
+                    assigneeId,
+                    `🔄 Changes Required: ${task.title} — ${feedback.substring(0, 60)}`,
+                    task.original_message_id,
+                    'task',
+                    taskId
+                );
+            }
+
+            showToast(
+                'Task returned for changes.',
+                'fa-solid fa-check',
+                'text-green-500'
+            );
+
+            await window.loadTasksForPanel();
+
+            return true;
+        }
+    });
+};
+
+window.openTaskTransferAction =
+function(
+    taskId,
+    assigneeId
+) {
+    const options = (
+        window.globalUsersCache || []
+    )
+        .filter(user =>
+            user.id !== assigneeId
+        )
+        .map(user => `
+            <option value="${escapeHtml(user.id)}">
+                ${escapeHtml(getDisplayName(user))}
+            </option>
+        `)
+        .join('');
+
+    openTaskActionLayer({
+        title: 'Transfer Task',
+        body: `
+            <div class="nt-action-field">
+                <label class="nt-action-label">
+                    Transfer to
+                </label>
+
+                <select
+                    id="ntTaskTransferUser"
+                    class="nt-action-input"
+                >
+                    <option value="">
+                        Select replacement
+                    </option>
+
+                    ${options}
+                </select>
+            </div>
+
+            <div class="nt-action-field">
+                <label class="nt-action-label">
+                    Reason
+                </label>
+
+                <textarea
+                    id="ntTaskTransferReason"
+                    class="nt-action-input"
+                    placeholder="Explain why the assignment is being transferred..."
+                ></textarea>
+            </div>
+        `,
+        primaryLabel:
+            'Transfer',
+        primaryIcon:
+            'fa-solid fa-arrow-right-arrow-left',
+        onPrimary: async () => {
+            const replacementId =
+                document.getElementById(
+                    'ntTaskTransferUser'
+                )?.value;
+
+            const reason = (
+                document.getElementById(
+                    'ntTaskTransferReason'
+                )?.value ||
+                ''
+            ).trim();
+
+            if (!replacementId) {
+                showToast(
+                    'Select a replacement.',
+                    'fa-solid fa-user',
+                    'text-red-500'
+                );
+
+                return false;
+            }
+
+            if (!reason) {
+                showToast(
+                    'Transfer reason is required.',
+                    'fa-solid fa-comment',
+                    'text-red-500'
+                );
+
+                return false;
+            }
+
+            const {
+                data: existing
+            } = await sb
+                .from('task_assignees')
+                .select('assignee_id')
+                .eq('tenant_id', tenantId())
+                .eq('task_id', taskId)
+                .eq(
+                    'assignee_id',
+                    replacementId
+                )
+                .maybeSingle();
+
+            if (existing) {
+                showToast(
+                    'Replacement is already assigned.',
+                    'fa-solid fa-user-check',
+                    'text-orange-500'
+                );
+
+                return false;
+            }
+
+            const {
+                error: closeError
+            } = await sb
+                .from('task_assignees')
+                .update({
+                    status:
+                        'transferred',
+                    state:
+                        'closed'
+                })
+                .eq('tenant_id', tenantId())
+                .eq('task_id', taskId)
+                .eq('assignee_id', assigneeId);
+
+            if (closeError) {
+                showToast(
+                    closeError.message,
+                    'fa-solid fa-times',
+                    'text-red-500'
+                );
+
+                return false;
+            }
+
+            const {
+                error: insertError
+            } = await sb
+                .from('task_assignees')
+                .insert({
+                    task_id: taskId,
+                    assignee_id:
+                        replacementId,
+                    tenant_id:
+                        tenantId(),
+                    status:
+                        'pending_ack',
+                    state:
+                        'pending',
+                    acked:
+                        false
+                });
+
+            if (insertError) {
+                showToast(
+                    insertError.message,
+                    'fa-solid fa-times',
+                    'text-red-500'
+                );
+
+                return false;
+            }
+
+            await addTaskTrail(
+                taskId,
+                'TRANSFER',
+                reason
+            );
+
+            const task =
+                await getTenantTask(taskId);
+
+            if (task) {
+                await window.notifyUser(
+                    replacementId,
+                    `🔁 Task Transferred to you: ${task.title}`,
+                    task.original_message_id,
+                    'task',
+                    taskId
+                );
+
+                await window.notifyUser(
+                    assigneeId,
+                    `🔁 Your task was transferred: ${task.title}`,
+                    task.original_message_id,
+                    'task',
+                    taskId
+                );
+            }
+
+            showToast(
+                'Task transferred.',
+                'fa-solid fa-check',
+                'text-green-500'
+            );
+
+            await window.loadTasksForPanel();
+
+            return true;
+        }
+    });
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TASK CARD INTERACTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+window.toggleTaskDetails =
+function(taskId) {
+    const details =
+        document.getElementById(
+            `nt-task-details-${taskId}`
         );
 
-        if (panel) {
-            panel.innerHTML = `
-                <p class="text-sm text-center mt-8 opacity-40">
-                    <i class="fa-solid fa-lock text-2xl block mb-2"></i>
-                    Tasks not enabled on your plan.
-                </p>
-            `;
-        }
+    const icon =
+        document.getElementById(
+            `nt-task-details-icon-${taskId}`
+        );
+
+    if (!details) return;
+
+    const isOpen =
+        details.classList.toggle('nt-open');
+
+    if (icon) {
+        icon.className =
+            isOpen
+                ? 'fa-solid fa-chevron-up'
+                : 'fa-solid fa-chevron-down';
+    }
+};
+
+window.openOriginalTaskMessage =
+function(messageId) {
+    if (!messageId) {
+        showToast(
+            'No original message is linked.',
+            'fa-solid fa-message',
+            'text-orange-500'
+        );
 
         return;
     }
 
-    const { data: tasks, error: tasksError } = await sb
+    const elementId =
+        `msg-${messageId}`;
+
+    if (window.scrollToAndHighlight) {
+        window.scrollToAndHighlight(
+            elementId
+        );
+    } else {
+        showToast(
+            'Open the related chat to view the message.',
+            'fa-solid fa-message',
+            'text-blue-500'
+        );
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PDF REPORT
+// ─────────────────────────────────────────────────────────────────────────────
+
+window.downloadTaskPDF =
+async function(taskId) {
+    if (!tenantId()) return;
+
+    showToast(
+        'Generating PDF report...',
+        'fa-solid fa-spinner fa-spin',
+        'text-blue-500'
+    );
+
+    const { data: task, error } = await sb
         .from('tasks')
         .select(`
             *,
@@ -1359,7 +2420,645 @@ window.loadTasksForPanel = async function() {
                 email
             )
         `)
-        .eq('tenant_id', window.currentTenantId)
+        .eq('tenant_id', tenantId())
+        .eq('id', taskId)
+        .single();
+
+    if (error || !task) {
+        showToast(
+            'Task not found.',
+            'fa-solid fa-times',
+            'text-red-500'
+        );
+
+        return;
+    }
+
+    const { data: trails } = await sb
+        .from('task_trails')
+        .select(`
+            *,
+            profiles(
+                full_name,
+                email
+            )
+        `)
+        .eq('tenant_id', tenantId())
+        .eq('task_id', taskId)
+        .order('created_at', {
+            ascending: true
+        });
+
+    const wrapper =
+        document.createElement('div');
+
+    wrapper.style.cssText = `
+        padding:30px;
+        font-family:Inter,sans-serif;
+        color:#111827;
+        background:#ffffff;
+    `;
+
+    const rows = (trails || [])
+        .map(trail => {
+            const user =
+                getDisplayName(
+                    trail.profiles
+                );
+
+            const time =
+                window.getISTTime
+                    ? window.getISTTime(
+                        trail.created_at
+                    )
+                    : '';
+
+            const date =
+                window.getISTDate
+                    ? window.getISTDate(
+                        trail.created_at
+                    )
+                    : '';
+
+            let comment =
+                trail.comment || '';
+
+            if (
+                trail.action === 'FILE' &&
+                comment.includes('|')
+            ) {
+                comment =
+                    comment.split('|')[0];
+            }
+
+            return `
+                <tr>
+                    <td style="padding:9px;border:1px solid #d1d5db;">
+                        ${escapeHtml(date)}
+                        <br>
+                        ${escapeHtml(time)}
+                    </td>
+
+                    <td style="padding:9px;border:1px solid #d1d5db;">
+                        ${escapeHtml(user)}
+                    </td>
+
+                    <td style="padding:9px;border:1px solid #d1d5db;">
+                        <b>${escapeHtml(trail.action || '')}</b>
+                        ${
+                            comment
+                                ? ` — ${escapeHtml(comment)}`
+                                : ''
+                        }
+                    </td>
+                </tr>
+            `;
+        })
+        .join('');
+
+    wrapper.innerHTML = `
+        <h2 style="color:#312e81;margin:0 0 16px;">
+            Noted For Action — Task Report
+        </h2>
+
+        <h3>
+            ${escapeHtml(task.title)}
+        </h3>
+
+        <p>
+            <b>Created by:</b>
+            ${escapeHtml(
+                getDisplayName(
+                    task.creator
+                )
+            )}
+        </p>
+
+        <p>
+            <b>Tenant:</b>
+            ${escapeHtml(tenantId())}
+        </p>
+
+        <p>
+            <b>Deadline:</b>
+            ${
+                task.deadline
+                    ? escapeHtml(
+                        formatTaskDeadline(
+                            task.deadline
+                        ).text
+                    )
+                    : 'None'
+            }
+        </p>
+
+        <table
+            style="
+                width:100%;
+                border-collapse:collapse;
+                margin-top:18px;
+                font-size:11px;
+            "
+        >
+            <thead>
+                <tr style="background:#f1f5f9;">
+                    <th style="padding:9px;border:1px solid #d1d5db;text-align:left;">
+                        Date
+                    </th>
+
+                    <th style="padding:9px;border:1px solid #d1d5db;text-align:left;">
+                        User
+                    </th>
+
+                    <th style="padding:9px;border:1px solid #d1d5db;text-align:left;">
+                        Action
+                    </th>
+                </tr>
+            </thead>
+
+            <tbody>
+                ${rows}
+            </tbody>
+        </table>
+    `;
+
+    if (!window.html2pdf) {
+        await new Promise(
+            (resolve, reject) => {
+                const script =
+                    document.createElement(
+                        'script'
+                    );
+
+                script.src =
+                    'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+
+                script.onload = resolve;
+                script.onerror = reject;
+
+                document.head.appendChild(
+                    script
+                );
+            }
+        );
+    }
+
+    await window.html2pdf()
+        .from(wrapper)
+        .set({
+            margin: 10,
+            filename:
+                `Task_Audit_${taskId}.pdf`,
+            html2canvas: {
+                scale: 2,
+                useCORS: true
+            },
+            jsPDF: {
+                unit: 'mm',
+                format: 'a4',
+                orientation: 'portrait'
+            }
+        })
+        .save();
+
+    showToast(
+        'PDF downloaded.',
+        'fa-solid fa-file-pdf',
+        'text-green-500'
+    );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RENDER HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function renderAssigneeStatusPill(status) {
+    const colour =
+        getStatusColour(status);
+
+    return `
+        <span
+            class="nt-task-person-status"
+            style="
+                color:${colour.text};
+                background:${colour.background};
+            "
+        >
+            ${escapeHtml(getStatusLabel(status))}
+        </span>
+    `;
+}
+
+function renderAssigneeList(
+    assignees
+) {
+    if (!assignees.length) {
+        return `
+            <div
+                style="
+                    color:var(--text-secondary,#64748b);
+                    font-size:11px;
+                "
+            >
+                No assignees.
+            </div>
+        `;
+    }
+
+    return `
+        <div class="nt-task-person-list">
+            ${assignees
+                .map(assignee => {
+                    const name =
+                        getDisplayName(
+                            assignee.profiles
+                        );
+
+                    const initial =
+                        name
+                            .charAt(0)
+                            .toUpperCase();
+
+                    const status =
+                        getEffectiveAssigneeStatus(
+                            assignee
+                        );
+
+                    return `
+                        <div class="nt-task-person">
+                            <div class="nt-task-avatar">
+                                ${escapeHtml(initial)}
+                            </div>
+
+                            <div class="nt-task-person-name">
+                                ${escapeHtml(name)}
+                            </div>
+
+                            ${renderAssigneeStatusPill(status)}
+                        </div>
+                    `;
+                })
+                .join('')}
+        </div>
+    `;
+}
+
+function renderTaskTrail(trails) {
+    if (window.renderProfessionalTrail) {
+        return window.renderProfessionalTrail(
+            trails
+        );
+    }
+
+    if (!trails.length) {
+        return `
+            <div
+                style="
+                    color:var(--text-secondary,#64748b);
+                    font-size:11px;
+                "
+            >
+                No activity yet.
+            </div>
+        `;
+    }
+
+    return trails
+        .map((trail, index) => {
+            const user =
+                getDisplayName(
+                    trail.profiles
+                );
+
+            const time =
+                window.getISTTime
+                    ? window.getISTTime(
+                        trail.created_at
+                    )
+                    : '';
+
+            let content = '';
+
+            if (trail.action === 'FILE') {
+                const parts = (
+                    trail.comment || ''
+                ).split('|');
+
+                const fileName =
+                    parts[0] ||
+                    'Attachment';
+
+                const filePath =
+                    parts[1] ||
+                    '';
+
+                content = `
+                    <button
+                        type="button"
+                        onclick="window.openSecureFile('${escapeHtml(filePath)}')"
+                        style="
+                            border:0;
+                            padding:0;
+                            color:#2563eb;
+                            background:none;
+                            cursor:pointer;
+                            font-size:11px;
+                            text-decoration:underline;
+                        "
+                    >
+                        ${escapeHtml(fileName)}
+                    </button>
+                `;
+            } else {
+                content = `
+                    <b>
+                        ${escapeHtml(trail.action || '')}
+                    </b>
+
+                    ${
+                        trail.comment
+                            ? ` — ${escapeHtml(trail.comment)}`
+                            : ''
+                    }
+                `;
+            }
+
+            return `
+                <div
+                    style="
+                        display:flex;
+                        gap:9px;
+                        margin-bottom:11px;
+                    "
+                >
+                    <div
+                        style="
+                            width:25px;
+                            height:25px;
+                            border-radius:50%;
+                            display:flex;
+                            align-items:center;
+                            justify-content:center;
+                            flex-shrink:0;
+                            background:#eef2ff;
+                            color:#4338ca;
+                            font-size:9px;
+                            font-weight:900;
+                        "
+                    >
+                        ${escapeHtml(
+                            String(
+                                trails.length -
+                                index
+                            )
+                        )}
+                    </div>
+
+                    <div style="min-width:0;">
+                        <div
+                            style="
+                                color:var(--text-primary,#111827);
+                                font-size:10px;
+                                font-weight:800;
+                            "
+                        >
+                            ${escapeHtml(user)}
+                            <span
+                                style="
+                                    color:var(--text-secondary,#94a3b8);
+                                    font-weight:600;
+                                "
+                            >
+                                · ${escapeHtml(time)}
+                            </span>
+                        </div>
+
+                        <div
+                            style="
+                                margin-top:3px;
+                                color:var(--text-secondary,#475569);
+                                font-size:10px;
+                                line-height:1.45;
+                            "
+                        >
+                            ${content}
+                        </div>
+                    </div>
+                </div>
+            `;
+        })
+        .join('');
+}
+
+function renderPrimaryAction({
+    task,
+    myAssignment,
+    isCreator,
+    submittedAssignments
+}) {
+    if (myAssignment) {
+        const status =
+            getEffectiveAssigneeStatus(
+                myAssignment
+            );
+
+        if (status === 'pending_ack') {
+            return `
+                <button
+                    class="nt-task-button nt-task-button-primary"
+                    onclick="window.taskAction('${task.id}','${currentUserId()}','ack')"
+                >
+                    <i class="fa-solid fa-check"></i>
+                    Acknowledge
+                </button>
+            `;
+        }
+
+        if (status === 'acknowledged') {
+            return `
+                <button
+                    class="nt-task-button nt-task-button-primary"
+                    onclick="window.taskAction('${task.id}','${currentUserId()}','start')"
+                >
+                    <i class="fa-solid fa-play"></i>
+                    Start Work
+                </button>
+            `;
+        }
+
+        if (
+            status === 'in_progress' ||
+            status === 'needs_review'
+        ) {
+            return `
+                <button
+                    class="nt-task-button nt-task-button-primary"
+                    onclick="window.taskAction('${task.id}','${currentUserId()}','submit',${Boolean(task.require_proof)})"
+                >
+                    <i class="fa-solid fa-paper-plane"></i>
+                    ${
+                        status === 'needs_review'
+                            ? 'Resubmit'
+                            : 'Submit for Review'
+                    }
+                </button>
+            `;
+        }
+
+        if (status === 'submitted') {
+            return `
+                <button
+                    class="nt-task-button nt-task-button-secondary"
+                    disabled
+                    style="flex:1;opacity:.72;cursor:default;"
+                >
+                    <i class="fa-regular fa-clock"></i>
+                    Waiting for Review
+                </button>
+            `;
+        }
+
+        if (status === 'accepted') {
+            return `
+                <button
+                    class="nt-task-button nt-task-button-secondary"
+                    onclick="window.toggleTaskDetails('${task.id}')"
+                    style="flex:1;"
+                >
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                    View Timeline
+                </button>
+            `;
+        }
+    }
+
+    if (
+        isCreator &&
+        submittedAssignments.length > 0
+    ) {
+        return `
+            <button
+                class="nt-task-button nt-task-button-primary"
+                onclick="window.toggleTaskDetails('${task.id}')"
+            >
+                <i class="fa-solid fa-clipboard-check"></i>
+                Review ${submittedAssignments.length}
+            </button>
+        `;
+    }
+
+    return `
+        <button
+            class="nt-task-button nt-task-button-secondary"
+            onclick="window.toggleTaskDetails('${task.id}')"
+            style="flex:1;"
+        >
+            <i class="fa-solid fa-eye"></i>
+            View Task
+        </button>
+    `;
+}
+
+function renderSecondaryActionMenu(
+    task,
+    myAssignment
+) {
+    if (!myAssignment) return '';
+
+    const status =
+        getEffectiveAssigneeStatus(
+            myAssignment
+        );
+
+    if (
+        status !== 'in_progress' &&
+        status !== 'needs_review'
+    ) {
+        return '';
+    }
+
+    return `
+        <button
+            type="button"
+            class="nt-task-button nt-task-button-secondary nt-task-button-icon"
+            onclick="window.openTaskUpdateAction('${task.id}','${currentUserId()}')"
+            title="Progress Update"
+        >
+            <i class="fa-solid fa-comment-dots"></i>
+        </button>
+
+        <button
+            type="button"
+            class="nt-task-button nt-task-button-secondary nt-task-button-icon"
+            onclick="window.openTaskUploadAction('${task.id}','${currentUserId()}')"
+            title="Upload Proof"
+        >
+            <i class="fa-solid fa-paperclip"></i>
+        </button>
+
+        <button
+            type="button"
+            class="nt-task-button nt-task-button-secondary nt-task-button-icon"
+            onclick="window.openTaskDelegateAction('${task.id}','${currentUserId()}')"
+            title="Delegate"
+        >
+            <i class="fa-solid fa-user-plus"></i>
+        </button>
+    `;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOAD AND RENDER TASK PANEL
+// ─────────────────────────────────────────────────────────────────────────────
+
+window.loadTasksForPanel =
+async function() {
+    installTaskUIStyles();
+
+    if (!tenantId()) return;
+
+    const container =
+        document.getElementById(
+            'tasksPanel'
+        );
+
+    if (!container) return;
+
+    if (
+        window.canSeeTaskHub &&
+        !window.canSeeTaskHub()
+    ) {
+        container.innerHTML = `
+            <div class="nt-task-empty">
+                <i
+                    class="fa-solid fa-lock"
+                    style="
+                        display:block;
+                        margin-bottom:9px;
+                        font-size:25px;
+                    "
+                ></i>
+
+                Tasks are not enabled on your plan.
+            </div>
+        `;
+
+        return;
+    }
+
+    const {
+        data: tasks,
+        error: tasksError
+    } = await sb
+        .from('tasks')
+        .select(`
+            *,
+            creator:profiles!assigned_by(
+                full_name,
+                email
+            )
+        `)
+        .eq('tenant_id', tenantId())
         .order('created_at', {
             ascending: false
         })
@@ -1367,207 +3066,233 @@ window.loadTasksForPanel = async function() {
 
     if (tasksError) {
         logger?.error?.(
-            'Could not load tasks',
+            'Task load failed',
             tasksError
         );
 
-        return;
-    }
-
-    const taskIds = (tasks || []).map(
-        task => task.id
-    );
-
-    const container = document.getElementById(
-        'tasksPanel'
-    );
-
-    if (!container) return;
-
-    if (taskIds.length === 0) {
         container.innerHTML = `
-            <p class="text-sm opacity-50 text-center mt-6">
-                <i class="fa-solid fa-inbox text-3xl mb-2 block"></i>
-                No tasks active.
-            </p>
+            <div class="nt-task-empty">
+                Could not load tasks.
+            </div>
         `;
 
         return;
     }
 
-    const { data: assignees, error: assigneeError } =
-        await sb
-            .from('task_assignees')
-            .select(`
-                task_id,
-                assignee_id,
-                status,
-                state,
-                acked,
-                profiles!assignee_id(
-                    full_name,
-                    email
-                )
-            `)
-            .eq('tenant_id', window.currentTenantId)
-            .in('task_id', taskIds);
+    if (!tasks?.length) {
+        container.innerHTML = `
+            <div class="nt-task-empty">
+                <i
+                    class="fa-solid fa-clipboard-list"
+                    style="
+                        display:block;
+                        margin-bottom:9px;
+                        font-size:27px;
+                    "
+                ></i>
+
+                No tasks found.
+            </div>
+        `;
+
+        return;
+    }
+
+    const taskIds =
+        tasks.map(task => task.id);
+
+    const {
+        data: assignees,
+        error: assigneeError
+    } = await sb
+        .from('task_assignees')
+        .select(`
+            task_id,
+            assignee_id,
+            status,
+            state,
+            acked,
+            profiles!assignee_id(
+                full_name,
+                email
+            )
+        `)
+        .eq('tenant_id', tenantId())
+        .in('task_id', taskIds);
 
     if (assigneeError) {
         logger?.error?.(
-            'Could not load task assignees',
+            'Task assignee load failed',
             assigneeError
         );
 
         return;
     }
 
-    const { data: trails, error: trailError } =
-        await sb
-            .from('task_trails')
-            .select(`
-                *,
-                profiles(
-                    full_name,
-                    email
-                )
-            `)
-            .eq('tenant_id', window.currentTenantId)
-            .in('task_id', taskIds)
-            .order('created_at', {
-                ascending: false
-            });
+    const {
+        data: trails,
+        error: trailsError
+    } = await sb
+        .from('task_trails')
+        .select(`
+            *,
+            profiles(
+                full_name,
+                email
+            )
+        `)
+        .eq('tenant_id', tenantId())
+        .in('task_id', taskIds)
+        .order('created_at', {
+            ascending: false
+        });
 
-    if (trailError) {
-        logger?.error?.(
-            'Could not load task trails',
-            trailError
+    if (trailsError) {
+        logger?.warn?.(
+            'Task trail load failed',
+            trailsError
         );
     }
 
-    const assigneesMap = {};
+    const assigneesByTask = {};
+    const trailsByTask = {};
 
     for (const assignee of assignees || []) {
-        if (!assigneesMap[assignee.task_id]) {
-            assigneesMap[assignee.task_id] = [];
+        if (
+            !assigneesByTask[
+                assignee.task_id
+            ]
+        ) {
+            assigneesByTask[
+                assignee.task_id
+            ] = [];
         }
 
-        assigneesMap[assignee.task_id].push({
-            assignee_id: assignee.assignee_id,
-            status: assignee.status,
-            state: assignee.state,
-            acked: assignee.acked,
-            profiles: assignee.profiles
-        });
+        assigneesByTask[
+            assignee.task_id
+        ].push(assignee);
     }
-
-    const trailsMap = {};
 
     for (const trail of trails || []) {
-        if (!trailsMap[trail.task_id]) {
-            trailsMap[trail.task_id] = [];
+        if (
+            !trailsByTask[
+                trail.task_id
+            ]
+        ) {
+            trailsByTask[
+                trail.task_id
+            ] = [];
         }
 
-        trailsMap[trail.task_id].push(trail);
+        trailsByTask[
+            trail.task_id
+        ].push(trail);
     }
 
+    let visibleTasks =
+        tasks.filter(task => {
+            const assignments =
+                assigneesByTask[
+                    task.id
+                ] ||
+                [];
+
+            return (
+                task.assigned_by ===
+                    currentUserId() ||
+                assignments.some(
+                    assignment =>
+                        assignment.assignee_id ===
+                        currentUserId()
+                )
+            );
+        });
+
     const filterValue =
-        document.getElementById('taskFilter')
-            ?.value ||
+        document.getElementById(
+            'taskFilter'
+        )?.value ||
         'all';
 
     const sortValue =
-        document.getElementById('taskSort')
-            ?.value ||
+        document.getElementById(
+            'taskSort'
+        )?.value ||
         'deadline_asc';
 
     const startDate =
-        document.getElementById('filterStartDate')
-            ?.value ||
+        document.getElementById(
+            'filterStartDate'
+        )?.value ||
         null;
 
     const endDate =
-        document.getElementById('filterEndDate')
-            ?.value ||
+        document.getElementById(
+            'filterEndDate'
+        )?.value ||
         null;
 
-    const todayString = new Date()
-        .toLocaleDateString(
+    const today =
+        new Date().toLocaleDateString(
             'en-CA',
             {
-                timeZone: 'Asia/Kolkata'
+                timeZone:
+                    'Asia/Kolkata'
             }
         );
 
-    let filteredTasks = (tasks || []).filter(task => {
-        const taskAssignees =
-            assigneesMap[task.id] ||
-            [];
-
-        return (
-            task.assigned_by ===
-                window.currentUser.id ||
-            taskAssignees.some(
-                assignee =>
-                    assignee.assignee_id ===
-                    window.currentUser.id
-            )
-        );
-    });
-
-    if (filterValue !== 'all') {
-        filteredTasks = filteredTasks.filter(task => {
-            const taskAssignees =
-                assigneesMap[task.id] ||
+    visibleTasks =
+        visibleTasks.filter(task => {
+            const assignments =
+                assigneesByTask[
+                    task.id
+                ] ||
                 [];
 
+            const summary =
+                getTaskStatusSummary(
+                    assignments
+                );
+
             const myAssignment =
-                taskAssignees.find(
-                    assignee =>
-                        assignee.assignee_id ===
-                        window.currentUser.id
+                assignments.find(
+                    assignment =>
+                        assignment.assignee_id ===
+                        currentUserId()
                 );
 
             const isCreator =
                 task.assigned_by ===
-                window.currentUser.id;
-
-            const activeAssignees =
-                taskAssignees.filter(
-                    assignee =>
-                        !TASK_CLOSED_STATUSES.has(
-                            getEffectiveAssigneeStatus(
-                                assignee
-                            )
-                        )
-                );
-
-            const allAccepted =
-                activeAssignees.length > 0 &&
-                activeAssignees.every(
-                    assignee =>
-                        getEffectiveAssigneeStatus(
-                            assignee
-                        ) === 'accepted'
-                );
+                currentUserId();
 
             const createdDate =
-                new Date(task.created_at)
-                    .toLocaleDateString(
-                        'en-CA',
-                        {
-                            timeZone: 'Asia/Kolkata'
-                        }
-                    );
+                new Date(
+                    task.created_at
+                ).toLocaleDateString(
+                    'en-CA',
+                    {
+                        timeZone:
+                            'Asia/Kolkata'
+                    }
+                );
 
             switch (filterValue) {
                 case 'today':
-                    return createdDate === todayString;
+                    return createdDate === today;
 
                 case 'completed':
-                    return allAccepted;
+                    return (
+                        summary.total > 0 &&
+                        summary.completed ===
+                        summary.total
+                    );
 
                 case 'pending':
-                    return !allAccepted;
+                    return !(
+                        summary.total > 0 &&
+                        summary.completed ===
+                        summary.total
+                    );
 
                 case 'allotted_by_me':
                     return isCreator;
@@ -1579,28 +3304,35 @@ window.loadTasksForPanel = async function() {
                     );
 
                 case 'delegated':
-                    return taskAssignees.some(
-                        assignee =>
-                            assignee.assignee_id ===
-                                window.currentUser.id &&
-                            assignee.status ===
+                    return assignments.some(
+                        assignment =>
+                            assignment
+                                .assignee_id ===
+                                currentUserId() &&
+                            assignment.status ===
                                 'delegated'
                     );
 
                 case 'transferred':
-                    return taskAssignees.some(
-                        assignee =>
-                            assignee.assignee_id ===
-                                window.currentUser.id &&
-                            assignee.status ===
+                    return assignments.some(
+                        assignment =>
+                            assignment
+                                .assignee_id ===
+                                currentUserId() &&
+                            assignment.status ===
                                 'transferred'
                     );
 
                 case 'date_range':
-                    if (startDate && endDate) {
+                    if (
+                        startDate &&
+                        endDate
+                    ) {
                         return (
-                            createdDate >= startDate &&
-                            createdDate <= endDate
+                            createdDate >=
+                                startDate &&
+                            createdDate <=
+                                endDate
                         );
                     }
 
@@ -1610,901 +3342,515 @@ window.loadTasksForPanel = async function() {
                     return true;
             }
         });
-    }
 
-    filteredTasks.sort((taskA, taskB) => {
-        const noDeadline = task =>
-            !task.deadline;
-
-        if (sortValue === 'deadline_asc') {
+    visibleTasks.sort(
+        (taskA, taskB) => {
             if (
-                noDeadline(taskA) &&
-                noDeadline(taskB)
+                sortValue ===
+                'created_desc'
+            ) {
+                return (
+                    new Date(
+                        taskB.created_at
+                    ) -
+                    new Date(
+                        taskA.created_at
+                    )
+                );
+            }
+
+            if (
+                sortValue ===
+                'created_asc'
+            ) {
+                return (
+                    new Date(
+                        taskA.created_at
+                    ) -
+                    new Date(
+                        taskB.created_at
+                    )
+                );
+            }
+
+            const deadlineA =
+                taskA.deadline
+                    ? new Date(
+                        taskA.deadline
+                    )
+                    : null;
+
+            const deadlineB =
+                taskB.deadline
+                    ? new Date(
+                        taskB.deadline
+                    )
+                    : null;
+
+            if (
+                !deadlineA &&
+                !deadlineB
             ) {
                 return 0;
             }
 
-            if (noDeadline(taskA)) return 1;
-            if (noDeadline(taskB)) return -1;
+            if (!deadlineA) return 1;
+            if (!deadlineB) return -1;
 
-            return (
-                new Date(taskA.deadline) -
-                new Date(taskB.deadline)
-            );
-        }
-
-        if (sortValue === 'deadline_desc') {
             if (
-                noDeadline(taskA) &&
-                noDeadline(taskB)
+                sortValue ===
+                'deadline_desc'
             ) {
-                return 0;
+                return (
+                    deadlineB -
+                    deadlineA
+                );
             }
 
-            if (noDeadline(taskA)) return 1;
-            if (noDeadline(taskB)) return -1;
-
             return (
-                new Date(taskB.deadline) -
-                new Date(taskA.deadline)
+                deadlineA -
+                deadlineB
             );
         }
+    );
 
-        if (sortValue === 'created_desc') {
-            return (
-                new Date(taskB.created_at) -
-                new Date(taskA.created_at)
-            );
-        }
-
-        if (sortValue === 'created_asc') {
-            return (
-                new Date(taskA.created_at) -
-                new Date(taskB.created_at)
-            );
-        }
-
-        return 0;
-    });
-
-    if (filteredTasks.length === 0) {
+    if (!visibleTasks.length) {
         container.innerHTML = `
-            <p class="text-sm opacity-50 text-center mt-6">
-                <i class="fa-solid fa-inbox text-3xl mb-2 block"></i>
+            <div class="nt-task-empty">
                 No matching tasks.
-            </p>
+            </div>
         `;
 
         return;
     }
 
-    container.innerHTML = filteredTasks.map(task => {
-        const taskAssignees =
-            assigneesMap[task.id] ||
-            [];
+    container.innerHTML =
+        visibleTasks
+            .map(task => {
+                const assignments =
+                    assigneesByTask[
+                        task.id
+                    ] ||
+                    [];
 
-        const taskTrails =
-            trailsMap[task.id] ||
-            [];
+                const taskTrails =
+                    trailsByTask[
+                        task.id
+                    ] ||
+                    [];
 
-        const activeAssignees =
-            taskAssignees.filter(
-                assignee =>
-                    !TASK_CLOSED_STATUSES.has(
-                        getEffectiveAssigneeStatus(
-                            assignee
-                        )
-                    )
-            );
-
-        const allAccepted =
-            activeAssignees.length > 0 &&
-            activeAssignees.every(
-                assignee =>
-                    getEffectiveAssigneeStatus(
-                        assignee
-                    ) === 'accepted'
-            );
-
-        const statusSummary =
-            getTaskStatusSummary(taskAssignees);
-
-        const globalState =
-            statusSummary.state;
-
-        let badgeClass = 'badge-pending';
-
-        let badgeText =
-            `⏳ ${getTaskStateLabel(globalState)}`;
-
-        let borderColor = '#ea580c';
-
-        if (globalState === 'acknowledged') {
-            badgeClass = 'badge-progress';
-            badgeText = '✅ Acknowledged';
-            borderColor = '#2563eb';
-        }
-
-        if (globalState === 'in_progress') {
-            badgeClass = 'badge-progress';
-            badgeText = '⚙️ In Progress';
-        }
-
-        if (globalState === 'submitted') {
-            badgeClass = 'badge-review';
-            badgeText = '📬 Pending Review';
-        }
-
-        if (globalState === 'needs_review') {
-            badgeClass = 'badge-changes';
-            badgeText = '🔄 Changes Needed';
-            borderColor = '#dc2626';
-        }
-
-        if (globalState === 'accepted') {
-            badgeClass = 'badge-done';
-            badgeText = '🎉 Completed';
-            borderColor = '#166534';
-        }
-
-        if (globalState === 'mixed') {
-            badgeClass = 'badge-progress';
-            badgeText = '👥 Mixed Progress';
-            borderColor = '#7c3aed';
-        }
-
-        let deadlineHtml = task.deadline
-            ? window.getISTDate(task.deadline)
-            : 'None';
-
-        if (task.deadline) {
-            const deadlineDate =
-                new Date(task.deadline);
-
-            deadlineDate.setHours(
-                23,
-                59,
-                59,
-                999
-            );
-
-            if (
-                deadlineDate < new Date() &&
-                globalState !== 'accepted'
-            ) {
-                deadlineHtml = `
-                    <span class="text-red-600 font-bold bg-red-50 px-1 rounded">
-                        ${deadlineHtml}
-                        ⚠️ Overdue
-                    </span>
-                `;
-
-                borderColor = '#800000';
-            }
-        }
-
-        const assigneeNames = taskAssignees.map(
-            assignee => {
-                const effectiveStatus =
-                    getEffectiveAssigneeStatus(
-                        assignee
+                const summary =
+                    getTaskStatusSummary(
+                        assignments
                     );
 
-                let suffix = '';
-                let textClass = 'text-gray-800';
+                const state =
+                    summary.state;
 
-                if (effectiveStatus === 'acknowledged') {
-                    suffix = ' (Acknowledged)';
-                }
+                const statusColour =
+                    getStatusColour(state);
 
-                if (effectiveStatus === 'in_progress') {
-                    suffix = ' (Working)';
-                }
+                const priority =
+                    getPriorityData(
+                        task.priority
+                    );
 
-                if (effectiveStatus === 'submitted') {
-                    suffix = ' (Submitted)';
-                }
+                const deadline =
+                    formatTaskDeadline(
+                        task.deadline
+                    );
 
-                if (effectiveStatus === 'needs_review') {
-                    suffix = ' (Changes Needed)';
-                }
+                const isCompleted =
+                    summary.total > 0 &&
+                    summary.completed ===
+                    summary.total;
 
-                if (effectiveStatus === 'accepted') {
-                    suffix = ' (Completed)';
-                    textClass =
-                        'text-[#166534] font-bold';
-                }
+                const isCreator =
+                    task.assigned_by ===
+                    currentUserId();
 
-                if (effectiveStatus === 'transferred') {
-                    suffix = ' (Transferred)';
-                    textClass =
-                        'text-gray-400 line-through';
-                }
+                const myAssignment =
+                    assignments.find(
+                        assignment =>
+                            assignment
+                                .assignee_id ===
+                                currentUserId() &&
+                            !isClosedAssignee(
+                                assignment
+                            )
+                    );
 
-                const name = window.toSentenceCase(
+                const submittedAssignments =
+                    assignments.filter(
+                        assignment =>
+                            getEffectiveAssigneeStatus(
+                                assignment
+                            ) ===
+                            'submitted'
+                    );
+
+                const primaryAction =
+                    renderPrimaryAction({
+                        task,
+                        myAssignment,
+                        isCreator,
+                        submittedAssignments
+                    });
+
+                const secondaryActions =
+                    renderSecondaryActionMenu(
+                        task,
+                        myAssignment
+                    );
+
+                const creatorName =
+                    getDisplayName(
+                        task.creator
+                    );
+
+                const pendingCount =
+                    summary.counts
+                        .pending_ack ||
+                    0;
+
+                const workingCount =
                     (
-                        assignee.profiles?.full_name ||
-                        assignee.profiles?.email ||
-                        'Unknown'
-                    ).split('@')[0]
-                );
+                        summary.counts
+                            .acknowledged ||
+                        0
+                    ) +
+                    (
+                        summary.counts
+                            .in_progress ||
+                        0
+                    );
+
+                const reviewCount =
+                    (
+                        summary.counts
+                            .submitted ||
+                        0
+                    ) +
+                    (
+                        summary.counts
+                            .needs_review ||
+                        0
+                    );
+
+                const creatorReviewHtml =
+                    isCreator &&
+                    submittedAssignments.length
+                        ? `
+                            <div class="nt-task-section">
+                                <div class="nt-task-section-title">
+                                    <i class="fa-solid fa-clipboard-check"></i>
+                                    Waiting for Your Review
+                                </div>
+
+                                ${submittedAssignments
+                                    .map(
+                                        assignment => {
+                                            const name =
+                                                getDisplayName(
+                                                    assignment.profiles
+                                                );
+
+                                            return `
+                                                <div
+                                                    style="
+                                                        padding:10px 0;
+                                                        border-bottom:1px solid var(--border-color,#e5e7eb);
+                                                    "
+                                                >
+                                                    <div
+                                                        style="
+                                                            margin-bottom:8px;
+                                                            color:var(--text-primary,#111827);
+                                                            font-size:11px;
+                                                            font-weight:800;
+                                                        "
+                                                    >
+                                                        ${escapeHtml(name)}
+                                                    </div>
+
+                                                    <div
+                                                        style="
+                                                            display:flex;
+                                                            flex-wrap:wrap;
+                                                            gap:7px;
+                                                        "
+                                                    >
+                                                        <button
+                                                            class="nt-task-button nt-task-button-primary"
+                                                            style="flex:initial;background:#16a34a;"
+                                                            onclick="window.taskAction('${task.id}','${assignment.assignee_id}','accept')"
+                                                        >
+                                                            <i class="fa-solid fa-check"></i>
+                                                            Approve
+                                                        </button>
+
+                                                        <button
+                                                            class="nt-task-button nt-task-button-secondary"
+                                                            onclick="window.openTaskReturnAction('${task.id}','${assignment.assignee_id}')"
+                                                        >
+                                                            <i class="fa-solid fa-rotate-left"></i>
+                                                            Return
+                                                        </button>
+
+                                                        <button
+                                                            class="nt-task-button nt-task-button-secondary"
+                                                            onclick="window.openTaskTransferAction('${task.id}','${assignment.assignee_id}')"
+                                                        >
+                                                            <i class="fa-solid fa-arrow-right-arrow-left"></i>
+                                                            Transfer
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            `;
+                                        }
+                                    )
+                                    .join('')}
+                            </div>
+                        `
+                        : '';
 
                 return `
-                    <span class="${textClass}">
-                        ${window.escapeHtml(name)}
-                        ${suffix}
-                    </span>
-                `;
-            }
-        ).join(', ');
-
-        const counts = statusSummary.counts;
-
-        const summaryHtml = `
-            <div class="rounded-xl p-3 mb-3 border border-gray-100 bg-gray-50">
-                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
-                    <div>
-                        ⏳ Awaiting:
-                        <b>${counts.pending_ack || 0}</b>
-                    </div>
-
-                    <div>
-                        ✅ Acknowledged:
-                        <b>${counts.acknowledged || 0}</b>
-                    </div>
-
-                    <div>
-                        ⚙️ Working:
-                        <b>${counts.in_progress || 0}</b>
-                    </div>
-
-                    <div>
-                        📬 Submitted:
-                        <b>${counts.submitted || 0}</b>
-                    </div>
-
-                    <div>
-                        🔄 Rework:
-                        <b>${counts.needs_review || 0}</b>
-                    </div>
-
-                    <div>
-                        🎉 Completed:
-                        <b>${counts.accepted || 0}</b>
-                    </div>
-                </div>
-
-                <div class="mt-2 text-[10px] text-gray-600">
-                    Engaged
-                    <b>${statusSummary.engagementPct}%</b>
-                    ·
-                    Completed
-                    <b>${statusSummary.completionPct}%</b>
-                </div>
-            </div>
-        `;
-
-        const reviewerName =
-            window.escapeHtml(
-                window.toSentenceCase(
-                    (
-                        task.creator?.full_name ||
-                        task.creator?.email ||
-                        'Unknown'
-                    ).split('@')[0]
-                )
-            );
-
-        const isCreator =
-            task.assigned_by ===
-            window.currentUser.id;
-
-        const delegateOptions =
-            (window.globalUsersCache || [])
-                .filter(user =>
-                    user.id !==
-                        window.currentUser.id &&
-                    user.id !==
-                        task.assigned_by
-                )
-                .map(user => {
-                    const name =
-                        window.toSentenceCase(
-                            user.full_name ||
-                            user.email?.split('@')[0] ||
-                            'Unknown'
-                        );
-
-                    return `
-                        <option value="${user.id}">
-                            ${window.escapeHtml(name)}
-                        </option>
-                    `;
-                })
-                .join('');
-
-        const transferOptions =
-            (window.globalUsersCache || [])
-                .filter(user =>
-                    user.id !==
-                    window.currentUser.id
-                )
-                .map(user => {
-                    const name =
-                        window.toSentenceCase(
-                            user.full_name ||
-                            user.email?.split('@')[0] ||
-                            'Unknown'
-                        );
-
-                    return `
-                        <option value="${user.id}">
-                            ${window.escapeHtml(name)}
-                        </option>
-                    `;
-                })
-                .join('');
-
-        let actionsHtml = '';
-
-        const myAssignment =
-            taskAssignees.find(
-                assignee =>
-                    assignee.assignee_id ===
-                    window.currentUser.id &&
-                    !TASK_CLOSED_STATUSES.has(
-                        getEffectiveAssigneeStatus(
-                            assignee
-                        )
-                    )
-            );
-
-        if (myAssignment && !allAccepted) {
-            const myStatus =
-                getEffectiveAssigneeStatus(
-                    myAssignment
-                );
-
-            const currentUserId =
-                window.currentUser.id;
-
-            if (myStatus === 'pending_ack') {
-                actionsHtml += `
-                    <button
-                        id="ack-btn-${task.id}-${currentUserId}"
-                        onclick="window.taskAction('${task.id}', '${currentUserId}', 'ack')"
-                        class="btn-primary w-full bg-yellow-500 hover:bg-yellow-600 transition-colors px-4 py-2 rounded-lg text-white font-bold"
-                    >
-                        <i class="fa-solid fa-check-circle"></i>
-                        Acknowledge Task
-                    </button>
-                `;
-            }
-
-            else if (myStatus === 'acknowledged') {
-                actionsHtml += `
-                    <button
-                        onclick="window.taskAction('${task.id}', '${currentUserId}', 'start')"
-                        class="btn-primary w-full bg-blue-600 hover:bg-blue-700 transition-colors px-4 py-2 rounded-lg text-white font-bold"
-                    >
-                        <i class="fa-solid fa-play"></i>
-                        Start Work
-                    </button>
-                `;
-            }
-
-            else if (
-                myStatus === 'in_progress' ||
-                myStatus === 'needs_review'
-            ) {
-                actionsHtml += `
-                    <div class="flex flex-wrap gap-2 mb-2">
-                        <button
-                            onclick="document.getElementById('comment-box-${task.id}-${currentUserId}').classList.toggle('hidden')"
-                            class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-bold transition-colors"
-                        >
-                            <i class="fa-solid fa-comment"></i>
-                            Progress Update
-                        </button>
-
-                        <button
-                            onclick="document.getElementById('upload-box-${task.id}-${currentUserId}').click()"
-                            class="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold transition-colors"
-                        >
-                            <i class="fa-solid fa-upload"></i>
-                            Upload
-                        </button>
-
-                        <button
-                            onclick="document.getElementById('delegate-box-${task.id}-${currentUserId}').classList.toggle('hidden')"
-                            class="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-lg text-xs font-bold transition-colors"
-                        >
-                            <i class="fa-solid fa-person-arrow-down-to-line"></i>
-                            Delegate
-                        </button>
-
-                        <button
-                            onclick="window.taskAction('${task.id}', '${currentUserId}', 'submit', ${Boolean(task.require_proof)})"
-                            class="btn-primary ${
-                                myStatus === 'needs_review'
-                                    ? 'bg-orange-600'
-                                    : 'bg-blue-600'
-                            } text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
-                        >
-                            <i class="fa-solid fa-paper-plane"></i>
-                            Submit for Review
-                        </button>
-                    </div>
-
-                    <div
-                        id="comment-box-${task.id}-${currentUserId}"
-                        class="hidden flex-col gap-2 mt-2"
-                    >
-                        <div
-                            class="border rounded-xl overflow-hidden"
-                            style="border-color:var(--border-color);"
-                        >
-                            <div
-                                class="flex gap-1 px-2 pt-2 pb-1 border-b flex-wrap"
-                                style="border-color:var(--border-color);background:var(--bg-body);"
-                            >
-                                <button
-                                    type="button"
-                                    onclick="window.taskFmtCmd('bold','${task.id}-${currentUserId}')"
-                                    class="w-6 h-6 rounded text-xs font-black hover:bg-gray-100 flex items-center justify-center transition-colors"
-                                    title="Bold"
-                                >
-                                    <b>B</b>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onclick="window.taskFmtCmd('italic','${task.id}-${currentUserId}')"
-                                    class="w-6 h-6 rounded text-xs font-black hover:bg-gray-100 flex items-center justify-center transition-colors"
-                                    title="Italic"
-                                >
-                                    <i>I</i>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onclick="window.taskFmtCmd('underline','${task.id}-${currentUserId}')"
-                                    class="w-6 h-6 rounded text-xs hover:bg-gray-100 flex items-center justify-center transition-colors"
-                                    title="Underline"
-                                >
-                                    <u>U</u>
-                                </button>
-
-                                <span class="w-px bg-gray-200 mx-1 self-stretch"></span>
-
-                                <button
-                                    type="button"
-                                    onclick="window.taskFmtList('ul','${task.id}-${currentUserId}')"
-                                    class="w-6 h-6 rounded text-xs hover:bg-gray-100 flex items-center justify-center transition-colors"
-                                    title="Bullet list"
-                                >
-                                    <i class="fa-solid fa-list-ul"></i>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onclick="window.taskFmtList('ol','${task.id}-${currentUserId}')"
-                                    class="w-6 h-6 rounded text-xs hover:bg-gray-100 flex items-center justify-center transition-colors"
-                                    title="Numbered list"
-                                >
-                                    <i class="fa-solid fa-list-ol"></i>
-                                </button>
-                            </div>
-
-                            <div
-                                id="update-txt-${task.id}-${currentUserId}"
-                                contenteditable="true"
-                                data-placeholder="Type update..."
-                                style="min-height:48px;padding:8px 10px;font-size:12px;outline:none;color:var(--text-primary);background:var(--bg-body);"
-                                onkeydown="if(event.key==='Enter'&&event.ctrlKey){window.taskAction('${task.id}','${currentUserId}','update');}"
-                            ></div>
-                        </div>
-
-                        <div class="flex gap-2 justify-end">
-                            <button
-                                onclick="document.getElementById('comment-box-${task.id}-${currentUserId}').classList.add('hidden')"
-                                class="text-xs font-bold px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
-                            >
-                                Cancel
-                            </button>
-
-                            <button
-                                onclick="window.taskAction('${task.id}', '${currentUserId}', 'update')"
-                                class="text-xs font-bold px-3 py-1.5 rounded-lg text-white"
-                                style="background:var(--accent);"
-                            >
-                                Post Update
-                            </button>
-                        </div>
-
-                        <p
-                            class="text-[9px]"
-                            style="color:var(--text-secondary);"
-                        >
-                            Ctrl+Enter to post
-                        </p>
-                    </div>
-
-                    <input
-                        type="file"
-                        id="upload-box-${task.id}-${currentUserId}"
-                        class="hidden"
-                        onchange="window.taskAction('${task.id}', '${currentUserId}', 'upload')"
-                    >
-
-                    <div
-                        id="upload-progress-container-${task.id}-${currentUserId}"
-                        class="hidden w-full mt-2 bg-white p-2 rounded border border-gray-200"
-                    >
-                        <div class="w-full bg-gray-200 rounded-full h-1.5">
-                            <div
-                                id="upload-progress-bar-${task.id}-${currentUserId}"
-                                class="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
-                                style="width:0%;"
-                            ></div>
-                        </div>
-
-                        <p class="text-[9px] text-gray-500 mt-1 text-center font-bold">
-                            Uploading Secure File...
-                        </p>
-                    </div>
-
-                    <div
-                        id="delegate-box-${task.id}-${currentUserId}"
-                        class="hidden flex gap-2 mt-2"
-                    >
-                        <select
-                            id="delegate-sel-${task.id}-${currentUserId}"
-                            class="ui-input flex-1 text-xs px-2 py-1 rounded"
-                        >
-                            <option value="">
-                                Select user
-                            </option>
-
-                            ${delegateOptions}
-                        </select>
-
-                        <button
-                            onclick="window.taskAction('${task.id}', '${currentUserId}', 'delegate')"
-                            class="btn-primary"
-                        >
-                            Confirm
-                        </button>
-                    </div>
-                `;
-            }
-        }
-
-        if (isCreator && !allAccepted) {
-            const submittedAssignments =
-                taskAssignees.filter(
-                    assignee =>
-                        getEffectiveAssigneeStatus(
-                            assignee
-                        ) === 'submitted'
-                );
-
-            for (
-                const submittedAssignment
-                of submittedAssignments
-            ) {
-                const submittedName =
-                    window.toSentenceCase(
-                        (
-                            submittedAssignment
-                                .profiles
-                                ?.full_name ||
-                            submittedAssignment
-                                .profiles
-                                ?.email ||
-                            'Unknown'
-                        ).split('@')[0]
-                    );
-
-                actionsHtml += `
-                    <div class="bg-orange-50 p-2 rounded border border-orange-100 mt-2">
-                        <div class="text-xs font-bold text-orange-800 mb-2">
-                            Review required for:
-                            ${window.escapeHtml(submittedName)}
-                        </div>
-
-                        <div class="flex flex-wrap gap-2">
-                            <button
-                                onclick="window.taskAction('${task.id}', '${submittedAssignment.assignee_id}', 'accept')"
-                                class="btn-primary bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold transition-colors"
-                            >
-                                <i class="fa-solid fa-circle-check"></i>
-                                Accept
-                            </button>
-
-                            <button
-                                onclick="document.getElementById('review-box-${task.id}-${submittedAssignment.assignee_id}').classList.toggle('hidden')"
-                                class="btn-primary bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold transition-colors"
-                            >
-                                <i class="fa-solid fa-rotate-left"></i>
-                                Return for Changes
-                            </button>
-
-                            <button
-                                onclick="document.getElementById('transfer-box-${task.id}-${submittedAssignment.assignee_id}').classList.toggle('hidden')"
-                                class="btn-outline bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs px-3 py-1.5 rounded-lg font-bold transition-colors"
-                            >
-                                <i class="fa-solid fa-arrow-right-arrow-left"></i>
-                                Transfer
-                            </button>
-                        </div>
-
-                        <div
-                            id="review-box-${task.id}-${submittedAssignment.assignee_id}"
-                            class="hidden flex gap-2 mt-2"
-                        >
-                            <input
-                                type="text"
-                                id="review-txt-${task.id}-${submittedAssignment.assignee_id}"
-                                placeholder="Mandatory feedback..."
-                                class="ui-input flex-1 text-xs px-2 py-1 rounded border border-red-300"
-                            >
-
-                            <button
-                                onclick="window.taskAction('${task.id}', '${submittedAssignment.assignee_id}', 'review_again')"
-                                class="btn-primary bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold transition-colors"
-                            >
-                                Return
-                            </button>
-                        </div>
-
-                        <div
-                            id="transfer-box-${task.id}-${submittedAssignment.assignee_id}"
-                            class="hidden flex flex-col gap-2 mt-2"
-                        >
-                            <select
-                                id="transfer-sel-${task.id}-${submittedAssignment.assignee_id}"
-                                class="ui-input flex-1 text-xs px-2 py-1.5 rounded"
-                            >
-                                <option value="">
-                                    Select replacement
-                                </option>
-
-                                ${transferOptions}
-                            </select>
-
-                            <div class="flex gap-2">
-                                <input
-                                    type="text"
-                                    id="transfer-txt-${task.id}-${submittedAssignment.assignee_id}"
-                                    placeholder="Mandatory reason..."
-                                    class="ui-input flex-1 text-xs px-2 py-1 rounded border border-orange-300"
-                                >
-
-                                <button
-                                    onclick="window.taskAction('${task.id}', '${submittedAssignment.assignee_id}', 'transfer')"
-                                    class="btn-primary bg-orange-600 hover:bg-orange-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold transition-colors"
-                                >
-                                    Confirm
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
-        }
-
-        const trailHtml =
-            window.renderProfessionalTrail
-                ? window.renderProfessionalTrail(
-                    taskTrails
-                )
-                : taskTrails.map(
-                    (trail, index) => {
-                        const trailUser =
-                            '#' +
-                            (
-                                taskTrails.length -
-                                index
-                            ) +
-                            ' · ' +
-                            window.toSentenceCase(
-                                (
-                                    trail.profiles
-                                        ?.full_name ||
-                                    trail.profiles
-                                        ?.email ||
-                                    'System'
-                                ).split('@')[0]
-                            );
-
-                        const trailTime =
-                            window.getISTTime(
-                                trail.created_at
-                            );
-
-                        let content = '';
-
-                        if (trail.action === 'FILE') {
-                            let fileName =
-                                trail.comment ||
-                                '';
-
-                            let filePath =
-                                trail.comment ||
-                                '';
-
-                            if (
-                                trail.comment &&
-                                trail.comment.includes('|')
-                            ) {
-                                const parts =
-                                    trail.comment.split('|');
-
-                                fileName =
-                                    parts[0];
-
-                                filePath =
-                                    parts[1];
+                    <article
+                        class="
+                            nt-task-card
+                            ${
+                                isCompleted
+                                    ? 'nt-task-card-completed'
+                                    : ''
                             }
+                        "
+                        data-task-id="${escapeHtml(task.id)}"
+                    >
+                        <div
+                            class="nt-task-accent"
+                            style="background:${statusColour.border};"
+                        ></div>
 
-                            content = `
+                        <div class="nt-task-body">
+                            <div class="nt-task-header">
+                                <div class="nt-task-title-wrap">
+                                    <h3 class="nt-task-title">
+                                        ${escapeHtml(task.title)}
+                                    </h3>
+
+                                    <div class="nt-task-subtitle">
+                                        ${escapeHtml(creatorName)}
+                                        ·
+                                        ${summary.total}
+                                        ${
+                                            summary.total === 1
+                                                ? 'assignee'
+                                                : 'assignees'
+                                        }
+                                    </div>
+                                </div>
+
                                 <span
-                                    style="cursor:pointer;text-decoration:underline;color:blue;"
-                                    onclick="window.openSecureFile('${window.escapeHtml(filePath)}')"
+                                    class="nt-task-priority"
+                                    style="
+                                        color:${priority.text};
+                                        background:${priority.background};
+                                    "
                                 >
-                                    ${window.escapeHtml(fileName)}
+                                    ${priority.label}
                                 </span>
-                            `;
-                        } else {
-                            content =
-                                `${window.escapeHtml(trail.action || '')}` +
-                                (
-                                    trail.comment
-                                        ? ` — ${window.escapeHtml(trail.comment)}`
-                                        : ''
-                                );
-                        }
+                            </div>
 
-                        return `
-                            <div class="text-[12px] leading-snug border-l-2 border-indigo-200 pl-2 ml-1 mb-2.5">
-                                <span class="text-gray-400 text-[10px]">
-                                    [${trailTime}]
+                            <div class="nt-task-status-row">
+                                <span
+                                    class="nt-task-status-badge"
+                                    style="
+                                        color:${statusColour.text};
+                                        background:${statusColour.background};
+                                        border-color:${statusColour.border};
+                                    "
+                                >
+                                    <i class="${getStatusIcon(state)}"></i>
+                                    ${escapeHtml(getStatusLabel(state))}
                                 </span>
 
-                                <span class="font-bold text-gray-800">
-                                    ${window.escapeHtml(trailUser)}
-                                </span>
+                                <span
+                                    class="
+                                        nt-task-due
+                                        ${
+                                            deadline.overdue &&
+                                            !isCompleted
+                                                ? 'nt-task-due-overdue'
+                                                : ''
+                                        }
+                                    "
+                                >
+                                    <i class="fa-regular fa-calendar"></i>
 
-                                <div class="mt-0.5">
-                                    ${content}
+                                    ${escapeHtml(deadline.text)}
+
+                                    ${
+                                        deadline.overdue &&
+                                        !isCompleted
+                                            ? ' · Overdue'
+                                            : ''
+                                    }
+                                </span>
+                            </div>
+
+                            <div class="nt-task-stat-grid">
+                                <div class="nt-task-stat">
+                                    <span class="nt-task-stat-value">
+                                        ${pendingCount}
+                                    </span>
+
+                                    <span class="nt-task-stat-label">
+                                        Awaiting
+                                    </span>
+                                </div>
+
+                                <div class="nt-task-stat">
+                                    <span class="nt-task-stat-value">
+                                        ${workingCount}
+                                    </span>
+
+                                    <span class="nt-task-stat-label">
+                                        Working
+                                    </span>
+                                </div>
+
+                                <div class="nt-task-stat">
+                                    <span class="nt-task-stat-value">
+                                        ${summary.completed}
+                                    </span>
+
+                                    <span class="nt-task-stat-label">
+                                        Completed
+                                    </span>
                                 </div>
                             </div>
-                        `;
-                    }
-                ).join('');
 
-        const cardOpacity =
-            globalState === 'accepted'
-                ? '0.6'
-                : '1';
+                            <div class="nt-task-progress-wrap">
+                                <div class="nt-task-progress-labels">
+                                    <span>
+                                        Engaged
+                                        ${summary.engagementPercentage}%
+                                    </span>
 
-        return `
-            <div
-                class="jira-card bg-white rounded-2xl shadow-sm border border-gray-200 mb-4 overflow-hidden relative"
-                data-task-id="${task.id}"
-                style="
-                    border-left-width:6px;
-                    border-left-style:solid;
-                    border-left-color:${borderColor};
-                    opacity:${cardOpacity};
-                    transition:opacity 0.3s;
-                "
-            >
-                <div class="p-4">
-                    <div class="flex justify-between items-start mb-3">
-                        <div class="font-bold text-gray-800 text-[16px] flex items-start gap-2">
-                            <i class="fa-solid fa-thumbtack text-gray-400 mt-1"></i>
-                            ${window.escapeHtml(task.title)}
-                        </div>
-
-                        <button
-                            onclick="window.downloadTaskPDF('${task.id}')"
-                            title="Download PDF Audit Report"
-                            class="text-gray-400 hover:text-red-500 transition-colors p-1 rounded hover:bg-gray-100"
-                        >
-                            <i class="fa-solid fa-file-pdf text-lg"></i>
-                        </button>
-                    </div>
-
-                    <div class="text-[12px] text-gray-700 space-y-1.5 mb-4">
-                        <div>
-                            👥
-                            <span class="font-semibold text-gray-900">
-                                Assignees:
-                            </span>
-
-                            ${assigneeNames || 'None'}
-                        </div>
-
-                        <div>
-                            👑
-                            <span class="font-semibold text-gray-900">
-                                Created by:
-                            </span>
-
-                            ${reviewerName}
-                        </div>
-
-                        <div>
-                            📅
-                            <span class="font-semibold text-gray-900">
-                                Deadline:
-                            </span>
-
-                            ${deadlineHtml}
-                        </div>
-
-                        <div>
-                            ⚡
-                            <span class="font-semibold text-gray-900">
-                                Priority:
-                            </span>
-
-                            ${window.escapeHtml(task.priority || 'Normal')}
-                        </div>
-
-                        <div class="mt-2 flex items-center gap-2">
-                            🏷️
-
-                            <span class="font-semibold text-gray-900">
-                                Status:
-                            </span>
-
-                            <span class="badge ${badgeClass}">
-                                ${badgeText}
-                            </span>
-                        </div>
-                    </div>
-
-                    ${summaryHtml}
-
-                    ${
-                        actionsHtml
-                            ? `
-                                <div class="border-t border-gray-100 pt-3 pb-1">
-                                    ${actionsHtml}
+                                    <span>
+                                        Completed
+                                        ${summary.completionPercentage}%
+                                    </span>
                                 </div>
-                            `
-                            : ''
-                    }
 
-                    <div class="mt-2 pt-3 border-t border-gray-100">
-                        <button
-                            onclick="window.toggleTrail('${task.id}')"
-                            class="text-[12px] font-bold text-gray-500 hover:text-gray-800 flex items-center gap-1 transition-colors w-full text-left"
-                        >
-                            <i class="fa-solid fa-history"></i>
+                                <div class="nt-task-progress-track">
+                                    <div
+                                        class="nt-task-progress-engaged"
+                                        style="width:${summary.engagementPercentage}%;"
+                                    ></div>
 
-                            Audit Trail
-                            (${taskTrails.length})
+                                    <div
+                                        class="nt-task-progress-complete"
+                                        style="width:${summary.completionPercentage}%;"
+                                    ></div>
+                                </div>
+                            </div>
 
-                            <i
-                                class="fa-solid fa-chevron-down ml-auto"
-                                style="transition:transform 0.3s;"
-                            ></i>
-                        </button>
+                            <div class="nt-task-action-row">
+                                ${primaryAction}
+
+                                ${secondaryActions}
+
+                                <button
+                                    type="button"
+                                    class="nt-task-button nt-task-button-secondary nt-task-button-icon"
+                                    onclick="window.toggleTaskDetails('${task.id}')"
+                                    title="Task Details"
+                                >
+                                    <i
+                                        id="nt-task-details-icon-${task.id}"
+                                        class="fa-solid fa-chevron-down"
+                                    ></i>
+                                </button>
+                            </div>
+                        </div>
 
                         <div
-                            id="trail-${task.id}"
-                            class="task-trail-box mt-3 space-y-1 max-h-96 overflow-y-auto"
-                            style="display:none;"
+                            id="nt-task-details-${task.id}"
+                            class="nt-task-expanded"
                         >
-                            ${trailHtml}
+                            <div class="nt-task-section">
+                                <div class="nt-task-section-title">
+                                    <i class="fa-solid fa-users"></i>
+                                    Staff Status
+                                </div>
+
+                                ${renderAssigneeList(assignments)}
+                            </div>
+
+                            ${creatorReviewHtml}
+
+                            <div class="nt-task-section">
+                                <div class="nt-task-section-title">
+                                    <i class="fa-solid fa-clock-rotate-left"></i>
+                                    Timeline
+                                </div>
+
+                                <div class="nt-task-trail">
+                                    ${renderTaskTrail(taskTrails)}
+                                </div>
+                            </div>
+
+                            <div
+                                style="
+                                    display:flex;
+                                    gap:8px;
+                                    flex-wrap:wrap;
+                                "
+                            >
+                                <button
+                                    class="nt-task-button nt-task-button-secondary"
+                                    onclick="window.openOriginalTaskMessage('${task.original_message_id || ''}')"
+                                >
+                                    <i class="fa-regular fa-message"></i>
+                                    Original Message
+                                </button>
+
+                                <button
+                                    class="nt-task-button nt-task-button-secondary"
+                                    onclick="window.downloadTaskPDF('${task.id}')"
+                                >
+                                    <i class="fa-solid fa-file-pdf"></i>
+                                    PDF Report
+                                </button>
+
+                                ${
+                                    isCreator &&
+                                    reviewCount === 0 &&
+                                    pendingCount > 0
+                                        ? `
+                                            <span
+                                                style="
+                                                    display:inline-flex;
+                                                    align-items:center;
+                                                    color:#c2410c;
+                                                    font-size:10px;
+                                                    font-weight:800;
+                                                "
+                                            >
+                                                ${pendingCount}
+                                                awaiting acknowledgement
+                                            </span>
+                                        `
+                                        : ''
+                                }
+                            </div>
                         </div>
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
+                    </article>
+                `;
+            })
+            .join('');
 };
+
+// Initialise styles immediately.
+installTaskUIStyles();

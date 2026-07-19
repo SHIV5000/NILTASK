@@ -1,6 +1,6 @@
 /**
  * ─────────────────────────────────────────────────────────────────────────
- * PROFESSIONAL TASK TRAIL RENDERER (js/task-trail-renderer.js) FFFFFF
+ * PROFESSIONAL TASK TRAIL RENDERER (js/task-trail-renderer.js)
  * ─────────────────────────────────────────────────────────────────────────
  * 
  * Enterprise-grade audit trail visualization with:

@@ -889,7 +889,9 @@ window.notifyUser = async function(
             tenant_id: tenantId(),
             message:
                 cleanMessage.substring(0, 200),
-            message_id: messageId || null,
+            // Task notifications navigate by task_id. Never place the task's
+            // original-message text value into this UUID foreign-key column.
+            message_id: type === 'task' ? null : (messageId || null),
             task_id: taskId || null,
             type,
             is_read: false
@@ -1568,7 +1570,7 @@ async function addTaskTrail(
         return false;
     }
 
-    await postTaskReplyToOriginal(taskId, action, comment);
+    // Original-message compilation is handled once by the database trail trigger.
     return true;
 }
 
@@ -2542,12 +2544,6 @@ window.openTaskExtensionRequest = function(taskId, assigneeId) {
             }
 
 
-            await postTaskReplyToOriginal(
-                taskId,
-                'EXTENSION_REQUEST',
-                `Requested deadline ${requestedDate} — ${reason}`
-            );
-
             showToast(
                 'Deadline-extension request sent.',
                 'fa-solid fa-calendar-plus',
@@ -2592,13 +2588,6 @@ window.respondTaskExtension = async function(requestId, approve) {
     }
 
     if (request?.task_id) {
-        await postTaskReplyToOriginal(
-            request.task_id,
-            approve ? 'EXTENSION_APPROVED' : 'EXTENSION_REJECTED',
-            approve
-                ? `Approved deadline ${request.requested_deadline}`
-                : reason
-        );
     }
 
     showToast(
@@ -2783,6 +2772,49 @@ function(taskId) {
     }
 };
 
+async function focusWebMessage(roomId, messageId) {
+    window.pendingScrollId = messageId;
+    window.currentRoom = roomId;
+    try { localStorage.setItem('mpgs_current_room', roomId); } catch (_) {}
+
+    if (typeof window.openRoomById === 'function') {
+        await window.openRoomById(roomId, messageId);
+    } else if (typeof window.openChatRoom === 'function') {
+        await window.openChatRoom(roomId);
+    } else if (typeof window.loadMessages === 'function') {
+        await window.loadMessages();
+    }
+
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+        const row = document.getElementById(`row-${messageId}`)
+            || document.getElementById(`msg-${messageId}`)
+            || document.querySelector(`[data-message-id="${CSS.escape(String(messageId))}"]`);
+        if (row) {
+            row.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+            row.classList.add('message-highlight');
+            row.style.outline = '3px solid var(--accent, #4f46e5)';
+            row.style.outlineOffset = '4px';
+            setTimeout(() => {
+                row.classList.remove('message-highlight');
+                row.style.outline = '';
+                row.style.outlineOffset = '';
+            }, 4000);
+            return true;
+        }
+        if (attempt === 8 || attempt === 18) {
+            try { await window.loadMessages?.(); } catch (_) {}
+        }
+        await new Promise(resolve => setTimeout(resolve, 180));
+    }
+
+    showToast(
+        'The chat opened, but the original message is outside the loaded history. Scroll upward once and try again.',
+        'fa-solid fa-message',
+        'text-orange-500'
+    );
+    return false;
+}
+
 window.openTaskOriginalMessage = async function(taskId) {
     if (!taskId || !tenantId()) return;
 
@@ -2862,31 +2894,7 @@ window.openTaskOriginalMessage = async function(taskId) {
         return;
     }
 
-    if (typeof window.openRoomById === 'function') {
-        await window.openRoomById(roomId, message.id);
-        return;
-    }
-
-    if (typeof window.openChatRoom === 'function') {
-        await window.openChatRoom(roomId);
-        setTimeout(() => {
-            const row = document.getElementById(`msg-${message.id}`)
-                || document.getElementById(`row-${message.id}`);
-            row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 700);
-        return;
-    }
-
-    window.location.hash =
-        `room=${encodeURIComponent(roomId)}&message=${encodeURIComponent(message.id)}`;
-
-    setTimeout(() => {
-        const row = document.getElementById(`msg-${message.id}`)
-            || document.getElementById(`row-${message.id}`);
-        row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        row?.classList.add('message-highlight');
-        setTimeout(() => row?.classList.remove('message-highlight'), 3000);
-    }, 700);
+    await focusWebMessage(roomId, message.id);
 };
 
 // Backward-compatible alias.
@@ -4622,23 +4630,48 @@ window.openTaskFromNotification = async function(taskId) {
     return true;
 };
 
+// Compatibility entry points used by older Activity/notification renderers.
+window.goToTaskNotif = async function(taskId, notificationId = null) {
+    if (notificationId && currentUserId()) {
+        try {
+            await sb.from('notifications')
+                .update({ is_read: true })
+                .eq('id', notificationId)
+                .eq('user_id', currentUserId());
+        } catch (_) {}
+    }
+    return window.openTaskFromNotification(taskId);
+};
+window._goToTaskNotif = window.goToTaskNotif;
+
 // Activity/notification rows use data-action="goToTaskNotif" and data-tid.
 // Capture before generic handlers so web clicks always open and focus the task.
 document.addEventListener('click', async function(event) {
     if (window.innerWidth <= 768 || window.IS_NATIVE) return;
 
     const target = event.target.closest(
-        '[data-action="goToTaskNotif"][data-tid], [data-task-notification-id]'
+        '[data-action="goToTaskNotif"], [data-task-notification-id], [data-nid], [data-notification-id]'
     );
     if (!target) return;
 
-    const taskId = target.dataset.tid || target.dataset.taskNotificationId;
+    let taskId = target.dataset.tid || target.dataset.taskNotificationId || target.dataset.taskId;
+    const notificationId = target.dataset.nid || target.dataset.notificationId;
+
+    if (!taskId && notificationId) {
+        try {
+            const { data: notification } = await sb.from('notifications')
+                .select('task_id,type')
+                .eq('id', notificationId)
+                .eq('user_id', currentUserId())
+                .maybeSingle();
+            if (notification?.type !== 'task' || !notification?.task_id) return;
+            taskId = notification.task_id;
+        } catch (_) { return; }
+    }
     if (!taskId) return;
 
     event.preventDefault();
     event.stopPropagation();
-
-    const notificationId = target.dataset.nid;
     if (notificationId && currentUserId()) {
         try {
             await sb.from('notifications')

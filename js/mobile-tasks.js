@@ -15,7 +15,7 @@ import { sb } from './shared.js';
  */
 
 const MOBILE_TASK_MAX_WIDTH = 768;
-const NILTASK_TASK_UI_VERSION = 'v205';
+const NILTASK_TASK_UI_VERSION = 'v206';
 window.NILTASK_TASK_UI_VERSION = NILTASK_TASK_UI_VERSION;
 const CLOSED_STATUSES = new Set(['transferred', 'cancelled']);
 
@@ -976,6 +976,82 @@ function installMobileTaskStyles() {
 
             to {
                 transform:translateY(0);
+            }
+        }
+
+        /* NILTASK v206 — compact, balanced filter panel */
+        .nmt-task-filterbar {
+            position:sticky;
+            top:56px;
+            z-index:15;
+            display:grid;
+            grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+            gap:10px;
+            margin:10px 12px 2px;
+            padding:10px;
+            border:1px solid var(--border-color,#dbe2ea);
+            border-radius:16px;
+            background:var(--bg-body,#fff);
+            box-shadow:0 4px 14px rgba(15,23,42,.06);
+        }
+
+        .nmt-filter-field {
+            display:flex;
+            flex-direction:column;
+            gap:5px;
+            min-width:0;
+        }
+
+        .nmt-filter-label {
+            display:flex;
+            align-items:center;
+            gap:5px;
+            padding-left:2px;
+            color:var(--text-secondary,#64748b);
+            font-size:9px;
+            line-height:1;
+            font-weight:900;
+            text-transform:uppercase;
+            letter-spacing:.06em;
+        }
+
+        .nmt-filter-select {
+            width:100%;
+            min-width:0;
+            height:40px;
+            box-sizing:border-box;
+            border:1px solid var(--border-color,#cbd5e1);
+            border-radius:11px;
+            padding:0 27px 0 9px;
+            color:var(--text-primary,#111827);
+            background:var(--bg-sidebar,#f8fafc);
+            font-size:11px;
+            font-weight:800;
+            text-overflow:ellipsis;
+        }
+
+        .nmt-detail-tool-grid {
+            display:grid;
+            grid-template-columns:1fr;
+            gap:8px;
+        }
+
+        .nmt-detail-tool-grid .nmt-button {
+            width:100%;
+            min-height:46px;
+        }
+
+        @media (max-width:380px) {
+            .nmt-task-filterbar {
+                gap:7px;
+                margin-left:8px;
+                margin-right:8px;
+                padding:8px;
+            }
+
+            .nmt-filter-select {
+                font-size:10px;
+                padding-left:7px;
             }
         }
     `;
@@ -2636,7 +2712,7 @@ function renderPrimaryCardAction(
             <button
                 type="button"
                 class="nmt-button primary"
-                data-nmt-action="manage"
+                data-nmt-action="open-detail"
                 data-task="${escapeAttribute(task.id)}"
                 data-title="${escapeAttribute(task.title)}"
             >
@@ -3038,20 +3114,33 @@ async function renderMobileTasks() {
                 </div>
 
                 <div class="nmt-task-filterbar">
-                    <select class="nmt-filter-select" onchange="window.nmtSetTaskFilter(this.value)">
-                        <option value="all" ${mobileTaskFilter === 'all' ? 'selected' : ''}>All Tasks</option>
-                        <option value="created_by_me" ${mobileTaskFilter === 'created_by_me' ? 'selected' : ''}>Created by Me</option>
-                        <option value="assigned_to_me" ${mobileTaskFilter === 'assigned_to_me' ? 'selected' : ''}>Assigned to Me</option>
-                        <option value="pending" ${mobileTaskFilter === 'pending' ? 'selected' : ''}>Pending</option>
-                        <option value="completed" ${mobileTaskFilter === 'completed' ? 'selected' : ''}>Completed</option>
-                        <option value="overdue" ${mobileTaskFilter === 'overdue' ? 'selected' : ''}>Overdue</option>
-                    </select>
-                    <select class="nmt-filter-select" onchange="window.nmtSetTaskSort(this.value)">
-                        <option value="created_desc" ${mobileTaskSort === 'created_desc' ? 'selected' : ''}>Newest First</option>
-                        <option value="created_asc" ${mobileTaskSort === 'created_asc' ? 'selected' : ''}>Oldest First</option>
-                        <option value="deadline_asc" ${mobileTaskSort === 'deadline_asc' ? 'selected' : ''}>Deadline: Soonest</option>
-                        <option value="deadline_desc" ${mobileTaskSort === 'deadline_desc' ? 'selected' : ''}>Deadline: Latest</option>
-                    </select>
+                    <label class="nmt-filter-field">
+                        <span class="nmt-filter-label">
+                            <i class="fa-solid fa-filter"></i>
+                            Show
+                        </span>
+                        <select class="nmt-filter-select" onchange="window.nmtSetTaskFilter(this.value)">
+                            <option value="all" ${mobileTaskFilter === 'all' ? 'selected' : ''}>All Tasks</option>
+                            <option value="created_by_me" ${mobileTaskFilter === 'created_by_me' ? 'selected' : ''}>Created by Me</option>
+                            <option value="assigned_to_me" ${mobileTaskFilter === 'assigned_to_me' ? 'selected' : ''}>Assigned to Me</option>
+                            <option value="pending" ${mobileTaskFilter === 'pending' ? 'selected' : ''}>Pending</option>
+                            <option value="completed" ${mobileTaskFilter === 'completed' ? 'selected' : ''}>Completed</option>
+                            <option value="overdue" ${mobileTaskFilter === 'overdue' ? 'selected' : ''}>Overdue</option>
+                        </select>
+                    </label>
+
+                    <label class="nmt-filter-field">
+                        <span class="nmt-filter-label">
+                            <i class="fa-solid fa-arrow-down-wide-short"></i>
+                            Sort
+                        </span>
+                        <select class="nmt-filter-select" onchange="window.nmtSetTaskSort(this.value)">
+                            <option value="created_desc" ${mobileTaskSort === 'created_desc' ? 'selected' : ''}>Newest First</option>
+                            <option value="created_asc" ${mobileTaskSort === 'created_asc' ? 'selected' : ''}>Oldest First</option>
+                            <option value="deadline_asc" ${mobileTaskSort === 'deadline_asc' ? 'selected' : ''}>Deadline Soonest</option>
+                            <option value="deadline_desc" ${mobileTaskSort === 'deadline_desc' ? 'selected' : ''}>Deadline Latest</option>
+                        </select>
+                    </label>
                 </div>
 
                 <div class="nmt-list">
@@ -3545,7 +3634,10 @@ async function renderMobileTaskDetail(params) {
                     </button>
 
                     <div class="nmt-header-title">
-                        Task Details
+                        ${isCreator ? 'Manage Task' : 'Open Task'}
+                        <span style="font-size:10px;opacity:.62;font-weight:800;">
+                            ${NILTASK_TASK_UI_VERSION}
+                        </span>
                     </div>
 
                 </div>
@@ -3699,25 +3791,7 @@ async function renderMobileTaskDetail(params) {
                                             Change Deadline
                                         </button>
 
-                                        <button
-                                            type="button"
-                                            class="nmt-manage-option"
-                                            data-nmt-action="original-message"
-                                            data-task="${escapeAttribute(task.id)}"
-                                        >
-                                            <i class="fa-regular fa-message"></i>
-                                            Original Message
-                                        </button>
 
-                                        <button
-                                            type="button"
-                                            class="nmt-manage-option"
-                                            data-nmt-action="download-pdf"
-                                            data-task="${escapeAttribute(task.id)}"
-                                        >
-                                            <i class="fa-solid fa-file-pdf"></i>
-                                            PDF Report
-                                        </button>
                                         <button
                                             type="button"
                                             class="nmt-manage-option"
@@ -3733,6 +3807,35 @@ async function renderMobileTaskDetail(params) {
                             `
                             : ''
                     }
+
+                    <div class="nmt-section">
+                        <div class="nmt-section-title">
+                            <i class="fa-solid fa-toolbox"></i>
+                            Task Tools
+                        </div>
+
+                        <div class="nmt-detail-tool-grid">
+                            <button
+                                type="button"
+                                class="nmt-button secondary"
+                                data-nmt-action="download-pdf"
+                                data-task="${escapeAttribute(task.id)}"
+                            >
+                                <i class="fa-solid fa-file-pdf"></i>
+                                Download Task Trail PDF
+                            </button>
+
+                            <button
+                                type="button"
+                                class="nmt-button secondary"
+                                data-nmt-action="original-message"
+                                data-task="${escapeAttribute(task.id)}"
+                            >
+                                <i class="fa-regular fa-message"></i>
+                                Original Message
+                            </button>
+                        </div>
+                    </div>
 
                     ${
                         isCreator && extensionRequestRows
@@ -3921,9 +4024,18 @@ async function handleMobileTaskClick(event) {
     }
 
     if (action === 'back') {
-        if (typeof window._back === 'function') {
-            window._back();
-        }
+        closeOverlay();
+        await renderMobileTasks();
+
+        // Do not call the app-wide back handler here: on Android it may exit
+        // when the legacy stack does not know about this owned detail screen.
+        try {
+            history.replaceState(
+                { niltaskScreen: 'tasks', version: NILTASK_TASK_UI_VERSION },
+                '',
+                window.location.href
+            );
+        } catch (e) {}
 
         return;
     }
@@ -3947,7 +4059,14 @@ async function handleMobileTaskClick(event) {
     }
 
     if (action === 'manage') {
-        await openManageSheet(taskId);
+        closeOverlay();
+        const task = await fetchTask(taskId);
+        if (task) {
+            await renderMobileTaskDetail({
+                id: task.id,
+                title: task.title || ''
+            });
+        }
         return;
     }
 

@@ -1,7 +1,7 @@
 import { sb } from './shared.js';
 
 const MOB = 768;
-const _MOB_VER = 'v204';
+const _MOB_VER = 'v180';
 
 // Console capture now lives in the GLOBAL recorder (inline script at the very top
 // of index.html → window.__LOG), so it records EVERY console call + uncaught
@@ -23,26 +23,18 @@ let _tsInterval = null;
 let _users  = [];
 let _pendingUploadTaskId = null;
 let _pendingDeptPhoto = null;
-// Primary mobile realtime channel carries DB changes. A second lightweight bridge
-// channel uses the same taskflow-bc topic as web/PWA for cross-platform broadcasts;
-// keeping DB callbacks off the bridge avoids the duplicate-topic/late-callback issue
-// while still syncing photos, reactions, typing, and read receipts across platforms.
+// SINGLE realtime channel (v159). Previously three channels (mobile-rt postgres +
+// mobile-bc broadcast + taskflow-bc shared) rode the one WebSocket; any one erroring
+// on a flaky phone triggered a full teardown/reconnect. Collapsed into ONE channel
+// on the cross-platform topic 'taskflow-bc-'+tid (so the web↔mobile bridge is
+// unchanged) that carries BOTH postgres_changes AND all broadcasts. Fewer joins,
+// fewer failure points, one place to heal.
 let _rtChannel = null;
-let _bridgeChannel = null;
 let _presenceChannel = null;   // Supabase Presence: instant online/offline for the green/maroon dots
-// Rooms we've seen a live message for this session. Since Patch Set 2 removed the
-// hand-increment that used to seed window.unreadCounts, reconcile needs another way
-// to know about a room that isn't in DEPTS/_customGroups yet (e.g. a group created
-// on another device, or 'general') — otherwise its unread is never computed.
-const _seenRooms = new Set();
-// De-dupes the author's self-inserted reaction notification against the twin
-// delivery (postgres_changes + broadcast) for the same (message_id, reactor).
-const _reactNotifSeen = new Set();
-// Broadcast on the cross-platform bridge. self:false already stops our own echo, so
+// Broadcast on the single shared channel. self:false already stops our own echo, so
 // every other client (web src:'w', mobile src:'m') receives it once.
 function _bcSend(event, payload) {
-    const msg = { type:'broadcast', event, payload:{ ...payload, src:'m' } };
-    try { (_bridgeChannel || _rtChannel)?.send(msg); } catch {}
+    try { _rtChannel?.send({ type:'broadcast', event, payload:{ ...payload, src:'m' } }); } catch {}
 }
 // Refresh the Realtime socket's auth token from the current session — an expired JWT
 // can silently wedge postgres_changes delivery until a full reconnect. Cheap; call
@@ -105,8 +97,6 @@ function _roleChip(userId) {
     const c = cfg[r] || { bg:'#6b7280', label:r };
     return `<span class="m-role-chip" style="background:${c.bg};">${x(c.label)}</span>`;
 }
-// Sender's designation (job title) for the message-bubble meta line.
-function _udesig(uid) { const u = (_users || []).find(x => x.id === uid); return u?.designation || ''; }
 
 // Standard presence palette (per request): dark green = online, maroon = offline.
 const _ONLINE_GREEN = '#15803d', _OFFLINE_MAROON = '#7f1d1d';
@@ -341,7 +331,6 @@ window.initMobileApp = async function() {
         document.head.appendChild(s);
     }
     _el('root')?.style.setProperty('display', 'none', 'important');
-    window.unreadCounts = window.unreadCounts || {};
     _applyMobTheme();   // System (default) / Light / Dark — user-controlled from the top bar
     _injectCSS();
     _buildShell();
@@ -448,8 +437,10 @@ window.initMobileApp = async function() {
     // OPEN chat, and the Activity feed, so a screen that went stale while the socket
     // was dead catches up instantly instead of waiting for the next poll tick.
     const _foregroundResync = () => {
-        refreshNotificationUI();                       // bell + unread + app badge + feed, together
+        try { _refreshNotifBadge(); } catch (e) {}
+        try { _reconcileUnread(); } catch (e) {}
         try { _pendingRefresh?.(); } catch (e) {}      // re-pull the currently open chat
+        try { _liveRefreshActivity(); } catch (e) {}   // re-pull the Activity/Notifications screen if open
         _ensureRealtimeAlive();
     };
     document.addEventListener('visibilitychange', () => {
@@ -524,7 +515,7 @@ function _loadUsersCache(tid) {
 // Cheap signature of what the home/DM list actually shows, so we only re-render when
 // something visible changed (new/removed staff, renamed, avatar added/changed).
 function _usersSig(list) {
-    return (list||[]).map(u => u.id+'|'+(u.full_name||'')+'|'+(u.designation||'')+'|'+(u.avatar_url ? (u.avatar_url.length + ':' + u.avatar_url.slice(0,32)) : '')).sort().join(',');
+    return (list||[]).map(u => u.id+'|'+(u.full_name||'')+'|'+(u.designation||'')+'|'+(u.avatar_url?'a':'')).sort().join(',');
 }
 async function _refreshUsers(tid) {
     try {
@@ -575,7 +566,6 @@ async function _hydrateAvatars(tid) {
         (_users||[]).forEach(u => { if (byId[u.id] && u.avatar_url !== byId[u.id]) { u.avatar_url = byId[u.id]; changed = true; } });
         if (changed) {
             window.globalUsersCache = _users;
-            try { _saveUsersCache(tid, _users); } catch (e) {}
             const top = _stack[_stack.length-1];
             if (top && (top.screen === 'home' || top.screen === 'dm' || top.screen === 'groupChat')) {
                 try { _render(top.screen, top.params, 'none'); } catch {}   // silent, no second slide-in
@@ -721,20 +711,14 @@ async function _syncRoomSettings() {
         // Try to include members (DB column may not exist yet — fall back gracefully).
         let rs = null;
         const withMembers = await sb.from('room_settings')
-            .select('room_id,name,color,archived,members,admins,updated_at').eq('tenant_id', _tid);
+            .select('room_id,name,color,archived,members,admins').eq('tenant_id', _tid);
         if (withMembers.error) {
             const basic = await sb.from('room_settings')
-                .select('room_id,name,color,archived,updated_at').eq('tenant_id', _tid);
+                .select('room_id,name,color,archived').eq('tenant_id', _tid);
             rs = basic.data;
         } else {
             rs = withMembers.data;
         }
-        // Map room_id → last-modified time so the photo cache can be refreshed
-        // CHANGE-BASED (not just time-based): if the DB row is newer than our cached
-        // photo, re-fetch immediately even within the 30-min / 24h guards. This is
-        // what makes a group photo changed on ANOTHER device (incl. web) converge fast.
-        const _rsUpd = {};
-        (rs || []).forEach(r => { _rsUpd[r.room_id] = r.updated_at ? Date.parse(r.updated_at) : 0; });
         if (rs?.length) {
             rs.forEach(r => {
                 if (r.name)  _lsSet('dept_name_'+r.room_id, r.name);
@@ -756,10 +740,8 @@ async function _syncRoomSettings() {
         await Promise.all(_customGroups.map(async g => {
             const ts = parseInt(_lsGet('dept_photo_ts_'+g.id)||'0');
             const noneTs = parseInt(_lsGet('dept_photo_none_'+g.id)||'0');
-            const dbTs = _rsUpd[g.id] || 0;
-            const stale = dbTs > Math.max(ts, noneTs);   // DB changed after our last fetch → must re-fetch
-            if (!stale && g.photo && ts && (Date.now()-ts < 1800000)) return;          // fresh cache
-            if (!stale && !g.photo && noneTs && (Date.now()-noneTs < 86400000)) return; // known "no photo"
+            if (g.photo && ts && (Date.now()-ts < 1800000)) return;          // fresh cache
+            if (!g.photo && noneTs && (Date.now()-noneTs < 86400000)) return; // known "no photo"
             try {
                 const { data: sd, error } = await sb.storage.from('task-proofs')
                     .createSignedUrl(`group-photos/${_tid}/${g.id}.jpg`, 3600);
@@ -992,20 +974,14 @@ function _buildShell() {
             _swipeRow.style.transform = ''; _swipeRow = null; _swipeLocked = null; return;
         }
         if (_swipeLocked === 'h' && dx > 0) {
-            // Feel: 20px dead-zone before the bubble starts moving, gentle resistance
-            // past the trigger, fires at ~70px with a haptic tick (once, on crossing).
-            const START = 20, TRIGGER = 70, MAX = 84;
-            const shift = Math.min(Math.max(0, dx - START), MAX);
-            _swipeRow.style.transform = `translateX(${shift}px)`;
+            _swipeRow.style.transform = `translateX(${Math.min(dx, 70)}px)`;
             _swipeRow.style.transition = 'none';
-            const nowTrig = dx >= TRIGGER;
-            if (nowTrig && !_swipeTriggered) { try { navigator.vibrate?.(12); } catch(e){} }
-            _swipeTriggered = nowTrig;
+            _swipeTriggered = dx > 45;
         }
     }, { passive: true });
     const _swipeEnd = () => {
         if (!_swipeRow) { _swipeStart = null; _swipeLocked = null; return; }
-        _swipeRow.style.transition = 'transform .28s cubic-bezier(.22,1,.36,1)';   // smooth spring-back
+        _swipeRow.style.transition = 'transform .2s ease';
         _swipeRow.style.transform = '';
         if (_swipeTriggered) {
             const msgId = _swipeRow.id.replace('row-','');
@@ -1090,7 +1066,7 @@ function _feedSwipeEnd(e) {
         el.style.transition = 'transform .18s ease,opacity .18s ease';
         el.style.transform = 'translateX(-100%)'; el.style.opacity = '0';
         setTimeout(() => {
-            try { sb.from('notifications').delete().eq('id', nid).eq('user_id', _uid).then(() => { refreshNotificationUI(); }); } catch (e) {}
+            try { sb.from('notifications').delete().eq('id', nid).eq('user_id', _uid).then(() => { _refreshNotifBadge(); }); } catch (e) {}
             el.remove();
         }, 180);
     } else if (moved) {
@@ -1123,14 +1099,10 @@ window._navTo = async function(screen, params, replace = false) {
     // activity badge from the REMAINING unread chats (sync across all surfaces),
     // and persist "read" for this room's notifications so the DB poll agrees.
     if ((screen === 'groupChat' || screen === 'dm') && params?.room) {
-        // Clear this room instantly, AND persist the read at the DB (room_reads) so
-        // the reconcile floor agrees and it stays cleared across reload/reconnect.
-        console.log('[ROOM READ]', params.room);
         window.unreadCounts = window.unreadCounts || {};
         window.unreadCounts[params.room] = 0;
-        delete _liveUnreadTs[params.room];
-        try { sb.from('room_reads').upsert({ user_id:_uid, room_id:params.room, tenant_id:_tid, last_read_at:new Date().toISOString() }, { onConflict:'user_id,room_id' }).then(()=>{}); } catch(e){}
-        refreshNotificationUI();   // reconcile derives the correct counts (open room forced to 0)
+        _updateAppBadge();
+        _renderBellBadge();   // instant: drop this room's messages from the bell/Activity count now
         // Do NOT clobber _bellCount with _sumUnread() here: _sumUnread counts only
         // MESSAGE unread, so it would wrongly wipe the count coming from reaction/
         // reply/mention notifications (which have no per-chat unread), then the 60s
@@ -1161,10 +1133,6 @@ window._back = function() {
     if (_stack.length > 1) { history.back(); return; }
     const now = Date.now();
     if (now - _lastBackAt < 2000) {
-        if (window.IS_NATIVE && typeof window.__nativeExitApp === 'function') {
-            window.__nativeExitApp();
-            return;
-        }
         window.close();
         setTimeout(() => { window.location.href = 'about:blank'; }, 100);
     } else {
@@ -1463,6 +1431,7 @@ async function _activity(p) {
     const mode = (p && p.mode === 'attention') ? 'attention' : 'timeline';
     const filter = window._afFilter || 'all';
     const senderFilter = window._afSender || '';
+    const dateSort = window._afDateSort || 'newest';
     // Items seen at/before this time render dimmed (~40%); newer ones stay full.
     // Per-surface "last opened" timestamp, captured BEFORE we stamp the new one.
     const _seenKey = mode === 'attention' ? 'bell_seen_ts' : 'activity_seen_ts';
@@ -1496,8 +1465,6 @@ async function _activity(p) {
         logError: (m, d) => window.logger?.sb?.(m, d),
     });
 
-    // v201: reactions come from the DB feed (NFA_buildActivity) now — the v196 local
-    // merge is removed to stop double entries in the Activity feed.
     // ATTENTION view = notification-sourced items only (mentions/replies/reactions/
     // tasks/reminders). Timeline view = everything (also raw messages + task trails,
     // which NFA_buildActivity tags with 'msg:'/'trail:' id prefixes).
@@ -1509,6 +1476,11 @@ async function _activity(p) {
     // Distinct senders present in the (category-filtered) feed, for the sender chips.
     const senders = [...new Set(items.map(it=>it.sender).filter(Boolean))].sort();
     if (senderFilter) items = items.filter(it => it.sender === senderFilter);
+    items.sort((a, b) => {
+        const ta = new Date(_normTs(a.n.created_at)).getTime();
+        const tb = new Date(_normTs(b.n.created_at)).getTime();
+        return dateSort === 'oldest' ? ta - tb : tb - ta;
+    });
 
     const today = _istFmtDate.format(new Date());
     const yest  = _istFmtDate.format(new Date(Date.now()-86400000));
@@ -1582,6 +1554,10 @@ async function _activity(p) {
           <option value="" ${senderFilter?'':'selected'}>👥 Everyone</option>
           ${senders.map(s=>`<option value="${x(s)}" ${senderFilter===s?'selected':''}>${x(s)}</option>`).join('')}
         </select>
+        <select class="af-select" onchange="window._mobAfDateSort(this.value)">
+          <option value="newest" ${dateSort==='newest'?'selected':''}>📅 Newest</option>
+          <option value="oldest" ${dateSort==='oldest'?'selected':''}>📅 Oldest</option>
+        </select>
       </div>
       <div class="af-feed">${feed}</div>
     </div>`;
@@ -1592,7 +1568,7 @@ async function _activity(p) {
     // + each item's id+read state). When the data is unchanged, return the PREVIOUS
     // html verbatim → _render's innerHTML-equality guard skips the swap entirely →
     // no flicker. Times refresh lazily when the item set next changes, like WhatsApp.
-    const sig = mode+'|'+filter+'|'+senderFilter+'|'+items.map(it=>it.n.id+':'+(it.n.is_read?1:0)).join(',');
+    const sig = mode+'|'+filter+'|'+senderFilter+'|'+dateSort+'|'+items.map(it=>it.n.id+':'+(it.n.is_read?1:0)).join(',');
     if (_afCache.sig === sig) return _afCache.html;
     _afCache = { sig, html };
     return html;
@@ -1625,6 +1601,10 @@ function _liveRefreshActivity() {
 }
 window._mobAfFilter = function(v){ window._afFilter = v; window._afSender = ''; window._mobRerenderActivity(); };
 window._mobAfSender = function(v){ window._afSender = v || ''; window._mobRerenderActivity(); };
+window._mobAfDateSort = function(v){
+    window._afDateSort = v === 'oldest' ? 'oldest' : 'newest';
+    window._mobRerenderActivity();
+};
 
 async function _runInlineSearch(q) {
     const box = _el('mSBResults');
@@ -1822,17 +1802,17 @@ function _bubbleHTML(m, reactionsMap, maxLen=150, replyMap={}, roomCtx={}) {
         const isPending = (m.id||'').startsWith('pending-');
         const otherRead = _lsGet('last_read_other_'+rCtx.room);
         const isRead = !isPending && otherRead && otherRead > (m.created_at||'');
-        // Text status (per request): maroon "Sent" → dark-green "Seen".
-        if (isPending) statusTick = '<span class="m-tick pending">Sending…</span>';
-        else if (isRead) statusTick = '<span class="m-tick read">Seen</span>';
-        else statusTick = '<span class="m-tick sent">Sent</span>';
+        // Single tick: maroon = Sent, dark-green = Read (per request).
+        if (isPending) statusTick = '<span class="m-tick pending">⏳</span>';
+        else if (isRead) statusTick = '<span class="m-tick read">✓</span>';
+        else statusTick = '<span class="m-tick sent">✓</span>';
     }
     const roleChip = (!me && rCtx.room) ? _roleChip(m.sender_id) : '';
     return `
       <div class="m-bubble-row ${me?'snt':'rcv'}" id="row-${m.id}" data-time="${m.created_at}">
         ${!me ? _avatarHTML(sender?.avatar_url, nm, 'var(--accent)', 'm-av-tiny') : ''}
         <div class="m-bubble ${me?'snt':'rcv'}">
-          <div class="m-bmeta" data-ts="${m.created_at}" data-label="${x(nm)}${!me && _udesig(m.sender_id) ? ' · '+x(_udesig(m.sender_id)) : ''}">${x(nm)}${!me && _udesig(m.sender_id) ? ' · '+x(_udesig(m.sender_id)) : ''} · ${_ago(m.created_at)}${m.updated_at && m.updated_at > (m.created_at||'').replace(/\..*$/,'.005Z') ? ' <span class="m-edited">edited</span>' : ''}</div>
+          <div class="m-bmeta" data-ts="${m.created_at}" data-label="${x(nm)}">${x(nm)} · ${_ago(m.created_at)}${m.updated_at && m.updated_at > (m.created_at||'').replace(/\..*$/,'.005Z') ? ' <span class="m-edited">edited</span>' : ''}</div>
           ${roleChip ? `<div style="margin:-2px 0 4px;">${roleChip}</div>` : ''}
           <div class="m-btext">${cl}</div>
           ${_chipsHTML(m.id, reactionsMap)}
@@ -1854,7 +1834,7 @@ function _fileCardHTML(actionAttrs, name, ext) {
     else if (['mp4','mov','webm','mkv'].includes(ext)){icon='fa-file-video';col='#db2777';label='Video';}
     else if (['mp3','wav','m4a','ogg'].includes(ext)){icon='fa-file-audio';col='#0891b2';label='Audio';}
     else if (['txt','md'].includes(ext)){icon='fa-file-lines';col='#64748b';label='Text';}
-    return `<div class="m-file-card" ${actionAttrs} style="display:flex;align-items:center;gap:11px;background:var(--bg-sidebar,#f6f8fa);border:1px solid var(--border-color,#e5e7eb);border-radius:13px;padding:9px 11px;margin:4px 0;cursor:pointer;width:270px;max-width:100%;box-sizing:border-box;">
+    return `<div class="m-file-card" ${actionAttrs} style="display:flex;align-items:center;gap:11px;background:var(--bg-sidebar,#f6f8fa);border:1px solid var(--border-color,#e5e7eb);border-radius:13px;padding:9px 11px;margin:4px 0;cursor:pointer;max-width:270px;">
         <div style="width:40px;height:40px;border-radius:10px;background:${col}22;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="fa-solid ${icon}" style="color:${col};font-size:19px;"></i></div>
         <div style="min-width:0;flex:1;">
             <div style="font-size:13px;font-weight:700;color:var(--text-primary,#111);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${x(name)}</div>
@@ -2139,19 +2119,6 @@ async function _thread(p) {
         .is('deleted_at',null).order('created_at',{ascending:true});
 
     const reactionsMap = await _fetchReactions((replies||[]).map(m=>m.id));
-    // Parent preview: sender + first line + 📎 for attachments; "Original message
-    // unavailable" if it was deleted (instead of a blank/stale quote). Fetched fresh
-    // so a since-deleted parent is reflected.
-    let _pv;
-    try {
-        const { data: par } = await sb.from('messages').select('text,sender_id,deleted_at').eq('id', p.id).maybeSingle();
-        if (!par || par.deleted_at) {
-            _pv = { sender: p.sender || '', body: '<em style="opacity:.6;">Original message unavailable</em>' };
-        } else {
-            const plain = String(par.text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-            _pv = { sender: (_uname(par.sender_id) || p.sender || ''), body: plain ? x(_snip(plain, 140)) : '📎 Attachment' };
-        }
-    } catch (e) { _pv = { sender: p.sender || '', body: _renderLinkPills(p.text || '') }; }
     // Header reads "Reply to <Name>" (WhatsApp-style), not the generic "Thread".
     const _who = (p.sender || '').split('·')[0].split('•')[0].trim() || 'message';
 
@@ -2165,8 +2132,8 @@ async function _thread(p) {
       </div>
       <div class="m-msgs" id="mThreadArea">
         <div class="m-thread-parent">
-          <div class="m-bmeta">${x(_pv.sender)}${p.time?` · ${p.time}`:''}</div>
-          <div class="m-btext">${_pv.body}</div>
+          <div class="m-bmeta">${x(p.sender||'')} · ${p.time||''}</div>
+          <div class="m-btext">${_renderLinkPills(p.text||'')}</div>
         </div>
         ${replies?.length ? `<div class="m-thread-sep">${replies.length} ${replies.length===1?'Reply':'Replies'}</div>` : ''}
         ${(replies||[]).map(m=>_bubbleHTML(m,reactionsMap,160)).join('')}
@@ -3255,25 +3222,23 @@ async function _onShellClick(e) {
         case 'openNotifs': await _navTo('notifications', { mode:'attention' }); break;   // bell → attention list
         case 'openActivity': await _navTo('activity'); break;                             // bottom tab → timeline
         case 'goToMsgNotif':
-            if (a.nid) { try { await sb.from('notifications').update({ is_read:true }).eq('id',a.nid).eq('user_id',_uid); } catch(e){} refreshNotificationUI(); }
+            if (a.nid) { try { await sb.from('notifications').update({ is_read:true }).eq('id',a.nid).eq('user_id',_uid); } catch(e){} _refreshNotifBadge(); }
             await _goToMessage(a.mid); break;
         case 'goToTaskNotif':
-            if (a.nid) { try { await sb.from('notifications').update({ is_read:true }).eq('id',a.nid).eq('user_id',_uid); } catch(e){} refreshNotificationUI(); }
+            if (a.nid) { try { await sb.from('notifications').update({ is_read:true }).eq('id',a.nid).eq('user_id',_uid); } catch(e){} _refreshNotifBadge(); }
             await _goToTask(a.tid); break;
         case 'afFilter': window._afFilter = a.f; window._afSender = ''; await window._mobRerenderActivity(); break;
         case 'afSender': window._afSender = a.s || ''; await window._mobRerenderActivity(); break;
         case 'afClear': {
-            if (String(a.nid).startsWith('lrn_')) _removeLRNById(a.nid);   // v199: local reaction card
-            else { try { await sb.from('notifications').delete().eq('id',a.nid).eq('user_id',_uid); } catch(e){} }
-            await refreshNotificationUI();
+            try { await sb.from('notifications').delete().eq('id',a.nid).eq('user_id',_uid); } catch(e){}
+            await _refreshNotifBadge();
             await window._mobRerenderActivity();
             break;
         }
         case 'afClearAll': {
-            try { _saveLRN([]); } catch(e){}   // v199: clear local reaction notifications too
             try { await sb.from('notifications').delete().eq('user_id',_uid).eq('tenant_id',_tid); } catch(e){}
             _clearBellBadge();
-            await refreshNotificationUI();
+            await _refreshNotifBadge();
             await window._mobRerenderActivity();
             break;
         }
@@ -3284,7 +3249,7 @@ async function _onShellClick(e) {
                     .eq('user_id',_uid).eq('is_read',false);
             } catch(e){}
             _clearBellBadge();
-            await refreshNotificationUI();
+            await _refreshNotifBadge();
             await window._mobRerenderActivity();
             break;
         }
@@ -3554,7 +3519,6 @@ function _scheduleRtReconnect() {
         await _refreshRtAuth();   // freshen token so the rebuilt socket authenticates cleanly
         _rtIntentionalClose = true;
         if (_rtChannel) { try { await sb.removeChannel(_rtChannel); } catch {} _rtChannel = null; }
-        if (_bridgeChannel) { try { await sb.removeChannel(_bridgeChannel); } catch {} _bridgeChannel = null; }
         _rtIntentionalClose = false;
         _initRealtime();
     }, delay);
@@ -3562,7 +3526,7 @@ function _scheduleRtReconnect() {
 function _initRealtime() {
   try {
     if (!_tid) { console.error('[mob-rt] Cannot init realtime without tenant_id'); return; }
-    if (_rtChannel || _bridgeChannel) return;
+    if (_rtChannel) return;
     // Make sure the socket carries a fresh session token BEFORE we (re)subscribe, so
     // postgres_changes RLS keeps delivering after the 1h JWT would otherwise expire.
     _refreshRtAuth();
@@ -3601,10 +3565,6 @@ function _initRealtime() {
         _syncRoomSettings().then(() => {
             const top = _stack[_stack.length-1];
             if (top?.screen === 'home') _render('home', null, 'none');   // silent, no slide
-            if (top?.screen === 'groupChat' && top.params?.room === p.payload?.room_id) {
-                const g = _findGroup(p.payload.room_id);
-                _render('groupChat', { ...(top.params || {}), name:g?.name || top.params?.name, color:g?.col || top.params?.color }, 'none');
-            }
         });
     };
     const _hTyping = p => {
@@ -3633,46 +3593,32 @@ function _initRealtime() {
         // Upgrade tick marks to blue (read) for visible sent messages in this room
         const top = _stack[_stack.length-1];
         if (top?.params?.room === p.payload.room) {
-            document.querySelectorAll('.m-tick.sent').forEach(el => { el.className = 'm-tick read'; el.textContent = 'Seen'; });
+            document.querySelectorAll('.m-tick.sent').forEach(el => { el.className = 'm-tick read'; el.textContent = '✓'; });
         }
     };
-    // Cross-platform broadcast bridge. This is the topic web/PWA listens to, so
-    // group photos and DM profile photos move between platforms immediately.
-    _bridgeChannel = sb.channel('taskflow-bc-'+_tid, { config: { broadcast: { self: false } } })
-        .on('broadcast', { event:'new_message' }, _hNewMessage)
-        .on('broadcast', { event:'reaction' }, _hReaction)
-        .on('broadcast', { event:'group_photo' }, _hGroupPhoto)
-        .on('broadcast', { event:'profile_update' }, _hProfileUpdate)
-        .on('broadcast', { event:'typing' }, _hTyping)
-        .on('broadcast', { event:'room_read' }, _hRoomRead)
-        .subscribe(status => {
-            console.log('[mob-bc] channel status='+status);
-            if ((status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') && !_rtIntentionalClose) _scheduleRtReconnect();
-        });
-
-    // Primary mobile DB realtime channel. Keep postgres_changes off taskflow-bc so
-    // web's shared broadcast channel cannot block mobile from registering DB events.
+    // ── ONE channel on a UNIQUE mobile-only topic carrying BOTH postgres_changes
+    //    (durable DB truth) and broadcasts (instant, mobile↔mobile). It MUST NOT reuse
+    //    the web layer's 'taskflow-bc' topic: sb.channel() returns the existing
+    //    already-subscribed channel for a duplicate topic, and postgres_changes
+    //    callbacks can't be added after subscribe() (that crashed _initRealtime in
+    //    v159). Cross-platform message/reaction/notification sync still works both ways
+    //    via postgres_changes on the DB; only web↔mobile typing/read-receipt broadcasts
+    //    (cosmetic) are not bridged. self:false drops our own echo; handlers de-dupe
+    //    against the postgres path (_seenMsgIds, reaction re-fetch) so no double render.
     _rtChannel = sb.channel('mobile-rt-'+_tid, { config: { broadcast: { self: false } } })
-        .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => {
-            console.log('[RAW MESSAGE]', p.new?.room_id, p.new?.sender_id, p.new?.id);
-            console.log('[MESSAGE]', { room: p.new?.room_id, sender: p.new?.sender_id, message: p.new?.id });
-            if (p.new?.room_id) _seenRooms.add(p.new.room_id);   // ensure reconcile computes unread even for rooms not in DEPTS/_customGroups
-            _onNewMessage(p.new);
-        })
+        .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`tenant_id=eq.${_tid}` }, p => _onNewMessage(p.new))
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'reactions', filter:`tenant_id=eq.${_tid}` }, p => _onReactionChange(p.new, 'INSERT'))
         .on('postgres_changes', { event:'DELETE', schema:'public', table:'reactions' }, p => _onReactionChange(p.old, 'DELETE'))
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'task_assignees', filter:`tenant_id=eq.${_tid}` }, p => _onTaskAssigneeUpdate(p.new))
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`user_id=eq.${_uid}` }, p => _onNotifInsert(p.new))
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'profiles', filter:`tenant_id=eq.${_tid}` }, p => _onPresenceUpdate(p.new))
-        // Live group name/photo/member/archive changes (incl. web-originated) → re-sync
-        // + re-fetch photos. Needs room_settings in the realtime publication to fire live;
-        // cold-start still converges via the change-based re-fetch either way. Broadcasts
-        // live on _bridgeChannel (taskflow-bc) so this channel carries postgres_changes only.
-        .on('postgres_changes', { event:'*', schema:'public', table:'room_settings', filter:`tenant_id=eq.${_tid}` }, () => {
-            _syncRoomSettings().then(() => { const t=_stack[_stack.length-1]; if (t?.screen==='home') _render('home', null, 'none'); });
-        })
+        .on('broadcast', { event:'new_message' }, _hNewMessage)
+        .on('broadcast', { event:'reaction' }, _hReaction)
+        .on('broadcast', { event:'group_photo' }, _hGroupPhoto)
+        .on('broadcast', { event:'typing' }, _hTyping)
+        .on('broadcast', { event:'room_read' }, _hRoomRead)
         .subscribe(status => {
-            console.log('[mob-rt] channel status='+status); window.logger?.logRt('mobile-rt', status);
+            console.log('[mob-rt] channel status='+status); window.logger?.logRt('taskflow-bc', status);
             try { _setConnState(); } catch(e){}   // reflect socket health in the top-bar Online/Offline chip
             if (status === 'SUBSCRIBED') {
                 if (_rtReconnectTimer) { clearTimeout(_rtReconnectTimer); _rtReconnectTimer = null; }
@@ -3688,12 +3634,14 @@ function _initRealtime() {
                     // keeps it silent when nothing actually changed.
                     try { _pendingRefresh?.(); } catch (e) {}
                     _refreshPresence();
-                    refreshNotificationUI();   // reconcile → bell, in the synchronized order
+                    _refreshNotifBadge();
+                    _reconcileUnread();
                 }
             }
             if ((status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') && !_rtIntentionalClose) _scheduleRtReconnect();
         });
-    refreshNotificationUI();   // initial DB-derived per-chat unread + bell (synchronized order)
+    _refreshNotifBadge();
+    _reconcileUnread();   // initial DB-derived per-chat unread (survives reload/flap)
     // Realtime badge update already wired via postgres_changes INSERT on notifications — no polling needed
     _initPresence();
   } catch (e) {
@@ -3702,9 +3650,7 @@ function _initRealtime() {
     // app functional meanwhile.
     console.error('[mob-rt] init failed:', e);
     try { if (_rtChannel) sb.removeChannel(_rtChannel); } catch (e2) {}
-    try { if (_bridgeChannel) sb.removeChannel(_bridgeChannel); } catch (e3) {}
     _rtChannel = null;
-    _bridgeChannel = null;
     if (!_rtIntentionalClose) _scheduleRtReconnect();
   }
 }
@@ -3717,12 +3663,6 @@ function _initRealtime() {
 // marks me online for everyone; the socket closing (app closed/killed/offline)
 // makes the server emit a 'leave' so others see me go maroon in real time —
 // something the 60s last_seen poll can't do. self-tracked with my uid.
-function _hProfileUpdate(p) {
-    const row = p?.payload || p;
-    if (!row || row.src === 'm') return;
-    _onPresenceUpdate(row);
-}
-
 function _initPresence() {
     if (!_tid || !_uid) return;
     try { if (_presenceChannel) { sb.removeChannel(_presenceChannel); _presenceChannel = null; } } catch (e) {}
@@ -3762,11 +3702,6 @@ function _onPresenceUpdate(row) {
         if (row.designation !== undefined) u.designation = row.designation;
         try { _saveUsersCache(_tid, _users); } catch (e) {}
     }
-    // Universal avatar sync: a profile photo changed on another device → update the
-    // one cache and repaint every avatar for this user (lists, bubbles, headers,
-    // activity, reply previews). Only fires when the URL actually changed, so the
-    // 60s presence heartbeats don't trigger re-renders.
-    if ('avatar_url' in row) _onAvatarChanged(row.id, row.avatar_url || '');
     document.querySelectorAll('[data-uid="' + row.id + '"]').forEach(el => {
         const holder = el.querySelector('div[style*="position:relative"]');
         if (!holder) return;
@@ -3777,60 +3712,6 @@ function _onPresenceUpdate(row) {
 }
 function _sumUnread() {
     return Object.values(window.unreadCounts || {}).reduce((a, b) => a + (b || 0), 0);
-}
-// ===== v199 PATCH BEGIN (client-side reaction notifications — no DB/RLS dependency) =====
-// Reactions never surfaced in the bell/Activity feed because the notifications-table
-// INSERT is rejected on this deployment (bell "notif" was 0 for weeks across every
-// type). Rather than depend on DB/RLS, store a reaction-to-MY-message notification
-// LOCALLY the moment the reaction event arrives, and surface it in the bell + feed.
-// Purely additive; the DB self-insert path is still attempted and harmless if it works.
-function _lrnKey() { return (_tid || '') + '_local_react_notifs'; }
-function _loadLRN() { try { return JSON.parse(localStorage.getItem(_lrnKey()) || '[]'); } catch (e) { return []; } }
-function _saveLRN(a) { try { localStorage.setItem(_lrnKey(), JSON.stringify(a.slice(-100))); } catch (e) {} }
-function _addLRN(o) {
-    const a = _loadLRN();
-    const k = o.message_id + '|' + o.reactor_id + '|' + o.value;
-    if (a.some(x => (x.message_id + '|' + x.reactor_id + '|' + x.value) === k)) return;   // dedupe twin delivery
-    a.push({ ...o, id: 'lrn_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), is_read: false });
-    _saveLRN(a);
-}
-function _removeLRN(message_id, reactor_id, value) {
-    const a = _loadLRN(), k = message_id + '|' + reactor_id + '|' + value;
-    const n = a.filter(x => (x.message_id + '|' + x.reactor_id + '|' + x.value) !== k);
-    if (n.length !== a.length) _saveLRN(n);
-}
-function _removeLRNById(id) { const a = _loadLRN(); const n = a.filter(x => x.id !== id); if (n.length !== a.length) _saveLRN(n); }
-function _localReactUnread() { return _loadLRN().filter(x => !x.is_read).length; }
-function _markLocalReactRead() { const a = _loadLRN(); let c = false; a.forEach(x => { if (!x.is_read) { x.is_read = true; c = true; } }); if (c) _saveLRN(a); }
-// Feed items in the SAME shape NFA_buildActivity emits, for the Activity screen.
-function _localReactFeedItems() {
-    return _loadLRN().map(x => ({
-        n: { id: x.id, message: x.message, message_id: x.message_id, created_at: x.created_at, is_read: x.is_read },
-        cat: 'chats', cls: 'blue', badge: '❤️ Reaction', emoji: '❤️',
-        act: { k: 'msg', id: x.message_id }, sender: x.reactor_name || ''
-    }));
-}
-// ===== v199 PATCH END =====
-// ONE canonical avatar-change handler (universal realtime avatars). Updates the
-// single source (_users / globalUsersCache / persisted cache) and repaints avatars.
-// profiles.avatar_url is the source of truth everywhere; _avatarHTML reads from it.
-let _avatarRepaintT = null;
-function _onAvatarChanged(uid, newUrl) {
-    const u = _users.find(x => x.id === uid);
-    if (u) { if ((u.avatar_url || '') === newUrl) return; u.avatar_url = newUrl; }   // no change → skip
-    else if (!newUrl) return;
-    const gc = window.globalUsersCache?.find(x => x.id === uid);
-    if (gc) gc.avatar_url = newUrl;
-    if (uid === _uid && window.currentUser) window.currentUser.avatar_url = newUrl;
-    try { _saveUsersCache(_tid, _users); } catch (e) {}
-    // Debounced re-render of the current safe screen so avatars refresh app-wide,
-    // including the currently-open DM/group chat header and visible message bubbles.
-    clearTimeout(_avatarRepaintT);
-    _avatarRepaintT = setTimeout(() => {
-        const top = _stack[_stack.length - 1];
-        const SAFE = ['home', 'activity', 'settings', 'members', 'groupMgmt', 'marks', 'tasks', 'groupChat', 'dm'];
-        if (top && SAFE.includes(top.screen)) { try { _render(top.screen, top.params); } catch (e) {} }
-    }, 350);
 }
 // Persist "read" for a room the user just opened: notifications rows carry only a
 // message_id, so resolve the room's recent message ids first. Fire-and-forget —
@@ -3848,7 +3729,7 @@ async function _markRoomNotifsRead(room) {
     } catch (e) {}
     // Recompute the bell/activity/app badge from the DB truth AFTER marking read,
     // so the count actually goes down on chat-open instead of lagging a poll cycle.
-    try { await refreshNotificationUI(); } catch (e) {}
+    try { await _refreshNotifBadge(); } catch (e) {}
 }
 // In-app alert when a notification row lands (reaction/reply/task/reminder for
 // ME). Always refreshes the badge + feed. Also shows a toast + sound UNLESS:
@@ -3859,8 +3740,10 @@ async function _markRoomNotifsRead(room) {
 // attention stream only — the gap where a reaction/task gave NO mobile alert.
 function _onNotifInsert(n) {
     console.log('[act] notif-recv type='+(n&&n.type)+' mid='+(n&&n.message_id));   // confirms the notifications realtime channel fired
+    _refreshNotifBadge();                 // bell (attention) recomputed from DB
     _activityHasNew = true;               // it also shows in the timeline → light the dot
-    refreshNotificationUI();              // bell + per-chat unread + app badge + feed, together
+    _renderBellBadge();
+    _liveRefreshActivity();
     if (!n || !n.message) return;
     if (n.type === 'mention') return;                 // de-dup with _onNewMessage heads-up
     if (window._isDND?.()) return;                    // Do Not Disturb — silent
@@ -3878,38 +3761,6 @@ async function _refreshNotifBadge() {
     _updateAppBadge();
     _liveRefreshActivity();   // if the Activity screen is open, refresh it live
 }
-// Consolidated notification-surface refresh. Keeps the bell badge, per-chat message
-// unread, the app-icon badge and the Activity screen updating TOGETHER, so the bell
-// can never move independently of the counts/feed (the root of "bell sometimes
-// right, mostly wrong"). Call this from event handlers instead of a bare
-// _renderBellBadge(). NOTE: never call it from inside _refreshNotifBadge or
-// _reconcileUnread themselves — that would recurse.
-// ===== v193 PATCH BEGIN (PATCH 11: coalesce duplicate refreshes) =====
-// Many event paths (realtime message/reaction, poll, foreground resync) can fire
-// refreshNotificationUI() in a burst. Overlapping runs each hit the DB reconcile
-// and re-render — wasteful and the source of the doubled [BELL]/[UNREAD] bursts.
-// Guard so concurrent calls collapse into ONE run, with a single trailing re-run
-// if a call arrived while a run was in flight (no missed update). Same behaviour,
-// far fewer redundant reconciles.
-let _notifRefreshing = false, _notifRefreshPending = false;
-async function refreshNotificationUI() {
-    if (_notifRefreshing) { _notifRefreshPending = true; return; }
-    _notifRefreshing = true;
-    try {
-        do {
-            _notifRefreshPending = false;
-            // ORDER MATTERS (Patch 4): reconcile the unread map FIRST, then paint the
-            // bell — the bell total includes summed message unread, so painting it
-            // before reconciliation would show a stale number for one frame.
-            await _reconcileUnread();
-            await _refreshNotifBadge();
-            _updateAppBadge();
-            _liveRefreshActivity();
-        } while (_notifRefreshPending);   // a call landed mid-run → run once more
-    } catch (err) { console.error('refreshNotificationUI failed:', err); }
-    finally { _notifRefreshing = false; }
-}
-// ===== v193 PATCH END =====
 // Reconcile per-chat MESSAGE unread from the DB (room_reads + messages) — the
 // durable source of truth, so counts are correct after reload, realtime flaps
 // and reconnects (not just from ephemeral realtime increments). Only counts
@@ -3924,10 +3775,6 @@ async function _reconcileUnread() {
         // group not in _customGroups) — otherwise the allow-list drops its unread on
         // the next reconcile, so group counts flashed then vanished from the bell.
         Object.keys(window.unreadCounts || {}).forEach(rid => rooms.add(rid));
-        // Rooms seen live this session (incl. groups not in DEPTS/_customGroups) — the
-        // seed the removed hand-increment used to provide (Patch Set 2 regression fix).
-        _seenRooms.forEach(rid => rooms.add(rid));
-        console.log('[ROOM IDS]', [...rooms]);
         const { perRoom } = await window.NFA_computeRoomUnread(sb, { uid: _uid, tid: _tid, rooms });
         const top = _stack[_stack.length - 1];
         const openRoom = (top?.screen === 'groupChat' || top?.screen === 'dm') ? top.params?.room : null;
@@ -3942,19 +3789,7 @@ async function _reconcileUnread() {
         const allRooms = new Set([...Object.keys(perRoom), ...Object.keys(window.unreadCounts || {})]);
         allRooms.forEach(rid => { merged[rid] = Math.max(perRoom[rid] || 0, window.unreadCounts?.[rid] || 0); });
         if (openRoom) { merged[openRoom] = 0; delete _liveUnreadTs[openRoom]; }
-        // Max-merge floor: reconcile can only ADD counts the live path missed; it
-        // never wipes a live increment (that's what made group badges vanish).
         window.unreadCounts = merged;
-        console.log('[UNREAD]', { rooms: Object.keys(window.unreadCounts || {}).length, counts: window.unreadCounts });
-        // AUTO-DIAGNOSTIC (Patch 6 follow-up): a GROUP that has unread but is NOT in
-        // the rendered group list (_customGroups ∪ DEPTS) has NOWHERE to show a badge
-        // — the exact "one group never gets a badge" symptom. Surface it explicitly.
-        try {
-            const listed = new Set([...DEPTS, ..._customGroups].map(g => g.id));
-            const orphans = Object.keys(window.unreadCounts).filter(rid =>
-                !rid.startsWith('dm_') && (window.unreadCounts[rid] > 0) && !listed.has(rid));
-            if (orphans.length) console.warn('[UNREAD ORPHAN GROUPS]', orphans, 'listed=', [..._customGroups.map(g=>g.id)]);
-        } catch (e) {}
         _updateAppBadge();
         _renderBellBadge();   // bell/Activity reflect the reconciled per-room totals (no double, DMs included)
         // SURGICAL badge update (no screen re-render / no slide): patch each visible
@@ -3971,7 +3806,8 @@ async function _reconcileUnread() {
 // it also re-pulls the open chat so a new message still lands within the poll
 // window. Skipped while backgrounded to save battery/network.
 async function _fallbackPoll() {
-    await refreshNotificationUI();   // reconcile → bell, synchronized order
+    _refreshNotifBadge();
+    _reconcileUnread();
     if (document.visibilityState !== 'visible') return;
     // Incremental catch-up for the OPEN chat, ALWAYS (not only when the socket looks
     // dead): the mobile socket frequently reports state='joined' while silently
@@ -4048,18 +3884,12 @@ function _scheduleFallback() {
 // PLUS all unread chat messages (DM + group) — a total-unread indicator, as
 // requested (WhatsApp/Slack style). Chat rows still show each chat's own count;
 // tapping the bell opens the attention list. room_reads counts each message once.
-// v199: + locally-stored reaction notifications (bypasses the RLS-blocked table).
-// v201: the DB notification path for reactions now works (reactions in the realtime
-// publication + server trigger creates the row), so the v196 client-side local store
-// is REMOVED from the count — keeping it double-counted every reaction (bell + feed).
 function _bellTotal() { return _bellCount + _sumUnread(); }
 function _renderBellBadge() {
     // 1) BELL (top-right) — the attention NUMBER.
     const badge = _el('mNotifBadge');
     if (badge) {
         const bt = _bellTotal();   // attention + all unread messages (DM + group), WhatsApp/Slack style
-        // Truthful trace: the RENDERED bell = notifications + summed message unread.
-        console.log('[BELL]', { rendered: bt, notif: _bellCount, msgUnread: _sumUnread() });
         if (bt > 0) { badge.textContent = bt > 9 ? '9+' : String(bt); badge.style.display = 'flex'; }
         else badge.style.display = 'none';
     }
@@ -4228,18 +4058,19 @@ async function _onNewMessage(m) {
                     console.log('[act] reply-recv thread-link INSERTED');
                 }
             }
-            // (A reply to MY message creates a notification; the single
-            // refreshNotificationUI() below covers the bell — no separate call.)
+            // A reply to MY message creates a notification — refresh the bell now
+            // (real time) rather than on the 15s poll. Harmless no-op if not for me.
+            try { _refreshNotifBadge(); } catch (e) {}
         }
-        // INSTANT per-chat badge (WhatsApp-style): bump immediately so the group/DM
-        // badge appears the moment the realtime event lands — do not wait for the DB
-        // reconcile (which reads only the newest tenant messages and can miss a busy
-        // tenant's quiet room). reconcile still runs below as a max-merge floor.
+        // Per-chat unread badge (this chat isn't open) — WhatsApp-style count.
+        // Runs for every received message (incl. replies) so the badges + bell
+        // update the instant the realtime event arrives.
         window.unreadCounts = window.unreadCounts || {};
         window.unreadCounts[m.room_id] = (window.unreadCounts[m.room_id] || 0) + 1;
-        _liveUnreadTs[m.room_id] = Date.now();  // grace: reconcile must not wipe this before replication catches up
-        _patchHomeUnread(m.room_id, m);         // paint the new badge + last-message preview now
-        _activityHasNew = true; refreshNotificationUI();   // reconcile (floor) + bell + feed
+        _liveUnreadTs[m.room_id] = Date.now();  // grace marker: don't let the DB reconcile wipe this before replication catches up
+        _updateAppBadge();                      // per-chat unread bumped (app icon = messages + attention)
+        _patchHomeUnread(m.room_id, m);         // live badge + preview on the chat-list row (no full re-render/flash)
+        _activityHasNew = true; _renderBellBadge();   // a plain message lights the Activity "new" DOT, NOT the bell
 
         if (!m.parent_message_id) {
             const sender = _users.find(u=>u.id===m.sender_id);
@@ -4248,8 +4079,11 @@ async function _onNewMessage(m) {
             const isDM = m.room_id?.startsWith('dm_');
             const roomLabel = dept ? dept.name : (isDM ? 'a direct message' : 'a group');
             if (!(window._isDND?.()) && !mentionsMe) _showHeadsUp(m, name, isDM, dept);
-            // (The notifications ROW is created server-side by send-push; the
-            // refreshNotificationUI() above already refreshed the bell — no extra call.)
+            // The notifications ROW is now created server-side by the send-push edge
+            // function (reliable for online/offline/reconnect) — see plan.md Phase 1.
+            // Just refresh the DB-backed badge; the realtime notifications INSERT sub
+            // also fires _refreshNotifBadge when the server row lands.
+            _refreshNotifBadge();
         }
         return;
     }
@@ -4287,59 +4121,11 @@ async function _onReactionChange(r, eventType) {
     // for a chat that isn't currently open is still cached and shows instantly when
     // the user opens/scrolls to that message (no wait for a DB round-trip).
     _saveReactionEntry(r.message_id, r.value, r.type, r.user_id, isDelete);
-    // A reaction to MY message must show in MY bell + Activity feed. The reactor
-    // CANNOT reliably insert that row (cross-user insert is RLS-blocked unless a
-    // special policy/trigger is applied). So the AUTHOR self-inserts it here, on
-    // receiving the reaction event — a SELF insert (user_id = me) is always allowed
-    // by default RLS, so reactions work with NO migration. Deduped per (message,
-    // reactor) so the twin delivery (postgres_changes + broadcast) inserts once.
-    if (!isDelete && r.user_id && r.user_id !== _uid) {
-        // Key on message + reactor + VALUE so the twin delivery (postgres_changes +
-        // broadcast) of the SAME reaction dedupes, but different emojis (👍 ❤️ 😂)
-        // from the same person each notify.
-        const _rk = r.message_id + '|' + r.user_id + '|' + (r.value || '');
-        if (!_reactNotifSeen.has(_rk)) {
-            _reactNotifSeen.add(_rk);
-            if (_reactNotifSeen.size > 400) _reactNotifSeen.delete(_reactNotifSeen.values().next().value);
-            (async () => {
-                try {
-                    const { data: msg } = await sb.from('messages').select('sender_id,room_id').eq('id', r.message_id).maybeSingle();
-                    console.log('[v194][REACTION] recv mine=' + (msg?.sender_id === _uid) + ' mid=' + r.message_id + ' from=' + r.user_id);
-                    if (msg?.sender_id === _uid) {   // only if the reacted message is MINE
-                        const reactor = _uname(r.user_id) || 'Someone';
-                        // v201: fallback self-insert for deployments WITHOUT the server
-                        // reaction trigger. Upsert-ignore so it's a silent no-op when the
-                        // trigger already created the row (no more duplicate-key errors,
-                        // and no double count — the local store is gone).
-                        await sb.from('notifications').upsert({
-                            user_id: _uid, type: 'reaction',
-                            message: `${r.value || '👍'} ${reactor} reacted to your message`,
-                            message_id: r.message_id, tenant_id: _tid, is_read: false
-                        }, { onConflict: 'user_id,message_id,type', ignoreDuplicates: true });
-                    }
-                } catch (e) { /* trigger already created it / offline — ignore */ }
-                try { refreshNotificationUI(); } catch (e) {}
-            })();
-        } else { try { refreshNotificationUI(); } catch (e) {} }
-    }
-    // ===== v193 PATCH BEGIN (PATCH 13: reaction removal → remove notification) =====
-    // When someone UN-reacts to my message, delete the reaction notification I
-    // self-inserted (self-delete, RLS-safe) and clear the dedupe key so a re-add
-    // notifies again. Keeps the bell + Activity feed in sync with the live reaction.
-    if (isDelete && r.user_id && r.user_id !== _uid) {
-        _reactNotifSeen.delete(r.message_id + '|' + r.user_id + '|' + (r.value || ''));
-        (async () => {
-            try {
-                const { data: msg } = await sb.from('messages').select('sender_id').eq('id', r.message_id).maybeSingle();
-                if (msg?.sender_id === _uid) {
-                    await sb.from('notifications').delete()
-                        .eq('user_id', _uid).eq('message_id', r.message_id).eq('type', 'reaction');
-                }
-            } catch (e) { /* offline — ignore */ }
-            try { refreshNotificationUI(); } catch (e) {}
-        })();
-    }
-    // ===== v193 PATCH END =====
+    // A reaction to MY message creates a notification for me. That reaction event
+    // arrives in real time (unlike the notifications channel, which may not be in
+    // the realtime publication) — so re-pull the bell now instead of waiting up to
+    // 15s for the fallback poll. Only for others' reactions (not my own toggles).
+    if (!isDelete && r.user_id && r.user_id !== _uid) { try { _refreshNotifBadge(); } catch (e) {} }
     if (!document.getElementById('row-'+r.message_id)) return;   // not on screen — cached above, render later
     // Render through the SAME reliable path the sender uses (re-fetch from DB +
     // cache, canonical placement, scroll-into-view). This replaced a fragile
@@ -4458,11 +4244,12 @@ function _wireScreen(screen, params, container) {
         catch(e) { _toast('Could not read that image','err'); return; }
         const { error: dbErr } = await sb.from('profiles').update({ avatar_url: dataUrl }).eq('id',_uid);
         if (dbErr) { _toast('Could not save photo: '+dbErr.message,'err'); return; }
-        _bcSend('profile_update', { id:_uid, tenant_id:_tid, full_name:window.currentUser?.full_name || window.currentUser?.email, avatar_url:dataUrl });
-        // Route through the one avatar coordinator: updates cache + currentUser and
-        // repaints everywhere. The DB update also fans out to other devices via the
-        // profiles UPDATE realtime → _onPresenceUpdate → _onAvatarChanged.
-        _onAvatarChanged(_uid, dataUrl);
+        const cached = _users.find(u=>u.id===_uid);
+        if (cached) cached.avatar_url = dataUrl;
+        if (window.globalUsersCache) {
+            const gc = window.globalUsersCache.find(u=>u.id===_uid);
+            if (gc) gc.avatar_url = dataUrl;
+        }
         _toast('Photo updated ✓');
         await _navTo('settings',null,true);
     };
@@ -4485,10 +4272,6 @@ function _wireScreen(screen, params, container) {
                 _lsSet('dept_photo_'+deptId, dataUrl);
                 _lsSet('dept_photo_ts_'+deptId, String(Date.now()));
                 try { localStorage.removeItem(_lsKey('dept_photo_none_'+deptId)); } catch(e){}
-                // CHANGE-BASED SYNC: bump room_settings.updated_at so every other device
-                // (incl. cold-start and web-originated) detects the photo changed and
-                // re-fetches — the room_settings realtime UPDATE also fires live.
-                try { await sb.from('room_settings').upsert({ room_id:deptId, tenant_id:_tid, updated_at:new Date().toISOString() }, { onConflict:'room_id,tenant_id' }); } catch(e){}
                 // Broadcast so other devices drop their cache and re-fetch the new photo.
                 _bcSend('group_photo', { room_id:deptId });
             } else {
@@ -4633,11 +4416,7 @@ function _appendOwnMessage(areaId, m, maxLen=150) {
     if (!area) return;
     area.insertAdjacentHTML('beforeend', _bubbleHTML(m, {}, maxLen));
     area.scrollTo({ top: area.scrollHeight, behavior:'smooth' });
-    // Update room cache — but NEVER cache a REPLY in the main-list cache: the main
-    // list only shows top-level messages (parent_message_id IS NULL), so caching a
-    // reply here made it flash as a top-level bubble in the group chat until the next
-    // DB refetch dropped it. Replies live only under their parent (thread + count).
-    if (m.parent_message_id) return;
+    // Update room cache
     const cached = _loadRoomCache(m.room_id) || [];
     cached.push(m);
     _saveRoomCache(m.room_id, cached);
@@ -4953,18 +4732,13 @@ function _showHeadsUp(m, name, isDM, dept, isMention) {
     const avatar = isDM
         ? _avatarHTML(sender?.avatar_url, name, 'var(--accent)', 'm-av-sm')
         : _avatarHTML(_lsGet('dept_photo_'+m.room_id) || dept?.photo, dept?.name || name, dept?.col || 'var(--accent)', 'm-av-sm sq');
-    // Same shape as the OS push (WhatsApp-style):
-    //   DM    → title = sender,      body = message
-    //   Group → title = group name,  body = "Sender: message"
-    const groupName = dept?.name || 'Group';
     const line1 = isMention
-        ? `📣 ${x(name)} mentioned you${isDM ? '' : ' · ' + x(groupName)}`
-        : (isDM ? x(name) : x(groupName));
-    const bodyTxt = isDM ? x(_snip(m.text, 90)) : `${x(name)}: ${x(_snip(m.text, 90))}`;
+        ? `📣 ${x(name)} mentioned you${isDM ? '' : ' · ' + x(dept?.name || 'Group')}`
+        : (isDM ? x(name) : `${x(name)} · ${x(dept?.name || 'Group')}`);
     el.innerHTML =
         `<div class="m-hu-ico">${avatar}</div>
          <div class="m-hu-txt"><div class="m-hu-title">${line1}</div>
-           <div class="m-hu-body">${isMention ? '📣 ' : ''}${bodyTxt}</div></div>`;
+           <div class="m-hu-body">${x(_snip(m.text, 90))}</div></div>`;
     // Tap → open the chat.
     el.onclick = () => {
         _dismissHeadsUp();
@@ -5124,7 +4898,7 @@ html[data-theme="dark"] .mn-btn.active i{background:rgba(129,140,248,.2);}
 .m-bubble-row.snt{justify-content:flex-end;}
 .m-bubble-row.rcv{justify-content:flex-start;}
 .m-bubble{width:90%;max-width:90%;min-width:0;padding:12px 15px 13px;border-radius:14px;position:relative;
-  font-size:16px;line-height:1.5;word-break:break-word;overflow:hidden;
+  font-size:16px;line-height:1.5;word-break:break-word;
   background:var(--card-bg,#fff);box-shadow:var(--card-shadow,0 2px 8px rgba(0,0,0,.07));
   border:1px solid var(--border-color,#e5e7eb);
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
@@ -5212,9 +4986,8 @@ html[data-theme="dark"] .nf-ic{background:#1e1e1e;}
 }
 .m-link-pill{white-space:normal!important;word-break:break-word;max-width:100%;height:auto!important;text-align:left;}
 .m-btext{font-size:18px;line-height:1.55;color:var(--text-primary,#111);
-  word-break:break-word;overflow-wrap:anywhere;min-width:0;max-width:100%;
+  word-break:break-word;overflow-wrap:break-word;
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
-.m-btext .m-img-preview,.m-btext .m-file-card,.m-btext img{max-width:100%;box-sizing:border-box;}
 .m-divider{text-align:center;font-size:11px;color:var(--text-secondary);padding:8px 0;}
 .m-bubble-pending{opacity:.55;transition:opacity .3s ease;}
 .m-pending-indicator{display:flex;justify-content:flex-end;margin-top:4px;color:var(--text-secondary,#9ca3af);}
@@ -5426,10 +5199,10 @@ html[data-theme="dark"] #mMentionBox{background:#1e1e1e;border-color:#333;}
 
 /* Message status ticks */
 .m-status-row{display:flex;justify-content:flex-end;margin-top:3px;}
-.m-tick{font-size:10.5px;letter-spacing:.3px;text-transform:uppercase;}
-.m-tick.sent{color:#7b1e3a;font-weight:600;}
-.m-tick.read{color:#166534;font-weight:700;}
-.m-tick.pending{color:#7b1e3a;font-weight:600;text-transform:none;}
+.m-tick{font-size:13px;font-weight:800;}
+.m-tick.sent{color:#7f1d1d;}
+.m-tick.read{color:#15803d;}
+.m-tick.pending{font-size:12px;color:#7f1d1d;}
 
 /* Typing indicator */
 .m-typing-area{min-height:0;padding:0 14px;transition:min-height .2s;}

@@ -15,6 +15,8 @@ import { sb } from './shared.js';
  */
 
 const MOBILE_TASK_MAX_WIDTH = 768;
+const NILTASK_TASK_UI_VERSION = 'v205';
+window.NILTASK_TASK_UI_VERSION = NILTASK_TASK_UI_VERSION;
 const CLOSED_STATUSES = new Set(['transferred', 'cancelled']);
 
 let originalMobileNavigate = null;
@@ -22,6 +24,20 @@ let mobileTaskObserver = null;
 let mobileTaskRenderLock = false;
 let currentMobileTaskScreen = null;
 let currentMobileTaskParams = null;
+let mobileTaskFilter = localStorage.getItem('nmt_task_filter') || 'all';
+let mobileTaskSort = localStorage.getItem('nmt_task_sort') || 'created_desc';
+
+window.nmtSetTaskFilter = function(value) {
+    mobileTaskFilter = value || 'all';
+    try { localStorage.setItem('nmt_task_filter', mobileTaskFilter); } catch (e) {}
+    renderMobileTasks();
+};
+
+window.nmtSetTaskSort = function(value) {
+    mobileTaskSort = value || 'created_desc';
+    try { localStorage.setItem('nmt_task_sort', mobileTaskSort); } catch (e) {}
+    renderMobileTasks();
+};
 
 /* -------------------------------------------------------------------------- */
 /* Context helpers                                                            */
@@ -1216,7 +1232,7 @@ async function fetchTaskTrails(taskId) {
 async function fetchTaskExtensionRequests(taskId) {
     const { data, error } = await sb
         .from('task_extension_requests')
-        .select('id,task_id,assignee_id,requested_deadline,reason,status,created_at,profiles!assignee_id(full_name,email)')
+        .select('id,task_id,assignee_id,requested_deadline,reason,status,created_at,decided_by,decision_reason,decided_at')
         .eq('tenant_id', getTenantId())
         .eq('task_id', taskId)
         .order('created_at', { ascending: false });
@@ -2615,104 +2631,17 @@ function renderPrimaryCardAction(
     isCreator,
     submittedCount
 ) {
-    if (myAssignment) {
-        const status =
-            getEffectiveStatus(myAssignment);
-
-        if (status === 'pending_ack') {
-            return `
-                <button
-                    type="button"
-                    class="nmt-button primary"
-                    data-nmt-action="acknowledge"
-                    data-task="${escapeAttribute(task.id)}"
-                    data-assignee="${escapeAttribute(getCurrentUserId())}"
-                >
-                    <i class="fa-solid fa-check"></i>
-                    Acknowledge
-                </button>
-            `;
-        }
-
-        if (status === 'acknowledged') {
-            return `
-                <button
-                    type="button"
-                    class="nmt-button primary"
-                    data-nmt-action="start"
-                    data-task="${escapeAttribute(task.id)}"
-                    data-assignee="${escapeAttribute(getCurrentUserId())}"
-                >
-                    <i class="fa-solid fa-play"></i>
-                    Start Work
-                </button>
-            `;
-        }
-
-        if (
-            status === 'in_progress' ||
-            status === 'needs_review'
-        ) {
-            return `
-                <button
-                    type="button"
-                    class="nmt-button secondary"
-                    data-nmt-action="request-extension"
-                    data-task="${escapeAttribute(task.id)}"
-                    data-assignee="${escapeAttribute(getCurrentUserId())}"
-                >
-                    <i class="fa-solid fa-calendar-plus"></i>
-                    Extension
-                </button>
-
-                <button
-                    type="button"
-                    class="nmt-button primary"
-                    data-nmt-action="submit"
-                    data-task="${escapeAttribute(task.id)}"
-                    data-assignee="${escapeAttribute(getCurrentUserId())}"
-                    data-proof="${task.require_proof ? '1' : '0'}"
-                >
-                    <i class="fa-solid fa-paper-plane"></i>
-                    ${
-                        status === 'needs_review'
-                            ? 'Resubmit'
-                            : 'Submit for Review'
-                    }
-                </button>
-            `;
-        }
-
-        if (status === 'submitted') {
-            return `
-                <button
-                    type="button"
-                    class="nmt-button secondary"
-                    style="flex:1;opacity:.7;"
-                    disabled
-                >
-                    <i class="fa-regular fa-clock"></i>
-                    Waiting for Review
-                </button>
-            `;
-        }
-    }
-
     if (isCreator) {
         return `
             <button
                 type="button"
                 class="nmt-button primary"
-                data-nmt-action="open-detail"
+                data-nmt-action="manage"
                 data-task="${escapeAttribute(task.id)}"
                 data-title="${escapeAttribute(task.title)}"
             >
                 <i class="fa-solid fa-list-check"></i>
-                ${
-                    submittedCount
-                        ? `Review ${submittedCount}`
-                        : 'Manage Task'
-                }
+                ${submittedCount ? `Manage · ${submittedCount} Review` : 'Manage Task'}
             </button>
         `;
     }
@@ -2730,75 +2659,8 @@ function renderPrimaryCardAction(
         </button>
     `;
 }
-
-function renderCardSecondaryActions(
-    task,
-    myAssignment,
-    isCreator
-) {
-    const buttons = [];
-
-    if (myAssignment) {
-        const status =
-            getEffectiveStatus(myAssignment);
-
-        if (
-            status === 'in_progress' ||
-            status === 'needs_review'
-        ) {
-            buttons.push(`
-                <button
-                    type="button"
-                    class="nmt-button secondary icon"
-                    data-nmt-action="progress"
-                    data-task="${escapeAttribute(task.id)}"
-                    title="Progress Update"
-                >
-                    <i class="fa-solid fa-comment-dots"></i>
-                </button>
-            `);
-
-            buttons.push(`
-                <button
-                    type="button"
-                    class="nmt-button secondary icon"
-                    data-nmt-action="upload"
-                    data-task="${escapeAttribute(task.id)}"
-                    title="Upload Proof"
-                >
-                    <i class="fa-solid fa-paperclip"></i>
-                </button>
-            `);
-
-            buttons.push(`
-                <button
-                    type="button"
-                    class="nmt-button secondary icon"
-                    data-nmt-action="delegate"
-                    data-task="${escapeAttribute(task.id)}"
-                    title="Delegate"
-                >
-                    <i class="fa-solid fa-user-plus"></i>
-                </button>
-            `);
-        }
-    }
-
-    if (isCreator) {
-        buttons.push(`
-            <button
-                type="button"
-                class="nmt-button secondary icon"
-                data-nmt-action="manage"
-                data-task="${escapeAttribute(task.id)}"
-                title="Manage Task"
-            >
-                <i class="fa-solid fa-ellipsis-vertical"></i>
-            </button>
-        `);
-    }
-
-    return buttons.join('');
+function renderCardSecondaryActions() {
+    return '';
 }
 
 async function renderMobileTasks() {
@@ -2871,22 +2733,61 @@ async function renderMobileTasks() {
             .push(assignment);
     }
 
-    const visibleTasks = (tasks || []).filter(
+    let visibleTasks = (tasks || []).filter(
         task => {
-            const taskAssignments =
-                assignmentsByTask[task.id] || [];
-
+            const taskAssignments = assignmentsByTask[task.id] || [];
             return (
-                task.assigned_by ===
-                    getCurrentUserId() ||
+                task.assigned_by === getCurrentUserId() ||
                 taskAssignments.some(
-                    assignment =>
-                        assignment.assignee_id ===
-                        getCurrentUserId()
+                    assignment => assignment.assignee_id === getCurrentUserId()
                 )
             );
         }
     );
+
+    visibleTasks = visibleTasks.filter(task => {
+        const taskAssignments = assignmentsByTask[task.id] || [];
+        const summary = summariseAssignments(taskAssignments);
+        const myAssignment = taskAssignments.find(
+            assignment => assignment.assignee_id === getCurrentUserId()
+        );
+        const isCreator = task.assigned_by === getCurrentUserId();
+        const isCompleted = summary.total > 0 && summary.completed === summary.total;
+
+        switch (mobileTaskFilter) {
+            case 'created_by_me':
+                return isCreator;
+            case 'assigned_to_me':
+                return Boolean(myAssignment);
+            case 'pending':
+                return !isCompleted;
+            case 'completed':
+                return isCompleted;
+            case 'overdue':
+                return isOverdue(task.deadline) && !isCompleted;
+            default:
+                return true;
+        }
+    });
+
+    visibleTasks.sort((a, b) => {
+        if (mobileTaskSort === 'created_asc') {
+            return new Date(a.created_at) - new Date(b.created_at);
+        }
+        if (mobileTaskSort === 'deadline_asc') {
+            if (!a.deadline && !b.deadline) return 0;
+            if (!a.deadline) return 1;
+            if (!b.deadline) return -1;
+            return new Date(a.deadline) - new Date(b.deadline);
+        }
+        if (mobileTaskSort === 'deadline_desc') {
+            if (!a.deadline && !b.deadline) return 0;
+            if (!a.deadline) return 1;
+            if (!b.deadline) return -1;
+            return new Date(b.deadline) - new Date(a.deadline);
+        }
+        return new Date(b.created_at) - new Date(a.created_at);
+    });
 
     const cards = visibleTasks.map((task, taskIndex) => {
         const taskAssignments =
@@ -3105,30 +3006,13 @@ async function renderMobileTasks() {
                         </div>
                     </div>
 
-                    <div class="nmt-action-row">
+                    <div class="nmt-action-row nmt-single-action">
                         ${renderPrimaryCardAction(
                             task,
                             myAssignment,
                             isCreator,
                             submittedCount
                         )}
-
-                        ${renderCardSecondaryActions(
-                            task,
-                            myAssignment,
-                            isCreator
-                        )}
-
-                        <button
-                            type="button"
-                            class="nmt-button secondary icon"
-                            data-nmt-action="open-detail"
-                            data-task="${escapeAttribute(task.id)}"
-                            data-title="${escapeAttribute(task.title)}"
-                            title="Task Details"
-                        >
-                            <i class="fa-solid fa-chevron-right"></i>
-                        </button>
                     </div>
                 </div>
             </article>
@@ -3140,7 +3024,7 @@ async function renderMobileTasks() {
             <div class="nmt-screen">
                 <div class="nmt-header">
                     <div class="nmt-header-title">
-                        Tasks
+                        Tasks <span style="font-size:10px;opacity:.65;font-weight:800;">${NILTASK_TASK_UI_VERSION}</span>
                     </div>
 
                     <button
@@ -3151,6 +3035,23 @@ async function renderMobileTasks() {
                     >
                         <i class="fa-solid fa-rotate"></i>
                     </button>
+                </div>
+
+                <div class="nmt-task-filterbar">
+                    <select class="nmt-filter-select" onchange="window.nmtSetTaskFilter(this.value)">
+                        <option value="all" ${mobileTaskFilter === 'all' ? 'selected' : ''}>All Tasks</option>
+                        <option value="created_by_me" ${mobileTaskFilter === 'created_by_me' ? 'selected' : ''}>Created by Me</option>
+                        <option value="assigned_to_me" ${mobileTaskFilter === 'assigned_to_me' ? 'selected' : ''}>Assigned to Me</option>
+                        <option value="pending" ${mobileTaskFilter === 'pending' ? 'selected' : ''}>Pending</option>
+                        <option value="completed" ${mobileTaskFilter === 'completed' ? 'selected' : ''}>Completed</option>
+                        <option value="overdue" ${mobileTaskFilter === 'overdue' ? 'selected' : ''}>Overdue</option>
+                    </select>
+                    <select class="nmt-filter-select" onchange="window.nmtSetTaskSort(this.value)">
+                        <option value="created_desc" ${mobileTaskSort === 'created_desc' ? 'selected' : ''}>Newest First</option>
+                        <option value="created_asc" ${mobileTaskSort === 'created_asc' ? 'selected' : ''}>Oldest First</option>
+                        <option value="deadline_asc" ${mobileTaskSort === 'deadline_asc' ? 'selected' : ''}>Deadline: Soonest</option>
+                        <option value="deadline_desc" ${mobileTaskSort === 'deadline_desc' ? 'selected' : ''}>Deadline: Latest</option>
+                    </select>
                 </div>
 
                 <div class="nmt-list">
@@ -3370,6 +3271,17 @@ function renderAssigneeMainActions(
                 >
                     <i class="fa-solid fa-user-plus"></i>
                     Delegate
+                </button>
+
+                <button
+                    type="button"
+                    class="nmt-button secondary"
+                    data-nmt-action="request-extension"
+                    data-task="${escapeAttribute(task.id)}"
+                    data-assignee="${escapeAttribute(getCurrentUserId())}"
+                >
+                    <i class="fa-solid fa-calendar-plus"></i>
+                    Request Extension
                 </button>
 
                 <button
@@ -3636,20 +3548,6 @@ async function renderMobileTaskDetail(params) {
                         Task Details
                     </div>
 
-                    ${
-                        isCreator
-                            ? `
-                                <button
-                                    type="button"
-                                    class="nmt-header-button"
-                                    data-nmt-action="manage"
-                                    data-task="${escapeAttribute(task.id)}"
-                                >
-                                    <i class="fa-solid fa-ellipsis-vertical"></i>
-                                </button>
-                            `
-                            : ''
-                    }
                 </div>
 
                 <div class="nmt-detail-content">
@@ -3905,9 +3803,20 @@ async function openManageSheet(taskId) {
     const pending = assignments.filter(
         assignment =>
             !isClosedAssignment(assignment) &&
-            getEffectiveStatus(assignment) !==
-            'accepted'
+            getEffectiveStatus(assignment) !== 'accepted'
     ).length;
+    const isCreator = task.assigned_by === getCurrentUserId();
+    const myAssignment = assignments.find(
+        assignment =>
+            assignment.assignee_id === getCurrentUserId() &&
+            !isClosedAssignment(assignment)
+    );
+
+    if (!isCreator) {
+        closeOverlay();
+        await renderMobileTaskDetail({ id: task.id, title: task.title });
+        return;
+    }
 
     openOverlay({
         title: 'Manage Task',

@@ -1468,6 +1468,83 @@ async function updateTenantAssignment(
     return true;
 }
 
+async function postTaskReplyToOriginal(
+    taskId,
+    action,
+    comment = ''
+) {
+    try {
+        const { data: task, error: taskError } = await sb
+            .from('tasks')
+            .select('id,title,original_message_id,tenant_id')
+            .eq('tenant_id', tenantId())
+            .eq('id', taskId)
+            .single();
+
+        if (taskError || !task?.original_message_id) return false;
+
+        const { data: original, error: messageError } = await sb
+            .from('messages')
+            .select('id,room_id')
+            .eq('tenant_id', tenantId())
+            .eq('id', task.original_message_id)
+            .maybeSingle();
+
+        if (messageError || !original?.id || !original?.room_id) return false;
+
+        const labels = {
+            CREATE: 'Task created',
+            ACKNOWLEDGE: 'Acknowledged',
+            ACK: 'Acknowledged',
+            START: 'Work started',
+            UPDATE: 'Progress update',
+            FILE: 'File uploaded',
+            SUBMIT: 'Submitted for review',
+            ACCEPT: 'Completion accepted',
+            RETURN: 'Returned for changes',
+            REWORK: 'Returned for changes',
+            DELEGATE: 'Delegated',
+            TRANSFER: 'Transferred',
+            REMINDER: 'Reminder sent',
+            DEADLINE: 'Deadline changed',
+            EXTENSION_REQUEST: 'Deadline extension requested',
+            EXTENSION_APPROVED: 'Deadline extension approved',
+            EXTENSION_REJECTED: 'Deadline extension declined',
+            CANCEL: 'Task cancelled'
+        };
+
+        const label = labels[String(action || 'UPDATE').toUpperCase()] || String(action || 'Update');
+        const safeComment = escapeHtml(comment || '');
+        const html = `
+            <div data-task-event="1" data-task-id="${escapeHtml(taskId)}">
+                <p>📋 <strong>${escapeHtml(task.title || 'Task')}</strong></p>
+                <p><strong>${escapeHtml(label)}</strong>${safeComment ? ` — ${safeComment}` : ''}</p>
+            </div>
+        `;
+
+        const { error: insertError } = await sb
+            .from('messages')
+            .insert({
+                room_id: original.room_id,
+                parent_message_id: original.id,
+                sender_id: currentUserId(),
+                tenant_id: tenantId(),
+                text: html,
+                created_at: new Date().toISOString()
+            });
+
+        if (insertError) {
+            logger?.warn?.('Task reply insert failed', insertError);
+            return false;
+        }
+
+        return true;
+    } catch (error) {
+        logger?.warn?.('Task reply insert failed', error);
+        return false;
+    }
+}
+
 async function addTaskTrail(
     taskId,
     action,
@@ -1488,7 +1565,11 @@ async function addTaskTrail(
             'Task trail insert failed',
             error
         );
+        return false;
     }
+
+    await postTaskReplyToOriginal(taskId, action, comment);
+    return true;
 }
 
 window.taskAction = async function(
@@ -2358,10 +2439,18 @@ window.sendTaskReminder = async function(taskId, assigneeId) {
         return false;
     }
 
+    const assigneeName = getDisplayName(
+        (window.globalUsersCache || []).find(user => user.id === assigneeId)
+    );
+
+    await postTaskReplyToOriginal(
+        taskId,
+        'REMINDER',
+        `Reminder sent to ${assigneeName}`
+    );
+
     showToast(
-        `Reminder sent to ${getDisplayName(
-            (window.globalUsersCache || []).find(user => user.id === assigneeId)
-        )}.`,
+        `Reminder sent to ${assigneeName}.`,
         'fa-solid fa-bell',
         'text-green-500'
     );
@@ -2453,6 +2542,12 @@ window.openTaskExtensionRequest = function(taskId, assigneeId) {
             }
 
 
+            await postTaskReplyToOriginal(
+                taskId,
+                'EXTENSION_REQUEST',
+                `Requested deadline ${requestedDate} — ${reason}`
+            );
+
             showToast(
                 'Deadline-extension request sent.',
                 'fa-solid fa-calendar-plus',
@@ -2473,6 +2568,13 @@ window.respondTaskExtension = async function(requestId, approve) {
 
     if (!approve && !reason) return;
 
+    const { data: request } = await sb
+        .from('task_extension_requests')
+        .select('task_id,requested_deadline,reason')
+        .eq('tenant_id', tenantId())
+        .eq('id', requestId)
+        .maybeSingle();
+
     const { error } = await sb.rpc('respond_task_extension', {
         p_request_id: requestId,
         p_approve: Boolean(approve),
@@ -2487,6 +2589,16 @@ window.respondTaskExtension = async function(requestId, approve) {
             'text-red-500'
         );
         return;
+    }
+
+    if (request?.task_id) {
+        await postTaskReplyToOriginal(
+            request.task_id,
+            approve ? 'EXTENSION_APPROVED' : 'EXTENSION_REJECTED',
+            approve
+                ? `Approved deadline ${request.requested_deadline}`
+                : reason
+        );
     }
 
     showToast(
@@ -4417,33 +4529,57 @@ installTaskUIStyles();
 window.openTaskFromNotification = async function(taskId) {
     if (!taskId || !tenantId()) return false;
 
-    // Mobile/native keeps using its dedicated navigator.
     if ((window.innerWidth <= 768 || window.IS_NATIVE) && typeof window._navTo === 'function') {
         await window._navTo('taskDetail', { id: taskId, title: '' });
         return true;
     }
 
-    const sidebar = document.getElementById('rightSidebar');
-    if (sidebar) {
-        sidebar.style.setProperty('display', 'flex', 'important');
-        try { localStorage.setItem('rightSidebarOpen', '1'); } catch (_) {}
-    } else if (typeof window.toggleRightSidebar === 'function') {
-        window.toggleRightSidebar();
+    // Activate any visible Tasks tab/button before rendering.
+    const taskOpeners = Array.from(document.querySelectorAll(
+        '[data-panel="tasks"], [data-tab="tasks"], [data-target="tasksPanel"], [onclick*="tasksPanel"], [onclick*="loadTasksForPanel"]'
+    ));
+    const opener = taskOpeners.find(el => {
+        const text = (el.textContent || '').trim().toLowerCase();
+        return text.includes('task') && el.offsetParent !== null;
+    });
+    try { opener?.click(); } catch (_) {}
+
+    const sidebarCandidates = [
+        document.getElementById('rightSidebar'),
+        document.getElementById('rightPanel'),
+        document.getElementById('taskSidebar'),
+        document.getElementById('tasksSidebar'),
+        document.getElementById('tasksPanel')?.parentElement
+    ].filter(Boolean);
+
+    for (const panel of sidebarCandidates) {
+        panel.classList.remove('hidden');
+        panel.style.removeProperty('visibility');
+        panel.style.removeProperty('opacity');
+        if (getComputedStyle(panel).display === 'none') {
+            panel.style.setProperty('display', 'flex', 'important');
+        }
     }
 
     const filter = document.getElementById('taskFilter');
-    if (filter) filter.value = 'all';
+    if (filter) {
+        filter.value = 'all';
+        filter.dispatchEvent(new Event('change', { bubbles: true }));
+    }
 
     await window.loadTasksForPanel?.();
 
-    const findCard = () => document.querySelector(
-        `[data-task-id="${CSS.escape(String(taskId))}"]`
-    );
+    const selector = `[data-task-id="${CSS.escape(String(taskId))}"]`;
+    let card = null;
 
-    let card = findCard();
-    if (!card) {
-        await new Promise(resolve => setTimeout(resolve, 350));
-        card = findCard();
+    // Rendering and sidebar transitions can be asynchronous. Retry for 4 seconds.
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+        card = document.querySelector(selector);
+        if (card) break;
+        await new Promise(resolve => setTimeout(resolve, 200));
+        if (attempt === 5 || attempt === 12) {
+            await window.loadTasksForPanel?.();
+        }
     }
 
     if (!card) {
@@ -4455,21 +4591,33 @@ window.openTaskFromNotification = async function(taskId) {
         return false;
     }
 
-    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    card.style.outline = '3px solid var(--accent, #4f46e5)';
-    card.style.outlineOffset = '4px';
-    card.style.boxShadow = '0 0 0 8px rgba(79,70,229,.14), 0 16px 40px rgba(15,23,42,.18)';
+    // Unhide every ancestor so scrollIntoView is reliable.
+    let ancestor = card.parentElement;
+    while (ancestor && ancestor !== document.body) {
+        ancestor.classList.remove('hidden');
+        if (getComputedStyle(ancestor).display === 'none') {
+            ancestor.style.setProperty('display', 'block', 'important');
+        }
+        ancestor = ancestor.parentElement;
+    }
 
     const details = document.getElementById(`nt-task-details-${taskId}`);
     if (details && !details.classList.contains('nt-open')) {
         window.toggleTaskDetails?.(taskId);
     }
 
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+
+    card.style.outline = '3px solid var(--accent, #4f46e5)';
+    card.style.outlineOffset = '4px';
+    card.style.boxShadow = '0 0 0 8px rgba(79,70,229,.14), 0 16px 40px rgba(15,23,42,.18)';
+
     setTimeout(() => {
         card.style.outline = '';
         card.style.outlineOffset = '';
         card.style.boxShadow = '';
-    }, 3500);
+    }, 4000);
 
     return true;
 };

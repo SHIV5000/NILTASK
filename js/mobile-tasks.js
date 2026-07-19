@@ -621,6 +621,29 @@ function installMobileTaskStyles() {
             padding:0;
         }
 
+        /* Compact controls only on collapsed task cards; detail-sheet controls stay large. */
+        .nmt-card .nmt-action-row {
+            gap:5px;
+        }
+
+        .nmt-card .nmt-button {
+            min-height:40px;
+            padding:8px 9px;
+            gap:5px;
+            font-size:10.5px;
+            line-height:1.2;
+        }
+
+        .nmt-card .nmt-button.primary {
+            white-space:nowrap;
+        }
+
+        .nmt-card .nmt-button.icon {
+            width:38px;
+            min-width:38px;
+            padding:0;
+        }
+
         .nmt-empty {
             padding:45px 20px;
             color:var(--text-secondary,#64748b);
@@ -1233,13 +1256,6 @@ async function respondTaskExtension(requestId, approve) {
     }
 
     if (request?.task_id) {
-        await postTaskReplyToOriginal(
-            request.task_id,
-            approve ? 'EXTENSION_APPROVED' : 'EXTENSION_REJECTED',
-            approve
-                ? `Approved deadline ${request.requested_deadline}`
-                : decisionReason
-        );
     }
 
     showToast(
@@ -1381,7 +1397,7 @@ async function addTrail(
         return false;
     }
 
-    await postTaskReplyToOriginal(taskId, action, comment);
+    // Original-message compilation is handled once by the database trail trigger.
     return true;
 }
 
@@ -1396,7 +1412,7 @@ async function notifyUser(
         await window.notifyUser(
             userId,
             message,
-            task.original_message_id,
+            null,
             'task',
             task.id
         );
@@ -1410,8 +1426,8 @@ async function notifyUser(
             user_id: userId,
             tenant_id: getTenantId(),
             task_id: task.id,
-            message_id:
-                task.original_message_id || null,
+            // Task navigation uses task_id; message_id is a UUID FK and stays null.
+            message_id: null,
             type: 'task',
             message,
             is_read: false
@@ -2463,12 +2479,6 @@ function openDeadlineExtensionRequest(
                 return false;
             }
 
-
-            await postTaskReplyToOriginal(
-                taskId,
-                'EXTENSION_REQUEST',
-                `Requested deadline ${requestedDate} — ${reason}`
-            );
 
             showToast('Deadline-extension request sent.', 'success');
             await refreshCurrentMobileTaskScreen();
@@ -4194,28 +4204,36 @@ function replaceMobileNavigation() {
         params,
         replace = false
     ) {
-        const result =
-            await originalMobileNavigate(
-                screen,
-                params,
-                replace
-            );
+        const ownsTaskScreen = isMobileTaskDevice()
+            && (screen === 'tasks' || screen === 'taskDetail');
+        const stage = document.getElementById('mStage');
 
-        if (!isMobileTaskDevice()) {
+        // Hide the stage before the legacy renderer paints. It remains hidden only
+        // for the few milliseconds needed to install the owned task screen.
+        if (ownsTaskScreen && stage) {
+            stage.style.setProperty('visibility', 'hidden', 'important');
+        }
+
+        let result;
+        try {
+            result = await originalMobileNavigate(screen, params, replace);
+
+            if (!isMobileTaskDevice()) return result;
+
+            if (screen === 'tasks') {
+                await renderMobileTasks();
+            }
+
+            if (screen === 'taskDetail') {
+                await renderMobileTaskDetail(params || {});
+            }
+
             return result;
+        } finally {
+            if (ownsTaskScreen && stage) {
+                stage.style.removeProperty('visibility');
+            }
         }
-
-        if (screen === 'tasks') {
-            await renderMobileTasks();
-        }
-
-        if (screen === 'taskDetail') {
-            await renderMobileTaskDetail(
-                params || {}
-            );
-        }
-
-        return result;
     };
 
     wrapped.__nmtWrapped = true;

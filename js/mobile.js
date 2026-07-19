@@ -1,3 +1,4 @@
+window.NILTASK_MOBILE_VERSION = 'v206';
 import { sb } from './shared.js';
 
 const MOB = 768;

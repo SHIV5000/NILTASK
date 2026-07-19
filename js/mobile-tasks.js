@@ -15,7 +15,7 @@ import { sb } from './shared.js';
  */
 
 const MOBILE_TASK_MAX_WIDTH = 768;
-const NILTASK_TASK_UI_VERSION = 'v206';
+const NILTASK_TASK_UI_VERSION = 'v207';
 window.NILTASK_TASK_UI_VERSION = NILTASK_TASK_UI_VERSION;
 const CLOSED_STATUSES = new Set(['transferred', 'cancelled']);
 
@@ -979,7 +979,7 @@ function installMobileTaskStyles() {
             }
         }
 
-        /* NILTASK v206 — compact, balanced filter panel */
+        /* NILTASK v207 — compact, balanced filter panel */
         .nmt-task-filterbar {
             position:sticky;
             top:56px;

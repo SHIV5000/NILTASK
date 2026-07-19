@@ -1213,6 +1213,13 @@ async function respondTaskExtension(requestId, approve) {
 
     if (!approve && !decisionReason) return;
 
+    const { data: request } = await sb
+        .from('task_extension_requests')
+        .select('task_id,requested_deadline,reason')
+        .eq('tenant_id', getTenantId())
+        .eq('id', requestId)
+        .maybeSingle();
+
     const { error } = await sb.rpc('respond_task_extension', {
         p_request_id: requestId,
         p_approve: Boolean(approve),
@@ -1223,6 +1230,16 @@ async function respondTaskExtension(requestId, approve) {
     if (error) {
         showToast(`Could not process extension request: ${error.message}`, 'error');
         return;
+    }
+
+    if (request?.task_id) {
+        await postTaskReplyToOriginal(
+            request.task_id,
+            approve ? 'EXTENSION_APPROVED' : 'EXTENSION_REJECTED',
+            approve
+                ? `Approved deadline ${request.requested_deadline}`
+                : decisionReason
+        );
     }
 
     showToast(
@@ -1265,6 +1282,82 @@ async function updateAssignment(
     return true;
 }
 
+async function postTaskReplyToOriginal(
+    taskId,
+    action,
+    comment = ''
+) {
+    try {
+        const { data: task, error: taskError } = await sb
+            .from('tasks')
+            .select('id,title,original_message_id,tenant_id')
+            .eq('tenant_id', getTenantId())
+            .eq('id', taskId)
+            .single();
+
+        if (taskError || !task?.original_message_id) return false;
+
+        const { data: original, error: messageError } = await sb
+            .from('messages')
+            .select('id,room_id')
+            .eq('tenant_id', getTenantId())
+            .eq('id', task.original_message_id)
+            .maybeSingle();
+
+        if (messageError || !original?.id || !original?.room_id) return false;
+
+        const labels = {
+            CREATE: 'Task created',
+            ACKNOWLEDGE: 'Acknowledged',
+            ACK: 'Acknowledged',
+            START: 'Work started',
+            UPDATE: 'Progress update',
+            FILE: 'File uploaded',
+            SUBMIT: 'Submitted for review',
+            ACCEPT: 'Completion accepted',
+            RETURN: 'Returned for changes',
+            REWORK: 'Returned for changes',
+            DELEGATE: 'Delegated',
+            TRANSFER: 'Transferred',
+            REMINDER: 'Reminder sent',
+            DEADLINE: 'Deadline changed',
+            EXTENSION_REQUEST: 'Deadline extension requested',
+            EXTENSION_APPROVED: 'Deadline extension approved',
+            EXTENSION_REJECTED: 'Deadline extension declined',
+            CANCEL: 'Task cancelled'
+        };
+
+        const label = labels[String(action || 'UPDATE').toUpperCase()] || String(action || 'Update');
+        const html = `
+            <div data-task-event="1" data-task-id="${escapeHtml(taskId)}">
+                <p>📋 <strong>${escapeHtml(task.title || 'Task')}</strong></p>
+                <p><strong>${escapeHtml(label)}</strong>${comment ? ` — ${escapeHtml(comment)}` : ''}</p>
+            </div>
+        `;
+
+        const { error: insertError } = await sb
+            .from('messages')
+            .insert({
+                room_id: original.room_id,
+                parent_message_id: original.id,
+                sender_id: getCurrentUserId(),
+                tenant_id: getTenantId(),
+                text: html,
+                created_at: new Date().toISOString()
+            });
+
+        if (insertError) {
+            console.warn('[mobile-tasks] task reply insert failed', insertError);
+            return false;
+        }
+
+        return true;
+    } catch (error) {
+        console.warn('[mobile-tasks] task reply insert failed', error);
+        return false;
+    }
+}
+
 async function addTrail(
     taskId,
     action,
@@ -1285,7 +1378,11 @@ async function addTrail(
             '[mobile-tasks] trail insert failed',
             error
         );
+        return false;
     }
+
+    await postTaskReplyToOriginal(taskId, action, comment);
+    return true;
 }
 
 async function notifyUser(
@@ -1815,7 +1912,15 @@ async function sendTaskReminder(
         return false;
     }
 
-    showToast(`Reminder sent to ${getUserName(assigneeId)}.`, 'success');
+    const assigneeName = getUserName(assigneeId);
+
+    await postTaskReplyToOriginal(
+        taskId,
+        'REMINDER',
+        `Reminder sent to ${assigneeName}`
+    );
+
+    showToast(`Reminder sent to ${assigneeName}.`, 'success');
     await refreshCurrentMobileTaskScreen();
     return true;
 }
@@ -2359,6 +2464,12 @@ function openDeadlineExtensionRequest(
             }
 
 
+            await postTaskReplyToOriginal(
+                taskId,
+                'EXTENSION_REQUEST',
+                `Requested deadline ${requestedDate} — ${reason}`
+            );
+
             showToast('Deadline-extension request sent.', 'success');
             await refreshCurrentMobileTaskScreen();
             return true;
@@ -2714,7 +2825,7 @@ async function renderMobileTasks() {
 
     if (error) {
         stage.innerHTML = `
-            <div class="mScr" data-screen="tasks">
+            <div class="mScr nmt-owned" data-screen="tasks">
                 <div class="nmt-screen">
                     <div class="nmt-header">
                         <div class="nmt-header-title">
@@ -3015,7 +3126,7 @@ async function renderMobileTasks() {
     }).join('');
 
     stage.innerHTML = `
-        <div class="mScr" data-screen="tasks">
+        <div class="mScr nmt-owned" data-screen="tasks">
             <div class="nmt-screen">
                 <div class="nmt-header">
                     <div class="nmt-header-title">
@@ -3500,7 +3611,7 @@ async function renderMobileTaskDetail(params) {
         ).length;
 
     stage.innerHTML = `
-        <div class="mScr" data-screen="taskDetail">
+        <div class="mScr nmt-owned" data-screen="taskDetail">
             <div class="nmt-screen">
                 <div class="nmt-header">
                     <button
@@ -3906,25 +4017,12 @@ async function handleMobileTaskClick(event) {
     if (action === 'open-detail') {
         closeOverlay();
 
-        if (originalMobileNavigate) {
-            await originalMobileNavigate(
-                'taskDetail',
-                {
-                    id: taskId,
-                    title: button.dataset.title || ''
-                }
-            );
-
-            await renderMobileTaskDetail({
-                id: taskId,
-                title: button.dataset.title || ''
-            });
-        } else {
-            await renderMobileTaskDetail({
-                id: taskId,
-                title: button.dataset.title || ''
-            });
-        }
+        // Render the owned task detail directly. Calling the legacy renderer first
+        // caused a visible flash of the old task card in Android WebView.
+        await renderMobileTaskDetail({
+            id: taskId,
+            title: button.dataset.title || ''
+        });
 
         return;
     }

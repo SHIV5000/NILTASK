@@ -3424,11 +3424,12 @@ function renderSecondaryActionMenu(
 
         <button
             type="button"
-            class="nt-task-button nt-task-button-secondary nt-task-button-icon"
+            class="nt-task-button nt-task-button-secondary"
             onclick="window.openTaskExtensionRequest('${task.id}','${currentUserId()}')"
             title="Request Deadline Extension"
         >
             <i class="fa-solid fa-calendar-plus"></i>
+            Request Extension
         </button>
     `;
 }
@@ -4407,3 +4408,97 @@ async function() {
 
 // Initialise styles immediately.
 installTaskUIStyles();
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TASK NOTIFICATION NAVIGATION — WEB + COMPATIBILITY
+// ─────────────────────────────────────────────────────────────────────────────
+
+window.openTaskFromNotification = async function(taskId) {
+    if (!taskId || !tenantId()) return false;
+
+    // Mobile/native keeps using its dedicated navigator.
+    if ((window.innerWidth <= 768 || window.IS_NATIVE) && typeof window._navTo === 'function') {
+        await window._navTo('taskDetail', { id: taskId, title: '' });
+        return true;
+    }
+
+    const sidebar = document.getElementById('rightSidebar');
+    if (sidebar) {
+        sidebar.style.setProperty('display', 'flex', 'important');
+        try { localStorage.setItem('rightSidebarOpen', '1'); } catch (_) {}
+    } else if (typeof window.toggleRightSidebar === 'function') {
+        window.toggleRightSidebar();
+    }
+
+    const filter = document.getElementById('taskFilter');
+    if (filter) filter.value = 'all';
+
+    await window.loadTasksForPanel?.();
+
+    const findCard = () => document.querySelector(
+        `[data-task-id="${CSS.escape(String(taskId))}"]`
+    );
+
+    let card = findCard();
+    if (!card) {
+        await new Promise(resolve => setTimeout(resolve, 350));
+        card = findCard();
+    }
+
+    if (!card) {
+        showToast(
+            'The task could not be displayed. It may be outside your current access.',
+            'fa-solid fa-triangle-exclamation',
+            'text-orange-500'
+        );
+        return false;
+    }
+
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.style.outline = '3px solid var(--accent, #4f46e5)';
+    card.style.outlineOffset = '4px';
+    card.style.boxShadow = '0 0 0 8px rgba(79,70,229,.14), 0 16px 40px rgba(15,23,42,.18)';
+
+    const details = document.getElementById(`nt-task-details-${taskId}`);
+    if (details && !details.classList.contains('nt-open')) {
+        window.toggleTaskDetails?.(taskId);
+    }
+
+    setTimeout(() => {
+        card.style.outline = '';
+        card.style.outlineOffset = '';
+        card.style.boxShadow = '';
+    }, 3500);
+
+    return true;
+};
+
+// Activity/notification rows use data-action="goToTaskNotif" and data-tid.
+// Capture before generic handlers so web clicks always open and focus the task.
+document.addEventListener('click', async function(event) {
+    if (window.innerWidth <= 768 || window.IS_NATIVE) return;
+
+    const target = event.target.closest(
+        '[data-action="goToTaskNotif"][data-tid], [data-task-notification-id]'
+    );
+    if (!target) return;
+
+    const taskId = target.dataset.tid || target.dataset.taskNotificationId;
+    if (!taskId) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const notificationId = target.dataset.nid;
+    if (notificationId && currentUserId()) {
+        try {
+            await sb.from('notifications')
+                .update({ is_read: true })
+                .eq('id', notificationId)
+                .eq('user_id', currentUserId());
+        } catch (_) {}
+    }
+
+    await window.openTaskFromNotification(taskId);
+}, true);

@@ -1,9 +1,9 @@
 import { sb } from './shared.js';
 import logger from './utils/logger.js';
 
-window.NILTASK_TASK_UI_VERSION = 'v206';
+window.NILTASK_TASK_UI_VERSION = 'v207';
 
-// v206 - task workflow, navigation and responsive UI
+// v207 - task workflow, navigation and responsive UI
 // Responsive Task Cards + Mobile Bottom Sheet + Desktop Action Drawer
 // Multi-tenant: every database operation is scoped using currentTenantId.
 
@@ -4437,7 +4437,7 @@ async function() {
                                     type="button"
                                     class="nt-task-button nt-task-button-secondary nt-task-button-icon"
                                     onclick="window.toggleTaskDetails('${task.id}')"
-                                    title="Task Details · v206"
+                                    title="Task Details · v207"
                                 >
                                     <i
                                         id="nt-task-details-icon-${task.id}"

@@ -9,7 +9,7 @@ window.sb = sb;
 
 // Single source of truth for the running build — stamped onto every warn/error
 // log row so the Live Log Monitor can tell which version a remote device runs.
-window.APP_VER = 'v204';
+window.APP_VER = 'v208';
 
 // Retire the green 'ocean-teal' theme entirely — it tinted the whole UI (and the
 // safe-area gutter) green. Reset anyone still on it BEFORE ui-core reads the value.
@@ -164,4 +164,11 @@ window.openSecureFile = async function(filePath) {
         return;
     }
     window.open(data.signedUrl, '_blank');
+}
+
+// Priority Banner v208 is loaded from the shared module so it runs on both
+// index.html and admin.html without duplicating page-specific script tags.
+import('./priority-banner.js?v=208').catch(() => {});
+if (/\/admin(?:\.html)?$/i.test(window.location.pathname)) {
+    import('./admin-priority-banner.js?v=208').catch(() => {});
 }

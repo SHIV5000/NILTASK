@@ -4,7 +4,7 @@ export const SUPABASE_URL = 'https://apfymygzwkzjhhgmtkaj.supabase.co';
 export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwZnlteWd6d2t6amhoZ210a2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5MjM5MTIsImV4cCI6MjA5NjQ5OTkxMn0.RiV6kDDeSq5ZIP68RGwtpLtqPALFloq23owoNm2aA-c';
 export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 window.sb = sb;
-window.APP_VER = 'v208.1';
+window.APP_VER = 'v208.2';
 
 try {
     const DARKISH = ['dark', 'sober-dark', 'midnight'];
@@ -124,12 +124,12 @@ window.openSecureFile = async function(filePath) {
     window.open(data.signedUrl, '_blank');
 };
 
-import('./priority-banner.js?v=208.1').catch(error => {
+import('./priority-banner.js?v=208.2').catch(error => {
     console.error('[priority-banner] failed to load', error);
 });
 
 if (window.location.pathname.startsWith('/admin')) {
-    import('./admin-priority-banner.js?v=208.1').catch(error => {
+    import('./admin-priority-banner.js?v=208.2').catch(error => {
         console.error('[priority-banner-admin] failed to load', error);
     });
 }

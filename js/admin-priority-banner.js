@@ -1,10 +1,10 @@
 /**
- * NILTASK Admin Priority Banner v208
+ * NILTASK Admin Priority Banner v208.1
  * Injects a complete Priority Banner section into desktop and mobile Admin Panel.
  */
 import { sb } from './shared.js';
 
-window.NILTASK_PRIORITY_BANNER_ADMIN_VERSION = 'v208';
+window.NILTASK_PRIORITY_BANNER_ADMIN_VERSION = 'v208.1';
 
 const A = { users:[], selected:new Set(), history:[], mounted:false };
 
@@ -40,7 +40,7 @@ function css() {
 
 function sectionHtml(cls='') {
  return `<section class="apb208 ${cls}" id="${cls?'apb208Mobile':'apb208Desktop'}">
-  <div class="apb208-h"><div class="apb208-hi"><i class="fa-solid fa-bullhorn"></i></div><div><b>Priority Banner <span style="font-size:8px;opacity:.7">v208</span></b><small>Publish meetings, emergency notices and announcements</small></div></div>
+  <div class="apb208-h"><div class="apb208-hi"><i class="fa-solid fa-bullhorn"></i></div><div><b>Priority Banner <span style="font-size:8px;opacity:.7">v208.1</span></b><small>Publish meetings, emergency notices and announcements</small></div></div>
   <div class="apb208-grid">
    <div class="apb208-card">
     <div class="apb208-row">
@@ -72,8 +72,14 @@ function mount() {
  const root=document.getElementById('adminRoot');
  if(root && !document.getElementById('apb208Desktop')){
    const shell=root.firstElementChild || root;
-   const marker=shell.querySelector('.trial-banner')?.parentElement;
-   if(marker) marker.insertAdjacentHTML('afterend',sectionHtml());
+   const trialBanner=shell.querySelector('#trialBanner,.trial-banner');
+   const statsRow=trialBanner?.nextElementSibling;
+
+   // Mount inside the main Admin wrapper, directly after the Trial Plan and
+   // staff statistics. The previous parentElement target was the whole wrapper,
+   // which placed this section outside the visible Admin layout.
+   if(statsRow) statsRow.insertAdjacentHTML('afterend',sectionHtml());
+   else if(trialBanner) trialBanner.insertAdjacentHTML('afterend',sectionHtml());
    else shell.insertAdjacentHTML('afterbegin',sectionHtml());
  }
  const mobile=document.querySelector('#adminMobile .ma-panel,#adminMobile .ma-body');

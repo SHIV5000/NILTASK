@@ -3,8 +3,13 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 export const SUPABASE_URL = 'https://apfymygzwkzjhhgmtkaj.supabase.co';
 export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwZnlteWd6d2t6amhoZ210a2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5MjM5MTIsImV4cCI6MjA5NjQ5OTkxMn0.RiV6kDDeSq5ZIP68RGwtpLtqPALFloq23owoNm2aA-c';
 export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Expose on window so the Capacitor native bridge (js/native.js, a classic
+// script) can reach the same client to save its FCM/APNs push token.
 window.sb = sb;
-window.APP_VER = 'v208.2';
+
+// Single source of truth for the running build — stamped onto every warn/error
+// log row so the Live Log Monitor can tell which version a remote device runs.
+window.APP_VER = 'v208.3';
 
 try {
     const DARKISH = ['dark', 'sober-dark', 'midnight'];
@@ -36,7 +41,7 @@ try {
             await Promise.all(regs.map(r => r.unregister().catch(() => {})));
             location.reload(true);
         }
-    } catch (e) {}
+    } catch (e) { }
 })();
 
 window.isMobileView = function() {
@@ -125,11 +130,14 @@ window.openSecureFile = async function(filePath) {
 };
 
 import('./priority-banner.js?v=208.2').catch(error => {
-    console.error('[priority-banner] failed to load', error);
+    console.warn('[priority-banner] failed to load', error);
 });
 
 if (window.location.pathname.startsWith('/admin')) {
     import('./admin-priority-banner.js?v=208.2').catch(error => {
-        console.error('[priority-banner-admin] failed to load', error);
+        console.warn('[priority-banner-admin] failed to load', error);
+    });
+    import('./priority-banner-report-v208_3.js?v=208.3').catch(error => {
+        console.warn('[priority-banner-report] failed to load', error);
     });
 }

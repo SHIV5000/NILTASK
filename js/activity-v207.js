@@ -1,5 +1,5 @@
 /**
- * NILTASK Activity & Notifications UI — v207
+ * NILTASK Activity & Notifications UI — v208
  * Version 1: Task-Card Timeline
  *
  * Additive presentation layer:
@@ -8,7 +8,7 @@
  * - All timestamps remain sourced from existing IST-aware renderers.
  */
 
-window.NILTASK_ACTIVITY_UI_VERSION = 'v207';
+window.NILTASK_ACTIVITY_UI_VERSION = 'v208';
 
 const NFA207 = {
     observer: null,
@@ -19,10 +19,10 @@ const NFA207 = {
 };
 
 function nfa207InstallStyles() {
-    if (document.getElementById('niltask-activity-v207-styles')) return;
+    if (document.getElementById('niltask-activity-v208-styles')) return;
 
     const style = document.createElement('style');
-    style.id = 'niltask-activity-v207-styles';
+    style.id = 'niltask-activity-v208-styles';
     style.textContent = `
         :root {
             --nfa207-radius: 18px;
@@ -280,7 +280,7 @@ function nfa207InstallStyles() {
 
         .mScr-inner.af-mode .m-htitle::after,
         .mScr-inner.nf-mode .m-htitle::after {
-            content: "v207";
+            content: "v208";
             display: inline-flex;
             margin-left: 7px;
             padding: 3px 6px;
@@ -359,7 +359,7 @@ function nfa207InstallStyles() {
         }
 
         .mScr-inner.af-mode .af-card::after {
-            content: attr(data-v207-icon);
+            content: attr(data-v208-icon);
             position: absolute;
             top: 14px;
             left: 13px;
@@ -503,7 +503,7 @@ function nfa207DecorateWebPanel() {
                 </span>
                 <span class="nfa207-heading-copy">
                     <span class="nfa207-heading-title">
-                        Activity Feed <span class="nfa207-version">v207</span>
+                        Activity Feed <span class="nfa207-version">v208</span>
                     </span>
                     <span class="nfa207-heading-subtitle">
                         Organisation activity · India Standard Time
@@ -593,7 +593,7 @@ function nfa207DecorateMobile() {
     document.querySelectorAll('.mScr-inner.af-mode .af-card').forEach(card => {
         if (card.dataset.nfa207Icon) return;
         const cat = nfa207CategoryFromText(card.textContent);
-        card.dataset.v207Icon = cat.icon;
+        card.dataset.v208Icon = cat.icon;
     });
 }
 

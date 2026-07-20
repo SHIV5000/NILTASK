@@ -1,12 +1,12 @@
 /**
- * NILTASK Admin Priority Banner v208.1
+ * NILTASK Admin Priority Banner v208
  * Injects a complete Priority Banner section into desktop and mobile Admin Panel.
  */
 import { sb } from './shared.js';
 
-window.NILTASK_PRIORITY_BANNER_ADMIN_VERSION = 'v208.1';
+window.NILTASK_PRIORITY_BANNER_ADMIN_VERSION = 'v208.2';
 
-const A = { users:[], selected:new Set(), history:[], mounted:false };
+const A = { users:[], history:[], usersPromise:null, historyPromise:null, mounted:false, bootAttempts:0 };
 
 const esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
@@ -40,7 +40,7 @@ function css() {
 
 function sectionHtml(cls='') {
  return `<section class="apb208 ${cls}" id="${cls?'apb208Mobile':'apb208Desktop'}">
-  <div class="apb208-h"><div class="apb208-hi"><i class="fa-solid fa-bullhorn"></i></div><div><b>Priority Banner <span style="font-size:8px;opacity:.7">v208.1</span></b><small>Publish meetings, emergency notices and announcements</small></div></div>
+  <div class="apb208-h"><div class="apb208-hi"><i class="fa-solid fa-bullhorn"></i></div><div><b>Priority Banner <span style="font-size:8px;opacity:.7">v208.2</span></b><small>Publish meetings, emergency notices and announcements</small></div></div>
   <div class="apb208-grid">
    <div class="apb208-card">
     <div class="apb208-row">
@@ -68,27 +68,34 @@ function sectionHtml(cls='') {
 }
 
 function mount() {
- css();
- const root=document.getElementById('adminRoot');
- if(root && !document.getElementById('apb208Desktop')){
-   const shell=root.firstElementChild || root;
-   const trialBanner=shell.querySelector('#trialBanner,.trial-banner');
-   const statsRow=trialBanner?.nextElementSibling;
+  if (!window.currentTenantId || !window.currentUser?.id) return false;
 
-   // Mount inside the main Admin wrapper, directly after the Trial Plan and
-   // staff statistics. The previous parentElement target was the whole wrapper,
-   // which placed this section outside the visible Admin layout.
-   if(statsRow) statsRow.insertAdjacentHTML('afterend',sectionHtml());
-   else if(trialBanner) trialBanner.insertAdjacentHTML('afterend',sectionHtml());
-   else shell.insertAdjacentHTML('afterbegin',sectionHtml());
- }
- const mobile=document.querySelector('#adminMobile .ma-panel,#adminMobile .ma-body');
- if(mobile && !document.getElementById('apb208Mobile')){
-   mobile.insertAdjacentHTML('afterbegin',sectionHtml('apb208-mobile'));
- }
- if(document.getElementById('apb208Desktop')||document.getElementById('apb208Mobile')){
-   bind(); loadUsers(); loadHistory();
- }
+  css();
+  const root = document.getElementById('adminRoot');
+
+  if (root && !document.getElementById('apb208Desktop')) {
+    const shell = root.firstElementChild || root;
+    const trialBanner = shell.querySelector('#trialBanner,.trial-banner');
+    const statsRow = trialBanner?.nextElementSibling;
+
+    if (!trialBanner && !shell.querySelector('.stat-card')) return false;
+
+    if (statsRow) statsRow.insertAdjacentHTML('afterend', sectionHtml());
+    else if (trialBanner) trialBanner.insertAdjacentHTML('afterend', sectionHtml());
+    else shell.insertAdjacentHTML('afterbegin', sectionHtml());
+  }
+
+  const mobile = document.querySelector('#adminMobile .ma-panel');
+  if (mobile && !document.getElementById('apb208Mobile')) {
+    mobile.insertAdjacentHTML('afterbegin', sectionHtml('apb208-mobile'));
+  }
+
+  if (document.getElementById('apb208Desktop') || document.getElementById('apb208Mobile')) {
+    bind();
+    A.mounted = true;
+    return true;
+  }
+  return false;
 }
 
 function fields(container) {
@@ -102,7 +109,11 @@ function bind(){
  everySection().forEach(sec=>{
   if(sec.dataset.bound)return;sec.dataset.bound='1';
   const f=fields(sec);
-  f.mode.addEventListener('change',()=>{f.targetWrap.style.display=f.mode.value==='all'?'none':'block';renderTargets(sec)});
+  f.mode.addEventListener('change', async ()=>{
+    f.targetWrap.style.display=f.mode.value==='all'?'none':'block';
+    if (f.mode.value !== 'all') await loadUsers();
+    renderTargets(sec);
+   });
   sec.addEventListener('click',async e=>{
    const btn=e.target.closest('[data-apb-action]');if(!btn)return;
    const a=btn.dataset.apbAction;
@@ -116,17 +127,38 @@ function bind(){
 }
 
 async function loadUsers(){
- if(A.users.length)return renderAllTargets();
- const {data,error}=await sb.from('profiles').select('id,full_name,email,department').eq('tenant_id',window.currentTenantId).order('full_name');
- if(error){console.warn('[priority-admin] profiles',error);return}
- const ids=(data||[]).map(x=>x.id);
- let roleMap={};
- if(ids.length){
-  const {data:rr}=await sb.from('user_roles').select('user_id,role:roles(name,display_name)').eq('tenant_id',window.currentTenantId);
-  (rr||[]).forEach(x=>roleMap[x.user_id]=x.role?.display_name||x.role?.name||'Staff');
- }
- A.users=(data||[]).map(x=>({...x,role:roleMap[x.id]||'Staff'}));
- renderAllTargets();
+  if (A.users.length) return A.users;
+  if (A.usersPromise) return A.usersPromise;
+  if (!window.currentTenantId) return [];
+
+  A.usersPromise = (async () => {
+    const tenantId = window.currentTenantId;
+
+    const {data,error}=await sb.from('profiles')
+      .select('id,full_name,email,department')
+      .eq('tenant_id',tenantId)
+      .order('full_name');
+
+    if(error){
+      console.warn('[priority-admin] profiles',error);
+      return [];
+    }
+
+    const {data:rr,error:roleError}=await sb.from('user_roles')
+      .select('user_id,role:roles(name,display_name)')
+      .eq('tenant_id',tenantId);
+
+    if(roleError) console.warn('[priority-admin] roles',roleError);
+
+    const roleMap={};
+    (rr||[]).forEach(x=>roleMap[x.user_id]=x.role?.display_name||x.role?.name||'Staff');
+    A.users=(data||[]).map(x=>({...x,role:roleMap[x.id]||'Staff'}));
+    renderAllTargets();
+    return A.users;
+  })();
+
+  try { return await A.usersPromise; }
+  finally { A.usersPromise = null; }
 }
 
 function renderAllTargets(){everySection().forEach(renderTargets)}
@@ -171,7 +203,7 @@ async function publish(sec,btn){
  const estimated=p.recipient_mode==='all'?A.users.length:p.recipient_values.length;
  if(!confirm(`Publish this ${p.category.toUpperCase()} banner to approximately ${estimated} recipient(s)?`))return;
  btn.disabled=true;btn.textContent='Publishing…';
- const {data,error}=await sb.rpc('publish_priority_banner',{
+ const {error}=await sb.rpc('publish_priority_banner',{
   p_category:p.category,p_title:p.title,p_message:p.message,p_requires_ack:p.requires_ack,
   p_expires_at:p.expires_at,p_recipient_mode:p.recipient_mode,p_recipient_values:p.recipient_values
  });
@@ -183,8 +215,12 @@ async function publish(sec,btn){
 }
 
 async function loadHistory(){
- const {data,error}=await sb.rpc('admin_priority_banner_dashboard');
- if(error){console.warn('[priority-admin] dashboard',error);return}
+ if (A.historyPromise) return A.historyPromise;
+ if (!window.currentTenantId) return [];
+ A.historyPromise = sb.rpc('admin_priority_banner_dashboard');
+ const {data,error}=await A.historyPromise;
+ A.historyPromise = null;
+ if(error){console.warn('[priority-admin] dashboard',error);return []}
  A.history=data||[];
  everySection().forEach(sec=>{
   const host=fields(sec).history;
@@ -199,6 +235,7 @@ async function loadHistory(){
     </div>
    </article>`).join(''):'<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:11px">No banners yet.</div>';
  });
+ return A.history;
 }
 
 async function withdraw(id){
@@ -215,8 +252,18 @@ async function showPending(id){
  alert(text||'Everyone has acknowledged.');
 }
 
-function boot(){
- const ob=new MutationObserver(mount);ob.observe(document.body,{childList:true,subtree:true});
- mount();setTimeout(mount,700);setInterval(()=>{if(document.getElementById('adminRoot'))mount()},3000);
+async function boot(){
+  while (A.bootAttempts < 40) {
+    A.bootAttempts += 1;
+
+    if (window.currentTenantId && window.currentUser?.id && mount()) {
+      await Promise.allSettled([loadUsers(), loadHistory()]);
+      return;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+
+  console.warn('[priority-admin] Admin context did not become ready; module stopped safely.');
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();

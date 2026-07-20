@@ -1,4 +1,4 @@
-// NILTASK task trail renderer v207
+// NILTASK task trail renderer v208
 /**
  * ─────────────────────────────────────────────────────────────────────────
  * PROFESSIONAL TASK TRAIL RENDERER (js/task-trail-renderer.js)

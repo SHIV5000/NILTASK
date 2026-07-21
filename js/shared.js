@@ -9,7 +9,7 @@ window.sb = sb;
 
 // Single source of truth for the running build — stamped onto every warn/error
 // log row so the Live Log Monitor can tell which version a remote device runs.
-window.APP_VER = 'v208.3';
+window.APP_VER = 'v208.3.1';
 
 try {
     const DARKISH = ['dark', 'sober-dark', 'midnight'];

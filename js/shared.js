@@ -133,6 +133,47 @@ window.openSecureFile = async function(filePath) {
     window.open(data.signedUrl, '_blank');
 };
 
+// A successful insert must always become visible even when Realtime does not echo
+// to the sender or the fast optimistic target container is absent. Wrap sendMessage
+// after messages.js defines it, then render the in-memory room list as a fallback.
+(function installSendRenderFallback() {
+    if (window.__sendRenderFallbackInstaller) return;
+    window.__sendRenderFallbackInstaller = true;
+
+    let attempts = 0;
+    const timer = setInterval(() => {
+        attempts += 1;
+        const original = window.sendMessage;
+        if (typeof original !== 'function' || original.__renderFallbackWrapped) {
+            if (original?.__renderFallbackWrapped || attempts > 300) clearInterval(timer);
+            return;
+        }
+
+        const wrapped = async function(...args) {
+            const beforeIds = new Set((Array.isArray(window._roomMsgs) ? window._roomMsgs : []).map(m => m?.id));
+            const result = await original.apply(this, args);
+
+            // Let the original optimistic append run first.
+            await new Promise(resolve => setTimeout(resolve, 0));
+            const roomMessages = Array.isArray(window._roomMsgs) ? window._roomMsgs : [];
+            const newest = [...roomMessages].reverse().find(m => m?.id && !beforeIds.has(m.id));
+
+            if (newest && !document.getElementById('row-' + newest.id) && typeof window.renderMessages === 'function') {
+                window.renderMessages(roomMessages);
+                if (typeof window.applyRBAC === 'function') window.applyRBAC();
+            }
+
+            const scroller = document.getElementById('messagesContainer');
+            if (scroller) scroller.scrollTop = scroller.scrollHeight;
+            return result;
+        };
+        wrapped.__renderFallbackWrapped = true;
+        wrapped.__originalSendMessage = original;
+        window.sendMessage = wrapped;
+        clearInterval(timer);
+    }, 100);
+})();
+
 import('./priority-banner.js?v=208.2').catch(error => {
     console.warn('[priority-banner] failed to load', error);
 });

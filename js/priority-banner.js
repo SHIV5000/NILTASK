@@ -4,6 +4,52 @@
  */
 import { sb } from './shared.js';
 
+// Guarantee that a successful send becomes visible even when INSERT ... select()
+// returns no row or Realtime does not echo the sender's insert.
+(function installMessageRenderRecovery() {
+    if (window.__messageRenderRecoveryInstalled) return;
+    window.__messageRenderRecoveryInstalled = true;
+
+    let attempts = 0;
+    const timer = setInterval(() => {
+        attempts += 1;
+        const original = window.sendMessage;
+        if (typeof original !== 'function') {
+            if (attempts > 300) clearInterval(timer);
+            return;
+        }
+        if (original.__messageRenderRecoveryWrapped) {
+            clearInterval(timer);
+            return;
+        }
+
+        const wrapped = async function(...args) {
+            const roomBefore = window.currentRoom;
+            const idsBefore = new Set((Array.isArray(window._roomMsgs) ? window._roomMsgs : []).map(m => m?.id));
+            const result = await original.apply(this, args);
+
+            await new Promise(resolve => setTimeout(resolve, 0));
+            const roomMessages = Array.isArray(window._roomMsgs) ? window._roomMsgs : [];
+            const newest = [...roomMessages].reverse().find(m => m?.id && !idsBefore.has(m.id));
+
+            if (newest && !document.getElementById('row-' + newest.id) && typeof window.renderMessages === 'function') {
+                window.renderMessages(roomMessages);
+                window.applyRBAC?.();
+            } else if (!newest && window.currentRoom === roomBefore && typeof window.loadMessages === 'function') {
+                await window.loadMessages();
+            }
+
+            const scroller = document.getElementById('messagesContainer');
+            if (scroller) scroller.scrollTop = scroller.scrollHeight;
+            return result;
+        };
+        wrapped.__messageRenderRecoveryWrapped = true;
+        wrapped.__originalSendMessage = original;
+        window.sendMessage = wrapped;
+        clearInterval(timer);
+    }, 100);
+})();
+
 window.NILTASK_PRIORITY_BANNER_VERSION = 'v208';
 
 const PB = {

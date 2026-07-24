@@ -31,13 +31,17 @@
     {selector:'[onclick*="toggleRightSidebar"]',key:'tasks',label:'Tasks',icon:'ti-checkbox'}
   ];
 
+  function addAsset(id,tag,attrs){if(document.getElementById(id))return;const el=document.createElement(tag);el.id=id;Object.assign(el,attrs);document.head.appendChild(el)}
   function loadRefinements(){
-    if(!document.getElementById('nfa-refinement-css')){const l=document.createElement('link');l.id='nfa-refinement-css';l.rel='stylesheet';l.href='./css/professional-refinements.css?v=1';document.head.appendChild(l)}
-    if(!document.getElementById('nfa-refinement-js')){const s=document.createElement('script');s.id='nfa-refinement-js';s.src='./js/professional-refinements.js?v=1';s.defer=true;document.head.appendChild(s)}
+    addAsset('nfa-refinement-css','link',{rel:'stylesheet',href:'./css/professional-refinements.css?v=5'});
+    addAsset('nfa-refinement-js','script',{src:'./js/professional-refinements.js?v=5',defer:true});
+    addAsset('nfa-workspace-css-direct','link',{rel:'stylesheet',href:'./css/professional-workspace.css?v=5'});
+    addAsset('nfa-workspace-js-direct','script',{src:'./js/professional-workspace.js?v=5',defer:true});
   }
   function ensureStyles(){if(!document.getElementById('nfa-shell-style')){const s=document.createElement('style');s.id='nfa-shell-style';s.textContent=CSS;document.head.appendChild(s)}loadRefinements()}
-  function showMessages(){window.closeActivityFeed?.();const left=document.getElementById('leftSidebar');if(left&&getComputedStyle(left).display==='none')window.toggleLeftSidebar?.();setActiveRail('messages')}
-  const RAIL_ITEMS=[{key:'messages',label:'Messages',icon:'ti-messages',action:showMessages},{key:'tasks',label:'Tasks',icon:'ti-checkbox',action:()=>window.toggleRightSidebar?.()},{key:'activity',label:'Activity',icon:'ti-activity',action:()=>window.openActivityFeed?.()},{key:'notifications',label:'Notifications',icon:'ti-bell',action:()=>window.openTopPanel?.('alerts')},{key:'schedule',label:'Schedule',icon:'ti-calendar-time',action:()=>window.openTopPanel?.('scheduled')}];
+  function showMessages(){if(window.nfaShowMessages)return window.nfaShowMessages();window.closeActivityFeed?.();const left=document.getElementById('leftSidebar');if(left&&getComputedStyle(left).display==='none')window.toggleLeftSidebar?.();setActiveRail('messages')}
+  function showTasks(){if(window.nfaShowTasks)return window.nfaShowTasks();return window.toggleRightSidebar?.()}
+  const RAIL_ITEMS=[{key:'messages',label:'Messages',icon:'ti-messages',action:showMessages},{key:'tasks',label:'Tasks',icon:'ti-checkbox',action:showTasks},{key:'activity',label:'Activity',icon:'ti-activity',action:()=>window.openActivityFeed?.()},{key:'notifications',label:'Notifications',icon:'ti-bell',action:()=>window.openTopPanel?.('alerts')},{key:'schedule',label:'Schedule',icon:'ti-calendar-time',action:()=>window.openTopPanel?.('scheduled')}];
   function setActiveRail(key){document.querySelectorAll('.nfa-rail-button').forEach(b=>b.classList.toggle('is-active',b.dataset.module===key))}
   function makeButton(item){const b=document.createElement('button');b.type='button';b.className='nfa-rail-button';b.dataset.module=item.key;b.title=item.label;b.setAttribute('aria-label',item.label);b.innerHTML=`<i class="ti ${item.icon}"></i><span>${item.label}</span>`;b.onclick=()=>{item.action();setActiveRail(item.key)};return b}
   function ensureRail(){if(innerWidth<=768)return;const left=document.getElementById('leftSidebar'),row=left?.parentElement;if(!left||!row||document.getElementById('nfaNavigationRail'))return;const rail=document.createElement('nav');rail.id='nfaNavigationRail';rail.setAttribute('aria-label','Main modules');const logo=document.createElement('div');logo.className='nfa-rail-logo';logo.textContent='N';rail.appendChild(logo);const items=document.createElement('div');items.className='nfa-rail-items';RAIL_ITEMS.forEach(i=>items.appendChild(makeButton(i)));rail.append(items,Object.assign(document.createElement('div'),{className:'nfa-rail-spacer'}),makeButton({key:'settings',label:'Settings',icon:'ti-settings',action:()=>window.openSettings?.()}));row.insertBefore(rail,left);setActiveRail('messages')}

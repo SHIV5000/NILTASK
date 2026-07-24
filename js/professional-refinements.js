@@ -16,6 +16,8 @@
     ensureAsset('nfa-professional-tasks-js', 'script', { src: './js/professional-tasks.js?v=2', defer: true });
     ensureAsset('nfa-professional-modules-css', 'link', { rel: 'stylesheet', href: './css/professional-modules.css?v=1' });
     ensureAsset('nfa-professional-modules-js', 'script', { src: './js/professional-modules.js?v=1', defer: true });
+    ensureAsset('nfa-professional-workspace-css', 'link', { rel: 'stylesheet', href: './css/professional-workspace.css?v=2' });
+    ensureAsset('nfa-professional-workspace-js', 'script', { src: './js/professional-workspace.js?v=2', defer: true });
   }
 
   function markDuplicateSchoolName() {

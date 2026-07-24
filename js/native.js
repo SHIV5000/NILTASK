@@ -117,3 +117,66 @@
     if (uid && uid !== _pollUid && _lastToken) { _pollUid = uid; _tokenSaved = null; saveToken(_lastToken); }
   }, 3000);
 })();
+
+/* GitHub Primer UI branch loader. Visual only; no application actions are replaced. */
+(function () {
+  'use strict';
+  var STORAGE_KEY = 'niltask_github_primer_theme';
+  function loadCss() {
+    if (document.getElementById('githubPrimerUiCss')) return;
+    var link = document.createElement('link');
+    link.id = 'githubPrimerUiCss';
+    link.rel = 'stylesheet';
+    link.href = './css/github-primer-ui.css?v=1';
+    document.head.appendChild(link);
+  }
+  function apply(theme) {
+    var value = theme === 'dark' ? 'dark' : 'light';
+    document.documentElement.classList.add('github-primer-ui');
+    if (value === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    else document.documentElement.setAttribute('data-theme', 'light');
+    try { localStorage.setItem(STORAGE_KEY, value); } catch (e) {}
+    var icon = document.querySelector('#githubPrimerThemeToggle i');
+    if (icon) icon.className = value === 'dark' ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+    var button = document.getElementById('githubPrimerThemeToggle');
+    if (button) button.title = value === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+  }
+  function current() {
+    try {
+      var saved = localStorage.getItem(STORAGE_KEY);
+      if (saved === 'dark' || saved === 'light') return saved;
+    } catch (e) {}
+    return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  }
+  function ensureToggle() {
+    if (document.getElementById('githubPrimerThemeToggle')) return;
+    var chat = document.querySelector('.chat-area');
+    var header = chat && chat.firstElementChild;
+    var actions = header && header.lastElementChild;
+    if (!actions) return;
+    var button = document.createElement('button');
+    button.id = 'githubPrimerThemeToggle';
+    button.type = 'button';
+    button.setAttribute('aria-label', 'Toggle light and dark theme');
+    button.innerHTML = '<i class="fa-solid fa-moon"></i>';
+    button.onclick = function () { apply(current() === 'dark' ? 'light' : 'dark'); };
+    actions.prepend(button);
+    apply(current());
+  }
+  function enhance() {
+    loadCss();
+    document.documentElement.classList.add('github-primer-ui');
+    ensureToggle();
+  }
+  loadCss();
+  apply(current());
+  var queued = false;
+  function schedule() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(function () { queued = false; enhance(); });
+  }
+  new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', schedule, { once: true });
+  else schedule();
+})();

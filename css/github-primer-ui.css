@@ -1,0 +1,87 @@
+/* GitHub Primer-inspired NILTASK skin. Presentation only: existing renderers and handlers remain authoritative. */
+:root{
+  --primer-canvas:#fff;--primer-subtle:#f6f8fa;--primer-inset:#f6f8fa;
+  --primer-border:#d0d7de;--primer-border-muted:#d8dee4;--primer-neutral:rgba(175,184,193,.2);
+  --primer-accent:#0969da;--primer-accent-strong:#0969da;--primer-accent-soft:#ddf4ff;
+  --primer-fg:#24292f;--primer-muted:#57606a;--primer-subtle-fg:#6e7781;
+  --primer-danger:#cf222e;--primer-success:#1a7f37;
+  --primer-shadow-sm:0 1px 3px rgba(27,31,36,.08);--primer-shadow-md:0 8px 30px rgba(27,31,36,.12);
+}
+[data-theme="dark"]{
+  --primer-canvas:#0d1117;--primer-subtle:#161b22;--primer-inset:#010409;
+  --primer-border:#30363d;--primer-border-muted:#21262d;--primer-neutral:rgba(110,118,129,.25);
+  --primer-accent:#58a6ff;--primer-accent-strong:#1f6feb;--primer-accent-soft:rgba(31,111,235,.2);
+  --primer-fg:#c9d1d9;--primer-muted:#8b949e;--primer-subtle-fg:#6e7681;
+  --primer-danger:#f85149;--primer-success:#3fb950;
+  --primer-shadow-sm:0 1px 3px rgba(0,0,0,.3);--primer-shadow-md:0 8px 30px rgba(0,0,0,.5);
+}
+html.github-primer-ui,html.github-primer-ui body{background:var(--primer-canvas)!important;color:var(--primer-fg)!important}
+html.github-primer-ui{--bg-body:var(--primer-canvas);--bg-sidebar:var(--primer-canvas);--bg-chat:var(--primer-subtle);--text-primary:var(--primer-fg);--text-secondary:var(--primer-muted);--border-color:var(--primer-border);--accent:var(--primer-accent);--accent-hover:var(--primer-accent-strong);--sent-bg:var(--primer-accent-soft);--received-bg:var(--primer-subtle);--card-bg:var(--primer-canvas);--card-shadow:var(--primer-shadow-sm)}
+html.github-primer-ui body,html.github-primer-ui input,html.github-primer-ui select,html.github-primer-ui textarea,html.github-primer-ui button{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif!important}
+@media(min-width:769px){
+ html.github-primer-ui #leftSidebar{width:256px!important;min-width:232px!important;max-width:300px!important;background:var(--primer-canvas)!important;border-right:1px solid var(--primer-border)!important;box-shadow:none!important}
+ html.github-primer-ui #leftSidebar>div:first-child{padding:12px!important;border-bottom:1px solid var(--primer-border)!important;background:var(--primer-canvas)!important}
+ html.github-primer-ui #chatsList{padding:10px!important}
+ html.github-primer-ui .sidebar-section-label{font-size:11px!important;font-weight:600!important;letter-spacing:.08em!important;color:var(--primer-muted)!important;margin:13px 5px 5px!important;padding:0!important}
+ html.github-primer-ui .channel-item{min-height:42px!important;padding:6px 10px!important;margin:2px 0!important;border:1px solid transparent!important;border-radius:6px!important;background:transparent!important;gap:10px!important;box-shadow:none!important}
+ html.github-primer-ui .channel-item:hover{background:var(--primer-subtle)!important;border-color:var(--primer-border)!important}
+ html.github-primer-ui .channel-item.active{background:var(--primer-subtle)!important;border-color:var(--primer-accent)!important;box-shadow:none!important}
+ html.github-primer-ui .channel-item img,html.github-primer-ui .channel-item>div:first-child{width:30px!important;height:30px!important;min-width:30px!important;border-radius:50%!important}
+ html.github-primer-ui .channel-item .font-semibold,html.github-primer-ui .channel-item .font-bold{font-size:13px!important;color:var(--primer-fg)!important}
+ html.github-primer-ui .channel-item .text-xs{font-size:10px!important;color:var(--primer-muted)!important}
+ html.github-primer-ui .chat-area{background:var(--primer-subtle)!important;min-width:0!important}
+ html.github-primer-ui .chat-area>div:first-child{min-height:58px!important;height:58px!important;padding:9px 16px!important;background:var(--primer-canvas)!important;border-bottom:1px solid var(--primer-border)!important;box-shadow:none!important}
+ html.github-primer-ui .chat-area>div:first-child h2,html.github-primer-ui .chat-area>div:first-child .font-bold{font-size:16px!important;color:var(--primer-fg)!important}
+ html.github-primer-ui .chat-area>div:first-child .text-xs{color:var(--primer-muted)!important}
+ html.github-primer-ui .topbar-icon-btn,html.github-primer-ui .top-bar-icon{width:32px!important;height:32px!important;min-width:32px!important;padding:0!important;border-radius:6px!important;color:var(--primer-muted)!important;background:transparent!important;border:1px solid transparent!important}
+ html.github-primer-ui .topbar-icon-btn:hover,html.github-primer-ui .top-bar-icon:hover{background:var(--primer-subtle)!important;border-color:var(--primer-border)!important;color:var(--primer-fg)!important}
+ html.github-primer-ui #messagesContainer{padding:16px!important;background:var(--primer-subtle)!important;background-image:none!important}
+ html.github-primer-ui #chatShellContainer{max-width:880px!important;margin:0 auto!important;padding:0 8px 24px!important}
+ html.github-primer-ui #chatShellContainer [id^="row-"]{margin:12px 0!important}
+ html.github-primer-ui #chatShellContainer [id^="row-"] .bubble{max-width:min(720px,78%)!important;border-radius:8px!important;border:1px solid var(--primer-border)!important;background:var(--primer-canvas)!important;color:var(--primer-fg)!important;box-shadow:var(--primer-shadow-sm)!important;overflow:visible!important}
+ html.github-primer-ui #chatShellContainer .row-sent .bubble,html.github-primer-ui #chatShellContainer [id^="row-"].row-sent .bubble{background:var(--primer-accent-soft)!important;border-color:color-mix(in srgb,var(--primer-accent) 35%,var(--primer-border))!important}
+ html.github-primer-ui .b-header{min-height:36px!important;padding:7px 10px 5px!important;gap:8px!important;border-bottom:0!important}
+ html.github-primer-ui .b-header .b-avatar{width:28px!important;height:28px!important;border-radius:50%!important}
+ html.github-primer-ui .b-name{font-size:13px!important;font-weight:600!important;color:var(--primer-fg)!important}
+ html.github-primer-ui .b-time{font-size:10px!important;color:var(--primer-muted)!important}
+ html.github-primer-ui .b-text{padding:4px 12px 10px!important;font-size:14px!important;line-height:1.5!important;color:var(--primer-fg)!important}
+ html.github-primer-ui .b-actions{padding:5px 10px 8px!important;gap:5px!important;border-top:1px solid var(--primer-border-muted)!important}
+ html.github-primer-ui .act-btn{min-height:27px!important;padding:4px 7px!important;border-radius:5px!important;font-size:10px!important;color:var(--primer-muted)!important}
+ html.github-primer-ui .act-btn:hover{background:var(--primer-neutral)!important;color:var(--primer-fg)!important}
+ html.github-primer-ui .menu-wrap>button,html.github-primer-ui .bubble .menu-wrap button{opacity:0!important;transition:opacity .15s!important}
+ html.github-primer-ui .bubble:hover .menu-wrap>button,html.github-primer-ui .bubble:focus-within .menu-wrap>button{opacity:1!important}
+ html.github-primer-ui .bubble-dropdown,html.github-primer-ui .dropdown-menu{min-width:210px!important;padding:6px!important;border:1px solid var(--primer-border)!important;border-radius:12px!important;background:var(--primer-canvas)!important;color:var(--primer-fg)!important;box-shadow:var(--primer-shadow-md)!important}
+ html.github-primer-ui .dd-item,html.github-primer-ui .dropdown-menu button{min-height:36px!important;padding:8px 11px!important;border-radius:6px!important;font-size:12px!important;color:var(--primer-fg)!important;background:transparent!important}
+ html.github-primer-ui .dd-item:hover,html.github-primer-ui .dropdown-menu button:hover{background:var(--primer-subtle)!important}
+ html.github-primer-ui .dd-item.text-red-500,html.github-primer-ui .dropdown-menu .text-danger{color:var(--primer-danger)!important}
+ html.github-primer-ui .chat-area>div:last-child{padding:8px 12px 10px!important;background:var(--primer-canvas)!important;border-top:1px solid var(--primer-border)!important;box-shadow:none!important}
+ html.github-primer-ui .chat-area>div:last-child>div:last-child{border:1px solid var(--primer-border)!important;border-radius:8px!important;background:var(--primer-canvas)!important;box-shadow:none!important}
+ html.github-primer-ui .ql-toolbar{padding:5px 8px!important;border:0!important;border-bottom:1px solid var(--primer-border-muted)!important;background:var(--primer-canvas)!important}
+ html.github-primer-ui .ql-container{border:0!important;background:var(--primer-canvas)!important}
+ html.github-primer-ui .ql-editor{min-height:40px!important;max-height:130px!important;padding:9px 11px!important;font-size:14px!important;color:var(--primer-fg)!important}
+ html.github-primer-ui #rightSidebar{width:320px!important;min-width:290px!important;max-width:380px!important;background:var(--primer-canvas)!important;border-left:1px solid var(--primer-border)!important;box-shadow:none!important}
+ html.github-primer-ui #rightSidebarFilters,html.github-primer-ui #rightSidebar>div:first-child{background:var(--primer-canvas)!important;border-bottom:1px solid var(--primer-border)!important}
+ html.github-primer-ui #tasksPanel{padding:10px!important;background:var(--primer-canvas)!important}
+ html.github-primer-ui .nt-task-card,html.github-primer-ui .task-card{border:1px solid var(--primer-border)!important;border-radius:12px!important;background:var(--primer-canvas)!important;box-shadow:none!important;margin-bottom:10px!important}
+ html.github-primer-ui .nt-task-card:hover,html.github-primer-ui .task-card:hover{border-color:var(--primer-accent)!important}
+ html.github-primer-ui .nt-task-body{padding:12px!important}.nt-task-title{color:var(--primer-fg)!important}
+ html.github-primer-ui .nt-task-expanded,html.github-primer-ui .nt-task-section{background:var(--primer-subtle)!important;border-color:var(--primer-border)!important;border-radius:8px!important;box-shadow:none!important}
+ html.github-primer-ui .nt-task-stat{background:var(--primer-subtle)!important;border:1px solid var(--primer-border)!important;border-radius:6px!important}
+ html.github-primer-ui #activityFeedPanel,html.github-primer-ui #notificationPanel,html.github-primer-ui #notificationsPanel,html.github-primer-ui #alertsPanel{background:var(--primer-canvas)!important;color:var(--primer-fg)!important}
+ html.github-primer-ui #activityFeedList{padding:10px!important;background:var(--primer-subtle)!important}
+ html.github-primer-ui .nfa207-card{border:1px solid var(--primer-border)!important;border-radius:8px!important;background:var(--primer-canvas)!important;box-shadow:none!important;margin-bottom:8px!important}
+ html.github-primer-ui .nfa207-filter-panel{background:var(--primer-canvas)!important;border:1px solid var(--primer-border)!important;border-radius:8px!important;box-shadow:none!important}
+ html.github-primer-ui .nfa207-filter-panel select,html.github-primer-ui input,html.github-primer-ui select,html.github-primer-ui textarea{background:var(--primer-canvas)!important;color:var(--primer-fg)!important;border-color:var(--primer-border)!important}
+ html.github-primer-ui .modal-card,html.github-primer-ui [role="dialog"]>div{background:var(--primer-canvas)!important;color:var(--primer-fg)!important;border:1px solid var(--primer-border)!important;border-radius:12px!important;box-shadow:var(--primer-shadow-md)!important}
+ html.github-primer-ui #githubPrimerThemeToggle{display:inline-flex!important}
+}
+#githubPrimerThemeToggle{display:none;align-items:center;justify-content:center;width:32px;height:32px;border-radius:6px;border:1px solid var(--primer-border);background:var(--primer-canvas);color:var(--primer-muted);cursor:pointer}
+#githubPrimerThemeToggle:hover{background:var(--primer-subtle);color:var(--primer-fg)}
+@media(max-width:768px){
+ html.github-primer-ui #messagesContainer{background:var(--primer-subtle)!important;padding:8px!important}
+ html.github-primer-ui .bubble{border:1px solid var(--primer-border)!important;border-radius:8px!important;background:var(--primer-canvas)!important;box-shadow:none!important}
+ html.github-primer-ui .row-sent .bubble{background:var(--primer-accent-soft)!important}
+ html.github-primer-ui .chat-area>div:first-child{background:var(--primer-canvas)!important;border-bottom:1px solid var(--primer-border)!important}
+ html.github-primer-ui .chat-area>div:last-child{background:var(--primer-canvas)!important;border-top:1px solid var(--primer-border)!important}
+ html.github-primer-ui .mobile-sheet,html.github-primer-ui .mSheet{background:var(--primer-canvas)!important;color:var(--primer-fg)!important}
+}

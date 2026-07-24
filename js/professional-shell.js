@@ -2,7 +2,6 @@
 // Presentation layer only. Existing handlers, permissions and data flows remain authoritative.
 (function () {
   'use strict';
-
   const CSS = `
   @media(min-width:769px){
     #nfaNavigationRail{width:76px;min-width:76px;height:100%;display:flex;flex-direction:column;align-items:center;padding:16px 10px 14px;gap:12px;background:linear-gradient(180deg,#1f2437,#252b42);border-right:1px solid rgba(255,255,255,.055);box-shadow:8px 0 28px rgba(31,36,55,.08);z-index:35}
@@ -22,7 +21,6 @@
   @media(max-width:1120px) and (min-width:769px){#nfaNavigationRail{width:68px;min-width:68px}.nfa-rail-button{width:48px}.nfa-rail-button span{display:none}.nfa-message-bubble{width:86%!important;max-width:86%!important}}
   @media(max-width:768px){#nfaNavigationRail{display:none!important}.nfa-message-shell{padding:0 8px 90px!important}.nfa-message-bubble{width:94%!important;max-width:94%!important}.nfa-message-bubble .b-text{max-width:none!important}.nfa-message-bubble .bubble-dropdown{position:fixed!important;left:10px!important;right:10px!important;top:auto!important;bottom:calc(72px + env(safe-area-inset-bottom))!important;min-width:0!important;border-radius:18px!important;z-index:11050!important}}
   `;
-
   const MODULES=[
     {selector:"[onclick*=\"openTopPanel('scheduled')\"]",key:'schedule',label:'Schedule',icon:'ti-calendar-time'},
     {selector:"[onclick*=\"openTopPanel('reminders')\"]",key:'reminders',label:'Reminders',icon:'ti-alarm'},
@@ -30,18 +28,18 @@
     {selector:'[onclick*="openActivityFeed"]',key:'activity',label:'Activity',icon:'ti-activity'},
     {selector:'[onclick*="toggleRightSidebar"]',key:'tasks',label:'Tasks',icon:'ti-checkbox'}
   ];
-
   function addAsset(id,tag,attrs){if(document.getElementById(id))return;const el=document.createElement(tag);el.id=id;Object.assign(el,attrs);document.head.appendChild(el)}
   function loadRefinements(){
-    addAsset('nfa-refinement-css','link',{rel:'stylesheet',href:'./css/professional-refinements.css?v=5'});
-    addAsset('nfa-refinement-js','script',{src:'./js/professional-refinements.js?v=5',defer:true});
-    addAsset('nfa-workspace-css-direct','link',{rel:'stylesheet',href:'./css/professional-workspace.css?v=5'});
-    addAsset('nfa-workspace-js-direct','script',{src:'./js/professional-workspace.js?v=5',defer:true});
+    addAsset('nfa-refinement-css','link',{rel:'stylesheet',href:'./css/professional-refinements.css?v=7'});
+    addAsset('nfa-refinement-js','script',{src:'./js/professional-refinements.js?v=7',defer:true});
+    addAsset('nfa-workspace-css-direct','link',{rel:'stylesheet',href:'./css/professional-workspace.css?v=7'});
+    addAsset('nfa-workspace-js-direct','script',{src:'./js/professional-workspace.js?v=7',defer:true});
   }
   function ensureStyles(){if(!document.getElementById('nfa-shell-style')){const s=document.createElement('style');s.id='nfa-shell-style';s.textContent=CSS;document.head.appendChild(s)}loadRefinements()}
-  function showMessages(){if(window.nfaShowMessages)return window.nfaShowMessages();window.closeActivityFeed?.();const left=document.getElementById('leftSidebar');if(left&&getComputedStyle(left).display==='none')window.toggleLeftSidebar?.();setActiveRail('messages')}
+  function showMessages(){if(window.nfaShowMessages)return window.nfaShowMessages();window.closeActivityFeed?.();setActiveRail('messages')}
   function showTasks(){if(window.nfaShowTasks)return window.nfaShowTasks();return window.toggleRightSidebar?.()}
-  const RAIL_ITEMS=[{key:'messages',label:'Messages',icon:'ti-messages',action:showMessages},{key:'tasks',label:'Tasks',icon:'ti-checkbox',action:showTasks},{key:'activity',label:'Activity',icon:'ti-activity',action:()=>window.openActivityFeed?.()},{key:'notifications',label:'Notifications',icon:'ti-bell',action:()=>window.openTopPanel?.('alerts')},{key:'schedule',label:'Schedule',icon:'ti-calendar-time',action:()=>window.openTopPanel?.('scheduled')}];
+  function showActivity(){if(window.nfaShowActivity)return window.nfaShowActivity();return window.openActivityFeed?.()}
+  const RAIL_ITEMS=[{key:'messages',label:'Messages',icon:'ti-messages',action:showMessages},{key:'tasks',label:'Tasks',icon:'ti-checkbox',action:showTasks},{key:'activity',label:'Activity',icon:'ti-activity',action:showActivity},{key:'notifications',label:'Notifications',icon:'ti-bell',action:()=>window.openTopPanel?.('alerts')},{key:'schedule',label:'Schedule',icon:'ti-calendar-time',action:()=>window.openTopPanel?.('scheduled')}];
   function setActiveRail(key){document.querySelectorAll('.nfa-rail-button').forEach(b=>b.classList.toggle('is-active',b.dataset.module===key))}
   function makeButton(item){const b=document.createElement('button');b.type='button';b.className='nfa-rail-button';b.dataset.module=item.key;b.title=item.label;b.setAttribute('aria-label',item.label);b.innerHTML=`<i class="ti ${item.icon}"></i><span>${item.label}</span>`;b.onclick=()=>{item.action();setActiveRail(item.key)};return b}
   function ensureRail(){if(innerWidth<=768)return;const left=document.getElementById('leftSidebar'),row=left?.parentElement;if(!left||!row||document.getElementById('nfaNavigationRail'))return;const rail=document.createElement('nav');rail.id='nfaNavigationRail';rail.setAttribute('aria-label','Main modules');const logo=document.createElement('div');logo.className='nfa-rail-logo';logo.textContent='N';rail.appendChild(logo);const items=document.createElement('div');items.className='nfa-rail-items';RAIL_ITEMS.forEach(i=>items.appendChild(makeButton(i)));rail.append(items,Object.assign(document.createElement('div'),{className:'nfa-rail-spacer'}),makeButton({key:'settings',label:'Settings',icon:'ti-settings',action:()=>window.openSettings?.()}));row.insertBefore(rail,left);setActiveRail('messages')}

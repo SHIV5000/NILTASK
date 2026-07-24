@@ -3,13 +3,19 @@
 (function () {
   'use strict';
 
-  function ensureTaskEnhancer() {
-    if (document.getElementById('nfa-professional-tasks-js')) return;
-    const script = document.createElement('script');
-    script.id = 'nfa-professional-tasks-js';
-    script.src = './js/professional-tasks.js?v=1';
-    script.defer = true;
-    document.head.appendChild(script);
+  function ensureAsset(id, tag, attrs) {
+    if (document.getElementById(id)) return;
+    const el = document.createElement(tag);
+    el.id = id;
+    Object.entries(attrs).forEach(([key, value]) => { el[key] = value; });
+    document.head.appendChild(el);
+  }
+
+  function ensurePresentationLayers() {
+    ensureAsset('nfa-professional-tasks-css', 'link', { rel: 'stylesheet', href: './css/professional-tasks.css?v=2' });
+    ensureAsset('nfa-professional-tasks-js', 'script', { src: './js/professional-tasks.js?v=2', defer: true });
+    ensureAsset('nfa-professional-modules-css', 'link', { rel: 'stylesheet', href: './css/professional-modules.css?v=1' });
+    ensureAsset('nfa-professional-modules-js', 'script', { src: './js/professional-modules.js?v=1', defer: true });
   }
 
   function markDuplicateSchoolName() {
@@ -41,7 +47,7 @@
   }
 
   function run() {
-    ensureTaskEnhancer();
+    ensurePresentationLayers();
     markDuplicateSchoolName();
     markPanels();
   }

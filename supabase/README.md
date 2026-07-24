@@ -1,0 +1,1 @@
+Supabase schema and migration utilities for NILTASK. Review all scripts before execution; historical scripts are retained until dependency analysis is complete.

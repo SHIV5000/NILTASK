@@ -106,7 +106,7 @@
   function updateCount(){const cards=qa('#nfaTasksWorkspace #tasksPanel [data-task-id]').filter(c=>c.style.display!=='none');const el=q('#nfaVisibleTaskCount');if(el)el.textContent=`${cards.length} visible`}
   function syncTasks(){if(state.mode!=='tasks')return;moveTaskPanelToWorkspace();qa('#nfaTasksWorkspace #tasksPanel [data-task-id]').forEach(card=>{card.setAttribute('role','button');card.tabIndex=0;card.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectTask(card.dataset.taskId)}}});applyTextSearch();if(state.selectedTaskId)selectTask(state.selectedTaskId)}
 
-  function patchNotificationEntry(){const original=window.openTaskFromNotification;if(typeof original==='function'&&!original.__nfaPatched){const wrapped=async id=>{await showTasks(id);return true};wrapped.__nfaPatched=true;window.openTaskFromNotification=wrapped}}
+  function patchNotificationEntry(){const original=window.openTaskFromNotification;if(typeof original==='function'&&!original.__nfaPatched){const wrapped=async id=>{await showTasks(id);return original(id)};wrapped.__nfaPatched=true;wrapped.__nfaOriginal=original;window.openTaskFromNotification=wrapped}}
 
   function patchRail(){const task=q('.nfa-rail-button[data-module="tasks"]'),messages=q('.nfa-rail-button[data-module="messages"]');if(task&&!task.dataset.nfaWorkspace){task.dataset.nfaWorkspace='1';task.onclick=e=>{e.preventDefault();showTasks()}}if(messages&&!messages.dataset.nfaWorkspace){messages.dataset.nfaWorkspace='1';messages.onclick=e=>{e.preventDefault();showMessages()}}}
 

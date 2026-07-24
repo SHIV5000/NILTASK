@@ -23,7 +23,8 @@
     const school = candidates[0];
     if (school) {
       school.dataset.niltaskSchoolBrand = '1';
-      school.classList.add('niltask-school-name');
+      school.classList.add('nfa-school-name');
+      school.parentElement?.classList.add('nfa-school-brand');
       school.setAttribute('title', schoolName);
     }
 
@@ -32,22 +33,23 @@
     );
     if (appLabel) {
       appLabel.dataset.niltaskProductLabel = '1';
-      appLabel.classList.add('niltask-product-label');
+      appLabel.classList.add('nfa-product-label');
     }
   }
 
   function enhanceModuleButtons() {
     MODULES.forEach((module) => {
       document.querySelectorAll(module.selector).forEach((button) => {
-        button.classList.add('niltask-module-button');
+        button.classList.add('nfa-module-button');
         button.dataset.module = module.key;
         button.setAttribute('aria-label', module.label);
 
         const icon = button.querySelector('i');
         if (icon) {
-          [...icon.classList].filter((c) => c.startsWith('ti-')).forEach((c) => icon.classList.remove(c));
-          if (!icon.classList.contains('ti')) icon.classList.add('ti');
-          icon.classList.add(module.icon);
+          [...icon.classList]
+            .filter((c) => c === 'fa-solid' || c.startsWith('fa-') || c.startsWith('ti-'))
+            .forEach((c) => icon.classList.remove(c));
+          icon.classList.add('ti', module.icon);
         }
 
         const label = button.querySelector('span');
@@ -57,13 +59,13 @@
   }
 
   function enhanceShell() {
-    document.documentElement.classList.add('niltask-professional-ui');
-    document.getElementById('root')?.classList.add('niltask-app-root');
-    document.getElementById('leftSidebar')?.classList.add('niltask-left-sidebar');
-    document.getElementById('rightSidebar')?.classList.add('niltask-task-sidebar');
-    document.querySelector('.chat-area')?.classList.add('niltask-chat-area');
-    document.getElementById('messagesContainer')?.classList.add('niltask-messages');
-    document.getElementById('tasksPanel')?.classList.add('niltask-task-panel');
+    document.documentElement.classList.add('nfa-professional-ui');
+    document.getElementById('root')?.classList.add('nfa-app-root');
+    document.getElementById('leftSidebar')?.classList.add('nfa-left-sidebar');
+    document.getElementById('rightSidebar')?.classList.add('nfa-task-sidebar');
+    document.querySelector('.chat-area')?.classList.add('nfa-chat-area');
+    document.getElementById('messagesContainer')?.classList.add('nfa-messages');
+    document.getElementById('tasksPanel')?.classList.add('nfa-task-panel');
     enhanceSchoolBrand();
     enhanceModuleButtons();
   }

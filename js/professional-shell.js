@@ -17,7 +17,7 @@
       #leftSidebar.nfa-left-sidebar{border-radius:0!important;background:rgba(255,255,255,.98)!important;box-shadow:4px 0 24px rgba(31,36,55,.035)!important}
       .nfa-left-sidebar>div:first-child{padding:15px 14px 11px!important;background:linear-gradient(180deg,#fff 0%,#fafaff 100%)!important}
       .nfa-product-label{font-size:9px!important;letter-spacing:.17em!important;color:#5a57d8!important;margin-bottom:7px!important}
-      .nfa-school-name{padding:12px 14px!important;margin-bottom:11px!important;font-size:17px!important;border-radius:15px!important;color:#fff!important;background:linear-gradient(145deg,#6662e4 0%,#514ecb 52%,#413eae 100%)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.3),inset 0 -3px 0 rgba(34,31,112,.3),0 12px 24px rgba(70,67,180,.23)!important;text-shadow:0 2px 3px rgba(25,23,90,.34)!important}
+      .nfa-school-name{display:block!important;width:100%!important;padding:12px 14px!important;margin:0 0 11px!important;font-size:17px!important;border-radius:15px!important;color:#fff!important;background:linear-gradient(145deg,#6662e4 0%,#514ecb 52%,#413eae 100%)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.3),inset 0 -3px 0 rgba(34,31,112,.3),0 12px 24px rgba(70,67,180,.23)!important;text-shadow:0 2px 3px rgba(25,23,90,.34)!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .nfa-conversation-list{padding:7px 8px 12px!important}
       .nfa-conversation-list .channel-item,.nfa-conversation-list>[class*="cursor"]{border-radius:13px!important;margin:3px 0!important;transition:.16s ease!important}
       .nfa-conversation-list .channel-item:hover,.nfa-conversation-list>[class*="cursor"]:hover{background:#f0f1ff!important;transform:translateX(2px)}
@@ -30,6 +30,7 @@
       .nfa-chat-area>div:last-child{background:rgba(255,255,255,.97)!important;box-shadow:0 -5px 18px rgba(31,36,55,.035)!important}
       #rightSidebar.nfa-task-sidebar{background:rgba(255,255,255,.985)!important;box-shadow:-7px 0 28px rgba(31,36,55,.045)!important}
       #rightSidebar .jira-card{margin:10px!important;border-radius:16px!important}
+      .nfa-legacy-module-button{display:none!important}
       .topbar-icon-btn{border-radius:11px!important;padding:6px 8px!important}
       .topbar-icon-btn span{font-size:9px!important}
       .bubble{border-radius:17px!important;box-shadow:0 8px 24px rgba(31,36,55,.065)!important}
@@ -127,20 +128,24 @@
 
   function enhanceSchoolBrand() {
     const left = document.getElementById('leftSidebar');
-    if (!left) return;
+    const header = left?.firstElementChild;
+    if (!left || !header) return;
+
     const schoolName = window.currentSchoolName || 'My School';
-    const school = [...left.querySelectorAll('div')].find((el) => el.textContent?.trim() === schoolName && !el.dataset.niltaskSchoolBrand);
-    if (school) {
-      school.dataset.niltaskSchoolBrand = '1';
-      school.classList.add('nfa-school-name');
-      school.parentElement?.classList.add('nfa-school-brand');
-      school.setAttribute('title', schoolName);
+    let school = document.getElementById('nfaSchoolName');
+    if (!school) {
+      school = document.createElement('div');
+      school.id = 'nfaSchoolName';
+      school.className = 'nfa-school-name';
+      const productLabel = [...header.querySelectorAll('div')].find((el) => el.textContent?.trim() === 'Noted For Action');
+      if (productLabel?.nextSibling) header.insertBefore(school, productLabel.nextSibling);
+      else header.prepend(school);
     }
-    const appLabel = [...left.querySelectorAll('div')].find((el) => el.textContent?.trim() === 'Noted For Action' && !el.dataset.niltaskProductLabel);
-    if (appLabel) {
-      appLabel.dataset.niltaskProductLabel = '1';
-      appLabel.classList.add('nfa-product-label');
-    }
+    school.textContent = schoolName;
+    school.title = schoolName;
+
+    const appLabel = [...header.querySelectorAll('div')].find((el) => el.textContent?.trim() === 'Noted For Action');
+    if (appLabel) appLabel.classList.add('nfa-product-label');
   }
 
   function enhanceConversationPanel() {
@@ -155,7 +160,7 @@
   function enhanceModuleButtons() {
     MODULES.forEach((module) => {
       document.querySelectorAll(module.selector).forEach((button) => {
-        button.classList.add('nfa-module-button');
+        button.classList.add('nfa-module-button', 'nfa-legacy-module-button');
         button.dataset.module = module.key;
         button.setAttribute('aria-label', module.label);
         const icon = button.querySelector('i');

@@ -1,0 +1,48 @@
+/* NILTASK professional refinements — presentation only */
+
+.nfa-legacy-school-name{display:none!important}
+
+/* Readable message measure and stronger hierarchy */
+#chatShellContainer.nfa-message-shell{max-width:920px!important}
+#chatShellContainer .nfa-message-bubble{width:min(680px,76%)!important;max-width:76%!important}
+#chatShellContainer .nfa-message-bubble .b-text{max-width:68ch!important}
+#chatShellContainer .nfa-message-bubble .b-actions{gap:8px!important;padding:9px 14px 12px!important}
+#chatShellContainer .nfa-message-bubble .act-btn{display:inline-flex!important;align-items:center!important;gap:5px!important;padding:7px 10px!important;border:1px solid transparent!important}
+#chatShellContainer .nfa-message-bubble .act-btn:hover{border-color:#d9d9ff!important}
+#chatShellContainer .nfa-message-bubble .b-footer:empty{display:none!important}
+#chatShellContainer .nfa-message-bubble .b-footer{border-top:1px solid #f0f1f5!important;background:#fcfcfe!important}
+#chatShellContainer .nfa-message-bubble .reply-badge{min-width:19px!important;height:19px!important;border-radius:999px!important;display:inline-grid!important;place-items:center!important;background:#e8e8ff!important;color:#514ecb!important;font-size:9px!important;font-weight:700!important}
+#chatShellContainer .nfa-message-bubble .bubble-dropdown .dd-item:nth-child(2){border-top:1px solid #eef0f5!important;margin-top:4px!important;padding-top:10px!important}
+#chatShellContainer .nfa-message-bubble .bubble-dropdown .dd-item.danger{border-top:1px solid #f5e4e7!important;margin-top:4px!important}
+#chatShellContainer .nfa-message-bubble .file-card{background:#fff!important;border-color:#e2e5ee!important}
+
+/* Composer polish */
+.nfa-message-composer{padding-top:11px!important}
+.nfa-message-composer .ql-toolbar button{border-radius:7px!important}
+.nfa-message-composer .ql-toolbar button:hover{background:#ededff!important;color:#504dcc!important}
+.nfa-message-composer button[onclick*="send"],.nfa-message-composer button[type="submit"]{border-radius:12px!important;box-shadow:0 8px 20px rgba(90,87,216,.24)!important}
+
+/* Activity / notification panel */
+.nfa-activity-panel{background:#f7f8fc!important;border-left:1px solid #e5e8f0!important;box-shadow:-10px 0 36px rgba(31,36,55,.09)!important}
+.nfa-activity-panel>div:first-child{background:#fff!important;border-bottom:1px solid #e8eaf1!important;box-shadow:0 5px 18px rgba(31,36,55,.04)!important}
+.nfa-activity-panel [class*="rounded"]{border-radius:15px!important}
+.nfa-activity-panel [class*="shadow"]{box-shadow:0 8px 24px rgba(31,36,55,.07)!important}
+.nfa-activity-panel .nfa-activity-open{border:0!important;border-radius:10px!important;padding:8px 14px!important;background:linear-gradient(135deg,#5a57d8,#756aeb)!important;color:#fff!important;font-weight:700!important;box-shadow:0 7px 16px rgba(90,87,216,.22)!important}
+.nfa-activity-panel select{border:1px solid #dfe3ec!important;border-radius:11px!important;background:#fff!important;padding:8px 10px!important}
+
+/* Existing right task panel aligned to new style */
+#rightSidebar.nfa-task-sidebar{padding:0!important}
+#rightSidebar .nfa-refined-task-card{margin:12px!important;padding:14px!important;border:1px solid #e4e7ef!important;border-radius:17px!important;background:linear-gradient(180deg,#fff,#fbfbfe)!important;box-shadow:0 10px 28px rgba(31,36,55,.07)!important}
+#rightSidebar .nfa-refined-task-card:hover{border-color:#cbcaff!important;box-shadow:0 15px 36px rgba(31,36,55,.1)!important}
+#rightSidebar button{transition:transform .17s ease,box-shadow .17s ease,background .17s ease!important}
+#rightSidebar button:hover{transform:translateY(-1px)}
+
+@media(max-width:1100px) and (min-width:769px){
+ #chatShellContainer .nfa-message-bubble{width:min(620px,86%)!important;max-width:86%!important}
+}
+
+@media(max-width:768px){
+ #chatShellContainer .nfa-message-bubble{width:94%!important;max-width:94%!important}
+ #chatShellContainer .nfa-message-bubble .b-text{max-width:none!important}
+ .nfa-activity-panel{inset:0!important;width:100%!important;max-width:none!important}
+}

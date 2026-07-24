@@ -1,0 +1,348 @@
+/*
+ * NILTASK Professional UI foundation
+ * Visual-only layer. No task, message, notification, reminder, schedule,
+ * Supabase, RBAC, or lifecycle behaviour is implemented in this file.
+ */
+
+:root {
+  --nfa-font: "Arimo", Arial, sans-serif;
+  --nfa-brand: #5a57d8;
+  --nfa-brand-strong: #4744bf;
+  --nfa-brand-soft: #efefff;
+  --nfa-ink: #182033;
+  --nfa-muted: #727b91;
+  --nfa-line: #e7eaf1;
+  --nfa-surface: #ffffff;
+  --nfa-canvas: #f6f7fb;
+  --nfa-success: #1f9d6a;
+  --nfa-warning: #e99a2f;
+  --nfa-danger: #d34d62;
+  --nfa-radius-sm: 10px;
+  --nfa-radius-md: 14px;
+  --nfa-radius-lg: 18px;
+  --nfa-shadow-soft: 0 8px 24px rgba(31, 36, 55, 0.06);
+  --nfa-shadow-card: 0 14px 34px rgba(31, 36, 55, 0.09);
+}
+
+html,
+body,
+input,
+select,
+textarea,
+button,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+span,
+div,
+td,
+th,
+label,
+a,
+li,
+.ql-editor,
+.jira-card {
+  font-family: var(--nfa-font) !important;
+}
+
+body {
+  color: var(--nfa-ink);
+  background:
+    radial-gradient(circle at 10% 8%, rgba(90, 87, 216, 0.09), transparent 30%),
+    radial-gradient(circle at 88% 92%, rgba(233, 154, 47, 0.06), transparent 26%),
+    linear-gradient(180deg, #f9fafe 0%, var(--nfa-canvas) 100%);
+}
+
+/* Slightly larger, more readable type without changing information density. */
+body,
+input,
+select,
+textarea,
+button,
+.jira-card {
+  font-size: 15px;
+  line-height: 1.52;
+}
+
+#roomTitleDisplay {
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em;
+}
+
+.b-text,
+.b-text p,
+.msg-bubble,
+.ql-editor,
+.ql-editor p {
+  font-size: 16px !important;
+  line-height: 1.62 !important;
+}
+
+.b-name,
+.msg-sender-name {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+}
+
+.b-time,
+.msg-ts,
+.msg-time,
+[class*="timestamp"] {
+  font-size: 11px !important;
+}
+
+/* Existing desktop shell: visual polish only. */
+#leftSidebar,
+#rightSidebar {
+  background: rgba(255, 255, 255, 0.97) !important;
+  border-color: var(--nfa-line) !important;
+}
+
+#leftSidebar {
+  box-shadow: 2px 0 18px rgba(31, 36, 55, 0.025);
+}
+
+#rightSidebar {
+  box-shadow: -2px 0 18px rgba(31, 36, 55, 0.025);
+}
+
+.chat-area > div:first-child {
+  background: rgba(255, 255, 255, 0.96) !important;
+  backdrop-filter: blur(12px);
+  border-color: var(--nfa-line) !important;
+}
+
+#messagesContainer {
+  background-color: rgba(248, 249, 253, 0.86) !important;
+  background-image:
+    linear-gradient(rgba(90, 87, 216, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(90, 87, 216, 0.022) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* School name header. The existing currentSchoolName value remains the source. */
+.nfa-school-brand {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.nfa-school-name {
+  min-width: 0;
+  flex: 1;
+  padding: 11px 13px;
+  border-radius: 14px;
+  color: #ffffff !important;
+  background: linear-gradient(145deg, #625fe2 0%, #514ecb 48%, #403dae 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -3px 0 rgba(38, 35, 120, 0.35),
+    0 10px 20px rgba(70, 67, 180, 0.24);
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.22),
+    0 2px 3px rgba(25, 23, 90, 0.38);
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  line-height: 1.18;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Module navigation icon language. */
+.nfa-module-button {
+  width: 42px;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  color: var(--nfa-muted);
+  background: transparent;
+  transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease,
+    border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.nfa-module-button:hover {
+  color: var(--nfa-brand);
+  background: var(--nfa-brand-soft);
+  border-color: rgba(90, 87, 216, 0.14);
+  transform: translateY(-1px);
+}
+
+.nfa-module-button[aria-current="page"],
+.nfa-module-button.is-active {
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--nfa-brand), #7770ef);
+  box-shadow: 0 9px 20px rgba(90, 87, 216, 0.24);
+}
+
+.nfa-module-button i,
+.nfa-module-button svg {
+  font-size: 20px;
+  width: 21px;
+  height: 21px;
+}
+
+/* Message cards retain every existing menu/action handler. */
+.bubble {
+  border-radius: 16px !important;
+  border-color: var(--nfa-line) !important;
+  box-shadow: var(--nfa-shadow-soft) !important;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.bubble:hover {
+  border-color: rgba(90, 87, 216, 0.22) !important;
+  box-shadow: var(--nfa-shadow-card) !important;
+}
+
+.dot-btn,
+.act-btn,
+.e-add,
+.dd-item,
+.topbar-icon-btn,
+.icon-btn {
+  transition: transform 0.17s ease, background 0.17s ease,
+    color 0.17s ease, box-shadow 0.17s ease;
+}
+
+.dot-btn:hover,
+.act-btn:hover,
+.e-add:hover,
+.topbar-icon-btn:hover,
+.icon-btn:hover {
+  transform: translateY(-1px);
+}
+
+.bubble-dropdown {
+  border: 1px solid var(--nfa-line) !important;
+  border-radius: 13px !important;
+  box-shadow: 0 16px 38px rgba(31, 36, 55, 0.14) !important;
+  overflow: hidden;
+}
+
+.dd-item {
+  min-height: 39px;
+  font-size: 13px !important;
+}
+
+/* Task cards and future right-side task-detail component. */
+.jira-card,
+.nfa-task-card,
+.nfa-task-detail-card {
+  border: 1px solid var(--nfa-line) !important;
+  border-radius: 16px !important;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfbfe 100%) !important;
+  box-shadow: var(--nfa-shadow-soft) !important;
+}
+
+.jira-card:hover,
+.nfa-task-card:hover {
+  border-color: rgba(90, 87, 216, 0.3) !important;
+  box-shadow: var(--nfa-shadow-card) !important;
+  transform: translateY(-1px);
+}
+
+.nfa-task-card.is-selected,
+.jira-card.nfa-selected {
+  border-color: var(--nfa-brand) !important;
+  box-shadow:
+    0 0 0 3px rgba(90, 87, 216, 0.1),
+    var(--nfa-shadow-card) !important;
+}
+
+.nfa-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.nfa-status-chip.is-progress {
+  color: var(--nfa-brand-strong);
+  background: var(--nfa-brand-soft);
+}
+
+.nfa-status-chip.is-success {
+  color: var(--nfa-success);
+  background: rgba(31, 157, 106, 0.1);
+}
+
+.nfa-status-chip.is-warning {
+  color: #955b0b;
+  background: rgba(233, 154, 47, 0.13);
+}
+
+.nfa-status-chip.is-danger {
+  color: var(--nfa-danger);
+  background: rgba(211, 77, 98, 0.1);
+}
+
+/* Keyboard and form accessibility. */
+.ui-input:focus,
+input:focus,
+select:focus,
+textarea:focus,
+.ql-container:focus-within {
+  outline: none !important;
+  border-color: #c9c8ff !important;
+  box-shadow: 0 0 0 3px rgba(90, 87, 216, 0.08) !important;
+}
+
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible {
+  outline: 3px solid rgba(90, 87, 216, 0.25) !important;
+  outline-offset: 2px;
+}
+
+/* Mobile foundation; existing mobile handlers remain authoritative. */
+@media (max-width: 768px) {
+  body,
+  input,
+  select,
+  textarea,
+  button {
+    font-size: 15px;
+  }
+
+  .b-text,
+  .b-text p,
+  .msg-bubble,
+  .ql-editor,
+  .ql-editor p {
+    font-size: 16px !important;
+  }
+
+  .nfa-mobile-task-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: 8%;
+    z-index: 10700;
+    overflow-y: auto;
+    padding: 12px 14px calc(78px + env(safe-area-inset-bottom));
+    border-radius: 22px 22px 0 0;
+    background: var(--nfa-surface);
+    box-shadow: 0 -20px 52px rgba(31, 36, 55, 0.2);
+  }
+}
+
+/* Do not allow the new layer to change visibility or click behaviour. */
+[hidden],
+.hidden {
+  /* Existing utility and JavaScript rules remain authoritative. */
+}

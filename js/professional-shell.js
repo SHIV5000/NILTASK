@@ -30,10 +30,12 @@
   ];
   function addAsset(id,tag,attrs){if(document.getElementById(id))return;const el=document.createElement(tag);el.id=id;Object.assign(el,attrs);document.head.appendChild(el)}
   function loadRefinements(){
-    addAsset('nfa-refinement-css','link',{rel:'stylesheet',href:'./css/professional-refinements.css?v=7'});
-    addAsset('nfa-refinement-js','script',{src:'./js/professional-refinements.js?v=7',defer:true});
-    addAsset('nfa-workspace-css-direct','link',{rel:'stylesheet',href:'./css/professional-workspace.css?v=7'});
-    addAsset('nfa-workspace-js-direct','script',{src:'./js/professional-workspace.js?v=7',defer:true});
+    addAsset('nfa-refinement-css','link',{rel:'stylesheet',href:'./css/professional-refinements.css?v=8'});
+    addAsset('nfa-refinement-js','script',{src:'./js/professional-refinements.js?v=8',defer:true});
+    addAsset('nfa-workspace-css-direct','link',{rel:'stylesheet',href:'./css/professional-workspace.css?v=8'});
+    addAsset('nfa-workspace-js-direct','script',{src:'./js/professional-workspace.js?v=8',defer:true});
+    addAsset('nfa-activity-workspace-css','link',{rel:'stylesheet',href:'./css/professional-activity-workspace.css?v=1'});
+    addAsset('nfa-activity-workspace-js','script',{src:'./js/professional-activity-workspace.js?v=1',defer:true});
   }
   function ensureStyles(){if(!document.getElementById('nfa-shell-style')){const s=document.createElement('style');s.id='nfa-shell-style';s.textContent=CSS;document.head.appendChild(s)}loadRefinements()}
   function showMessages(){if(window.nfaShowMessages)return window.nfaShowMessages();window.closeActivityFeed?.();setActiveRail('messages')}

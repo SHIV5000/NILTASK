@@ -3,6 +3,15 @@
 (function () {
   'use strict';
 
+  function ensureTaskEnhancer() {
+    if (document.getElementById('nfa-professional-tasks-js')) return;
+    const script = document.createElement('script');
+    script.id = 'nfa-professional-tasks-js';
+    script.src = './js/professional-tasks.js?v=1';
+    script.defer = true;
+    document.head.appendChild(script);
+  }
+
   function markDuplicateSchoolName() {
     const header = document.getElementById('leftSidebar')?.firstElementChild;
     const branded = document.getElementById('nfaSchoolName');
@@ -32,6 +41,7 @@
   }
 
   function run() {
+    ensureTaskEnhancer();
     markDuplicateSchoolName();
     markPanels();
   }

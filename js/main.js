@@ -174,9 +174,7 @@ window.saveNewGroup = async function() {
     const err = document.getElementById('ngErr');
     const name = document.getElementById('ngName').value.trim();
     err.style.display = 'none';
-    // Server-authoritative role guard — not just UI hiding.
     if (window.guardManageGroups?.()) return;
-    // Orphaned-tenant guard — surface a clear message instead of a raw FK error.
     if (window._tenantOrphaned) {
         err.textContent = 'Your school account is still being set up (missing tenant record). Please contact support to finish setup before creating groups.';
         err.style.display = 'block';
@@ -202,9 +200,7 @@ window.saveNewGroup = async function() {
     }
     _webLsSet('dept_members_'+roomId, JSON.stringify(memberIds));
 
-    // Persist to DB so all users see the group in their sidebar
     const rsPayload = { room_id: roomId, tenant_id: window.currentTenantId, name, color: _ngColor, archived: false, updated_at: new Date().toISOString() };
-    // Try with members column first; fall back without it if column doesn't exist
     let { error: rsErr } = await sb.from('room_settings').upsert({ ...rsPayload, members: memberIds }, { onConflict: 'room_id,tenant_id' });
     if (rsErr?.message?.includes('members')) {
         ({ error: rsErr } = await sb.from('room_settings').upsert(rsPayload, { onConflict: 'room_id,tenant_id' }));
@@ -219,7 +215,6 @@ window.saveNewGroup = async function() {
     if (rsErr) { err.textContent='Could not create group: '+rsErr.message; err.style.display='block'; return; }
     if (error) { err.textContent='Could not post system message: '+error.message; err.style.display='block'; return; }
 
-    // Broadcast so other online users refresh their sidebar immediately (web + cross-platform mobile)
     window._reactionsBroadcast?.send({ type:'broadcast', event:'group_photo', payload:{ room_id:roomId, name, color:_ngColor } });
     window._sharedBroadcast?.send({ type:'broadcast', event:'group_photo', payload:{ room_id:roomId, name, color:_ngColor, src:'w' } });
 
@@ -238,7 +233,64 @@ window._toggleSearch = function() {
     else if (inp) { inp.value = ''; window.filterSidebar(''); }
 };
 
+// ─── RENDER MAIN APP (FIXED – early return for new HTML) ─────────────────────
 window.renderMainApp = async function() {
+    // NEW: If the DOM already has the new layout containers, skip DOM building.
+    // This allows the new index.html to work without rebuilding everything.
+    if (document.getElementById('leftSidebar') && document.getElementById('rightSidebar')) {
+        // Apply theme
+        if (typeof window.applyTheme === 'function') window.applyTheme();
+        // Initialize Quill if not already present
+        if (!window.quillEditor) {
+            if (!window.Quill) {
+                await new Promise((resolve, reject) => {
+                    const s = document.createElement('script');
+                    s.src = 'https://cdn.quilljs.com/1.3.6/quill.js';
+                    s.onload = resolve;
+                    s.onerror = reject;
+                    document.head.appendChild(s);
+                });
+            }
+            window.quillEditor = new Quill('#messageInput', {
+                theme: 'snow',
+                placeholder: 'Type a message...',
+                modules: { toolbar: { container: [ ['bold','italic','underline','strike'], [{ 'color': ['#800000','#006400','#00008b'] }], [{'list':'ordered'},{'list':'bullet'}], ['clean'] ] } }
+            });
+            const toolbar = document.querySelector('.ql-toolbar');
+            const container = document.getElementById('toolbar-container');
+            if (container && toolbar) container.appendChild(toolbar);
+            // Wire up send button
+            document.getElementById('sendBtn').onclick = () => { if (typeof window.sendMessage === 'function') window.sendMessage(); };
+            // File attachment handler
+            document.getElementById('fileAttachment').addEventListener('change', async (e) => {
+                const file = e.target.files[0]; if (!file) return;
+                window.showCenterToast('Uploading...', 'fa-solid fa-spinner fa-spin', 'text-blue-500');
+                const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+                const filePath = `chat/${Date.now()}_${safeName}`;
+                const { error } = await sb.storage.from('task-proofs').upload(filePath, file);
+                if (error) { window.showCenterToast('Upload failed: ' + error.message, 'fa-solid fa-times', 'text-red-500'); return; }
+                if (window.quillEditor) {
+                    window.quillEditor.focus();
+                    const range = window.quillEditor.getSelection();
+                    const index = range ? range.index : window.quillEditor.getLength();
+                    window.quillEditor.insertText(index, `📁 ${file.name}`, 'link', `https://secure-file.local/${filePath}`);
+                }
+                window.showCenterToast('File attached!', 'fa-solid fa-check-circle', 'text-green-500');
+                e.target.value = '';
+            });
+        }
+        // Load data and start subscriptions
+        if (typeof window.loadChatsList === 'function') window.loadChatsList();
+        if (typeof window.loadMessages === 'function') window.loadMessages();
+        if (typeof window.loadTasksForPanel === 'function') window.loadTasksForPanel();
+        if (typeof window.startSubscriptions === 'function') window.startSubscriptions();
+        if (typeof window.initScrollArrows === 'function') window.initScrollArrows();
+        if (typeof window.applyRBAC === 'function') window.applyRBAC();
+        window._hideSplash?.();
+        return;
+    }
+
+    // ─── ORIGINAL DOM-BUILDING CODE (runs only if containers are missing, i.e., fallback) ───
     // On phones, hide the desktop #root BEFORE it paints — the mobile shell
     // (mobile.js initMobileApp, called at the end of this function) builds its
     // own UI. Without this, the full desktop chat renders first and flashes
@@ -755,6 +807,7 @@ window.renderMainApp = async function() {
         </div>
     `;
 
+    // ─── Quill / event listeners (same as original) ───
     // Lazy-load Quill JS on first use — removes ~200KB from initial page load
     if (!window.Quill) {
         await new Promise((resolve, reject) => {
@@ -1782,9 +1835,6 @@ window.getPresenceStatus = function(lastSeen) {
     return { online: false, label: `Last seen ${Math.round(diffMin/1440)}d ago` };
 };
 
-// Bell animation — pulses until user clicks it
-
-
 // ─── FILTER/SORT PILL HELPERS ─────────────────────────────────────────────
 window.setTaskFilter = function(val) {
     const sel = document.getElementById('taskFilter');
@@ -1854,7 +1904,7 @@ window.getRoomDisplayName = function(roomId) {
     return roomId.charAt(0).toUpperCase() + roomId.slice(1).replace(/_/g,' ');
 };
 
-// Boot Sequence
+// ─── BOOT SEQUENCE ─────────────────────────────────────────────────────────
 ;(async() => {
     const {data: {session}} = await sb.auth.getSession();
     if (!session) {

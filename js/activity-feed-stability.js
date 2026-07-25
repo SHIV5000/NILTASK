@@ -9,7 +9,8 @@
         inFlight: false,
         pending: false,
         debounceTimer: null,
-        installTimer: null
+        installTimer: null,
+        firstRenderComplete: false
     };
 
     function installStyles() {
@@ -36,8 +37,20 @@
         document.head.appendChild(style);
     }
 
+    function isInitialLoading(list) {
+        if (!list) return true;
+        return Boolean(
+            list.querySelector('.fa-spinner') ||
+            /loading/i.test(list.textContent || '')
+        );
+    }
+
+    function hasFinishedInitialRender(list) {
+        return Boolean(list && !isInitialLoading(list));
+    }
+
     function makeSnapshot(list) {
-        if (!list || !list.children.length) return null;
+        if (!list || !list.children.length || isInitialLoading(list)) return null;
         const panel = document.getElementById('activityFeedPanel');
         if (!panel) return null;
 
@@ -55,9 +68,23 @@
         return snapshot;
     }
 
+    async function runInitialLoad(context, args) {
+        const result = await STATE.originalLoad.apply(context, args);
+        const renderedList = document.getElementById('activityFeedList');
+        STATE.firstRenderComplete = hasFinishedInitialRender(renderedList);
+        return result;
+    }
+
     async function stableLoad(...args) {
         const list = document.getElementById('activityFeedList');
-        if (!list || !STATE.originalLoad) return STATE.originalLoad?.apply(this, args);
+        if (!STATE.originalLoad) return;
+
+        // The first load must remain completely native. Wrapping the loading
+        // placeholder can leave the presentation decorator and stabilizer waiting
+        // on one another, so stability starts only after a real first render.
+        if (!list || !STATE.firstRenderComplete || isInitialLoading(list)) {
+            return runInitialLoad(this, args);
+        }
 
         if (STATE.inFlight) {
             STATE.pending = true;
@@ -67,8 +94,7 @@
         STATE.inFlight = true;
         const panel = document.getElementById('activityFeedPanel');
         const oldScrollTop = list.scrollTop;
-        const hadRenderedContent = list.children.length > 0 && !list.querySelector('.fa-spinner');
-        const snapshot = hadRenderedContent ? makeSnapshot(list) : null;
+        const snapshot = makeSnapshot(list);
 
         panel?.classList.add('nfa-af-refreshing');
         list.setAttribute('aria-busy', 'true');
@@ -81,8 +107,13 @@
                     oldScrollTop,
                     Math.max(0, refreshedList.scrollHeight - refreshedList.clientHeight)
                 );
+                STATE.firstRenderComplete = hasFinishedInitialRender(refreshedList);
             }
             return result;
+        } catch (error) {
+            // Keep the current visible feed when a silent background refresh fails.
+            console.warn('[Activity Feed] Silent refresh failed', error);
+            return undefined;
         } finally {
             const refreshedList = document.getElementById('activityFeedList');
             refreshedList?.removeAttribute('aria-busy');
@@ -92,7 +123,7 @@
 
             if (STATE.pending) {
                 STATE.pending = false;
-                scheduleRefresh(120);
+                scheduleRefresh(180);
             }
         }
     }
@@ -139,7 +170,7 @@
         }
 
         STATE.installed = true;
-        window.NILTASK_ACTIVITY_STABILITY_VERSION = 'v1';
+        window.NILTASK_ACTIVITY_STABILITY_VERSION = 'v2';
         return true;
     }
 

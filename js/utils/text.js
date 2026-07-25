@@ -18,7 +18,7 @@
     try {
         if (!document.querySelector('script[data-nfa-activity-stability]')) {
             const script = document.createElement('script');
-            script.src = 'js/activity-feed-stability.js?v=1';
+            script.src = 'js/activity-feed-stability.js?v=2';
             script.defer = true;
             script.dataset.nfaActivityStability = '1';
             document.head.appendChild(script);

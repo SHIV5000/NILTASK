@@ -325,145 +325,141 @@ window.ensureProfile = async function() {
 };
 
 // ─── RENDER AUTH SCREEN ─────────────────────────────────────────
+// ─── RENDER AUTH SCREEN (fixed for new layout) ─────────────────────────────
 window.renderAuthScreen = function() {
-  // Show the auth screen container, hide the main app
+  // Show the auth screen, hide main app
   document.getElementById('authScreen').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
-  
-  // Render the login form inside #authScreen
+
   const authScreen = document.getElementById('authScreen');
   authScreen.innerHTML = `
-    <!-- Your existing login HTML (copy from the original auth.js) -->
-    <div class="login-container">
-      <h2>Sign in to NILTASK</h2>
-      <input type="email" id="loginEmail" placeholder="Email">
-      <input type="password" id="loginPassword" placeholder="Password">
-      <button id="loginBtn">Sign in</button>
-    </div>
-  `;
-  // Attach event listeners as before (they are in auth.js elsewhere)
-};
-
-            <div class="space-y-4">
-                <input id="email" type="email" placeholder="Email Address"
-                    class="ui-input w-full px-4 py-3 rounded-xl border"
-                    style="border-color:var(--border-color);">
-
-                <div class="relative">
-                    <input id="password" type="password" placeholder="Password"
-                        class="ui-input w-full px-4 py-3 rounded-xl border pr-10"
-                        style="border-color:var(--border-color);">
-                    <i class="fa-solid fa-eye absolute right-4 top-4 text-gray-400 cursor-pointer hover:text-gray-600"
-                        id="togglePassword"></i>
-                </div>
-
-                <button id="loginBtn"
-                    class="w-full py-3 rounded-xl text-white font-bold shadow-md"
-                    style="background-color:var(--accent);">
-                    <i class="fa-solid fa-arrow-right-to-bracket mr-2"></i>Login
-                </button>
-
-                <div id="authMsg" class="text-center text-red-500 text-sm font-medium h-5"></div>
-
-                <div class="text-center pt-2 border-t" style="border-color:var(--border-color);">
-                    <p class="text-sm" style="color:var(--text-secondary);">
-                        New school?
-                        <a href="./signup.html" class="font-bold" style="color:var(--accent);">
-                            Register here →
-                        </a>
-                    </p>
-                    <p class="text-sm mt-2" style="color:var(--text-secondary);">
-                        Principal forgot password?
-                        <a href="#" id="forgotLink" class="font-bold" style="color:var(--accent);">
-                            Reset via email →
-                        </a>
-                    </p>
-                </div>
-
-                <div id="resetBox" style="display:none;padding:14px;background:var(--bg-body);border-radius:12px;border:1px solid var(--border-color);margin-top:8px;">
-                    <p style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">Enter your email. Reset link is only sent to Principal accounts.</p>
-                    <input id="resetEmail" type="email" placeholder="Principal email address"
-                        class="ui-input w-full px-4 py-3 rounded-xl border"
-                        style="border-color:var(--border-color);margin-bottom:10px;">
-                    <button id="resetBtn"
-                        class="w-full py-2 rounded-xl text-white font-bold"
-                        style="background:var(--accent);font-size:13px;">
-                        Send Reset Link
-                    </button>
-                    <div id="resetMsg" style="font-size:12px;text-align:center;margin-top:8px;min-height:16px;"></div>
-                </div>
-            </div>
+    <div class="min-h-screen flex items-center justify-center w-full" style="background:var(--bg-body);">
+      <div style="background:var(--bg-sidebar);border:1px solid var(--border-color);
+           border-radius:20px;padding:32px;width:100%;max-width:360px;
+           box-shadow:0 8px 32px rgba(0,0,0,.08);">
+        <div style="text-align:center;margin-bottom:24px;">
+          <div style="width:52px;height:52px;border-radius:14px;
+               background:var(--accent);display:flex;align-items:center;
+               justify-content:center;margin:0 auto 12px;">
+            <i class="fa-solid fa-school" style="color:#fff;font-size:22px;"></i>
+          </div>
+          <h1 style="font-size:18px;font-weight:800;color:var(--text-primary);margin:0 0 4px;">
+            Noted For Action
+          </h1>
+          <p style="font-size:13px;color:var(--text-secondary);margin:0;">
+            Sign in to continue
+          </p>
         </div>
+        <div class="space-y-4">
+          <input id="email" type="email" placeholder="Email Address"
+            class="ui-input w-full px-4 py-3 rounded-xl border"
+            style="border-color:var(--border-color);background:var(--bg-body);color:var(--text-primary);">
+          <div class="relative">
+            <input id="password" type="password" placeholder="Password"
+              class="ui-input w-full px-4 py-3 rounded-xl border pr-10"
+              style="border-color:var(--border-color);background:var(--bg-body);color:var(--text-primary);">
+            <i class="fa-solid fa-eye absolute right-4 top-4 text-gray-400 cursor-pointer hover:text-gray-600"
+              id="togglePassword"></i>
+          </div>
+          <button id="loginBtn"
+            class="w-full py-3 rounded-xl text-white font-bold shadow-md"
+            style="background-color:var(--accent);">
+            <i class="fa-solid fa-arrow-right-to-bracket mr-2"></i>Login
+          </button>
+          <div id="authMsg" class="text-center text-red-500 text-sm font-medium h-5"></div>
+          <div class="text-center pt-2 border-t" style="border-color:var(--border-color);">
+            <p class="text-sm" style="color:var(--text-secondary);">
+              New school?
+              <a href="./signup.html" class="font-bold" style="color:var(--accent);">
+                Register here →
+              </a>
+            </p>
+            <p class="text-sm mt-2" style="color:var(--text-secondary);">
+              Principal forgot password?
+              <a href="#" id="forgotLink" class="font-bold" style="color:var(--accent);">
+                Reset via email →
+              </a>
+            </p>
+          </div>
+          <div id="resetBox" style="display:none;padding:14px;background:var(--bg-body);border-radius:12px;border:1px solid var(--border-color);margin-top:8px;">
+            <p style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">Enter your email. Reset link is only sent to Principal accounts.</p>
+            <input id="resetEmail" type="email" placeholder="Principal email address"
+              class="ui-input w-full px-4 py-3 rounded-xl border"
+              style="border-color:var(--border-color);background:var(--bg-body);color:var(--text-primary);margin-bottom:10px;">
+            <button id="resetBtn"
+              class="w-full py-2 rounded-xl text-white font-bold"
+              style="background:var(--accent);font-size:13px;">
+              Send Reset Link
+            </button>
+            <div id="resetMsg" style="font-size:12px;text-align:center;margin-top:8px;min-height:16px;"></div>
+          </div>
+        </div>
+      </div>
     </div>`;
 
-    document.getElementById('forgotLink').onclick = (e) => {
-        e.preventDefault();
-        const box = document.getElementById('resetBox');
-        box.style.display = box.style.display === 'none' ? 'block' : 'none';
-        if (box.style.display === 'block') {
-            const em = document.getElementById('email').value.trim();
-            if (em) document.getElementById('resetEmail').value = em;
-        }
-    };
+  // ─── Event listeners ─────────────────────────────────────────
+  document.getElementById('forgotLink').onclick = (e) => {
+    e.preventDefault();
+    const box = document.getElementById('resetBox');
+    box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    if (box.style.display === 'block') {
+      const em = document.getElementById('email').value.trim();
+      if (em) document.getElementById('resetEmail').value = em;
+    }
+  };
 
-    document.getElementById('resetBtn').onclick = async () => {
-        const btn = document.getElementById('resetBtn');
-        const msg = document.getElementById('resetMsg');
-        const email = document.getElementById('resetEmail').value.trim();
-        if (!email) { msg.style.color='var(--accent)'; msg.textContent='Enter your email first.'; return; }
-
-        btn.disabled = true;
-        btn.textContent = 'Sending...';
-        msg.textContent = '';
-
-        const { error } = await sb.auth.resetPasswordForEmail(email, {
-            redirectTo: window.location.origin + '/index.html'
-        });
-        if (error) {
-            msg.style.color = '#ef4444';
-            msg.textContent = error.message;
-        } else {
-            msg.style.color = '#16a34a';
-            msg.textContent = 'If this email belongs to a principal account, a reset link has been sent. Check your inbox.';
-        }
-        btn.disabled = false; btn.textContent = 'Send Reset Link';
-    };
-
-    // Eye toggle
-    document.getElementById('togglePassword').onclick = () => {
-        const pwd  = document.getElementById('password');
-        const icon = document.getElementById('togglePassword');
-        if (pwd.type === 'password') { pwd.type = 'text';     icon.classList.replace('fa-eye','fa-eye-slash'); }
-        else                          { pwd.type = 'password'; icon.classList.replace('fa-eye-slash','fa-eye'); }
-    };
-
-    // Enter key on password field
-    document.getElementById('password').addEventListener('keydown', e => {
-        if (e.key === 'Enter') document.getElementById('loginBtn').click();
+  document.getElementById('resetBtn').onclick = async () => {
+    const btn = document.getElementById('resetBtn');
+    const msg = document.getElementById('resetMsg');
+    const email = document.getElementById('resetEmail').value.trim();
+    if (!email) { msg.style.color='var(--accent)'; msg.textContent='Enter your email first.'; return; }
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+    msg.textContent = '';
+    const { error } = await sb.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/index.html'
     });
+    if (error) {
+      msg.style.color = '#ef4444';
+      msg.textContent = error.message;
+    } else {
+      msg.style.color = '#16a34a';
+      msg.textContent = 'If this email belongs to a principal account, a reset link has been sent. Check your inbox.';
+    }
+    btn.disabled = false; btn.textContent = 'Send Reset Link';
+  };
 
-    document.getElementById('loginBtn').onclick = async () => {
-        const btn = document.getElementById('loginBtn');
-        const msg = document.getElementById('authMsg');
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Logging in...';
-        msg.textContent = '';
-        const ok = await window.signIn(
-            document.getElementById('email').value,
-            document.getElementById('password').value
-        );
-        if (!ok) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fa-solid fa-arrow-right-to-bracket mr-2"></i>Login';
-            // Show specific message based on block reason
-            if (window.authBlockReason === 'not_registered') {
-                msg.innerHTML = '⛔ Your account is not registered.<br><span style="font-size:11px;">Contact your Principal to get access.</span>';
-            } else if (window.authBlockReason === 'pending_approval') {
-                msg.innerHTML = '⏳ Your account is pending approval.<br><span style="font-size:11px;">Contact your Principal to get access.</span>';
-            } else {
-                const toast = document.querySelector('.center-toast');
-                if (!toast) msg.textContent = 'Wrong email or password. Please try again.';
-            }
-        }
-    };
+  document.getElementById('togglePassword').onclick = () => {
+    const pwd  = document.getElementById('password');
+    const icon = document.getElementById('togglePassword');
+    if (pwd.type === 'password') { pwd.type = 'text';     icon.classList.replace('fa-eye','fa-eye-slash'); }
+    else                          { pwd.type = 'password'; icon.classList.replace('fa-eye-slash','fa-eye'); }
+  };
+
+  document.getElementById('password').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('loginBtn').click();
+  });
+
+  document.getElementById('loginBtn').onclick = async () => {
+    const btn = document.getElementById('loginBtn');
+    const msg = document.getElementById('authMsg');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Logging in...';
+    msg.textContent = '';
+    const ok = await window.signIn(
+      document.getElementById('email').value,
+      document.getElementById('password').value
+    );
+    if (!ok) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-arrow-right-to-bracket mr-2"></i>Login';
+      if (window.authBlockReason === 'not_registered') {
+        msg.innerHTML = '⛔ Your account is not registered.<br><span style="font-size:11px;">Contact your Principal to get access.</span>';
+      } else if (window.authBlockReason === 'pending_approval') {
+        msg.innerHTML = '⏳ Your account is pending approval.<br><span style="font-size:11px;">Contact your Principal to get access.</span>';
+      } else {
+        msg.textContent = 'Wrong email or password. Please try again.';
+      }
+    }
+  };
 };

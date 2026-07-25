@@ -14,11 +14,12 @@
 
     // Load the non-invasive Activity Feed refresh stabilizer. It waits for the
     // existing feed functions, then wraps them without replacing data queries,
-    // filters, navigation, notifications or the 12-second safety poll.
+    // filters, navigation, notifications or realtime updates. Its safety poll
+    // now runs every 60 seconds instead of every 12 seconds.
     try {
         if (!document.querySelector('script[data-nfa-activity-stability]')) {
             const script = document.createElement('script');
-            script.src = 'js/activity-feed-stability.js?v=2';
+            script.src = 'js/activity-feed-stability.js?v=3';
             script.defer = true;
             script.dataset.nfaActivityStability = '1';
             document.head.appendChild(script);

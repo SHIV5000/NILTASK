@@ -42,7 +42,13 @@
                 box-shadow: none !important;
             }
 
-            #rightSidebarFilters.nfa-compact-task-filters {
+            /* Never show the Task filter/sort bar above an open Activity Feed. */
+            #rightSidebar:has(#activityFeedPanel) > #rightSidebarFilters,
+            #rightSidebar:has(#activityFeedPanel) #rightSidebarFilters {
+                display: none !important;
+            }
+
+            #rightSidebar:not(:has(#activityFeedPanel)) #rightSidebarFilters.nfa-compact-task-filters {
                 display: grid !important;
                 grid-template-columns: minmax(0,1.25fr) minmax(0,1fr) !important;
                 gap: 7px !important;
@@ -156,6 +162,13 @@
         const sort = document.getElementById('taskSort');
         if (!host || !filter || !sort) return;
 
+        /* Activity owns the right sidebar while open. Do not override its hide rule. */
+        if (document.getElementById('activityFeedPanel')) {
+            important(host, 'display', 'none');
+            return;
+        }
+
+        host.style.removeProperty('display');
         host.classList.add('nfa-compact-task-filters');
         filter.classList.remove('hidden');
         sort.classList.remove('hidden');
@@ -192,5 +205,5 @@
 
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true });
-    window.NILTASK_COMPACT_PANEL_FILTERS_VERSION = 'v2';
+    window.NILTASK_COMPACT_PANEL_FILTERS_VERSION = 'v3';
 })();

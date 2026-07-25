@@ -30,7 +30,7 @@
     try {
         if (!document.querySelector('script[data-nfa-compact-panel-filters]')) {
             const script = document.createElement('script');
-            script.src = 'js/compact-panel-filters.js?v=1';
+            script.src = 'js/compact-panel-filters.js?v=2';
             script.defer = true;
             script.dataset.nfaCompactPanelFilters = '1';
             document.head.appendChild(script);

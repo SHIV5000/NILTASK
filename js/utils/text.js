@@ -12,6 +12,19 @@
 (function () {
     'use strict';
 
+    // Load the non-invasive Activity Feed refresh stabilizer. It waits for the
+    // existing feed functions, then wraps them without replacing data queries,
+    // filters, navigation, notifications or the 12-second safety poll.
+    try {
+        if (!document.querySelector('script[data-nfa-activity-stability]')) {
+            const script = document.createElement('script');
+            script.src = 'js/activity-feed-stability.js?v=1';
+            script.defer = true;
+            script.dataset.nfaActivityStability = '1';
+            document.head.appendChild(script);
+        }
+    } catch (e) {}
+
     // Full HTML-attribute-safe escape (escapes quotes too). Null-safe.
     function escapeHtml(str) {
         if (str === null || str === undefined) return '';

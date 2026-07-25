@@ -4,30 +4,23 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.5, user-scalable=yes">
   <title>Noted For Action</title>
-  <!-- PWA & Icons -->
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <meta name="theme-color" content="#ffffff">
-
-  <!-- Fonts & Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:opsz@14..32&display=swap" rel="stylesheet">
-
-  <!-- MAIN CSS (replaced) -->
- <link rel="stylesheet" href="css/theme.css">
-
-  <!-- Quill (rich text) – keep as in original -->
+  <!-- Main theme (replaced with new GitHub-style) -->
+  <link rel="stylesheet" href="css/theme.css">
+  <!-- Quill -->
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
   <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
 </head>
 <body>
 
-  <!-- APP CONTAINER -->
   <div id="app" class="flex h-screen overflow-hidden">
 
-    <!-- LEFT SIDEBAR (original ID: #leftSidebar) -->
+    <!-- LEFT SIDEBAR -->
     <aside id="leftSidebar" class="sidebar w-64 flex-shrink-0 flex flex-col h-full">
-      <!-- Header: workspace name & theme toggle -->
       <div class="flex items-center justify-between p-4 border-b border-[var(--color-border-default)]">
         <div class="flex items-center gap-2">
           <span class="font-bold text-lg text-[var(--color-accent-fg)]">NILTASK</span>
@@ -37,22 +30,12 @@
           <i class="fas fa-moon" id="themeIcon"></i>
         </button>
       </div>
-
-      <!-- Sidebar content (populated by main.js) -->
-      <div id="sidebarContent" class="flex-1 overflow-y-auto p-3 space-y-4">
-        <!-- The existing loadChatsList() will render groups/DMs here -->
-      </div>
-
-      <!-- Profile footer (original ID: #profileFooter) -->
-      <div id="profileFooter" class="border-t border-[var(--color-border-default)] pt-3 mt-4 px-3 pb-3">
-        <!-- Rendered by auth.js / main.js -->
-      </div>
+      <div id="sidebarContent" class="flex-1 overflow-y-auto p-3 space-y-4"></div>
+      <div id="profileFooter" class="border-t border-[var(--color-border-default)] pt-3 mt-4 px-3 pb-3"></div>
     </aside>
 
-    <!-- CENTER CHAT PANEL -->
+    <!-- CENTER CHAT -->
     <main class="flex-1 flex flex-col bg-[var(--color-canvas-subtle)] min-w-0">
-
-      <!-- Chat header (original ID: #chatHeader) -->
       <div id="chatHeader" class="chat-header px-5 py-3 flex items-center justify-between">
         <div class="flex items-center gap-3">
           <i class="fas fa-hashtag text-[var(--color-accent-fg)]" id="roomIcon"></i>
@@ -65,14 +48,10 @@
         </div>
       </div>
 
-      <!-- Messages container (original ID: #messagesContainer) -->
-      <div id="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-5 chat-scroll">
-        <!-- Rendered by messages.js renderMessages() -->
-      </div>
+      <div id="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-5 chat-scroll"></div>
 
-      <!-- Composer & toolbar (original IDs) -->
+      <!-- Composer -->
       <div id="composerContainer" class="bg-[var(--color-canvas-default)] border-t border-[var(--color-border-default)] px-4 py-2">
-        <!-- Toolbar -->
         <div id="composerToolbar" class="flex items-center gap-1 pb-2 border-b border-[var(--color-border-default)]">
           <button class="toolbar-btn" data-format="bold"><i class="fas fa-bold"></i></button>
           <button class="toolbar-btn" data-format="italic"><i class="fas fa-italic"></i></button>
@@ -82,17 +61,14 @@
           <span class="flex-1"></span>
           <button class="toolbar-btn" id="scheduleMsgBtn"><i class="fas fa-clock"></i> Schedule</button>
         </div>
-        <!-- Input area -->
         <div id="composerInputArea" class="flex items-center gap-3 pt-2">
           <button id="emojiPickerBtn" class="text-[var(--color-fg-muted)] hover:text-[var(--color-fg-default)]"><i class="fas fa-smile"></i></button>
           <button id="attachFileBtn" class="text-[var(--color-fg-muted)] hover:text-[var(--color-fg-default)]"><i class="fas fa-paperclip"></i></button>
-          <!-- The actual message input (Quill or textarea) – use the same as original -->
           <div id="messageInput" class="flex-1 bg-[var(--color-canvas-subtle)] rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-fg)]" contenteditable="true" role="textbox" aria-multiline="false" placeholder="Type a message..."></div>
           <button id="sendBtn" class="btn-primary rounded-full w-10 h-10 flex items-center justify-center">
             <i class="fas fa-paper-plane"></i>
           </button>
         </div>
-        <!-- Reply banner (hidden by default) -->
         <div id="replyBanner" style="display:none;" class="text-sm text-[var(--color-fg-muted)] pt-1 flex items-center gap-2">
           <i class="fas fa-reply"></i> <span id="replyPreview">Replying to...</span>
           <button id="cancelReplyBtn" class="text-[var(--color-fg-muted)] hover:text-[var(--color-fg-default)]"><i class="fas fa-times"></i></button>
@@ -100,9 +76,8 @@
       </div>
     </main>
 
-    <!-- RIGHT PANEL (Task/Activity/Reminders/Bookmarks/Scheduled) -->
+    <!-- RIGHT PANEL -->
     <aside id="rightPanel" class="right-panel w-80 flex-shrink-0 flex flex-col h-full overflow-hidden">
-      <!-- Tabs -->
       <div id="rightPanelTabs" class="flex border-b border-[var(--color-border-default)] text-sm overflow-x-auto">
         <button class="flex-1 py-3 text-center font-medium tab-active whitespace-nowrap" data-tab="task">Task</button>
         <button class="flex-1 py-3 text-center text-[var(--color-fg-muted)] whitespace-nowrap" data-tab="activity">Activity</button>
@@ -110,84 +85,20 @@
         <button class="flex-1 py-3 text-center text-[var(--color-fg-muted)] whitespace-nowrap" data-tab="bookmarks">Bookmarks</button>
         <button class="flex-1 py-3 text-center text-[var(--color-fg-muted)] whitespace-nowrap" data-tab="scheduled">Scheduled</button>
       </div>
-      <!-- Right panel content (original ID: #rightPanelContent) -->
-      <div id="rightPanelContent" class="flex-1 overflow-y-auto p-4">
-        <!-- Rendered by tasks.js / ui-panels.js -->
-      </div>
+      <div id="rightPanelContent" class="flex-1 overflow-y-auto p-4"></div>
     </aside>
   </div>
 
-  <!-- MODALS (same as original – we keep the IDs and structure) -->
-  <!-- Task Modal -->
-  <div id="taskModal" class="modal-overlay" style="display:none;">
-    <div class="modal-box">
-      <h3 class="font-semibold text-lg mb-2">Create Task</h3>
-      <!-- Existing task modal content – keep as is -->
-      <div id="taskModalContent"></div>
-      <div class="flex gap-2 justify-end mt-4">
-        <button class="px-4 py-2 bg-[var(--color-canvas-subtle)] rounded-lg text-sm" onclick="closeTaskModal()">Cancel</button>
-        <button class="btn-primary" onclick="saveTaskMultiAssignee()">Create</button>
-      </div>
-    </div>
-  </div>
+  <!-- Modals (same as original) -->
+  <div id="taskModal" class="modal-overlay" style="display:none;"><div class="modal-box"><h3 class="font-semibold text-lg mb-2">Create Task</h3><div id="taskModalContent"></div><div class="flex gap-2 justify-end mt-4"><button class="px-4 py-2 bg-[var(--color-canvas-subtle)] rounded-lg text-sm" onclick="closeTaskModal()">Cancel</button><button class="btn-primary" onclick="saveTaskMultiAssignee()">Create</button></div></div></div>
+  <div id="reminderModal" class="modal-overlay" style="display:none;"><div class="modal-box"><h3 class="font-semibold text-lg mb-2">Set Reminder</h3><input type="datetime-local" id="reminderTime" class="w-full border rounded p-2 mb-2"><div class="flex gap-2 justify-end"><button class="px-4 py-2 bg-[var(--color-canvas-subtle)] rounded-lg text-sm" onclick="closeReminderModal()">Cancel</button><button class="btn-primary" onclick="saveReminder()">Set</button></div></div></div>
+  <div id="scheduleModal" class="modal-overlay" style="display:none;"><div class="modal-box"><h3 class="font-semibold text-lg mb-2">Schedule Message</h3><textarea id="scheduledText" class="w-full border rounded p-2 mb-2" rows="2" placeholder="Message content"></textarea><input type="datetime-local" id="scheduledTime" class="w-full border rounded p-2 mb-2"><div class="flex gap-2 justify-end"><button class="px-4 py-2 bg-[var(--color-canvas-subtle)] rounded-lg text-sm" onclick="closeScheduleModal()">Cancel</button><button class="btn-primary" onclick="saveScheduledMessage()">Schedule</button></div></div></div>
+  <div id="forwardModal" class="modal-overlay" style="display:none;"><div class="modal-box"><h3 class="font-semibold text-lg mb-2">Forward Message</h3><select id="forwardRoomSelect" class="w-full border rounded p-2 mb-2"></select><div class="flex gap-2 justify-end"><button class="px-4 py-2 bg-[var(--color-canvas-subtle)] rounded-lg text-sm" onclick="closeForwardModal()">Cancel</button><button class="btn-primary" onclick="sendForwardedMessage()">Forward</button></div></div></div>
+  <div id="editModal" class="modal-overlay" style="display:none;"><div class="modal-box"><h3 class="font-semibold text-lg mb-2">Edit Message</h3><textarea id="editText" class="w-full border rounded p-2 mb-2" rows="3"></textarea><div class="flex gap-2 justify-end"><button class="px-4 py-2 bg-[var(--color-canvas-subtle)] rounded-lg text-sm" onclick="cancelEditMessage()">Cancel</button><button class="btn-primary" onclick="saveEditMessage()">Save</button></div></div></div>
 
-  <!-- Reminder Modal -->
-  <div id="reminderModal" class="modal-overlay" style="display:none;">
-    <div class="modal-box">
-      <h3 class="font-semibold text-lg mb-2">Set Reminder</h3>
-      <input type="datetime-local" id="reminderTime" class="w-full border rounded p-2 mb-2">
-      <div class="flex gap-2 justify-end">
-        <button class="px-4 py-2 bg-[var(--color-canvas-subtle)] rounded-lg text-sm" onclick="closeReminderModal()">Cancel</button>
-        <button class="btn-primary" onclick="saveReminder()">Set</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Schedule Modal -->
-  <div id="scheduleModal" class="modal-overlay" style="display:none;">
-    <div class="modal-box">
-      <h3 class="font-semibold text-lg mb-2">Schedule Message</h3>
-      <textarea id="scheduledText" class="w-full border rounded p-2 mb-2" rows="2" placeholder="Message content"></textarea>
-      <input type="datetime-local" id="scheduledTime" class="w-full border rounded p-2 mb-2">
-      <div class="flex gap-2 justify-end">
-        <button class="px-4 py-2 bg-[var(--color-canvas-subtle)] rounded-lg text-sm" onclick="closeScheduleModal()">Cancel</button>
-        <button class="btn-primary" onclick="saveScheduledMessage()">Schedule</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Forward Modal -->
-  <div id="forwardModal" class="modal-overlay" style="display:none;">
-    <div class="modal-box">
-      <h3 class="font-semibold text-lg mb-2">Forward Message</h3>
-      <select id="forwardRoomSelect" class="w-full border rounded p-2 mb-2"></select>
-      <div class="flex gap-2 justify-end">
-        <button class="px-4 py-2 bg-[var(--color-canvas-subtle)] rounded-lg text-sm" onclick="closeForwardModal()">Cancel</button>
-        <button class="btn-primary" onclick="sendForwardedMessage()">Forward</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Edit Modal -->
-  <div id="editModal" class="modal-overlay" style="display:none;">
-    <div class="modal-box">
-      <h3 class="font-semibold text-lg mb-2">Edit Message</h3>
-      <textarea id="editText" class="w-full border rounded p-2 mb-2" rows="3"></textarea>
-      <div class="flex gap-2 justify-end">
-        <button class="px-4 py-2 bg-[var(--color-canvas-subtle)] rounded-lg text-sm" onclick="cancelEditMessage()">Cancel</button>
-        <button class="btn-primary" onclick="saveEditMessage()">Save</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Notification / Toast container (existing) -->
   <div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
-
-  <!-- Hidden file input for attachments -->
   <input type="file" id="fileInput" style="display:none;">
 
-  <!-- ============ SCRIPTS ============ -->
-  <!-- All existing JS modules in original order -->
   <script src="js/shared.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/rbac.js"></script>
@@ -200,34 +111,24 @@
   <script src="js/notifications.js"></script>
   <script src="js/activity-v208.js"></script>
   <script src="js/main.js"></script>
-
-  <!-- Native bridge (Capacitor) -->
   <script src="js/native.js"></script>
-
-  <!-- Service Worker registration -->
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js')
         .then(() => console.log('SW registered'))
         .catch(() => console.log('SW registration failed'));
     }
-  </script>
-
-  <script>
-    // Additional integration: theme toggle from new header uses existing applyTheme()
+    // Theme toggle integration
     document.getElementById('themeToggle')?.addEventListener('click', function() {
       if (typeof toggleTheme === 'function') {
         toggleTheme();
       } else {
-        // fallback: simple class toggle
         const root = document.documentElement;
         const isDark = root.getAttribute('data-theme') === 'dark';
         root.setAttribute('data-theme', isDark ? 'light' : 'dark');
         document.getElementById('themeIcon').className = isDark ? 'fas fa-moon' : 'fas fa-sun';
       }
     });
-
-    // Initialize theme icon based on current data-theme
     document.addEventListener('DOMContentLoaded', function() {
       const root = document.documentElement;
       const isDark = root.getAttribute('data-theme') === 'dark';

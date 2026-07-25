@@ -9,7 +9,9 @@
   <meta name="theme-color" content="#ffffff">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:opsz@14..32&display=swap" rel="stylesheet">
+  <!-- Main theme (new GitHub-style) -->
   <link rel="stylesheet" href="css/theme.css">
+  <!-- Quill -->
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
   <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
   <style>
@@ -20,93 +22,190 @@
 </head>
 <body>
 
-  <!-- LOGIN SCREEN (what auth.js will populate) -->
+  <!-- LOGIN SCREEN (populated by auth.js) -->
   <div id="authScreen"></div>
 
   <!-- MAIN APP (new design) -->
-  <div id="app" class="flex h-screen overflow-hidden">
+  <div id="root" style="height:100%;width:100%;">
+    <div id="app" class="flex h-screen overflow-hidden">
 
-    <!-- LEFT SIDEBAR -->
-    <aside id="leftSidebar" class="sidebar w-64 flex-shrink-0 flex flex-col h-full">
-      <div class="flex items-center justify-between p-4 border-b border-[var(--color-border-default)]">
-        <div class="flex items-center gap-2">
-          <span class="font-bold text-lg text-[var(--color-accent-fg)]">NILTASK</span>
-          <span class="text-xs bg-[var(--color-canvas-subtle)] text-[var(--color-fg-muted)] px-2 py-0.5 rounded-full border border-[var(--color-border-default)]">v2</span>
-        </div>
-        <button id="themeToggle" class="text-[var(--color-fg-muted)] hover:text-[var(--color-fg-default)]">
-          <i class="fas fa-moon" id="themeIcon"></i>
-        </button>
-      </div>
-      <div id="sidebarContent" class="flex-1 overflow-y-auto p-3 space-y-4"></div>
-      <div id="profileFooter" class="border-t border-[var(--color-border-default)] pt-3 mt-4 px-3 pb-3"></div>
-    </aside>
-
-    <!-- CENTER CHAT -->
-    <main class="flex-1 flex flex-col bg-[var(--color-canvas-subtle)] min-w-0">
-      <div id="chatHeader" class="chat-header px-5 py-3 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <i class="fas fa-hashtag text-[var(--color-accent-fg)]" id="roomIcon"></i>
-          <span class="font-semibold text-lg" id="chatRoomName">Loading...</span>
-          <span class="text-xs text-[var(--color-fg-muted)]" id="roomMemberCount"></span>
-        </div>
-        <div class="flex items-center gap-4 text-[var(--color-fg-muted)]">
-          <button id="searchMessagesBtn"><i class="fas fa-search"></i></button>
-          <button id="roomActionsBtn"><i class="fas fa-ellipsis-v"></i></button>
-        </div>
-      </div>
-
-      <div id="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-5 chat-scroll"></div>
-
-      <!-- Composer -->
-      <div id="composerContainer" class="bg-[var(--color-canvas-default)] border-t border-[var(--color-border-default)] px-4 py-2">
-        <div id="composerToolbar" class="flex items-center gap-1 pb-2 border-b border-[var(--color-border-default)]">
-          <button class="toolbar-btn" data-format="bold"><i class="fas fa-bold"></i></button>
-          <button class="toolbar-btn" data-format="italic"><i class="fas fa-italic"></i></button>
-          <button class="toolbar-btn" data-format="underline"><i class="fas fa-underline"></i></button>
-          <button class="toolbar-btn" data-format="list"><i class="fas fa-list-ul"></i></button>
-          <button class="toolbar-btn" data-format="link"><i class="fas fa-link"></i></button>
-          <span class="flex-1"></span>
-          <button class="toolbar-btn" id="scheduleMsgBtn"><i class="fas fa-clock"></i> Schedule</button>
-        </div>
-        <div id="composerInputArea" class="flex items-center gap-3 pt-2">
-          <button id="emojiPickerBtn" class="text-[var(--color-fg-muted)] hover:text-[var(--color-fg-default)]"><i class="fas fa-smile"></i></button>
-          <button id="attachFileBtn" class="text-[var(--color-fg-muted)] hover:text-[var(--color-fg-default)]"><i class="fas fa-paperclip"></i></button>
-          <div id="messageInput" class="flex-1 bg-[var(--color-canvas-subtle)] rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-fg)]" contenteditable="true" role="textbox" aria-multiline="false" placeholder="Type a message..."></div>
-          <button id="sendBtn" class="btn-primary rounded-full w-10 h-10 flex items-center justify-center">
-            <i class="fas fa-paper-plane"></i>
+      <!-- LEFT SIDEBAR -->
+      <aside id="leftSidebar" class="sidebar w-64 flex-shrink-0 flex flex-col h-full">
+        <div class="flex items-center justify-between p-4 border-b border-[var(--color-border-default)]">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-lg text-[var(--color-accent-fg)]">NILTASK</span>
+            <span class="text-xs bg-[var(--color-canvas-subtle)] text-[var(--color-fg-muted)] px-2 py-0.5 rounded-full border border-[var(--color-border-default)]">v2</span>
+          </div>
+          <button id="themeToggle" class="text-[var(--color-fg-muted)] hover:text-[var(--color-fg-default)]">
+            <i class="fas fa-moon" id="themeIcon"></i>
           </button>
         </div>
-        <div id="replyBanner" style="display:none;" class="text-sm text-[var(--color-fg-muted)] pt-1 flex items-center gap-2">
-          <i class="fas fa-reply"></i> <span id="replyPreview">Replying to...</span>
-          <button id="cancelReplyBtn" class="text-[var(--color-fg-muted)] hover:text-[var(--color-fg-default)]"><i class="fas fa-times"></i></button>
-        </div>
-      </div>
-    </main>
+        <div id="chatsList" class="flex-1 overflow-y-auto p-3 space-y-4"></div>
+        <div id="profileFooter" class="border-t border-[var(--color-border-default)] pt-3 mt-4 px-3 pb-3"></div>
+      </aside>
 
-    <!-- RIGHT PANEL -->
-    <aside id="rightPanel" class="right-panel w-80 flex-shrink-0 flex flex-col h-full overflow-hidden">
-      <div id="rightPanelTabs" class="flex border-b border-[var(--color-border-default)] text-sm overflow-x-auto">
-        <button class="flex-1 py-3 text-center font-medium tab-active whitespace-nowrap" data-tab="task">Task</button>
-        <button class="flex-1 py-3 text-center text-[var(--color-fg-muted)] whitespace-nowrap" data-tab="activity">Activity</button>
-        <button class="flex-1 py-3 text-center text-[var(--color-fg-muted)] whitespace-nowrap" data-tab="reminders">Reminders</button>
-        <button class="flex-1 py-3 text-center text-[var(--color-fg-muted)] whitespace-nowrap" data-tab="bookmarks">Bookmarks</button>
-        <button class="flex-1 py-3 text-center text-[var(--color-fg-muted)] whitespace-nowrap" data-tab="scheduled">Scheduled</button>
-      </div>
-      <div id="rightPanelContent" class="flex-1 overflow-y-auto p-4"></div>
-    </aside>
+      <!-- CENTER CHAT -->
+      <main class="flex-1 flex flex-col bg-[var(--color-canvas-subtle)] min-w-0">
+        <div id="chatHeader" class="chat-header px-5 py-3 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <i class="fas fa-hashtag text-[var(--color-accent-fg)]" id="roomIcon"></i>
+            <span class="font-semibold text-lg" id="roomTitleDisplay">Loading...</span>
+            <span class="text-xs text-[var(--color-fg-muted)]" id="memberCountChip"></span>
+          </div>
+          <div class="flex items-center gap-4 text-[var(--color-fg-muted)]">
+            <button id="searchMessagesBtn"><i class="fas fa-search"></i></button>
+            <button id="roomActionsBtn"><i class="fas fa-ellipsis-v"></i></button>
+          </div>
+        </div>
+
+        <div id="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-5 chat-scroll">
+          <div id="chatShellContainer" class="w-full max-w-full"></div>
+        </div>
+
+        <!-- Composer -->
+        <div id="composerContainer" class="bg-[var(--color-canvas-default)] border-t border-[var(--color-border-default)] px-4 py-2">
+          <div id="toolbar-container" class="flex items-center gap-1 pb-2 border-b border-[var(--color-border-default)]"></div>
+          <div class="flex items-center gap-3 pt-2">
+            <button id="emojiPickerBtn" class="text-[var(--color-fg-muted)] hover:text-[var(--color-fg-default)]"><i class="fas fa-smile"></i></button>
+            <button id="attachFileBtn" class="text-[var(--color-fg-muted)] hover:text-[var(--color-fg-default)]"><i class="fas fa-paperclip"></i></button>
+            <div id="messageInput" class="flex-1 bg-[var(--color-canvas-subtle)] rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-accent-fg)]" contenteditable="true" role="textbox" aria-multiline="false" placeholder="Type a message..."></div>
+            <button id="sendBtn" class="btn-primary rounded-full w-10 h-10 flex items-center justify-center">
+              <i class="fas fa-paper-plane"></i>
+            </button>
+          </div>
+          <div id="replyBanner" style="display:none;" class="text-sm text-[var(--color-fg-muted)] pt-1 flex items-center gap-2">
+            <i class="fas fa-reply"></i> <span id="replyBannerText">Replying to...</span>
+            <button id="cancelReplyBtn" class="text-[var(--color-fg-muted)] hover:text-[var(--color-fg-default)]"><i class="fas fa-times"></i></button>
+          </div>
+        </div>
+      </main>
+
+      <!-- RIGHT PANEL -->
+      <aside id="rightSidebar" class="right-panel w-80 flex-shrink-0 flex flex-col h-full overflow-hidden">
+        <div id="rightSidebarFilters" class="border-b" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+          <!-- Hidden selects for backwards compat -->
+          <select id="taskFilter" class="hidden" onchange="window.loadTasksForPanel()">
+            <option value="all">All Tasks</option><option value="today">Today</option>
+            <option value="pending">Pending</option><option value="completed">Completed</option>
+            <option value="allotted_by_me">Allotted by Me</option><option value="allotted_to_me">Allotted to Me</option>
+            <option value="delegated">Delegated</option><option value="transferred">Transferred</option>
+            <option value="date_range">Date Range</option>
+          </select>
+          <select id="taskSort" class="hidden" onchange="window.loadTasksForPanel()">
+            <option value="deadline_asc">deadline_asc</option><option value="deadline_desc">deadline_desc</option>
+            <option value="created_desc">created_desc</option><option value="created_asc">created_asc</option>
+          </select>
+          <!-- Filter pills -->
+          <div class="px-3 pt-2.5 pb-1">
+            <div class="text-[9px] font-black tracking-widest uppercase mb-1.5 flex items-center gap-1" style="color:var(--text-secondary);">
+              <i class="fa-solid fa-filter" style="font-size:8px;color:var(--accent);"></i> Filter
+            </div>
+            <div class="flex gap-1 flex-wrap pb-1">
+              <button class="filter-pill fp-active" data-filter="all" onclick="window.setTaskFilter('all')">All</button>
+              <button class="filter-pill" data-filter="today" onclick="window.setTaskFilter('today')">Today</button>
+              <button class="filter-pill" data-filter="pending" onclick="window.setTaskFilter('pending')">Pending</button>
+              <button class="filter-pill" data-filter="completed" onclick="window.setTaskFilter('completed')">Done</button>
+              <button class="filter-pill" data-filter="allotted_by_me" onclick="window.setTaskFilter('allotted_by_me')">By Me</button>
+              <button class="filter-pill" data-filter="allotted_to_me" onclick="window.setTaskFilter('allotted_to_me')">To Me</button>
+              <button class="filter-pill" data-filter="delegated" onclick="window.setTaskFilter('delegated')">Delegated</button>
+              <button class="filter-pill" data-filter="transferred" onclick="window.setTaskFilter('transferred')">Transferred</button>
+              <button class="filter-pill" data-filter="date_range" onclick="window.setTaskFilter('date_range')">Date Range</button>
+            </div>
+          </div>
+          <!-- Sort row -->
+          <div class="px-3 pb-2.5">
+            <div class="text-[9px] font-black tracking-widest uppercase mb-1.5" style="color:var(--text-secondary);">Sort by</div>
+            <div class="flex gap-1 flex-wrap">
+              <button class="filter-pill fp-active" data-sort="deadline_asc" onclick="window.setTaskSort('deadline_asc')" title="Deadline: Earliest"><i class="fa-solid fa-arrow-up text-[8px]"></i> Deadline ↑</button>
+              <button class="filter-pill" data-sort="deadline_desc" onclick="window.setTaskSort('deadline_desc')" title="Deadline: Latest"><i class="fa-solid fa-arrow-down text-[8px]"></i> Deadline ↓</button>
+              <button class="filter-pill" data-sort="created_desc" onclick="window.setTaskSort('created_desc')" title="Newest first">Newest</button>
+              <button class="filter-pill" data-sort="created_asc" onclick="window.setTaskSort('created_asc')" title="Oldest first">Oldest</button>
+            </div>
+          </div>
+        </div>
+        <div id="dateRangeFilter" class="hidden px-3 pt-2 pb-3 border-b flex gap-2 items-center" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+          <input type="date" id="filterStartDate" onchange="window.loadTasksForPanel()" class="text-xs px-2 py-1.5 rounded w-full border outline-none" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+          <span class="text-[10px] font-bold" style="color:var(--text-secondary);">TO</span>
+          <input type="date" id="filterEndDate" onchange="window.loadTasksForPanel()" class="text-xs px-2 py-1.5 rounded w-full border outline-none" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+        </div>
+        <div id="tasksPanel" class="flex-1 overflow-y-auto p-4" style="background-color:var(--bg-body);"></div>
+      </aside>
+    </div>
   </div>
 
   <!-- Modals (same as original) -->
-  <div id="taskModal" class="modal-overlay" style="display:none;"><div class="modal-box"><h3 class="font-semibold text-lg mb-2">Create Task</h3><div id="taskModalContent"></div><div class="flex gap-2 justify-end mt-4"><button class="px-4 py-2 bg-[var(--color-canvas-subtle)] rounded-lg text-sm" onclick="closeTaskModal()">Cancel</button><button class="btn-primary" onclick="saveTaskMultiAssignee()">Create</button></div></div></div>
-  <div id="reminderModal" class="modal-overlay" style="display:none;"><div class="modal-box"><h3 class="font-semibold text-lg mb-2">Set Reminder</h3><input type="datetime-local" id="reminderTime" class="w-full border rounded p-2 mb-2"><div class="flex gap-2 justify-end"><button class="px-4 py-2 bg-[var(--color-canvas-subtle)] rounded-lg text-sm" onclick="closeReminderModal()">Cancel</button><button class="btn-primary" onclick="saveReminder()">Set</button></div></div></div>
-  <div id="scheduleModal" class="modal-overlay" style="display:none;"><div class="modal-box"><h3 class="font-semibold text-lg mb-2">Schedule Message</h3><textarea id="scheduledText" class="w-full border rounded p-2 mb-2" rows="2" placeholder="Message content"></textarea><input type="datetime-local" id="scheduledTime" class="w-full border rounded p-2 mb-2"><div class="flex gap-2 justify-end"><button class="px-4 py-2 bg-[var(--color-canvas-subtle)] rounded-lg text-sm" onclick="closeScheduleModal()">Cancel</button><button class="btn-primary" onclick="saveScheduledMessage()">Schedule</button></div></div></div>
-  <div id="forwardModal" class="modal-overlay" style="display:none;"><div class="modal-box"><h3 class="font-semibold text-lg mb-2">Forward Message</h3><select id="forwardRoomSelect" class="w-full border rounded p-2 mb-2"></select><div class="flex gap-2 justify-end"><button class="px-4 py-2 bg-[var(--color-canvas-subtle)] rounded-lg text-sm" onclick="closeForwardModal()">Cancel</button><button class="btn-primary" onclick="sendForwardedMessage()">Forward</button></div></div></div>
-  <div id="editModal" class="modal-overlay" style="display:none;"><div class="modal-box"><h3 class="font-semibold text-lg mb-2">Edit Message</h3><textarea id="editText" class="w-full border rounded p-2 mb-2" rows="3"></textarea><div class="flex gap-2 justify-end"><button class="px-4 py-2 bg-[var(--color-canvas-subtle)] rounded-lg text-sm" onclick="cancelEditMessage()">Cancel</button><button class="btn-primary" onclick="saveEditMessage()">Save</button></div></div></div>
+  <div id="taskModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+    <div class="rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+      <h3 class="text-xl font-bold mb-4" style="color:var(--text-primary);">Create Task</h3>
+      <input id="taskTitle" class="w-full p-3 rounded-xl mb-3 border outline-none text-sm font-medium" placeholder="Task Title" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+      <p class="text-xs font-bold mb-1 ml-1" style="color:var(--text-secondary);">Assigned To:</p>
+      <div class="border rounded-xl mb-3 overflow-hidden" style="border-color:var(--border-color);">
+        <input type="text" id="assigneeSearch" onkeyup="window.filterAssignees()" placeholder="Search users..." class="w-full p-2.5 text-xs border-b outline-none font-medium" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+        <div id="assigneeCheckboxList" class="max-h-32 overflow-y-auto p-2 flex flex-col gap-1" style="background-color:var(--bg-sidebar);"></div>
+      </div>
+      <div class="grid grid-cols-2 gap-3 mb-3">
+        <div><p class="text-xs font-bold mb-1 ml-1" style="color:var(--text-secondary);">Deadline:</p><input type="date" id="taskDeadline" class="w-full p-2.5 rounded-xl border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);"></div>
+        <div><p class="text-xs font-bold mb-1 ml-1" style="color:var(--text-secondary);">Priority:</p><select id="taskPriority" class="w-full p-2.5 rounded-xl border outline-none text-sm font-medium" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);"><option value="Low">Low</option><option value="Medium" selected>Medium</option><option value="High">High</option></select></div>
+      </div>
+      <div class="flex gap-3 mt-4 pt-2">
+        <button onclick="window.closeTaskModal()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
+        <button onclick="window.saveTaskMultiAssignee()" class="flex-1 py-2.5 rounded-xl text-white font-bold shadow-md" style="background-color:var(--accent);">Create Ticket</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="scheduleModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+    <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+      <i class="fa-regular fa-clock text-4xl mb-4" style="color:var(--accent);"></i>
+      <h3 class="text-xl font-bold mb-2" style="color:var(--text-primary);">Schedule Message</h3>
+      <input type="datetime-local" id="scheduleDateTime" class="w-full p-3 rounded-xl mb-6 border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+      <div class="flex gap-3">
+        <button onclick="window.closeScheduleModal()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
+        <button onclick="window.saveScheduledMessage()" class="flex-1 py-2.5 rounded-xl font-bold text-white shadow-md" style="background-color:var(--accent);">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="reminderModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+    <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+      <h3 class="text-xl font-bold mb-4" style="color:var(--text-primary);">Set Reminder</h3>
+      <div class="border p-3 rounded-xl mb-4" style="background-color:var(--bg-body);border-color:var(--border-color);"><p id="reminderMessagePreview" class="text-xs line-clamp-2 italic font-medium" style="color:var(--text-secondary);"></p></div>
+      <input type="datetime-local" id="reminderDateTime" class="w-full p-3 rounded-xl mb-6 border outline-none text-sm" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">
+      <div class="flex gap-3">
+        <button onclick="window.closeReminderModal()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
+        <button onclick="window.saveReminder()" class="flex-1 py-2.5 rounded-xl text-white font-bold shadow-md" style="background-color:var(--accent);">Set Alarm</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="forwardModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+    <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+      <h3 class="text-lg font-bold mb-1" style="color:var(--text-primary);">Forward Message</h3>
+      <p class="text-xs mb-3" style="color:var(--text-secondary);">Select a department or staff member to forward to:</p>
+      <div class="border p-3 rounded-xl mb-4 italic text-xs" id="forwardPreview" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-secondary);max-height:60px;overflow:hidden;"></div>
+      <select id="forwardRoomSelect" class="w-full p-2.5 rounded-xl border outline-none text-sm mb-5" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);"></select>
+      <div class="flex gap-3">
+        <button onclick="window.closeForwardModal()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
+        <button onclick="window.sendForwardedMessage()" class="flex-1 py-2.5 rounded-xl font-bold text-white shadow-md" style="background-color:var(--accent);">Forward</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="editModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50">
+    <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl border" style="background-color:var(--bg-sidebar);border-color:var(--border-color);">
+      <h3 class="text-lg font-bold mb-2" style="color:var(--text-primary);">Edit Message</h3>
+      <textarea id="editText" class="w-full p-3 rounded-xl border outline-none text-sm mb-4" rows="3" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);"></textarea>
+      <div class="flex gap-3">
+        <button onclick="window.cancelEditMessage()" class="flex-1 py-2.5 rounded-xl font-bold border hover:opacity-80" style="background-color:var(--bg-body);border-color:var(--border-color);color:var(--text-primary);">Cancel</button>
+        <button onclick="window.saveEditMessage()" class="flex-1 py-2.5 rounded-xl text-white font-bold shadow-md" style="background-color:var(--accent);">Save</button>
+      </div>
+    </div>
+  </div>
 
   <div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
-  <input type="file" id="fileInput" style="display:none;">
+  <input type="file" id="fileAttachment" style="display:none;">
 
-  <!-- ============ SCRIPTS AS MODULES ============ -->
+  <!-- ============ SCRIPTS ============ -->
   <script type="module" src="js/shared.js"></script>
   <script type="module" src="js/auth.js"></script>
   <script type="module" src="js/rbac.js"></script>
@@ -121,13 +220,14 @@
   <script type="module" src="js/main.js"></script>
   <script type="module" src="js/native.js"></script>
 
-  <!-- Service Worker & theme init (non-module) -->
+  <!-- Service Worker (non-module) -->
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js')
         .then(() => console.log('SW registered'))
         .catch(() => console.log('SW registration failed'));
     }
+    // Theme toggle integration
     document.getElementById('themeToggle')?.addEventListener('click', function() {
       if (typeof toggleTheme === 'function') {
         toggleTheme();

@@ -9,8 +9,7 @@
         inFlight: false,
         pending: false,
         debounceTimer: null,
-        installTimer: null,
-        firstRenderComplete: false
+        installTimer: null
     };
 
     function installStyles() {
@@ -37,20 +36,8 @@
         document.head.appendChild(style);
     }
 
-    function isInitialLoading(list) {
-        if (!list) return true;
-        return Boolean(
-            list.querySelector('.fa-spinner') ||
-            /loading/i.test(list.textContent || '')
-        );
-    }
-
-    function hasFinishedInitialRender(list) {
-        return Boolean(list && !isInitialLoading(list));
-    }
-
     function makeSnapshot(list) {
-        if (!list || !list.children.length || isInitialLoading(list)) return null;
+        if (!list || !list.children.length) return null;
         const panel = document.getElementById('activityFeedPanel');
         if (!panel) return null;
 
@@ -68,22 +55,17 @@
         return snapshot;
     }
 
-    async function runInitialLoad(context, args) {
-        const result = await STATE.originalLoad.apply(context, args);
-        const renderedList = document.getElementById('activityFeedList');
-        STATE.firstRenderComplete = hasFinishedInitialRender(renderedList);
-        return result;
-    }
-
     async function stableLoad(...args) {
         const list = document.getElementById('activityFeedList');
-        if (!STATE.originalLoad) return;
+        if (!list || !STATE.originalLoad) {
+            return STATE.originalLoad?.apply(this, args);
+        }
 
-        // The first load must remain completely native. Wrapping the loading
-        // placeholder can leave the presentation decorator and stabilizer waiting
-        // on one another, so stability starts only after a real first render.
-        if (!list || !STATE.firstRenderComplete || isInitialLoading(list)) {
-            return runInitialLoad(this, args);
+        // The initial spinner must always be handled by the original feed loader.
+        // Snapshot protection starts only after a real feed or empty state exists.
+        const isInitialLoad = Boolean(list.querySelector('.fa-spinner'));
+        if (isInitialLoad) {
+            return STATE.originalLoad.apply(this, args);
         }
 
         if (STATE.inFlight) {
@@ -107,13 +89,8 @@
                     oldScrollTop,
                     Math.max(0, refreshedList.scrollHeight - refreshedList.clientHeight)
                 );
-                STATE.firstRenderComplete = hasFinishedInitialRender(refreshedList);
             }
             return result;
-        } catch (error) {
-            // Keep the current visible feed when a silent background refresh fails.
-            console.warn('[Activity Feed] Silent refresh failed', error);
-            return undefined;
         } finally {
             const refreshedList = document.getElementById('activityFeedList');
             refreshedList?.removeAttribute('aria-busy');
@@ -123,7 +100,7 @@
 
             if (STATE.pending) {
                 STATE.pending = false;
-                scheduleRefresh(180);
+                scheduleRefresh(120);
             }
         }
     }
@@ -145,13 +122,22 @@
         if (STATE.installed) return true;
         if (typeof window._loadActivityFeed !== 'function') return false;
 
+        // activity-v207.js must finish its own wrapper first. Installing before
+        // that creates a mutual wrapper cycle and a maximum-call-stack error.
+        if (window._loadActivityFeed.__nfa207 !== true) return false;
+
         installStyles();
         STATE.originalLoad = window._loadActivityFeed;
+
         const wrappedLoad = function (...args) {
             return stableLoad.apply(this, args);
         };
         wrappedLoad.__nfaStable = true;
         wrappedLoad.__nfaOriginal = STATE.originalLoad;
+
+        // Preserve the decorator marker so activity-v207.js does not wrap this
+        // function again during its retry loop.
+        wrappedLoad.__nfa207 = true;
         window._loadActivityFeed = wrappedLoad;
 
         if (typeof window.refreshActivityFeed === 'function') {
@@ -179,7 +165,7 @@
         let attempts = 0;
         STATE.installTimer = setInterval(() => {
             attempts += 1;
-            if (install() || attempts >= 100) clearInterval(STATE.installTimer);
+            if (install() || attempts >= 160) clearInterval(STATE.installTimer);
         }, 150);
     }
 

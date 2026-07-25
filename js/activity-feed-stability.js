@@ -6,11 +6,14 @@
         originalLoad: null,
         originalRefresh: null,
         originalPrepend: null,
+        originalOpen: null,
         inFlight: false,
         pending: false,
         debounceTimer: null,
         installTimer: null
     };
+
+    const FALLBACK_POLL_MS = 60000;
 
     function installStyles() {
         if (document.getElementById('nfa-activity-stability-styles')) return;
@@ -118,6 +121,22 @@
         }, delay);
     }
 
+    function resetFallbackPoll() {
+        try { clearInterval(window._afPollTimer); } catch (e) {}
+        if (!window._activityFeedOpen || !document.getElementById('activityFeedList')) return;
+        window._afPollTimer = setInterval(() => {
+            if (
+                window._activityFeedOpen &&
+                document.getElementById('activityFeedList') &&
+                typeof window._loadActivityFeed === 'function'
+            ) {
+                window._loadActivityFeed();
+            } else {
+                try { clearInterval(window._afPollTimer); } catch (e) {}
+            }
+        }, FALLBACK_POLL_MS);
+    }
+
     function install() {
         if (STATE.installed) return true;
         if (typeof window._loadActivityFeed !== 'function') return false;
@@ -155,8 +174,19 @@
             };
         }
 
+        // Keep realtime updates immediate, but replace the original 12-second
+        // safety poll with a quieter 60-second fallback after the panel opens.
+        if (typeof window.openActivityFeed === 'function') {
+            STATE.originalOpen = window.openActivityFeed;
+            window.openActivityFeed = async function (...args) {
+                const result = await STATE.originalOpen.apply(this, args);
+                resetFallbackPoll();
+                return result;
+            };
+        }
+
         STATE.installed = true;
-        window.NILTASK_ACTIVITY_STABILITY_VERSION = 'v2';
+        window.NILTASK_ACTIVITY_STABILITY_VERSION = 'v3';
         return true;
     }
 

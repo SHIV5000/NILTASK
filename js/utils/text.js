@@ -25,6 +25,18 @@
         }
     } catch (e) {}
 
+    // Presentation-only compact filters: sticky Activity selectors and the
+    // existing functional Task filter/sort selects instead of wide pill rows.
+    try {
+        if (!document.querySelector('script[data-nfa-compact-panel-filters]')) {
+            const script = document.createElement('script');
+            script.src = 'js/compact-panel-filters.js?v=1';
+            script.defer = true;
+            script.dataset.nfaCompactPanelFilters = '1';
+            document.head.appendChild(script);
+        }
+    } catch (e) {}
+
     // Full HTML-attribute-safe escape (escapes quotes too). Null-safe.
     function escapeHtml(str) {
         if (str === null || str === undefined) return '';

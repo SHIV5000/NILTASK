@@ -6,11 +6,12 @@
         originalLoad: null,
         originalRefresh: null,
         originalPrepend: null,
-        originalOpen: null,
         inFlight: false,
         pending: false,
         debounceTimer: null,
-        installTimer: null
+        installTimer: null,
+        observedPanel: null,
+        pollObserver: null
     };
 
     const FALLBACK_POLL_MS = 60000;
@@ -64,8 +65,6 @@
             return STATE.originalLoad?.apply(this, args);
         }
 
-        // The initial spinner must always be handled by the original feed loader.
-        // Snapshot protection starts only after a real feed or empty state exists.
         const isInitialLoad = Boolean(list.querySelector('.fa-spinner'));
         if (isInitialLoad) {
             return STATE.originalLoad.apply(this, args);
@@ -137,12 +136,25 @@
         }, FALLBACK_POLL_MS);
     }
 
+    function observePanelOpen() {
+        if (STATE.pollObserver) return;
+        STATE.pollObserver = new MutationObserver(() => {
+            const panel = document.getElementById('activityFeedPanel');
+            if (panel && panel !== STATE.observedPanel) {
+                STATE.observedPanel = panel;
+                // Let the original open function finish creating its 12-second timer,
+                // then replace that timer without wrapping openActivityFeed().
+                setTimeout(resetFallbackPoll, 0);
+            } else if (!panel) {
+                STATE.observedPanel = null;
+            }
+        });
+        STATE.pollObserver.observe(document.body, { childList: true, subtree: true });
+    }
+
     function install() {
         if (STATE.installed) return true;
         if (typeof window._loadActivityFeed !== 'function') return false;
-
-        // activity-v207.js must finish its own wrapper first. Installing before
-        // that creates a mutual wrapper cycle and a maximum-call-stack error.
         if (window._loadActivityFeed.__nfa207 !== true) return false;
 
         installStyles();
@@ -153,9 +165,6 @@
         };
         wrappedLoad.__nfaStable = true;
         wrappedLoad.__nfaOriginal = STATE.originalLoad;
-
-        // Preserve the decorator marker so activity-v207.js does not wrap this
-        // function again during its retry loop.
         wrappedLoad.__nfa207 = true;
         window._loadActivityFeed = wrappedLoad;
 
@@ -174,19 +183,10 @@
             };
         }
 
-        // Keep realtime updates immediate, but replace the original 12-second
-        // safety poll with a quieter 60-second fallback after the panel opens.
-        if (typeof window.openActivityFeed === 'function') {
-            STATE.originalOpen = window.openActivityFeed;
-            window.openActivityFeed = async function (...args) {
-                const result = await STATE.originalOpen.apply(this, args);
-                resetFallbackPoll();
-                return result;
-            };
-        }
+        observePanelOpen();
 
         STATE.installed = true;
-        window.NILTASK_ACTIVITY_STABILITY_VERSION = 'v3';
+        window.NILTASK_ACTIVITY_STABILITY_VERSION = 'v4';
         return true;
     }
 

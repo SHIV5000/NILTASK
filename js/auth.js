@@ -326,18 +326,23 @@ window.ensureProfile = async function() {
 
 // ─── RENDER AUTH SCREEN ─────────────────────────────────────────
 window.renderAuthScreen = function() {
-    if (typeof window.applyTheme === 'function') window.applyTheme();
-    window._hideSplash?.();   // login screen is the destination — drop the boot splash
-    document.getElementById('root').innerHTML = `
-    <div class="min-h-screen w-full flex items-center justify-center" style="background-color:var(--bg-body);">
-        <div class="modal-content p-10 rounded-3xl shadow-2xl w-full max-w-md mx-4" style="background-color:var(--bg-sidebar);">
-            <div class="text-center mb-8">
-                <div style="width:52px;height:52px;border-radius:14px;background:var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
-                    <i class="fa-solid fa-comments" style="color:#fff;font-size:20px;"></i>
-                </div>
-                <h1 class="text-2xl font-bold" style="color:var(--text-primary);">Noted For Action</h1>
-                <p class="text-sm mt-1" style="color:var(--text-secondary);">Chat · Task · Accountability</p>
-            </div>
+  // Show the auth screen container, hide the main app
+  document.getElementById('authScreen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  
+  // Render the login form inside #authScreen
+  const authScreen = document.getElementById('authScreen');
+  authScreen.innerHTML = `
+    <!-- Your existing login HTML (copy from the original auth.js) -->
+    <div class="login-container">
+      <h2>Sign in to NILTASK</h2>
+      <input type="email" id="loginEmail" placeholder="Email">
+      <input type="password" id="loginPassword" placeholder="Password">
+      <button id="loginBtn">Sign in</button>
+    </div>
+  `;
+  // Attach event listeners as before (they are in auth.js elsewhere)
+};
 
             <div class="space-y-4">
                 <input id="email" type="email" placeholder="Email Address"

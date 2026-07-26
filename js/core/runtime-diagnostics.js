@@ -3,7 +3,7 @@
 
     if (window.NILTASK_runtimeSnapshot) return;
 
-    const VERSION = 'v4';
+    const VERSION = 'v5';
 
     function timerState(name) {
         const value = window[name];
@@ -27,7 +27,8 @@
                 notificationPresentation: fn.__nfaPresentationService === true,
                 notificationToast: fn.__nfaNotificationToastBoundary === true,
                 notificationSound: fn.__nfaNotificationSoundBoundary === true,
-                sessionLifecycle: fn.__nfaSessionLifecycle === true
+                sessionLifecycle: fn.__nfaSessionLifecycle === true,
+                unreadService: fn.__nfaUnreadService === true
             } : {}
         };
     }
@@ -60,6 +61,7 @@
 
         const lifecycle = window.NILTASK_SessionLifecycle?.snapshot?.() || null;
         const featureOwners = window.NILTASK_RealtimeFeatureOwners?.snapshot?.() || null;
+        const unread = window.NILTASK_UnreadService?.snapshot?.() || null;
         const activityUiVersion = window.NILTASK_ACTIVITY_UI_VERSION || null;
 
         return {
@@ -77,6 +79,11 @@
                 roomId: window.currentRoom || null,
                 lifecycle
             },
+            unread: unread ? {
+                ...unread,
+                renderedBellCount: Number(window._bellCount || 0),
+                windowPerRoom: { ...(window.unreadCounts || {}) }
+            } : null,
             activity: {
                 open: Boolean(window._activityFeedOpen),
                 panelPresent: Boolean(document.getElementById('activityFeedPanel')),
@@ -93,6 +100,7 @@
                 sessionLifecycle: window.NILTASK_SESSION_LIFECYCLE_VERSION || null,
                 subscriptionGuard: window.NILTASK_SUBSCRIPTION_GUARD_VERSION || null,
                 notificationPresentation: window.NILTASK_NOTIFICATION_PRESENTATION_VERSION || null,
+                unreadService: window.NILTASK_UNREAD_SERVICE_VERSION || null,
                 activityController: window.NILTASK_ACTIVITY_CONTROLLER_VERSION || null,
                 activityUi: activityUiVersion,
                 mobile: window.NILTASK_MOBILE_VERSION || null
@@ -110,6 +118,10 @@
                 '_loadActivityFeed',
                 'refreshActivityFeed',
                 'prependFeedItem',
+                '_setBellBadge',
+                '_incrementBellBadge',
+                '_clearBellBadge',
+                'refreshNotificationBadge',
                 'triggerMessageNotification',
                 'showCenterToast',
                 'playSound'
@@ -124,7 +136,8 @@
                 documentWideActivityObserver: false,
                 documentWideCompactFilterObserver: false,
                 taskFilterObserverScope: window.NILTASK_CompactTaskFilters ? '#rightSidebar' : null,
-                note: 'Activity renders its final DOM directly. The remaining Task filter observer is feature-scoped to #rightSidebar.'
+                unreadSidebarObserverScope: window.NILTASK_UnreadService ? '#chatsList' : null,
+                note: 'Activity renders directly. Task filters observe #rightSidebar; unread room badges observe only #chatsList.'
             }
         };
     }
@@ -133,6 +146,7 @@
         const data = snapshot();
         try { console.table(data.realtime.topicCounts); } catch (e) {}
         try { console.table(data.realtime.owners); } catch (e) {}
+        try { if (data.unread) console.table([{ roomTotal:data.unread.roomTotal, attention:data.unread.attention, total:data.unread.total }]); } catch (e) {}
         try { console.log('[NILTASK runtime snapshot]', data); } catch (e) {}
         return data;
     }

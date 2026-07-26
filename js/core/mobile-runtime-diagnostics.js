@@ -3,7 +3,7 @@
 
     if (window.NILTASK_mobileRuntimeSnapshot) return;
 
-    const VERSION = 'v1';
+    const VERSION = 'v2';
 
     function topicOf(channel) {
         const raw = String(channel?.topic || channel?.subTopic || '');
@@ -11,10 +11,11 @@
     }
 
     function channelState(channel) {
+        const rawState = channel?.state || null;
         return {
             topic: topicOf(channel),
-            state: channel?.state || channel?.joinedOnce ? 'joined' : channel?.state || null,
-            joined: channel?.state === 'joined',
+            state: rawState,
+            joined: rawState === 'joined',
         };
     }
 
@@ -30,6 +31,10 @@
         return list.filter(item => item.topic === prefix || item.topic.startsWith(prefix));
     }
 
+    function lifecycleSnapshot() {
+        try { return window.NILTASK_MobileRuntime?.snapshot?.() || null; } catch (e) { return null; }
+    }
+
     function snapshot() {
         const list = channels();
         const tenantId = window.currentTenantId || null;
@@ -40,6 +45,7 @@
             String(owner?.owner || '').startsWith('desktop-')
         );
         const unread = window.NILTASK_UnreadService?.snapshot?.() || null;
+        const lifecycle = lifecycleSnapshot();
         const mobile = Boolean(window.isMobileView?.() || document.getElementById('mobileApp'));
 
         return {
@@ -63,18 +69,34 @@
                 passiveMobile: unread.passiveMobile,
                 automaticOwnerExpected: false,
             } : null,
-            documentedLocalResources: {
-                reconnectTimer: '_rtReconnectTimer (module-local; not introspectable externally)',
-                outageTimer: '_rtOutageTimer (module-local; not introspectable externally)',
-                fallbackTimer: '_fallbackTimer (module-local; not introspectable externally)',
-                activityPoll: '_activityPoll (module-local; not introspectable externally)',
-                typingTimers: '_typingTimers (module-local; not introspectable externally)',
-                headsUpTimer: '_headsUpTimer (module-local; not introspectable externally)',
+            lifecycle: lifecycle ? {
+                version: lifecycle.version,
+                stopped: lifecycle.stopped,
+                stopReason: lifecycle.stopReason,
+                cleanupInFlight: lifecycle.cleanupInFlight,
+                tracked: lifecycle.tracked,
+                channels: lifecycle.channels,
+                channelsRemoved: lifecycle.channelsRemoved,
+                lastStop: lifecycle.lastStop,
+                restartMode: lifecycle.restartMode,
+            } : null,
+            lifecycleAvailable: Boolean(lifecycle),
+            acceptance: {
+                oneMainChannel: mobileTopics.length === 1,
+                onePresenceChannel: presenceTopics.length === 1,
+                desktopOwnersAbsent: desktopFeatureOwners.length === 0,
+                sharedUnreadPassive: Boolean(unread?.passiveMobile),
+                stoppedRuntimeHasNoTrackedResources: lifecycle?.stopped
+                    ? Object.values(lifecycle.tracked || {}).every(value => Number(value || 0) === 0)
+                    : null,
+                stoppedRuntimeHasNoMobileChannels: lifecycle?.stopped
+                    ? mobileTopics.length === 0 && presenceTopics.length === 0
+                    : null,
             },
             limitations: [
-                'This diagnostic is read-only and does not wrap mobile functions.',
-                'Module-local timers require a future native MobileRuntime snapshot exported from mobile.js.',
-                'Channel health reports the current Supabase client state only; database fallback behaviour must still be smoke-tested.',
+                'Resource counts include mobile.js/mobile-tasks.js callsites tracked after the early bootstrap installed.',
+                'A lifecycle stop is destructive for the current page; restart intentionally uses a page reload.',
+                'Channel health reflects current Supabase client state; database fallback behaviour still requires authenticated smoke testing.',
             ],
         };
     }
@@ -84,6 +106,7 @@
         try { console.table(data.mainChannels); } catch (e) {}
         try { console.table(data.presenceChannels); } catch (e) {}
         try { console.table(data.desktopFeatureOwners); } catch (e) {}
+        try { if (data.lifecycle?.tracked) console.table([data.lifecycle.tracked]); } catch (e) {}
         try { console.log('[NILTASK mobile runtime snapshot]', data); } catch (e) {}
         return data;
     }

@@ -91,6 +91,30 @@ It currently provides:
 
 The subscription guard now delegates duplicate-topic cleanup and startup coalescing to this manager when available. Existing feature queries and callbacks remain unchanged in this phase.
 
+### Central session lifecycle
+
+Created `js/core/session-lifecycle.js` as the authoritative cleanup boundary for logout, account changes and tenant-context changes.
+
+It now:
+
+- wraps the existing `logout()` function once with a marked compatibility adapter;
+- listens for Supabase `SIGNED_OUT`, `SIGNED_IN`, `INITIAL_SESSION` and token-refresh events;
+- detects an actual tenant change after `loadTenantContext()`;
+- closes Activity and clears its fallback timer and refresh snapshots;
+- clears desktop heartbeat, presence and typing timers;
+- destroys active Supabase realtime channels through `RealtimeManager` with a direct-client fallback;
+- clears stale shared/reaction channel references;
+- detaches the current browser Web Push subscription or native device token from the outgoing user before sign-out;
+- removes service-worker authentication data while preserving other IndexedDB preferences;
+- flushes and stops the session logger timer;
+- clears user, tenant, role, permission, cache, unread and app-badge state after sign-out;
+- reloads after a genuine same-user tenant change so page-lifetime legacy observers cannot continue under the previous tenant;
+- bounds every best-effort async cleanup step so logout cannot hang because of network, push, logging, realtime or IndexedDB work.
+
+The original logout still owns tenant-prefixed localStorage deletion and navigation. Context reset is guaranteed in a final block even if the `SIGNED_OUT` callback overlaps cleanup.
+
+Temporary Activity presentation observers are still page-lifetime compatibility layers. Logout or tenant-change reload destroys them with the page; they will be removed directly when the single-owner Activity renderer replaces both decorators.
+
 ### On-demand runtime diagnostics
 
 Created `js/core/runtime-diagnostics.js`.
@@ -110,7 +134,8 @@ The snapshot records:
 - loaded containment versions;
 - wrapper markers on critical public functions;
 - known Activity, presence and typing timers;
-- current user, tenant and room identifiers.
+- current user, tenant and room identifiers;
+- SessionLifecycle installation and cleanup state.
 
 This gives repeatable evidence for duplicate channels and wrapper ownership without adding visible UI.
 
@@ -123,8 +148,8 @@ This gives repeatable evidence for duplicate channels and wrapper ownership with
 
 ### Next work
 
-1. Verify the notification-row toast/sound boundary and runtime snapshot in the Vercel preview.
-2. Map and centralize logout/tenant-change cleanup for channels, timers and observers.
-3. Move the scheduled-message and shared-broadcast channel construction directly into RealtimeManager ownership.
+1. Verify logout with `NILTASK_printRuntimeSnapshot()` before and after cleanup in the Vercel preview.
+2. Move scheduled-message and shared-broadcast channel construction directly into RealtimeManager ownership.
+3. Route the legacy notification-row realtime callback directly through `NILTASK_presentNotificationRow()`.
 4. Preserve database-backed unread reconciliation as authoritative.
-5. Continue toward a single NotificationService and single-owner Activity controller.
+5. Begin the single-owner Activity controller so both remaining body-wide presentation observers can be deleted.

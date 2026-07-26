@@ -9,9 +9,7 @@
         inFlight: false,
         pending: false,
         debounceTimer: null,
-        installTimer: null,
-        observedPanel: null,
-        pollObserver: null
+        installTimer: null
     };
 
     const FALLBACK_POLL_MS = 60000;
@@ -59,6 +57,23 @@
         return snapshot;
     }
 
+    function resetFallbackPoll() {
+        try { clearInterval(window._afPollTimer); } catch (e) {}
+        if (!window._activityFeedOpen || !document.getElementById('activityFeedList')) return;
+
+        window._afPollTimer = setInterval(() => {
+            if (
+                window._activityFeedOpen &&
+                document.getElementById('activityFeedList') &&
+                typeof window._loadActivityFeed === 'function'
+            ) {
+                window._loadActivityFeed();
+            } else {
+                try { clearInterval(window._afPollTimer); } catch (e) {}
+            }
+        }, FALLBACK_POLL_MS);
+    }
+
     async function stableLoad(...args) {
         const list = document.getElementById('activityFeedList');
         if (!list || !STATE.originalLoad) {
@@ -67,7 +82,15 @@
 
         const isInitialLoad = Boolean(list.querySelector('.fa-spinner'));
         if (isInitialLoad) {
-            return STATE.originalLoad.apply(this, args);
+            try {
+                return await STATE.originalLoad.apply(this, args);
+            } finally {
+                // openActivityFeed() creates its original timer immediately after the
+                // awaited initial load. Queue one macrotask so that timer exists first,
+                // then replace it with the 60-second fallback. This removes the former
+                // body-wide MutationObserver and avoids wrapping openActivityFeed().
+                setTimeout(resetFallbackPoll, 0);
+            }
         }
 
         if (STATE.inFlight) {
@@ -120,38 +143,6 @@
         }, delay);
     }
 
-    function resetFallbackPoll() {
-        try { clearInterval(window._afPollTimer); } catch (e) {}
-        if (!window._activityFeedOpen || !document.getElementById('activityFeedList')) return;
-        window._afPollTimer = setInterval(() => {
-            if (
-                window._activityFeedOpen &&
-                document.getElementById('activityFeedList') &&
-                typeof window._loadActivityFeed === 'function'
-            ) {
-                window._loadActivityFeed();
-            } else {
-                try { clearInterval(window._afPollTimer); } catch (e) {}
-            }
-        }, FALLBACK_POLL_MS);
-    }
-
-    function observePanelOpen() {
-        if (STATE.pollObserver) return;
-        STATE.pollObserver = new MutationObserver(() => {
-            const panel = document.getElementById('activityFeedPanel');
-            if (panel && panel !== STATE.observedPanel) {
-                STATE.observedPanel = panel;
-                // Let the original open function finish creating its 12-second timer,
-                // then replace that timer without wrapping openActivityFeed().
-                setTimeout(resetFallbackPoll, 0);
-            } else if (!panel) {
-                STATE.observedPanel = null;
-            }
-        });
-        STATE.pollObserver.observe(document.body, { childList: true, subtree: true });
-    }
-
     function install() {
         if (STATE.installed) return true;
         if (typeof window._loadActivityFeed !== 'function') return false;
@@ -183,10 +174,8 @@
             };
         }
 
-        observePanelOpen();
-
         STATE.installed = true;
-        window.NILTASK_ACTIVITY_STABILITY_VERSION = 'v4';
+        window.NILTASK_ACTIVITY_STABILITY_VERSION = 'v5';
         return true;
     }
 

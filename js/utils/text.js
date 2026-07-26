@@ -98,6 +98,19 @@
         }
     } catch (e) {}
 
+    // One authoritative unread orchestrator. Durable per-room message unread comes
+    // from room_reads + messages; non-message attention comes from unread notification
+    // rows. The service combines them once for the bell, room badges and PWA app badge.
+    try {
+        if (!document.querySelector('script[data-nfa-unread-service]')) {
+            const script = document.createElement('script');
+            script.src = 'js/core/unread-service.js?v=2';
+            script.defer = true;
+            script.dataset.nfaUnreadService = '1';
+            document.head.appendChild(script);
+        }
+    } catch (e) {}
+
     function escapeHtml(str) {
         if (str === null || str === undefined) return '';
         return String(str)

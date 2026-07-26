@@ -60,6 +60,7 @@ const packageJson = parseJson('package.json');
 parseJson('manifest.json');
 parseJson('version.json');
 
+const indexHtml = read('index.html');
 const uiFeed = read('js/ui-feed.js');
 const activityCompat = read('js/activity-v208.js');
 const textLoader = read('js/utils/text.js');
@@ -69,6 +70,9 @@ const feedCore = read('js/core/feed.js');
 const mobileDiagnostics = read('js/core/mobile-runtime-diagnostics.js');
 const serviceWorker = read('sw.js');
 const pwaNotes = read('PWA_RELEASE_NOTES.md');
+const tailwindInput = read('css/tailwind.input.css');
+const gitignore = read('.gitignore');
+const validationWorkflow = read('.github/workflows/professionalization-validation.yml');
 
 contains(uiFeed, 'const _AF_REFRESH_MS = 60000;', 'Activity fallback remains 60 seconds');
 contains(uiFeed, "window.NILTASK_ACTIVITY_CONTROLLER_VERSION = 'v1'", 'Source Activity controller marker remains present');
@@ -132,6 +136,24 @@ check(
   packageJson?.scripts?.['validate:professionalization'] === 'node scripts/validate-professionalization.mjs',
   'Package exposes professionalization validation script'
 );
+check(
+  packageJson?.scripts?.['build:tailwind'] === 'npx @tailwindcss/cli -i ./css/tailwind.input.css -o ./css/tailwind.generated.css --minify',
+  'Package exposes pinned Tailwind build command'
+);
+check(
+  packageJson?.scripts?.['validate:tailwind'] === 'npm run build:tailwind && node scripts/validate-tailwind-build.mjs',
+  'Package exposes Tailwind output validation command'
+);
+check(packageJson?.devDependencies?.tailwindcss === '4.3.0', 'Tailwind dependency is pinned to 4.3.0');
+check(packageJson?.devDependencies?.['@tailwindcss/cli'] === '4.3.0', 'Tailwind CLI dependency is pinned to 4.3.0');
+contains(tailwindInput, '@import "tailwindcss" source(none);', 'Tailwind build disables implicit source detection');
+contains(tailwindInput, '@source "../index.html";', 'Tailwind build scans index.html');
+contains(tailwindInput, '@source "../js";', 'Tailwind build scans JavaScript renderers');
+contains(tailwindInput, '@source "../www";', 'Tailwind build scans the local Capacitor shell');
+contains(gitignore, 'css/tailwind.generated.css', 'Generated Tailwind verification CSS remains untracked');
+contains(validationWorkflow, 'npm run validate:tailwind', 'CI validates the compiled Tailwind output');
+contains(indexHtml, '<script src="https://cdn.tailwindcss.com"></script>', 'Tailwind CDN remains until visual parity acceptance');
+excludes(indexHtml, 'tailwind.generated.css', 'Unaccepted generated Tailwind CSS is not linked in production');
 
 for (const relative of [
   'js/core/realtime-manager.js',

@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    const VERSION = 'v4';
+    const VERSION = 'v5';
     const STATE = {
         installed: false,
         installTimer: null,
@@ -39,8 +39,9 @@
 
         const tenantId = window.currentTenantId;
         const desktop = !window.isMobileView?.();
+        if (!desktop) return;
         const names = ['scheduled-changes', 'notifications-changes'];
-        if (tenantId && desktop) names.push('taskflow-bc-' + tenantId);
+        if (tenantId) names.push('taskflow-bc-' + tenantId);
 
         const manager = window.NILTASK_RealtimeManager;
         if (manager?.removeTopics) {
@@ -61,7 +62,6 @@
             if (
                 window._sharedBroadcast &&
                 tenantId &&
-                desktop &&
                 fallbackTopicMatches(window._sharedBroadcast, 'taskflow-bc-' + tenantId) &&
                 !removed.has(window._sharedBroadcast)
             ) {
@@ -69,7 +69,7 @@
             }
         }
 
-        if (tenantId && desktop) window._sharedBroadcast = null;
+        if (tenantId) window._sharedBroadcast = null;
     }
 
     async function migrateManagedOwners() {
@@ -88,6 +88,7 @@
 
     function runOnce(original, context, args) {
         const operation = async () => {
+            if (window.isMobileView?.()) return original.apply(context, args);
             await disposeKnownDuplicates();
             const result = await original.apply(context, args);
             await migrateManagedOwners();

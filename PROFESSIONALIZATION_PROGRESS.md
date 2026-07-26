@@ -259,16 +259,13 @@ Implementation now:
 - delegates `_setBellBadge`, `_incrementBellBadge`, `_clearBellBadge` and `refreshNotificationBadge` on desktop/PWA;
 - exposes the unread split in runtime diagnostics.
 
-Mobile safety boundary:
+Initial mobile safety boundary:
 
-- UnreadService is passive on mobile;
-- it adds no automatic mobile query;
-- it installs no mobile observer;
-- it does not override mobile badge functions;
-- it does not write the mobile/PWA app badge;
-- it adds no second polling cadence.
+- UnreadService was passive on mobile;
+- it added no automatic mobile query, observer, badge override or app-badge write;
+- it added no second polling cadence.
 
-The current mobile unread renderer remains authoritative until a dedicated migration replaces its local query/render functions.
+That initial boundary was superseded by the explicit shared-query handoff below.
 
 ### Expanded desktop Task realtime owners
 
@@ -305,12 +302,71 @@ trails-changes           count = 1
 - `main`: unchanged
 - Production: unchanged
 
-### Next work
+---
 
-1. Run authenticated unread and six-topic realtime smoke checks in the Vercel preview.
-2. Verify one off-room message changes the global count by exactly one.
-3. Verify Task changes refresh once and Task trail changes refresh Activity once.
-4. Migrate `public:messages-<tenant>` only after message/unread/presentation parity checks.
-5. Decide whether the legacy `mpgs-reactions-v1-<tenant>` broadcast can be retired.
-6. Perform the dedicated mobile unread handoff without introducing another poll.
-7. Continue mobile timer, reconnect and observer ownership inventory.
+## 2026-07-26 — Explicit mobile lifecycle and shared unread-query handoff
+
+### Mobile lifecycle boundary
+
+- Added `NILTASK_MobileRuntime` before `mobile.js` evaluation.
+- Tracks mobile-originated timers, intervals, animation frames, persistent listeners, observers and `mobile-rt-*` / `presence-*` channels.
+- `stop()` clears owned resources, removes mobile channels and blocks reconnect work on the stopped page.
+- Restart is reload-only so stale module-local channel references cannot be resurrected.
+- SessionLifecycle v4 stops mobile runtime before general realtime teardown.
+- Tenant change, account change and sign-in after prior cleanup schedule one controlled reload.
+- VM behavioral testing proves cleanup, reconnect suppression, desktop-resource preservation and reload-only restart.
+
+### Shared mobile unread query ownership
+
+UnreadService v4 now owns the mobile database query pair without adding another cadence:
+
+- captures the original `NFA_computeRoomUnread` and `NFA_unreadCount` helpers;
+- installs marked compatibility adapters under the same names;
+- coalesces the paired calls from existing mobile fallback/reconnect paths through one in-flight `UnreadService.refresh()`;
+- performs one room query and one attention query per existing mobile refresh trigger;
+- does not schedule a deferred second refresh when the paired call joins in flight;
+- dispatches and consumes `niltask:unread-updated` for shared state diagnostics;
+- does not write mobile `window.unreadCounts`, preserving the live provisional floor;
+- creates no mobile timer, poll, DOM renderer or app-badge writer;
+- restores original helpers on disposal.
+
+`mobile.js` remains authoritative for:
+
+- six-second foreground / sixty-second background cadence;
+- realtime live increments and replication-lag grace;
+- database/live-floor merge;
+- open-room zeroing;
+- surgical row patching;
+- bell and mobile OS badge rendering;
+- open-chat catch-up.
+
+### Diagnostics and automated proof
+
+- Mobile diagnostics v3 reports shared-refresh ownership, adapter calls, refresh/coalesced counts and unread-event consumption.
+- Acceptance explicitly rejects independent helper-query ownership and any shared mobile poll, renderer or app-badge writer.
+- `npm run test:mobile-unread` executes the real service in a VM and proves:
+  - paired calls produce one room query and one attention query;
+  - no hidden second refresh runs;
+  - mobile live counts are not overwritten;
+  - the shared service writes no mobile app badge;
+  - disposal restores original helpers.
+- Professionalization validation statically locks the same ownership contract.
+- GitHub Actions passed runtime contracts, mobile lifecycle, mobile unread, PWA assets and Tailwind verification on the exact head.
+- Vercel preview deployment succeeded for the exact tested head.
+
+### PWA coordination
+
+- Cache generation: `taskflow-v210`.
+- Exact offline assets include unread service v4, mobile diagnostics v3 and session lifecycle v4.
+- Old app-shell caches are removed while `share-inbox` is preserved.
+
+### Remaining pre-merge acceptance
+
+1. Authenticate on a real mobile device and verify one `mobile-rt-*` plus one `presence-*` channel.
+2. Verify paired unread requests occur once per existing trigger and counts change exactly once.
+3. Verify live provisional counts survive database replication lag.
+4. Verify open-room zeroing, DMs, attention, row badges, bell and OS badge parity.
+5. Background/resume repeatedly and keep the app open for at least 30 minutes.
+6. Sign out/sign in and switch tenant/account where available; verify one reload and no prior-user callback.
+7. Verify installed-PWA update convergence and offline reload.
+8. Keep PR #204 draft and do not merge until explicit owner approval.

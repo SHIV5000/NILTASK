@@ -243,6 +243,11 @@ check(
   'Package exposes professionalization validation script'
 );
 check(
+  packageJson?.scripts?.['test:mobile-runtime'] === 'node scripts/test-mobile-runtime-lifecycle.mjs',
+  'Package exposes mobile lifecycle behavioral test'
+);
+contains(validationWorkflow, 'npm run test:mobile-runtime', 'CI runs mobile lifecycle behavioral test');
+check(
   packageJson?.scripts?.['build:tailwind'] === 'npx @tailwindcss/cli -i ./css/tailwind.input.css -o ./css/tailwind.generated.css --minify',
   'Package exposes pinned Tailwind build command'
 );

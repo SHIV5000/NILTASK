@@ -56,7 +56,7 @@
     try {
         if (!document.querySelector('script[data-nfa-session-lifecycle]')) {
             const script = document.createElement('script');
-            script.src = 'js/core/session-lifecycle.js?v=1';
+            script.src = 'js/core/session-lifecycle.js?v=2';
             script.defer = true;
             script.dataset.nfaSessionLifecycle = '1';
             document.head.appendChild(script);

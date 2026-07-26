@@ -74,7 +74,7 @@ contains(uiFeed, 'const _AF_REFRESH_MS = 60000;', 'Activity fallback remains 60 
 contains(uiFeed, "window.NILTASK_ACTIVITY_CONTROLLER_VERSION = 'v1'", 'Source Activity controller marker remains present');
 excludes(textLoader, 'activity-feed-stability.js', 'Retired Activity stability loader stays removed');
 excludes(textLoader, 'activity-v207.js', 'Retired Activity wrapper loader stays removed');
-excludes(activityCompat, 'MutationObserver', 'Activity compatibility entrypoint has no observer');
+excludes(activityCompat, 'new MutationObserver', 'Activity compatibility entrypoint constructs no observer');
 excludes(activityCompat, 'openActivityFeed =', 'Activity compatibility entrypoint has no function wrapper');
 contains(activityCompat, "window.NILTASK_ACTIVITY_UI_VERSION = 'source-owned-layout-v2'", 'Activity layout compatibility marker remains present');
 

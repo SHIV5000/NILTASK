@@ -1,31 +1,36 @@
 (function () {
     'use strict';
 
-    const VERSION = 'v2';
+    const VERSION = 'v3';
     const STATE = {
         installed: false,
         installTimer: null,
         inFlight: null
     };
 
-    function channelTopic(channel) {
+    function fallbackTopic(channel) {
         return String(channel?.topic || channel?.subTopic || '');
     }
 
-    function topicMatches(channel, name) {
-        const topic = channelTopic(channel);
+    function fallbackTopicMatches(channel, name) {
+        const topic = fallbackTopic(channel);
         return topic === name || topic.endsWith(':' + name);
     }
 
-    async function removeChannelSafe(sb, channel) {
-        if (!channel) return;
+    async function fallbackRemoveChannel(sb, channel) {
+        if (!channel) return false;
         try {
             if (typeof sb?.removeChannel === 'function') {
                 await sb.removeChannel(channel);
-                return;
+                return true;
             }
         } catch (e) {}
-        try { await channel.unsubscribe?.(); } catch (e) {}
+        try {
+            await channel.unsubscribe?.();
+            return true;
+        } catch (e) {
+            return false;
+        }
     }
 
     async function disposeKnownDuplicates() {
@@ -37,31 +42,55 @@
         const names = ['scheduled-changes'];
         if (tenantId && desktop) names.push('taskflow-bc-' + tenantId);
 
-        const channels = typeof sb.getChannels === 'function'
-            ? Array.from(sb.getChannels() || [])
-            : [];
-        const removed = new Set();
+        const manager = window.NILTASK_RealtimeManager;
+        if (manager?.removeTopics) {
+            await manager.removeTopics(names, { channel: window._sharedBroadcast });
+        } else {
+            const channels = typeof sb.getChannels === 'function'
+                ? Array.from(sb.getChannels() || [])
+                : [];
+            const removed = new Set();
 
-        for (const channel of channels) {
-            if (names.some(name => topicMatches(channel, name))) {
-                removed.add(channel);
-                await removeChannelSafe(sb, channel);
+            for (const channel of channels) {
+                if (names.some(name => fallbackTopicMatches(channel, name))) {
+                    removed.add(channel);
+                    await fallbackRemoveChannel(sb, channel);
+                }
+            }
+
+            if (
+                window._sharedBroadcast &&
+                tenantId &&
+                desktop &&
+                fallbackTopicMatches(window._sharedBroadcast, 'taskflow-bc-' + tenantId) &&
+                !removed.has(window._sharedBroadcast)
+            ) {
+                await fallbackRemoveChannel(sb, window._sharedBroadcast);
             }
         }
 
-        // The legacy desktop module stores this channel on window. Clear the stale
-        // reference after removing it so the next subscription startup owns a fresh one.
-        if (
-            window._sharedBroadcast &&
-            tenantId &&
-            desktop &&
-            topicMatches(window._sharedBroadcast, 'taskflow-bc-' + tenantId)
-        ) {
-            if (!removed.has(window._sharedBroadcast)) {
-                await removeChannelSafe(sb, window._sharedBroadcast);
-            }
-            window._sharedBroadcast = null;
+        // Clear only the known desktop compatibility reference. Mobile owns a
+        // separate topic and must remain untouched.
+        if (tenantId && desktop) window._sharedBroadcast = null;
+    }
+
+    function runOnce(original, context, args) {
+        const manager = window.NILTASK_RealtimeManager;
+        if (manager?.coalesce) {
+            return manager.coalesce('desktop-subscription-start', async () => {
+                await disposeKnownDuplicates();
+                return original.apply(context, args);
+            });
         }
+
+        if (STATE.inFlight) return STATE.inFlight;
+        STATE.inFlight = (async () => {
+            await disposeKnownDuplicates();
+            return original.apply(context, args);
+        })().finally(() => {
+            STATE.inFlight = null;
+        });
+        return STATE.inFlight;
     }
 
     function install() {
@@ -73,16 +102,7 @@
         }
 
         const wrapped = function (...args) {
-            // Re-auth/bootstrap code can request startup twice within the same tick.
-            // One shared promise prevents both calls from constructing parallel channels.
-            if (STATE.inFlight) return STATE.inFlight;
-            STATE.inFlight = (async () => {
-                await disposeKnownDuplicates();
-                return original.apply(this, args);
-            })().finally(() => {
-                STATE.inFlight = null;
-            });
-            return STATE.inFlight;
+            return runOnce(original, this, args);
         };
         wrapped.__nfaSubscriptionGuard = true;
         wrapped.__nfaOriginal = original;

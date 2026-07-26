@@ -1,513 +1,316 @@
 # NILTASK Runtime Ownership Inventory
 
-> **Purpose:** Current ownership map for timers, observers, listeners, Supabase channels and public runtime functions that can duplicate work or survive beyond their feature.
+> Read after `AI.md` and `PROFESSIONALIZATION_PLAN.md`.
 >
-> **Authority:** Read `AI.md` → `PROFESSIONALIZATION_PLAN.md` → this inventory → `PROFESSIONALIZATION_PROGRESS.md`.
->
-> **Branch:** `agent/activity-feed-no-flicker`
->
-> **Updated:** 2026-07-26
->
-> **Status:** IN PROGRESS — desktop Activity is now source-owned; realtime, notification, session and mobile ownership migration continues.
+> Purpose: maintain one explicit owner and one cleanup path for every timer, observer, listener, realtime channel and public compatibility function.
+
+## Governing rules
+
+1. One runtime resource has one owner.
+2. Every interval, timeout, observer, listener and Supabase channel must have a cleanup path.
+3. Compatibility `window.*` functions may delegate to a service but must not form wrapper cycles.
+4. Desktop and mobile may render differently, but shared data rules must not diverge.
+5. Mobile business/realtime flows stay untouched until a dedicated migration explicitly replaces them.
+6. No document-wide MutationObserver may be introduced for a feature-specific problem.
+7. All school-owned realtime and query paths must be tenant-isolated.
 
 ---
 
-# 1. Ownership rules
+## Desktop Activity Feed
 
-1. Every interval, timeout, observer, event listener and Supabase channel must have one named owner.
-2. Every owner must expose or document a cleanup path.
-3. Reopening a screen or restarting subscriptions must not create a second active copy.
-4. Compatibility adapters may delegate to services, but must not recursively wrap other wrappers.
-5. Realtime is the fast path; database reconciliation is the correctness path.
-6. Desktop and mobile may use different views but must share unread, notification and task rules.
-7. A response fetched for an old user or tenant must never update the current UI.
-8. Document-wide presentation observers are not permitted in the target architecture.
+### Canonical owner
 
----
+`js/ui-feed.js`
 
-# 2. Activity Feed — current authoritative owner
+Owns:
 
-## 2.1 Owner: `js/ui-feed.js`
+- `window.openActivityFeed`
+- `window.closeActivityFeed`
+- `window._loadActivityFeed`
+- `window.refreshActivityFeed`
+- `window.prependFeedItem`
+- Activity Type/Person filters
+- clear-one / clear-all
+- exact Task/message navigation
+- final header/card/date-separator markup
+- one 60-second fallback interval (`window._afPollTimer`)
+- refresh debounce and overlapping-load coalescing
+- atomic list replacement and scroll restoration
+- stale user/tenant response rejection
 
-`ui-feed.js` now directly owns all desktop Activity behaviour:
-
-- `window.openActivityFeed()`;
-- `window.closeActivityFeed()`;
-- `window._loadActivityFeed()`;
-- `window.refreshActivityFeed()`;
-- `window.prependFeedItem()`;
-- fixed compact header and filter markup;
-- Activity Type and Person filter state;
-- card/date-group rendering;
-- clear-one and clear-all;
-- Task/message navigation;
-- mark-read behaviour on open;
-- canonical unread-count refresh;
-- one 60-second fallback interval in `window._afPollTimer`;
-- overlapping-load coalescing;
-- 250 ms realtime refresh debounce;
-- atomic DOM replacement;
-- scroll-position preservation;
-- stale user/tenant response rejection;
-- non-destructive refresh failures.
-
-Runtime marker:
+Diagnostics marker:
 
 ```text
 NILTASK_ACTIVITY_CONTROLLER_VERSION = v1
-```
-
-The public functions carry:
-
-```text
 __nfaActivityController = true
 ```
 
-## 2.2 Cleanup
+### Retired layers
 
-`closeActivityFeed()`:
+- `js/activity-v207.js`: historical implementation, not loaded.
+- `js/activity-v208.js`: harmless compatibility entrypoint only.
+- `js/activity-feed-stability.js`: not loaded.
+- Activity logic in `js/compact-panel-filters.js`: removed.
 
-- clears `_afPollTimer`;
-- clears the refresh debounce;
-- removes the panel;
-- restores Task controls.
+### Active observer
 
-`SessionLifecycle.cleanup()` also closes Activity and clears the same timer during logout or tenant change.
-
-## 2.3 Retired Activity layers
-
-### `js/activity-v208.js`
-
-Current state:
-
-- harmless compatibility entrypoint;
-- no longer imports `activity-v207.js`;
-- creates no wrapper;
-- creates no observer.
-
-### `js/activity-v207.js`
-
-Current state:
-
-- remains in the repository for historical reference;
-- no longer loaded through `activity-v208.js`;
-- its former `openActivityFeed()` and `_loadActivityFeed()` wrappers are inactive;
-- its former `document.body` observer is inactive.
-
-### `js/activity-feed-stability.js`
-
-Current state:
-
-- no longer dynamically loaded from `js/utils/text.js`;
-- source-owned Activity now contains its useful coalescing, scroll and fallback logic;
-- the file can be deleted after preview regression checks confirm no rollback need.
-
-## 2.4 Activity acceptance checks
-
-After a clean page load:
-
-```text
-activity.controllerVersion = v1
-activity.legacyStabilityLoaded = false
-openActivityFeed.activityController = true
-_loadActivityFeed.activityController = true
-observers.documentWideActivityObserver = false
-```
-
-Open and close Activity ten times. Exactly one `_afPollTimer` may exist while open and none after close.
+None for Activity.
 
 ---
 
-# 3. Task filter presentation
+## Compact Task filters
 
-## Owner: `js/compact-panel-filters.js`
+### Owner
 
-The file is now Task-only.
+`js/compact-panel-filters.js`
 
-It owns:
+Owns only the Task filter/sort presentation.
 
-- compact Filter and Sort selects;
-- concise option labels;
-- moving the existing functional selects into labelled wrappers;
-- hiding legacy pill rows;
-- hiding Task controls while Activity is open.
+Resource:
 
-Observer scope:
+- one MutationObserver scoped to `#rightSidebar`;
+- bounded install timer;
+- explicit `dispose()` on `niltask:session-cleaned`.
 
-```text
-#rightSidebar
-```
-
-It no longer:
-
-- scans `document.body`;
-- moves Activity filters;
-- decorates Activity cards;
-- changes Activity colours or header markup.
-
-Cleanup:
-
-- exposes `NILTASK_CompactTaskFilters.dispose()`;
-- disconnects on `niltask:session-cleaned`.
+It does not observe `document.body` and does not manipulate Activity DOM.
 
 ---
 
-# 4. RealtimeManager
+## Realtime Manager
 
-## Owner: `js/core/realtime-manager.js`
+### Owner
 
-Provides:
+`js/core/realtime-manager.js`
 
-- canonical topic inspection;
-- safe channel removal;
-- named owner registration;
+Owns:
+
+- topic inspection;
+- owner-to-channel registration;
 - owner cleanup;
-- topic cleanup;
+- topic duplicate removal;
 - operation coalescing;
 - runtime snapshots;
 - full channel destruction during session cleanup.
 
-Public service:
+### Desktop feature owners
 
-```text
-window.NILTASK_RealtimeManager
-```
+`js/core/realtime-feature-owners.js`
 
----
+Expected named owners and topics:
 
-# 5. Managed desktop realtime topics
-
-## Owner: `js/core/realtime-feature-owners.js`
-
-Desktop/PWA only. Mobile exits this migration path immediately.
-
-Named owners:
-
-| Owner | Topic | Responsibility |
+| Owner | Topic | Scope |
 |---|---|---|
-| `desktop-shared-broadcast` | `taskflow-bc-<tenant>` | profile, reaction, group-photo and typing sync |
-| `desktop-scheduled-messages` | `scheduled-changes` | scheduled-message sent status |
-| `desktop-notification-rows` | `notifications-changes` | user notification INSERT events |
+| `desktop-shared-broadcast` | `taskflow-bc-<tenant>` | tenant |
+| `desktop-scheduled-messages` | `scheduled-changes` | sender + tenant guard |
+| `desktop-notification-rows` | `notifications-changes` | current user + tenant guard |
+| `desktop-tasks` | `tasks-changes` | tenant |
+| `desktop-task-assignees` | `assignees-changes` | tenant |
+| `desktop-task-trails` | `trails-changes` | tenant |
 
-The service stops the previous owner and removes stale legacy copies before recreation.
-
-Acceptance target:
+Acceptance target after desktop startup:
 
 ```text
+taskflow-bc-<tenant>    count = 1
 scheduled-changes       count = 1
 notifications-changes   count = 1
-taskflow-bc-<tenant>    count = 1
+tasks-changes           count = 1
+assignees-changes       count = 1
+trails-changes           count = 1
 ```
 
-Mobile must not show these desktop owner records.
+Task INSERT/UPDATE events use server-side `tenant_id` filters. DELETE events retain a client tenant guard because DELETE filtering depends on replica identity.
+
+### Temporary migration bridge
+
+`js/runtime-subscription-guard.js`
+
+- coalesces repeated legacy desktop `startSubscriptions()` calls;
+- lets mobile call the original startup directly;
+- emits `niltask:subscriptions-started`;
+- remains temporary until all desktop channels are constructed directly by permanent services.
 
 ---
 
-# 6. Legacy desktop realtime still awaiting migration
-
-## Owner today: `js/main.js::startSubscriptions()`
-
-Module-scoped references that clean before replacement:
-
-- `messageSubscription`;
-- `taskSubscription`;
-- `assigneeSubscription`;
-- `trailSubscription`;
-- `notificationSubscription` legacy reference, although the active notification topic is recreated by feature owners.
-
-Remaining topics:
+## Desktop message/reaction realtime still legacy-owned
 
 ### `public:messages-<tenant>`
+
+Current owner: module-scoped `messageSubscription` in `js/main.js`.
 
 Carries:
 
 - message INSERT;
-- reaction INSERT/DELETE backup;
-- message UI refresh;
-- message notification calls;
+- reaction INSERT/DELETE durability;
+- mention/incoming-message presentation;
+- provisional per-room unread increments;
 - Activity refresh requests.
+
+The variable is module-scoped and is unsubscribed before recreation, so it does not have the same leak as the old scheduled-message local variable. It should be migrated only after message callback parity tests exist.
 
 ### `mpgs-reactions-v1-<tenant>`
 
-Carries legacy web broadcasts:
+Current owner: `window._reactionsBroadcast` in `js/main.js`.
 
-- reaction add/remove;
-- group-photo updates;
-- typing.
-
-### `tasks-changes`
-
-Calls the debounced Task panel loader.
-
-### `assignees-changes`
-
-Calls the debounced Task panel loader.
-
-### `trails-changes`
-
-Reloads Tasks and requests Activity refresh.
-
-Migration order:
-
-1. Task/assignee/trail channels as one Task owner group.
-2. Message/reaction channels as one Message owner group.
-3. Remove `runtime-subscription-guard.js` after all desktop topics are directly owned.
+Carries web-only broadcast compatibility for reactions, group photos and typing. It is explicitly unsubscribed before recreation and cleared by session cleanup. It remains a future migration target.
 
 ---
 
-# 7. Notification presentation
+## Notification presentation
 
-## Temporary owner: `js/notification-presentation-service.js`
+### Current boundary
 
-Owns the current presentation boundary for:
-
-- stable message event keys;
-- stable notification-row keys;
-- duplicate toast suppression;
-- immediately paired duplicate-sound suppression;
-- one message sound authority;
-- system notifications;
-- vibration;
-- bell animation and badge refresh calls;
-- Activity refresh requests.
-
-Public boundaries:
-
-```text
-NILTASK_shouldPresentEvent(key, ttl)
-NILTASK_presentNotificationRow(notification)
-```
-
-Target replacement:
-
-```text
-NotificationService
-```
-
-The final service must own normalization, event keys, toast, sound, system push decisions and badge reconciliation without wrapping global functions.
-
----
-
-# 8. Unread and badge authority
-
-Current shared calculation:
-
-- `js/core/unread.js` supplies canonical notification counting helpers;
-- desktop still performs local optimistic room increments;
-- mobile has independent catch-up and badge paths;
-- notification rows and unread messages can represent the same event.
-
-Target:
-
-```text
-UnreadService
-```
-
-Requirements:
-
-- database-backed reconciliation is authoritative;
-- message-related notification rows are deduplicated against room unread state;
-- optimistic increments must be replaced by the next reconciliation result;
-- desktop, mobile, PWA and Android badge values must converge.
-
----
-
-# 9. Session lifecycle
-
-## Owner: `js/core/session-lifecycle.js`
-
-Handles:
-
-- logout boundary;
-- Supabase auth-state changes;
-- account changes;
-- tenant changes;
-- Activity timer/panel cleanup;
-- presence and typing timer cleanup;
-- full realtime cleanup;
-- push-token/subscription detachment;
-- service-worker auth deletion;
-- logger flush/stop;
-- cache and app-badge reset;
-- final in-memory session reset.
-
-Every best-effort async step is time-bounded so logout cannot hang indefinitely.
-
----
-
-# 10. Desktop timers and listeners
-
-| Resource | Current owner | Cleanup/status |
-|---|---|---|
-| `_afPollTimer` | `ui-feed.js` | close Activity + SessionLifecycle |
-| Activity refresh debounce | `ui-feed.js` private state | close Activity |
-| `_taskPanelTimer` | `main.js` | cleared before replacement |
-| `_webTypingTimer` | `main.js` | cleared before replacement + SessionLifecycle |
-| `_webHeartbeat` | `main.js` | guarded; SessionLifecycle clears |
-| visibility badge listener | `main.js` | installed once through `_webVisWired` |
-| reaction badge delay | `main.js` | one-shot; future NotificationService reconciliation |
-
----
-
-# 11. Mobile realtime and runtime resources
-
-## Current primary owners: `js/mobile.js`
-
-Channels:
-
-- `_rtChannel` on `mobile-rt-<tenant>`;
-- `_presenceChannel` on `presence-<tenant>`.
-
-Positive controls already present:
-
-- channel creation guards;
-- intentional-close flag;
-- remove-channel during reconnect;
-- exponential reconnect backoff;
-- message-ID deduplication;
-- tenant and DM privacy guards;
-- catch-up reconciliation after recovery.
-
-Runtime references requiring exact lifecycle verification:
-
-- `_tsInterval`;
-- `_notifPoll`;
-- `_rtReconnectTimer`;
-- `_notifFallbackInterval`;
-- `_fallbackTimer`;
-- `_activityPoll`;
-- `_typingTimers` map;
-- outage/backoff timers;
-- keyboard requestAnimationFrame handle;
-- mobile MutationObservers in `mobile.js` and `mobile-tasks.js`.
-
-Required work:
-
-1. map every creation and clear path;
-2. verify screen navigation clears `_activityPoll`;
-3. verify wake/visibility does not duplicate fallback timers;
-4. verify logout removes both mobile channels;
-5. scope or remove mobile observers;
-6. share unread/notification rules with desktop.
-
----
-
-# 12. Native bridge
-
-## Owner: `js/native.js`
-
-Runtime resources:
-
-- splash-hide timeout;
-- native back-button listener;
-- push notification listeners;
-- 3-second token ownership/save retry interval.
-
-Known issue:
-
-- token polling reference is not centrally stored and cleared.
-
-Target:
-
-- native lifecycle owner with explicit install, restart and destroy methods.
-
----
-
-# 13. Logger
-
-## Owner: `js/utils/logger.js`
+`js/notification-presentation-service.js`
 
 Owns:
 
-- 60-second routine flush interval;
-- pagehide and visibility listeners;
-- auth-state listener;
-- global error and rejection capture;
-- console warning/error mirroring;
-- critical-log deduplication;
-- healthy realtime lifecycle sampling.
+- stable event-key deduplication;
+- duplicate toast suppression;
+- paired duplicate-sound suppression;
+- one message alert sound path;
+- `window.NILTASK_presentNotificationRow()`.
 
-Completed:
-
-- batch threshold 30;
-- routine flush 60 seconds;
-- repeated critical suppression 30 seconds;
-- no browser-side IP lookup;
-- realtime failures remain immediate.
-
-SessionLifecycle flushes and stops its timer on logout.
+It remains a compatibility boundary until a final `NotificationService` owns normalization, presentation and read/badge decisions directly.
 
 ---
 
-# 14. MutationObserver inventory
+## Unread and badge authority
 
-## Active and feature-scoped
+### Data engines
 
-- `compact-panel-filters.js` → `#rightSidebar` only.
+- `js/core/unread.js` → `NFA_computeRoomUnread()`
+- `js/core/feed.js` → `NFA_unreadCount()`
 
-## Retired/inactive
+Canonical formula:
 
-- Activity decorator `document.body` observer;
-- Activity fallback panel-open observer;
-- compact filter `document.body` observer.
+```text
+global unread = sum(per-room message unread) + non-message attention unread
+```
 
-## Still requiring review
+Message, reply and mention notification rows are excluded from attention because their linked chat messages are already represented in room unread.
 
-- observer(s) in `mobile.js`;
-- observer(s) in `mobile-tasks.js`.
+Durable room markers are read using both `user_id` and `tenant_id`. Last-known attention counts are cached per user, not globally.
 
-Target:
+### Desktop/PWA orchestrator
 
-- observers only when direct event/controller ownership is impossible;
-- observe the smallest feature root;
-- disconnect on feature or session destroy.
+`js/core/unread-service.js`
+
+Owns on desktop/PWA:
+
+- coalesced DB reconciliation;
+- `window.unreadCounts` compatibility publication;
+- top-bar bell;
+- room badges in `#chatsList`;
+- PWA app-icon badge;
+- optimistic room clearing + delayed reconcile;
+- refresh on visibility/network/subscription recovery;
+- reset on session cleanup.
+
+Observer:
+
+- one MutationObserver scoped only to `#chatsList`.
+
+Compatibility functions:
+
+- `_setBellBadge`
+- `_incrementBellBadge`
+- `_clearBellBadge`
+- `refreshNotificationBadge`
+
+### Mobile boundary
+
+UnreadService is currently passive on mobile:
+
+- no automatic query;
+- no public-function override;
+- no DOM observer;
+- no app-badge write;
+- no second polling cadence.
+
+`js/mobile.js` remains the active mobile unread renderer until its dedicated migration.
+
+See `UNREAD_AUTHORITY.md`.
 
 ---
 
-# 15. Priority checklist
+## Session lifecycle
 
-## P0 — correctness and duplication
+### Owner
 
-- [x] Contain scheduled-message subscription leak.
-- [x] Clean/re-own desktop shared broadcast before recreation.
-- [x] Route notification rows through one presentation boundary.
-- [x] Add central logout and tenant cleanup.
-- [x] Remove desktop Activity wrapper chain.
-- [x] Remove document-wide desktop Activity observers.
-- [ ] Establish shared `UnreadService` authority.
-- [ ] Migrate remaining desktop channels to named owners.
-- [ ] Verify all mobile timer/channel cleanup paths.
+`js/core/session-lifecycle.js`
 
-## P1 — Activity stability
+Owns cleanup for logout, account change and tenant change:
 
-- [x] Put 60-second fallback directly in `ui-feed.js`.
-- [x] Render filters directly in the final header.
-- [x] Preserve scroll during refresh.
-- [x] Coalesce overlapping loads.
-- [x] Reject stale tenant/user responses.
-- [ ] Complete repeated preview smoke checks.
-
-## P2 — lifecycle hygiene
-
-- [x] Add shared realtime cleanup registry.
-- [x] Add on-demand duplicate-channel diagnostics.
-- [ ] Trace every mobile timer creation/clear path.
-- [ ] Scope or remove mobile observers.
-- [ ] Add automated browser regression checks.
+- closes Activity and clears its timer;
+- clears heartbeat, presence and typing timers;
+- destroys Supabase channels through RealtimeManager;
+- clears shared/reaction channel references;
+- removes outgoing push identity;
+- removes service-worker auth state;
+- flushes/stops logger timer;
+- clears user/tenant/role/permission/cache/unread/badge state;
+- reloads after a genuine tenant change;
+- bounds best-effort async cleanup so logout cannot hang.
 
 ---
 
-# 16. Runtime acceptance checks
+## Desktop timers
 
-Before a phase is accepted:
+| Resource | Owner | Cleanup |
+|---|---|---|
+| `_afPollTimer` | `ui-feed.js` | `closeActivityFeed()` / SessionLifecycle |
+| Activity refresh timeout | `ui-feed.js` internal state | close/session cleanup |
+| `_webHeartbeat` | `main.js` | SessionLifecycle |
+| `_presenceTimer` | desktop presence path | SessionLifecycle |
+| `_webTypingTimer` | desktop typing handler | SessionLifecycle |
+| logger flush timer | `utils/logger.js` | SessionLifecycle |
+| Task-filter install/decorate timers | `compact-panel-filters.js` | `dispose()` |
+| unread refresh/render timers | `unread-service.js` | `dispose()` / session reset |
 
-1. Open and close Activity ten times; exactly one fallback interval exists only while open.
-2. Keep Activity open past 60 seconds; no blank frame, jump or scroll reset occurs.
-3. Change Activity Type and Person filters repeatedly; controls remain fixed in the header.
-4. Call subscription startup repeatedly; exactly one channel per intended topic exists.
-5. Background and foreground the tab; badge reconciliation does not install duplicate listeners.
-6. Simulate realtime disconnect/reconnect; exactly one catch-up refresh occurs.
-7. Trigger one message, reaction, Task and reminder; each produces at most one sound and one visible alert per recipient.
-8. Log out and log in as another user; no previous-user timer, channel or cached identity remains.
-9. Run desktop and mobile for at least 30 minutes; callback counts and console errors do not grow over time.
-10. Run `NILTASK_printRuntimeSnapshot()` and retain the result with the smoke-test record.
+---
+
+## Mobile resources still to inventory/migrate
+
+Mobile currently owns its own:
+
+- `mobile-rt-<tenant>` realtime channel;
+- presence channel;
+- adaptive fallback timer;
+- notification fallback interval;
+- Activity poll;
+- reconnect timer/backoff;
+- typing timers;
+- unread/attention renderers;
+- app-badge writer.
+
+Do not modify these incrementally through unrelated desktop scripts. The mobile phase must preserve reconnect behaviour, battery cadence, open-chat catch-up and surgical row patching.
+
+---
+
+## Runtime diagnostics
+
+Use:
+
+```javascript
+NILTASK_runtimeSnapshot()
+NILTASK_printRuntimeSnapshot()
+```
+
+The snapshot must show:
+
+- one copy of every managed desktop topic;
+- named owners for all six managed desktop channels;
+- no desktop owners on mobile;
+- source-owned Activity markers;
+- no document-wide Activity/filter observer;
+- unread formula split and compatibility markers;
+- current session identity and known timers.
+
+---
+
+## Next ownership migrations
+
+1. Verify all six managed desktop topics in authenticated preview.
+2. Migrate `public:messages-<tenant>` only after message/unread/presentation parity checks.
+3. Decide whether `mpgs-reactions-v1-<tenant>` can be retired in favour of shared/durable paths.
+4. Perform dedicated mobile unread handoff without introducing a second poll.
+5. Inventory and clean mobile timers/reconnect/listeners as one controlled phase.

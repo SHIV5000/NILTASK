@@ -230,6 +230,74 @@ openActivityFeed.activityController    = true
 _loadActivityFeed.activityController   = true
 ```
 
+---
+
+## 2026-07-26 — Unread authority and expanded Task realtime ownership
+
+### Shared unread and badge authority
+
+Created `js/core/unread-service.js` and `UNREAD_AUTHORITY.md`.
+
+Canonical formula:
+
+```text
+global unread = sum(per-room message unread) + non-message attention unread
+```
+
+Implementation now:
+
+- derives durable per-room message unread from `room_reads + messages`;
+- counts attention notifications while excluding `message`, `reply` and `mention` rows to prevent double-counting;
+- scopes `room_reads` by both current user and tenant;
+- caches the last successful attention count separately per user;
+- coalesces desktop/PWA refreshes and rejects stale user/tenant responses;
+- publishes `window.unreadCounts` for compatibility;
+- owns the desktop top-bar bell, room badges and PWA app badge;
+- clears only the opened room optimistically, then reconciles with database truth;
+- refreshes on visibility/network/subscription recovery;
+- resets on the central session-cleanup event;
+- delegates `_setBellBadge`, `_incrementBellBadge`, `_clearBellBadge` and `refreshNotificationBadge` on desktop/PWA;
+- exposes the unread split in runtime diagnostics.
+
+Mobile safety boundary:
+
+- UnreadService is passive on mobile;
+- it adds no automatic mobile query;
+- it installs no mobile observer;
+- it does not override mobile badge functions;
+- it does not write the mobile/PWA app badge;
+- it adds no second polling cadence.
+
+The current mobile unread renderer remains authoritative until a dedicated migration replaces its local query/render functions.
+
+### Expanded desktop Task realtime owners
+
+`js/core/realtime-feature-owners.js` now also owns:
+
+- `desktop-tasks` → `tasks-changes`;
+- `desktop-task-assignees` → `assignees-changes`;
+- `desktop-task-trails` → `trails-changes`.
+
+Task INSERT/UPDATE events are server-filtered by `tenant_id`. DELETE events retain a client tenant guard so deletion refresh remains reliable even when replica identity omits non-key columns.
+
+The three channels preserve:
+
+- debounced Task Hub refresh;
+- Activity refresh for trail events;
+- replacement rather than accumulation on repeated subscription startup;
+- central logout/tenant cleanup through RealtimeManager.
+
+New desktop acceptance target:
+
+```text
+taskflow-bc-<tenant>    count = 1
+scheduled-changes       count = 1
+notifications-changes   count = 1
+tasks-changes           count = 1
+assignees-changes       count = 1
+trails-changes           count = 1
+```
+
 ### Current branch and release state
 
 - Branch: `agent/activity-feed-no-flicker`
@@ -239,9 +307,10 @@ _loadActivityFeed.activityController   = true
 
 ### Next work
 
-1. Run the Activity open/close, filter, scroll and 60-second refresh smoke checks in the Vercel preview.
-2. Verify the three managed realtime topics and owners using `NILTASK_printRuntimeSnapshot()`.
-3. Verify scheduled-message and notification-row behaviour once each without repeated sound/toast.
-4. Preserve database-backed unread reconciliation as authoritative through a shared `UnreadService`.
-5. Move the remaining desktop channels into direct `RealtimeManager` ownership in controlled groups.
-6. Trace and clean mobile timer, reconnect and observer ownership without changing mobile flows.
+1. Run authenticated unread and six-topic realtime smoke checks in the Vercel preview.
+2. Verify one off-room message changes the global count by exactly one.
+3. Verify Task changes refresh once and Task trail changes refresh Activity once.
+4. Migrate `public:messages-<tenant>` only after message/unread/presentation parity checks.
+5. Decide whether the legacy `mpgs-reactions-v1-<tenant>` broadcast can be retired.
+6. Perform the dedicated mobile unread handoff without introducing another poll.
+7. Continue mobile timer, reconnect and observer ownership inventory.

@@ -3,7 +3,7 @@
 
     if (window.NILTASK_SessionLifecycle) return;
 
-    const VERSION = 'v1';
+    const VERSION = 'v2';
     const STATE = {
         cleanupPromise: null,
         installTimer: null,
@@ -23,6 +23,19 @@
         '_presenceTimer',
         '_webTypingTimer'
     ];
+
+    function delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function withTimeout(operation, timeoutMs = 1500) {
+        try {
+            await Promise.race([
+                Promise.resolve(operation),
+                delay(timeoutMs)
+            ]);
+        } catch (e) {}
+    }
 
     function clearGlobalTimer(name) {
         const value = window[name];
@@ -81,8 +94,8 @@
 
         try {
             if (!('serviceWorker' in navigator)) return;
-            const registration = await navigator.serviceWorker.ready;
-            const subscription = await registration.pushManager?.getSubscription?.();
+            const registration = await navigator.serviceWorker.getRegistration?.();
+            const subscription = await registration?.pushManager?.getSubscription?.();
             if (!subscription) return;
             try {
                 await sb.from('push_subscriptions')
@@ -96,8 +109,17 @@
 
     function clearServiceWorkerAuth() {
         return new Promise(resolve => {
+            let settled = false;
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                resolve();
+            };
+            const timeout = setTimeout(finish, 1200);
+
             try {
                 const request = indexedDB.open('taskflow', 1);
+                request.onblocked = finish;
                 request.onupgradeneeded = () => {
                     try { request.result.createObjectStore('kv'); } catch (e) {}
                 };
@@ -106,12 +128,29 @@
                         const db = request.result;
                         const tx = db.transaction('kv', 'readwrite');
                         tx.objectStore('kv').delete('auth');
-                        tx.oncomplete = () => { try { db.close(); } catch (e) {} resolve(); };
-                        tx.onerror = () => { try { db.close(); } catch (e) {} resolve(); };
-                    } catch (e) { resolve(); }
+                        tx.oncomplete = () => {
+                            clearTimeout(timeout);
+                            try { db.close(); } catch (e) {}
+                            finish();
+                        };
+                        tx.onerror = () => {
+                            clearTimeout(timeout);
+                            try { db.close(); } catch (e) {}
+                            finish();
+                        };
+                    } catch (e) {
+                        clearTimeout(timeout);
+                        finish();
+                    }
                 };
-                request.onerror = () => resolve();
-            } catch (e) { resolve(); }
+                request.onerror = () => {
+                    clearTimeout(timeout);
+                    finish();
+                };
+            } catch (e) {
+                clearTimeout(timeout);
+                finish();
+            }
         });
     }
 
@@ -159,10 +198,10 @@
         STATE.cleanupPromise = (async () => {
             try {
                 closeActivityRuntime();
-                if (settings.detachPush) await detachPushIdentity();
-                await stopRealtimeRuntime();
-                if (settings.clearSwAuth) await clearServiceWorkerAuth();
-                if (settings.stopLogger) await stopLoggerRuntime();
+                if (settings.detachPush) await withTimeout(detachPushIdentity(), 1500);
+                await withTimeout(stopRealtimeRuntime(), 1800);
+                if (settings.clearSwAuth) await withTimeout(clearServiceWorkerAuth(), 1300);
+                if (settings.stopLogger) await withTimeout(stopLoggerRuntime(), 1300);
                 if (settings.resetContext) resetSessionContext();
 
                 try {

@@ -49,6 +49,18 @@
         }
     } catch (e) {}
 
+    // One message-presentation boundary: stable event-key deduplication and one
+    // debounced sound path instead of an additional independent Web Audio chime.
+    try {
+        if (!document.querySelector('script[data-nfa-notification-presentation]')) {
+            const script = document.createElement('script');
+            script.src = 'js/notification-presentation-service.js?v=1';
+            script.defer = true;
+            script.dataset.nfaNotificationPresentation = '1';
+            document.head.appendChild(script);
+        }
+    } catch (e) {}
+
     function escapeHtml(str) {
         if (str === null || str === undefined) return '';
         return String(str)

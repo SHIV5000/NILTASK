@@ -3,7 +3,7 @@
 ## Current preview cache generation
 
 ```text
-taskflow-v208
+taskflow-v209
 ```
 
 Defined in `sw.js`.
@@ -12,14 +12,19 @@ Defined in `sw.js`.
 
 The professionalization branch loads runtime services through query-versioned URLs. Cache matching is query-sensitive, so an offline cache containing only an unversioned path cannot satisfy the exact bootstrap request.
 
-The v208 app shell coordinates two lifecycle changes:
+The v209 app shell coordinates the explicit mobile lifecycle through:
 
 ```text
-/js/core/session-lifecycle.js?v=3
+/js/core/session-lifecycle.js?v=4
 /js/core/mobile-runtime-diagnostics.js?v=2
 ```
 
-Session lifecycle v3 stops the explicit mobile runtime before general realtime teardown. This prevents a mobile channel `CLOSED` callback from recreating reconnect, fallback, typing or Activity work while logout, account switching or tenant switching is already underway.
+Session lifecycle v4:
+
+- stops the explicit mobile runtime before general realtime teardown;
+- prevents channel `CLOSED` callbacks from recreating reconnect/fallback work during cleanup;
+- reloads after tenant or account changes;
+- reloads when a user signs in after a previous same-page cleanup left the mobile runtime stopped.
 
 Mobile diagnostics v2 reports the lifecycle tracker’s actual timeout, interval, animation-frame, persistent-listener, observer and channel counts, together with stop reason, last cleanup and page-reload restart mode.
 
@@ -41,7 +46,7 @@ taskflow-bc-<tenant>
 - `js/compact-panel-filters.js?v=5`
 - `js/core/realtime-manager.js?v=1`
 - `js/core/realtime-feature-owners.js?v=5`
-- `js/core/session-lifecycle.js?v=3`
+- `js/core/session-lifecycle.js?v=4`
 - `js/core/runtime-diagnostics.js?v=7`
 - `js/core/mobile-runtime-diagnostics.js?v=2`
 - `js/runtime-subscription-guard.js?v=7`
@@ -54,25 +59,28 @@ taskflow-bc-<tenant>
 ## Expected update behaviour
 
 1. Browser detects changed `/sw.js`.
-2. New worker installs and opens `taskflow-v208`.
+2. New worker installs and opens `taskflow-v209`.
 3. Each app-shell asset is cached independently; one optional failure does not abort installation.
 4. `skipWaiting()` activates the worker.
 5. Old `taskflow-*` caches are deleted, while `share-inbox` is preserved.
 6. `controllerchange` reloads the page once so the new HTML/JS runtime is used.
 7. JS/CSS requests remain network-first when online and cache-fallback when offline.
 8. On mobile logout/account/tenant cleanup, MobileRuntime stops before the shared channel teardown.
-9. On desktop subscription startup, guard v7 waits for both replacement channels to reach `joined`, then removes the legacy reaction broadcast.
+9. A later same-page sign-in reloads rather than attempting to resurrect stale module-local channels.
+10. On desktop subscription startup, guard v7 waits for both replacement channels to reach `joined`, then removes the legacy reaction broadcast.
 
 ## Smoke checks
 
 - Hard refresh preview once.
 - In DevTools → Application → Service Workers, confirm the active worker uses the latest `sw.js`.
-- In Cache Storage, confirm `taskflow-v208` exists.
-- Confirm `taskflow-v207` and older app-shell caches are removed after activation.
-- Confirm the exact v3/v2/v7 query-versioned runtime files exist in the cache.
+- In Cache Storage, confirm `taskflow-v209` exists.
+- Confirm `taskflow-v208` and older app-shell caches are removed after activation.
+- Confirm the exact v4/v2/v7 query-versioned runtime files exist in the cache.
 - On mobile, run `NILTASK_printMobileRuntimeSnapshot()` before logout and confirm one `mobile-rt-*` plus one `presence-*` channel.
 - Invoke session cleanup only in a controlled test/logout path; after stop, tracked resource counts and mobile channel counts must be zero.
 - Confirm restart mode is `page-reload`, not an unsafe same-page resurrection of stale module-local channel references.
+- Sign out and sign in again on the same page; confirm one controlled reload and one fresh mobile/presence channel pair.
+- Switch account or tenant; confirm no old identity callback survives and the new context starts after reload.
 - Run `NILTASK_SubscriptionGuard.snapshot()` after desktop login.
 - Confirm `legacyReaction.state` reaches `retired` and `channelPresent` is `false`.
 - Confirm the runtime channel list contains one `public:messages-<tenant>` and one `taskflow-bc-<tenant>`, with no `mpgs-reactions-v1-<tenant>`.
@@ -86,18 +94,10 @@ taskflow-bc-<tenant>
 
 ## Rollback
 
-If v208 causes mobile cleanup, reaction, typing, group-photo or PWA-update regression:
+If v209 causes mobile cleanup, identity recovery, reaction, typing, group-photo or PWA-update regression:
 
-1. Revert the coordinated mobile lifecycle commits:
-
-```text
-b4e6792b5abd0bc76a4d69b4a180fec7311aaf97
-94b1ec25dd973caab0b71e02b7f53bb065efc43b
-271af47dece81cb38c2aa7a30e496cd22f3cb4da
-c86d65f7eaa2b223f1441471e9da8e705ee3449e
-```
-
-2. Restore session lifecycle v2, mobile diagnostics v1 and the prior app-shell generation together.
+1. Revert the coordinated mobile lifecycle commits, including session lifecycle v4, its loader and app-shell generation.
+2. Restore session lifecycle v2, mobile diagnostics v1 and the prior stable app-shell generation together, or apply a corrective forward cache generation.
 3. If the reaction safeguard also regresses, revert its coordinated v7 guard/loader/cache commits separately.
 4. For a corrective PWA release, use a new cache generation rather than reusing a broken cache name.
 5. Deploy the revert/correction.

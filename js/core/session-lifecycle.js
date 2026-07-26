@@ -3,7 +3,7 @@
 
     if (window.NILTASK_SessionLifecycle) return;
 
-    const VERSION = 'v3';
+    const VERSION = 'v4';
     const STATE = {
         cleanupPromise: null,
         installTimer: null,
@@ -14,7 +14,7 @@
             userId: window.currentUser?.id || null,
             tenantId: window.currentTenantId || null
         },
-        reloadingForTenantChange: false
+        reloadingForIdentityChange: false
     };
 
     const GLOBAL_TIMERS = [
@@ -58,6 +58,22 @@
         const runtime = window.NILTASK_MobileRuntime;
         if (!runtime?.stop) return false;
         try { return await runtime.stop(reason); } catch (e) { return false; }
+    }
+
+    function requestRuntimeReload(reason) {
+        if (STATE.reloadingForIdentityChange) return false;
+        STATE.reloadingForIdentityChange = true;
+        setTimeout(() => {
+            try {
+                const runtime = window.NILTASK_MobileRuntime;
+                if (runtime?.snapshot?.().stopped && runtime?.start) {
+                    runtime.start(reason);
+                    return;
+                }
+            } catch (e) {}
+            window.location.reload();
+        }, 0);
+        return true;
     }
 
     async function stopRealtimeRuntime() {
@@ -270,10 +286,7 @@
 
             if (previousTenant && nextTenant && previousTenant !== nextTenant) {
                 await cleanup('tenant-change', { resetContext: false });
-                if (!STATE.reloadingForTenantChange) {
-                    STATE.reloadingForTenantChange = true;
-                    setTimeout(() => window.location.reload(), 0);
-                }
+                requestRuntimeReload('tenant-change');
             }
 
             STATE.identity = { userId: nextUser, tenantId: nextTenant };
@@ -300,10 +313,16 @@
                 if (event === 'SIGNED_IN') {
                     const previousUser = STATE.identity.userId;
                     if (previousUser && nextUser && previousUser !== nextUser) {
-                        cleanup('user-change', { resetContext: true });
-                        STATE.identity = { userId: nextUser, tenantId: null };
+                        cleanup('user-change', { resetContext: true })
+                            .finally(() => requestRuntimeReload('user-change'));
                         return;
                     }
+                    try {
+                        if (window.NILTASK_MobileRuntime?.snapshot?.().stopped) {
+                            requestRuntimeReload('signed-in-after-cleanup');
+                            return;
+                        }
+                    } catch (e) {}
                 }
 
                 if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
@@ -346,6 +365,7 @@
                 logoutInstalled: STATE.logoutInstalled,
                 tenantLoaderInstalled: STATE.tenantLoaderInstalled,
                 authBoundaryInstalled: Boolean(STATE.authSubscription),
+                reloadingForIdentityChange: STATE.reloadingForIdentityChange,
                 mobileRuntime: window.NILTASK_MobileRuntime?.snapshot?.() || null
             };
         }

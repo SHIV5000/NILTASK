@@ -3,7 +3,7 @@
 
     if (window.NILTASK_UnreadService) return;
 
-    const VERSION = 'v3';
+    const VERSION = 'v4';
     const STATE = {
         perRoom: {},
         roomTotal: 0,
@@ -20,6 +20,10 @@
         sidebarTarget: null,
         sidebarRenderTimer: null,
         listenersInstalled: false,
+        mobileHandoffInstalled: false,
+        mobileRoomObservations: 0,
+        mobileAttentionObservations: 0,
+        mobileLastReason: null,
         disposed: false,
     };
 
@@ -60,7 +64,14 @@
         inFlight: Boolean(STATE.inFlight),
         pending: STATE.pending,
         installed: STATE.listenersInstalled,
-        passiveMobile: isMobileRuntime(),
+        passiveMobile: isMobileRuntime() && !STATE.mobileHandoffInstalled,
+        mobileRenderPassive: isMobileRuntime(),
+        mobileHandoffInstalled: STATE.mobileHandoffInstalled,
+        mobileRoomObservations: STATE.mobileRoomObservations,
+        mobileAttentionObservations: STATE.mobileAttentionObservations,
+        mobileLastReason: STATE.mobileLastReason,
+        mobileUsesExistingQueries: STATE.mobileHandoffInstalled,
+        mobileOwnPoll: false,
     });
 
     function installStyles() {
@@ -101,8 +112,8 @@
     }
 
     async function renderAppBadge(total) {
-        // Mobile currently owns its badge inside mobile.js. Stay passive until the
-        // dedicated mobile handoff so two renderers never race the OS badge.
+        // Mobile rendering remains owned by mobile.js. The handoff observes the same
+        // query results but never writes the OS badge, so there is still one renderer.
         if (isMobileRuntime() || window.IS_NATIVE) return;
         try {
             const count = clean(total);
@@ -179,11 +190,82 @@
         STATE.tenantId = null;
         STATE.refreshedAt = null;
         STATE.pending = false;
+        STATE.mobileLastReason = reason || 'reset';
         return publish(reason || 'reset');
     }
 
+    function acceptIdentity(userId, tenantId) {
+        const current = identity();
+        if (userId && current.userId && userId !== current.userId) return false;
+        if (tenantId && current.tenantId && tenantId !== current.tenantId) return false;
+        STATE.userId = userId || current.userId || STATE.userId;
+        STATE.tenantId = tenantId || current.tenantId || STATE.tenantId;
+        return true;
+    }
+
+    function ingestMobileRooms(result, opts, reason) {
+        if (!isMobileRuntime()) return snapshot();
+        const userId = opts?.uid || null;
+        const tenantId = opts?.tid || null;
+        if (!acceptIdentity(userId, tenantId)) return snapshot();
+        STATE.perRoom = normalize(result?.perRoom);
+        STATE.refreshedAt = new Date().toISOString();
+        STATE.mobileRoomObservations += 1;
+        STATE.mobileLastReason = reason || 'mobile-room-query';
+        return publish(STATE.mobileLastReason);
+    }
+
+    function ingestMobileAttention(value, userId, reason) {
+        if (!isMobileRuntime()) return snapshot();
+        if (!acceptIdentity(userId || null, window.currentTenantId || null)) return snapshot();
+        STATE.attention = clean(value);
+        STATE.refreshedAt = new Date().toISOString();
+        STATE.mobileAttentionObservations += 1;
+        STATE.mobileLastReason = reason || 'mobile-attention-query';
+        return publish(STATE.mobileLastReason);
+    }
+
+    function installMobileHandoff() {
+        if (!isMobileRuntime()) return false;
+        const roomHelper = window.NFA_computeRoomUnread;
+        const attentionHelper = window.NFA_unreadCount;
+        if (typeof roomHelper !== 'function' || typeof attentionHelper !== 'function') return false;
+
+        if (roomHelper.__nfaMobileUnreadHandoff !== true) {
+            const wrappedRooms = async function (...args) {
+                const result = await roomHelper.apply(this, args);
+                try { ingestMobileRooms(result, args[1], 'mobile-existing-room-query'); } catch (e) {}
+                return result;
+            };
+            wrappedRooms.__nfaMobileUnreadHandoff = true;
+            wrappedRooms.__nfaOriginal = roomHelper;
+            window.NFA_computeRoomUnread = wrappedRooms;
+        }
+
+        if (attentionHelper.__nfaMobileUnreadHandoff !== true) {
+            const wrappedAttention = async function (...args) {
+                const result = await attentionHelper.apply(this, args);
+                try { ingestMobileAttention(result, args[1], 'mobile-existing-attention-query'); } catch (e) {}
+                return result;
+            };
+            wrappedAttention.__nfaMobileUnreadHandoff = true;
+            wrappedAttention.__nfaOriginal = attentionHelper;
+            window.NFA_unreadCount = wrappedAttention;
+        }
+
+        STATE.mobileHandoffInstalled =
+            window.NFA_computeRoomUnread?.__nfaMobileUnreadHandoff === true &&
+            window.NFA_unreadCount?.__nfaMobileUnreadHandoff === true;
+        if (STATE.mobileHandoffInstalled && Object.keys(window.unreadCounts || {}).length) {
+            STATE.perRoom = normalize(window.unreadCounts);
+            STATE.mobileLastReason = 'mobile-window-seed';
+            publish(STATE.mobileLastReason);
+        }
+        return STATE.mobileHandoffInstalled;
+    }
+
     async function refresh(reason) {
-        if (STATE.disposed) return snapshot();
+        if (STATE.disposed || isMobileRuntime()) return snapshot();
         if (STATE.inFlight) {
             STATE.pending = true;
             return STATE.inFlight;
@@ -221,6 +303,7 @@
     }
 
     function refreshSoon(reason, delay) {
+        if (isMobileRuntime()) return snapshot();
         clearTimeout(STATE.refreshTimer);
         STATE.refreshTimer = setTimeout(() => refresh(reason || 'scheduled'), delay == null ? 250 : delay);
     }
@@ -293,9 +376,9 @@
         if (STATE.disposed) return true;
         installListenersOnce();
         if (isMobileRuntime()) {
-            // No automatic query, compatibility override, DOM observer or OS badge
-            // on mobile until mobile.js is migrated to consume this service directly.
-            return document.readyState === 'complete';
+            // Observe the query helpers already called by mobile.js. This creates no
+            // timer, database request, DOM renderer or OS-badge writer of its own.
+            return installMobileHandoff();
         }
         ownCompatibilityFunctions();
         ensureSidebarObserver();
@@ -322,6 +405,9 @@
         refreshSoon,
         markRoomRead,
         adoptWindow,
+        ingestMobileRooms,
+        ingestMobileAttention,
+        installMobileHandoff,
         reset,
         render: () => publish('manual-render'),
         snapshot,

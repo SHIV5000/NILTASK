@@ -50,6 +50,18 @@
         }
     } catch (e) {}
 
+    // Silent, on-demand diagnostics. Nothing is logged automatically; developers
+    // can call NILTASK_printRuntimeSnapshot() when checking a preview.
+    try {
+        if (!document.querySelector('script[data-nfa-runtime-diagnostics]')) {
+            const script = document.createElement('script');
+            script.src = 'js/core/runtime-diagnostics.js?v=1';
+            script.defer = true;
+            script.dataset.nfaRuntimeDiagnostics = '1';
+            document.head.appendChild(script);
+        }
+    } catch (e) {}
+
     // Phase 0 containment: before repeated desktop subscription startup, remove
     // stale scheduled/shared channels so one event cannot retain duplicate handlers.
     try {

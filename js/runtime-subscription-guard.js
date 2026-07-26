@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    const VERSION = 'v5';
+    const VERSION = 'v6';
     const STATE = {
         installed: false,
         installTimer: null,
@@ -87,8 +87,9 @@
     }
 
     function runOnce(original, context, args) {
+        if (window.isMobileView?.()) return original.apply(context, args);
+
         const operation = async () => {
-            if (window.isMobileView?.()) return original.apply(context, args);
             await disposeKnownDuplicates();
             const result = await original.apply(context, args);
             await migrateManagedOwners();

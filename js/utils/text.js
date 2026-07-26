@@ -55,7 +55,7 @@
     try {
         if (!document.querySelector('script[data-nfa-realtime-feature-owners]')) {
             const script = document.createElement('script');
-            script.src = 'js/core/realtime-feature-owners.js?v=2';
+            script.src = 'js/core/realtime-feature-owners.js?v=3';
             script.defer = true;
             script.dataset.nfaRealtimeFeatureOwners = '1';
             document.head.appendChild(script);
@@ -92,7 +92,7 @@
     try {
         if (!document.querySelector('script[data-nfa-subscription-guard]')) {
             const script = document.createElement('script');
-            script.src = 'js/runtime-subscription-guard.js?v=5';
+            script.src = 'js/runtime-subscription-guard.js?v=6';
             script.defer = true;
             script.dataset.nfaSubscriptionGuard = '1';
             document.head.appendChild(script);

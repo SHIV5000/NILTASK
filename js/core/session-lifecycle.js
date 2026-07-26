@@ -190,9 +190,13 @@
 
         const wrapped = async function (...args) {
             // Preserve current identity until the legacy logout has removed tenant-scoped
-            // storage. SIGNED_OUT then performs the final context reset idempotently.
+            // storage. The final reset runs even when SIGNED_OUT coalesces with cleanup.
             await cleanup('logout', { resetContext: false });
-            return original.apply(this, args);
+            try {
+                return await original.apply(this, args);
+            } finally {
+                resetSessionContext();
+            }
         };
         wrapped.__nfaSessionLifecycle = true;
         wrapped.__nfaOriginal = original;

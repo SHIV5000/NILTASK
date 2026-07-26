@@ -76,6 +76,7 @@ const activityCompat = read('js/activity-v208.js');
 const textLoader = read('js/utils/text.js');
 const realtimeOwners = read('js/core/realtime-feature-owners.js');
 const subscriptionGuard = read('js/runtime-subscription-guard.js');
+const sessionLifecycle = read('js/core/session-lifecycle.js');
 const unreadService = read('js/core/unread-service.js');
 const feedCore = read('js/core/feed.js');
 const mobileDiagnostics = read('js/core/mobile-runtime-diagnostics.js');
@@ -176,6 +177,29 @@ contains(subscriptionGuard, 'window._reactionsBroadcast = null;', 'Legacy reacti
 contains(subscriptionGuard, 'legacyReactionRetirementScheduled', 'Subscription-start event reports retirement scheduling');
 contains(textLoader, 'js/runtime-subscription-guard.js?v=7', 'Bootstrap loads subscription guard v7');
 
+// Explicit mobile lifecycle ownership. The early tracker may wrap global browser
+// APIs only with a mobile/mobile-tasks callsite gate; normal desktop resources must
+// remain native. Stop is destructive for the page, so restart deliberately reloads.
+contains(textLoader, 'window.NILTASK_MobileRuntime = Object.freeze({', 'MobileRuntime API is exported');
+contains(textLoader, 'function mobileCallsite()', 'Mobile runtime tracks resources by source callsite');
+contains(textLoader, '/\\/js\\/mobile(?:-tasks)?\\.js', 'Mobile runtime callsite is limited to mobile modules');
+contains(textLoader, 'if (tracked && STATE.stopped) return 0;', 'Stopped mobile runtime blocks new timers and animation frames');
+contains(textLoader, "topic.startsWith('mobile-rt-') || topic.startsWith('presence-')", 'Mobile runtime limits channel cleanup to mobile topics');
+contains(textLoader, "restartMode: 'page-reload'", 'Mobile runtime advertises reload-only restart');
+contains(textLoader, 'window.location.reload();', 'Mobile runtime restart reloads the page');
+contains(textLoader, 'window.NILTASK_MOBILE_RUNTIME_VERSION = VERSION;', 'Mobile runtime version marker is exported');
+contains(textLoader, 'js/core/session-lifecycle.js?v=3', 'Bootstrap loads session lifecycle v3');
+contains(textLoader, 'js/core/mobile-runtime-diagnostics.js?v=2', 'Bootstrap loads mobile diagnostics v2');
+contains(sessionLifecycle, "const VERSION = 'v3';", 'Session lifecycle component version is v3');
+contains(sessionLifecycle, 'await withTimeout(stopMobileRuntime(reason), 1500);', 'Session cleanup stops mobile runtime');
+const mobileStopIndex = sessionLifecycle.indexOf('await withTimeout(stopMobileRuntime(reason), 1500);');
+const realtimeStopIndex = sessionLifecycle.indexOf('await withTimeout(stopRealtimeRuntime(), 1800);');
+check(
+  mobileStopIndex >= 0 && realtimeStopIndex >= 0 && mobileStopIndex < realtimeStopIndex,
+  'Mobile runtime stops before general realtime teardown'
+);
+contains(sessionLifecycle, 'mobileRuntime: window.NILTASK_MobileRuntime?.snapshot?.() || null', 'Session snapshot includes mobile lifecycle state');
+
 contains(unreadService, 'STATE.total = STATE.roomTotal + clean(STATE.attention);', 'Unread total remains room plus attention');
 contains(unreadService, 'if (isMobileRuntime()) return;', 'Unread renderer remains passive on mobile');
 contains(unreadService, 'if (isMobileRuntime() || window.IS_NATIVE) return;', 'Unread app-badge writer remains passive on mobile/native');
@@ -184,8 +208,12 @@ excludes(unreadService, 'document.body', 'Unread service has no body-wide observ
 contains(feedCore, ".not('type', 'in', '(reply,mention,message)')", 'Message/reply/mention attention rows remain excluded');
 contains(feedCore, 'const _lastUnreadByUser = new Map();', 'Attention fallback remains isolated per user');
 
+contains(mobileDiagnostics, "const VERSION = 'v2';", 'Mobile diagnostics component version is v2');
 contains(mobileDiagnostics, "findTopic(list, 'mobile-rt-')", 'Mobile diagnostic checks main channel topic');
 contains(mobileDiagnostics, "findTopic(list, 'presence-')", 'Mobile diagnostic checks presence topic');
+contains(mobileDiagnostics, 'const lifecycle = lifecycleSnapshot();', 'Mobile diagnostic consumes lifecycle snapshot');
+contains(mobileDiagnostics, 'stoppedRuntimeHasNoTrackedResources', 'Mobile diagnostic verifies stopped resource counts');
+contains(mobileDiagnostics, 'stoppedRuntimeHasNoMobileChannels', 'Mobile diagnostic verifies stopped channel counts');
 contains(mobileDiagnostics, 'desktopOwnersAbsent: desktopFeatureOwners.length === 0', 'Mobile diagnostic enforces desktop-owner absence');
 contains(mobileDiagnostics, 'window.NILTASK_printMobileRuntimeSnapshot = print;', 'Mobile runtime print command remains exported');
 
@@ -230,6 +258,7 @@ contains(indexHtml, '<script src="https://cdn.tailwindcss.com"></script>', 'Tail
 excludes(indexHtml, 'tailwind.generated.css', 'Unaccepted generated Tailwind CSS is not linked in production');
 
 for (const relative of [
+  'js/utils/text.js',
   'js/core/realtime-manager.js',
   'js/core/realtime-feature-owners.js',
   'js/core/session-lifecycle.js',

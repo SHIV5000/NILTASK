@@ -1,0 +1,91 @@
+name: Build Mobile Preview APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/activity-feed-no-flicker
+    paths:
+      - '.github/workflows/mobile-preview-apk.yml'
+      - 'capacitor.config.json'
+      - 'package.json'
+      - 'www/**'
+
+permissions:
+  contents: read
+
+jobs:
+  build-preview-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      PREVIEW_URL: https://niltask-git-agent-activity-feed-no-flicker-shiv5000s-projects.vercel.app
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Capacitor dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Configure isolated preview app
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'capacitor.config.json';
+          const config = JSON.parse(fs.readFileSync(path, 'utf8'));
+          config.appId = 'in.niltask.preview';
+          config.appName = 'NILTASK Preview';
+          config.server = {
+            ...(config.server || {}),
+            url: process.env.PREVIEW_URL,
+            androidScheme: 'https',
+            cleartext: false
+          };
+          fs.writeFileSync(path, JSON.stringify(config, null, 2) + '\n');
+          console.log('Preview package:', config.appId);
+          console.log('Preview URL:', config.server.url);
+          NODE
+
+      - name: Generate Android project
+        run: npx cap add android
+
+      - name: Synchronize Capacitor project
+        run: npx cap sync android
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Prepare downloadable APK
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/NILTASK-Preview-PR204.apk
+          sha256sum dist/NILTASK-Preview-PR204.apk > dist/NILTASK-Preview-PR204.apk.sha256
+
+      - name: Upload preview APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NILTASK-Preview-PR204
+          path: |
+            dist/NILTASK-Preview-PR204.apk
+            dist/NILTASK-Preview-PR204.apk.sha256
+          if-no-files-found: error
+          retention-days: 7

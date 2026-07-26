@@ -8,64 +8,33 @@ const root = path.resolve(here, '..');
 const failures = [];
 const passes = [];
 
-function filePath(relative) {
-  return path.join(root, relative);
-}
-
+function filePath(relative) { return path.join(root, relative); }
 function read(relative) {
   const absolute = filePath(relative);
-  if (!fs.existsSync(absolute)) {
-    failures.push(`Missing required file: ${relative}`);
-    return '';
-  }
+  if (!fs.existsSync(absolute)) { failures.push(`Missing required file: ${relative}`); return ''; }
   return fs.readFileSync(absolute, 'utf8');
 }
-
 function check(condition, label, detail = '') {
-  if (condition) passes.push(label);
-  else failures.push(detail ? `${label}: ${detail}` : label);
+  if (condition) passes.push(label); else failures.push(detail ? `${label}: ${detail}` : label);
 }
-
-function contains(source, needle, label) {
-  check(source.includes(needle), label, `expected ${JSON.stringify(needle)}`);
-}
-
-function excludes(source, needle, label) {
-  check(!source.includes(needle), label, `forbidden ${JSON.stringify(needle)}`);
-}
-
+function contains(source, needle, label) { check(source.includes(needle), label, `expected ${JSON.stringify(needle)}`); }
+function excludes(source, needle, label) { check(!source.includes(needle), label, `forbidden ${JSON.stringify(needle)}`); }
 function parseJson(relative) {
-  const source = read(relative);
-  if (!source) return null;
-  try {
-    return JSON.parse(source);
-  } catch (error) {
-    failures.push(`Invalid JSON: ${relative}: ${error.message}`);
-    return null;
-  }
+  const source = read(relative); if (!source) return null;
+  try { return JSON.parse(source); } catch (error) { failures.push(`Invalid JSON: ${relative}: ${error.message}`); return null; }
 }
-
 function parseClassic(relative) {
-  const source = read(relative);
-  if (!source) return;
-  try {
-    new vm.Script(source, { filename: relative });
-    passes.push(`Classic script parses: ${relative}`);
-  } catch (error) {
-    failures.push(`Classic script syntax error: ${relative}: ${error.message}`);
-  }
+  const source = read(relative); if (!source) return;
+  try { new vm.Script(source, { filename: relative }); passes.push(`Classic script parses: ${relative}`); }
+  catch (error) { failures.push(`Classic script syntax error: ${relative}: ${error.message}`); }
 }
-
 function matchValue(source, pattern, label) {
-  const match = source.match(pattern);
-  check(Boolean(match?.[1]), label);
-  return match?.[1] || null;
+  const match = source.match(pattern); check(Boolean(match?.[1]), label); return match?.[1] || null;
 }
 
 const packageJson = parseJson('package.json');
 parseJson('manifest.json');
 const versionJson = parseJson('version.json');
-
 const indexHtml = read('index.html');
 const sharedJs = read('js/shared.js');
 const mainJs = read('js/main.js');
@@ -87,9 +56,6 @@ const tailwindInput = read('css/tailwind.input.css');
 const gitignore = read('.gitignore');
 const validationWorkflow = read('.github/workflows/professionalization-validation.yml');
 
-// Release identity. version.json is the remote cache-healing authority and APP_VER
-// is the running/logging identity; they must be identical. The HTML/mobile/component
-// v208 markers are generation identifiers and are deliberately checked separately.
 const appVersion = matchValue(sharedJs, /window\.APP_VER\s*=\s*['"]([^'"]+)['"]/, 'Runtime APP_VER is declared');
 check(Boolean(versionJson?.v), 'version.json release value is declared');
 check(appVersion === versionJson?.v, 'Runtime APP_VER matches version.json', `APP_VER=${appVersion}, version.json=${versionJson?.v}`);
@@ -98,27 +64,15 @@ contains(sharedJs, "keys.filter(k => k !== 'share-inbox')", 'Version healer pres
 contains(indexHtml, 'meta name="niltask-version" content="v208"', 'HTML shell generation marker remains present');
 contains(indexHtml, "window.NILTASK_APP_VERSION = 'v208'", 'HTML shell component version remains present');
 
-// Supabase public-client identity. The anon JWT payload must belong to the same
-// project ref as SUPABASE_URL; this catches accidental key transcription/replacement.
-const supabaseRef = matchValue(
-  sharedJs,
-  /export const SUPABASE_URL\s*=\s*['"]https:\/\/([^.]+)\.supabase\.co['"]/,
-  'Supabase project URL is declared'
-);
-const anonKey = matchValue(
-  sharedJs,
-  /export const SUPABASE_ANON_KEY\s*=\s*['"]([^'"]+)['"]/,
-  'Supabase anon key is declared'
-);
+const supabaseRef = matchValue(sharedJs, /export const SUPABASE_URL\s*=\s*['"]https:\/\/([^.]+)\.supabase\.co['"]/, 'Supabase project URL is declared');
+const anonKey = matchValue(sharedJs, /export const SUPABASE_ANON_KEY\s*=\s*['"]([^'"]+)['"]/, 'Supabase anon key is declared');
 let anonPayload = null;
 if (anonKey) {
   try {
     const parts = anonKey.split('.');
     check(parts.length === 3, 'Supabase anon key has JWT structure');
     anonPayload = JSON.parse(Buffer.from(parts[1] || '', 'base64url').toString('utf8'));
-  } catch (error) {
-    failures.push(`Supabase anon key payload could not be decoded: ${error.message}`);
-  }
+  } catch (error) { failures.push(`Supabase anon key payload could not be decoded: ${error.message}`); }
 }
 if (anonPayload) {
   check(anonPayload.ref === supabaseRef, 'Supabase anon key project ref matches SUPABASE_URL', `key ref=${anonPayload.ref}, URL ref=${supabaseRef}`);
@@ -133,34 +87,13 @@ excludes(activityCompat, 'new MutationObserver', 'Activity compatibility entrypo
 excludes(activityCompat, 'openActivityFeed =', 'Activity compatibility entrypoint has no function wrapper');
 contains(activityCompat, "window.NILTASK_ACTIVITY_UI_VERSION = 'source-owned-layout-v2'", 'Activity layout compatibility marker remains present');
 
-const ownerNames = [
-  'desktop-shared-broadcast',
-  'desktop-message-reactions',
-  'desktop-scheduled-messages',
-  'desktop-notification-rows',
-  'desktop-tasks',
-  'desktop-task-assignees',
-  'desktop-task-trails',
-];
+const ownerNames = ['desktop-shared-broadcast','desktop-message-reactions','desktop-scheduled-messages','desktop-notification-rows','desktop-tasks','desktop-task-assignees','desktop-task-trails'];
 for (const owner of ownerNames) contains(realtimeOwners, owner, `Realtime owner retained: ${owner}`);
-
-const managedTopicFragments = [
-  "'public:messages-' + current.tenantId",
-  "'taskflow-bc-' + current.tenantId",
-  "scheduled:'scheduled-changes'",
-  "notifications:'notifications-changes'",
-  "tasks:'tasks-changes'",
-  "assignees:'assignees-changes'",
-  "trails:'trails-changes'",
-];
+const managedTopicFragments = ["'public:messages-' + current.tenantId","'taskflow-bc-' + current.tenantId","scheduled:'scheduled-changes'","notifications:'notifications-changes'","tasks:'tasks-changes'","assignees:'assignees-changes'","trails:'trails-changes'"];
 for (const topic of managedTopicFragments) contains(realtimeOwners, topic, `Managed realtime topic retained: ${topic}`);
 contains(realtimeOwners, 'desktop: !window.isMobileView?.()', 'Desktop realtime owners remain mobile-gated');
 contains(realtimeOwners, 'rt.register(OWNERS.messages, channel);', 'Managed message channel remains registered');
 
-// Reaction delivery parity and legacy-channel retirement. Database reactions are the
-// durable path; taskflow-bc remains the cross-platform path for reaction/typing/group
-// updates. The old mpgs channel may be created by legacy startup, but guard v7 must
-// remove it only after both managed replacements have reached joined state.
 contains(realtimeOwners, "event:'INSERT', schema:'public', table:'reactions'", 'Managed postgres reaction INSERT remains present');
 contains(realtimeOwners, "event:'DELETE', schema:'public', table:'reactions'", 'Managed postgres reaction DELETE remains present');
 contains(messagesJs, "isDelete:false, src:'w'", 'Web reaction add remains published to shared cross-platform channel');
@@ -177,9 +110,6 @@ contains(subscriptionGuard, 'window._reactionsBroadcast = null;', 'Legacy reacti
 contains(subscriptionGuard, 'legacyReactionRetirementScheduled', 'Subscription-start event reports retirement scheduling');
 contains(textLoader, 'js/runtime-subscription-guard.js?v=7', 'Bootstrap loads subscription guard v7');
 
-// Explicit mobile lifecycle ownership. The early tracker may wrap global browser
-// APIs only with a mobile/mobile-tasks callsite gate; normal desktop resources must
-// remain native. Stop is destructive for the page, so restart deliberately reloads.
 contains(textLoader, 'window.NILTASK_MobileRuntime = Object.freeze({', 'MobileRuntime API is exported');
 contains(textLoader, 'function mobileCallsite()', 'Mobile runtime tracks resources by source callsite');
 contains(textLoader, '/\\/js\\/mobile(?:-tasks)?\\.js', 'Mobile runtime callsite is limited to mobile modules');
@@ -189,33 +119,43 @@ contains(textLoader, "restartMode: 'page-reload'", 'Mobile runtime advertises re
 contains(textLoader, 'window.location.reload();', 'Mobile runtime restart reloads the page');
 contains(textLoader, 'window.NILTASK_MOBILE_RUNTIME_VERSION = VERSION;', 'Mobile runtime version marker is exported');
 contains(textLoader, 'js/core/session-lifecycle.js?v=4', 'Bootstrap loads session lifecycle v4');
-contains(textLoader, 'js/core/mobile-runtime-diagnostics.js?v=2', 'Bootstrap loads mobile diagnostics v2');
+contains(textLoader, 'js/core/mobile-runtime-diagnostics.js?v=3', 'Bootstrap loads mobile diagnostics v3');
+contains(textLoader, 'js/core/unread-service.js?v=4', 'Bootstrap loads unread service v4');
 contains(sessionLifecycle, "const VERSION = 'v4';", 'Session lifecycle component version is v4');
 contains(sessionLifecycle, 'await withTimeout(stopMobileRuntime(reason), 1500);', 'Session cleanup stops mobile runtime');
 const mobileStopIndex = sessionLifecycle.indexOf('await withTimeout(stopMobileRuntime(reason), 1500);');
 const realtimeStopIndex = sessionLifecycle.indexOf('await withTimeout(stopRealtimeRuntime(), 1800);');
-check(
-  mobileStopIndex >= 0 && realtimeStopIndex >= 0 && mobileStopIndex < realtimeStopIndex,
-  'Mobile runtime stops before general realtime teardown'
-);
+check(mobileStopIndex >= 0 && realtimeStopIndex >= 0 && mobileStopIndex < realtimeStopIndex, 'Mobile runtime stops before general realtime teardown');
 contains(sessionLifecycle, 'mobileRuntime: window.NILTASK_MobileRuntime?.snapshot?.() || null', 'Session snapshot includes mobile lifecycle state');
 contains(sessionLifecycle, "requestRuntimeReload('tenant-change');", 'Tenant changes reload stopped runtime');
 contains(sessionLifecycle, ".finally(() => requestRuntimeReload('user-change'))", 'Account changes reload after cleanup');
 contains(sessionLifecycle, "requestRuntimeReload('signed-in-after-cleanup');", 'Same-page sign-in reloads a stopped runtime');
 contains(sessionLifecycle, 'reloadingForIdentityChange: STATE.reloadingForIdentityChange', 'Session snapshot reports identity reload state');
 
+contains(unreadService, "const VERSION = 'v4';", 'Unread service component version is v4');
 contains(unreadService, 'STATE.total = STATE.roomTotal + clean(STATE.attention);', 'Unread total remains room plus attention');
-contains(unreadService, 'if (isMobileRuntime()) return;', 'Unread renderer remains passive on mobile');
-contains(unreadService, 'if (isMobileRuntime() || window.IS_NATIVE) return;', 'Unread app-badge writer remains passive on mobile/native');
+contains(unreadService, 'function installMobileHandoff()', 'Unread service exposes explicit mobile handoff');
+contains(unreadService, 'wrappedRooms.__nfaMobileUnreadHandoff = true;', 'Mobile room helper is observed once');
+contains(unreadService, 'wrappedAttention.__nfaMobileUnreadHandoff = true;', 'Mobile attention helper is observed once');
+contains(unreadService, 'if (STATE.disposed || isMobileRuntime()) return snapshot();', 'Shared refresh cannot issue a second mobile query');
+contains(unreadService, 'if (isMobileRuntime()) return snapshot();', 'Shared scheduled refresh cannot create a mobile poll');
+contains(unreadService, 'mobileOwnPoll: false', 'Unread snapshot declares no mobile poll ownership');
+contains(unreadService, 'mobileRenderPassive: isMobileRuntime()', 'Unread snapshot declares mobile renderer passivity');
+contains(unreadService, 'if (isMobileRuntime() || window.IS_NATIVE) return;', 'Unread OS badge writer remains passive on mobile/native');
+contains(unreadService, 'if (userId && current.userId && userId !== current.userId) return false;', 'Mobile unread handoff rejects stale user results');
+contains(unreadService, 'if (tenantId && current.tenantId && tenantId !== current.tenantId) return false;', 'Mobile unread handoff rejects stale tenant results');
 contains(unreadService, 'STATE.sidebarObserver.observe(target, { childList:true });', 'Unread observer remains scoped to chat list children');
 excludes(unreadService, 'document.body', 'Unread service has no body-wide observer');
 contains(feedCore, ".not('type', 'in', '(reply,mention,message)')", 'Message/reply/mention attention rows remain excluded');
 contains(feedCore, 'const _lastUnreadByUser = new Map();', 'Attention fallback remains isolated per user');
 
-contains(mobileDiagnostics, "const VERSION = 'v2';", 'Mobile diagnostics component version is v2');
+contains(mobileDiagnostics, "const VERSION = 'v3';", 'Mobile diagnostics component version is v3');
 contains(mobileDiagnostics, "findTopic(list, 'mobile-rt-')", 'Mobile diagnostic checks main channel topic');
 contains(mobileDiagnostics, "findTopic(list, 'presence-')", 'Mobile diagnostic checks presence topic');
-contains(mobileDiagnostics, 'const lifecycle = lifecycleSnapshot();', 'Mobile diagnostic consumes lifecycle snapshot');
+contains(mobileDiagnostics, 'sharedUnreadHandoffInstalled', 'Mobile diagnostic verifies unread handoff installation');
+contains(mobileDiagnostics, 'sharedUnreadUsesExistingQueries', 'Mobile diagnostic verifies reuse of mobile queries');
+contains(mobileDiagnostics, 'sharedUnreadHasNoOwnPoll', 'Mobile diagnostic verifies no second unread poll');
+contains(mobileDiagnostics, 'sharedUnreadRenderPassive', 'Mobile diagnostic verifies one mobile renderer');
 contains(mobileDiagnostics, 'stoppedRuntimeHasNoTrackedResources', 'Mobile diagnostic verifies stopped resource counts');
 contains(mobileDiagnostics, 'stoppedRuntimeHasNoMobileChannels', 'Mobile diagnostic verifies stopped channel counts');
 contains(mobileDiagnostics, 'desktopOwnersAbsent: desktopFeatureOwners.length === 0', 'Mobile diagnostic enforces desktop-owner absence');
@@ -224,10 +164,7 @@ contains(mobileDiagnostics, 'window.NILTASK_printMobileRuntimeSnapshot = print;'
 const dynamicAssets = [...textLoader.matchAll(/load\([^,]+,\s*'([^']+\?v=\d+)'/g)].map(match => match[1]);
 check(dynamicAssets.length >= 8, 'Dynamic runtime asset inventory found', `found ${dynamicAssets.length}`);
 check(new Set(dynamicAssets).size === dynamicAssets.length, 'Dynamic runtime assets are unique');
-for (const asset of dynamicAssets) {
-  contains(serviceWorker, `'/${asset}'`, `PWA precaches exact dynamic asset: ${asset}`);
-}
-
+for (const asset of dynamicAssets) contains(serviceWorker, `'/${asset}'`, `PWA precaches exact dynamic asset: ${asset}`);
 const cacheMatch = serviceWorker.match(/const CACHE = '([^']+)'/);
 check(Boolean(cacheMatch), 'Service-worker cache version is declared');
 if (cacheMatch) {
@@ -238,23 +175,13 @@ contains(serviceWorker, "k !== 'share-inbox'", 'PWA activation preserves share-i
 contains(serviceWorker, "fetch(e.request, { cache: 'no-store' })", 'PWA navigation remains network-first');
 contains(serviceWorker, "'/version.json'", 'PWA app shell includes version.json');
 
-check(
-  packageJson?.scripts?.['validate:professionalization'] === 'node scripts/validate-professionalization.mjs',
-  'Package exposes professionalization validation script'
-);
-check(
-  packageJson?.scripts?.['test:mobile-runtime'] === 'node scripts/test-mobile-runtime-lifecycle.mjs',
-  'Package exposes mobile lifecycle behavioral test'
-);
+check(packageJson?.scripts?.['validate:professionalization'] === 'node scripts/validate-professionalization.mjs', 'Package exposes professionalization validation script');
+check(packageJson?.scripts?.['test:mobile-runtime'] === 'node scripts/test-mobile-runtime-lifecycle.mjs', 'Package exposes mobile lifecycle behavioral test');
+check(packageJson?.scripts?.['test:mobile-unread'] === 'node scripts/test-mobile-unread-handoff.mjs', 'Package exposes mobile unread behavioral test');
 contains(validationWorkflow, 'npm run test:mobile-runtime', 'CI runs mobile lifecycle behavioral test');
-check(
-  packageJson?.scripts?.['build:tailwind'] === 'npx @tailwindcss/cli -i ./css/tailwind.input.css -o ./css/tailwind.generated.css --minify',
-  'Package exposes pinned Tailwind build command'
-);
-check(
-  packageJson?.scripts?.['validate:tailwind'] === 'npm run build:tailwind && node scripts/validate-tailwind-build.mjs',
-  'Package exposes Tailwind output validation command'
-);
+contains(validationWorkflow, 'npm run test:mobile-unread', 'CI runs mobile unread behavioral test');
+check(packageJson?.scripts?.['build:tailwind'] === 'npx @tailwindcss/cli -i ./css/tailwind.input.css -o ./css/tailwind.generated.css --minify', 'Package exposes pinned Tailwind build command');
+check(packageJson?.scripts?.['validate:tailwind'] === 'npm run build:tailwind && node scripts/validate-tailwind-build.mjs', 'Package exposes Tailwind output validation command');
 check(packageJson?.devDependencies?.tailwindcss === '4.3.0', 'Tailwind dependency is pinned to 4.3.0');
 check(packageJson?.devDependencies?.['@tailwindcss/cli'] === '4.3.0', 'Tailwind CLI dependency is pinned to 4.3.0');
 contains(tailwindInput, '@import "tailwindcss" source(none);', 'Tailwind build disables implicit source detection');
@@ -266,20 +193,7 @@ contains(validationWorkflow, 'npm run validate:tailwind', 'CI validates the comp
 contains(indexHtml, '<script src="https://cdn.tailwindcss.com"></script>', 'Tailwind CDN remains until visual parity acceptance');
 excludes(indexHtml, 'tailwind.generated.css', 'Unaccepted generated Tailwind CSS is not linked in production');
 
-for (const relative of [
-  'js/utils/text.js',
-  'js/core/realtime-manager.js',
-  'js/core/realtime-feature-owners.js',
-  'js/core/session-lifecycle.js',
-  'js/core/runtime-diagnostics.js',
-  'js/core/mobile-runtime-diagnostics.js',
-  'js/core/unread-service.js',
-  'js/runtime-subscription-guard.js',
-  'js/notification-presentation-service.js',
-  'js/compact-panel-filters.js',
-  'js/activity-v208.js',
-  'sw.js',
-]) parseClassic(relative);
+for (const relative of ['js/utils/text.js','js/core/realtime-manager.js','js/core/realtime-feature-owners.js','js/core/session-lifecycle.js','js/core/runtime-diagnostics.js','js/core/mobile-runtime-diagnostics.js','js/core/unread-service.js','js/runtime-subscription-guard.js','js/notification-presentation-service.js','js/compact-panel-filters.js','js/activity-v208.js','sw.js']) parseClassic(relative);
 
 if (failures.length) {
   console.error(`\nProfessionalization validation FAILED (${failures.length} issue${failures.length === 1 ? '' : 's'}):`);
@@ -287,5 +201,4 @@ if (failures.length) {
   console.error(`\nPassed checks: ${passes.length}`);
   process.exit(1);
 }
-
 console.log(`Professionalization validation passed: ${passes.length} checks.`);

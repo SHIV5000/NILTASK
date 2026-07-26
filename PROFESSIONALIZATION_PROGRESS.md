@@ -51,6 +51,25 @@ Temporary Phase 0 containment added:
 
 This is not the final architecture. During the Realtime Manager phase, channel ownership will move into a direct service and this compatibility guard will be deleted.
 
+### Notification presentation containment
+
+Verified duplication source:
+
+- desktop message realtime may call `playSound('message')`;
+- `triggerMessageNotification()` separately generated another Web Audio chime;
+- reconnect or duplicate delivery could invoke presentation more than once for the same message.
+
+Temporary Phase 0 containment added:
+
+- `js/notification-presentation-service.js` installs one marked message-presentation boundary;
+- stable keys use `message:<message_id>` where possible;
+- the same message event is suppressed for a short in-memory window;
+- message alert sound now uses the existing debounced `playSound('message')` authority;
+- vibration and system-notification behaviour remain available;
+- the original notification function is retained only as a compatibility reference and is not called by the replacement.
+
+This is also temporary. The final NotificationService must directly own normalization, event keys, toast/sound/push decisions and badge reconciliation without compatibility replacement.
+
 ### Current branch and release state
 
 - Branch: `agent/activity-feed-no-flicker`
@@ -60,8 +79,8 @@ This is not the final architecture. During the Realtime Manager phase, channel o
 
 ### Next work
 
-1. Verify the subscription guard in the Vercel preview.
-2. Map desktop notification duplication paths by event type.
-3. Introduce stable event keys and short-lived in-memory deduplication at the notification presentation boundary.
+1. Verify the subscription and notification guards in the Vercel preview.
+2. Map notification-row INSERT handling against message realtime and mobile heads-up behaviour.
+3. Route notification rows through stable event keys instead of presenting directly inside realtime callbacks.
 4. Preserve database-backed unread reconciliation as authoritative.
 5. Continue toward a single NotificationService and RealtimeManager.

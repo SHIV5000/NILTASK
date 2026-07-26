@@ -13,11 +13,12 @@
     'use strict';
 
     // Activity Feed stabilizer: realtime remains immediate; fallback polling is
-    // 60 seconds and no longer wraps openActivityFeed().
+    // 60 seconds, does not wrap openActivityFeed(), and no longer uses a body-wide
+    // observer merely to replace the original fallback timer.
     try {
         if (!document.querySelector('script[data-nfa-activity-stability]')) {
             const script = document.createElement('script');
-            script.src = 'js/activity-feed-stability.js?v=4';
+            script.src = 'js/activity-feed-stability.js?v=5';
             script.defer = true;
             script.dataset.nfaActivityStability = '1';
             document.head.appendChild(script);

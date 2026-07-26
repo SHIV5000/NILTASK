@@ -34,6 +34,8 @@
 - Removed the body-wide observer that existed only to replace the Activity poll timer.
 - Kept current filters and compact header presentation functioning in the preview.
 
+These containment layers were later superseded by the source-owned Activity controller documented below.
+
 ### Desktop subscription containment
 
 Verified defects in the legacy `startSubscriptions()` path:
@@ -143,12 +145,45 @@ It now:
 - removes service-worker authentication data while preserving other IndexedDB preferences;
 - flushes and stops the session logger timer;
 - clears user, tenant, role, permission, cache, unread and app-badge state after sign-out;
-- reloads after a genuine same-user tenant change so page-lifetime legacy observers cannot continue under the previous tenant;
+- reloads after a genuine same-user tenant change so page-lifetime legacy resources cannot continue under the previous tenant;
 - bounds every best-effort async cleanup step so logout cannot hang because of network, push, logging, realtime or IndexedDB work.
 
 The original logout still owns tenant-prefixed localStorage deletion and navigation. Context reset is guaranteed in a final block even if the `SIGNED_OUT` callback overlaps cleanup.
 
-Temporary Activity presentation observers are still page-lifetime compatibility layers. Logout or tenant-change reload destroys them with the page; they will be removed directly when the single-owner Activity renderer replaces both decorators.
+### Single-owner desktop Activity controller
+
+`js/ui-feed.js` is now the sole desktop Activity implementation and owns the feature directly rather than being decorated by later scripts.
+
+It now owns:
+
+- opening and closing the panel;
+- final compact header markup;
+- fixed Activity Type and Person filters in their final location;
+- card and date-separator rendering;
+- indigo Task activity accents;
+- clear-one and clear-all behaviour;
+- exact Task/message navigation strings;
+- database-backed unread count refresh;
+- mark-read behaviour on open;
+- realtime-triggered refresh requests;
+- one canonical 60-second fallback interval;
+- overlapping-load coalescing;
+- refresh debounce;
+- atomic list replacement;
+- scroll-position preservation;
+- stale user/tenant response rejection;
+- non-destructive refresh failure handling.
+
+Removed from the desktop Activity runtime:
+
+- the `activity-v207.js` wrappers around `openActivityFeed()` and `_loadActivityFeed()`;
+- the Activity presentation `document.body` MutationObserver;
+- the Activity stability wrapper and dynamically loaded stabilizer;
+- the compact-filter script's Activity DOM movement and Activity card rescans.
+
+`js/activity-v208.js` remains only as a harmless retired compatibility entrypoint and no longer imports the old decorator. `js/compact-panel-filters.js` is now Task-only and its MutationObserver is scoped to `#rightSidebar`, not `document.body`.
+
+The canonical functions expose the `__nfaActivityController` marker and `NILTASK_ACTIVITY_CONTROLLER_VERSION = 'v1'` for diagnostics.
 
 ### On-demand runtime diagnostics
 
@@ -167,11 +202,13 @@ The snapshot records:
 - RealtimeManager named owners and in-flight operations;
 - managed desktop feature-owner identity and state;
 - Activity panel/open state;
-- loaded containment versions;
+- source-owned Activity controller version;
+- retired legacy Activity state;
 - wrapper markers on critical public functions;
 - known Activity, presence and typing timers;
 - current user, tenant and room identifiers;
-- SessionLifecycle installation and cleanup state.
+- SessionLifecycle installation and cleanup state;
+- confirmation that document-wide Activity and compact-filter observers are absent.
 
 Acceptance target for desktop after startup:
 
@@ -183,6 +220,16 @@ taskflow-bc-<tenant>    count = 1
 
 The owner table must contain the three named desktop owners above. Mobile must not contain those desktop owner records.
 
+Activity acceptance target:
+
+```text
+activity.controllerVersion       = v1
+activity.legacyStabilityLoaded   = false
+observers.documentWideActivityObserver = false
+openActivityFeed.activityController    = true
+_loadActivityFeed.activityController   = true
+```
+
 ### Current branch and release state
 
 - Branch: `agent/activity-feed-no-flicker`
@@ -192,8 +239,9 @@ The owner table must contain the three named desktop owners above. Mobile must n
 
 ### Next work
 
-1. Verify the three managed topics and owners using `NILTASK_printRuntimeSnapshot()` in the Vercel preview.
-2. Verify scheduled-message and notification-row behaviour once each without repeated sound/toast.
-3. Preserve database-backed unread reconciliation as authoritative.
-4. Begin the single-owner Activity controller so both remaining body-wide presentation observers can be deleted.
-5. Move remaining desktop channels into direct RealtimeManager ownership in controlled groups.
+1. Run the Activity open/close, filter, scroll and 60-second refresh smoke checks in the Vercel preview.
+2. Verify the three managed realtime topics and owners using `NILTASK_printRuntimeSnapshot()`.
+3. Verify scheduled-message and notification-row behaviour once each without repeated sound/toast.
+4. Preserve database-backed unread reconciliation as authoritative through a shared `UnreadService`.
+5. Move the remaining desktop channels into direct `RealtimeManager` ownership in controlled groups.
+6. Trace and clean mobile timer, reconnect and observer ownership without changing mobile flows.

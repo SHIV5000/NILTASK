@@ -12,8 +12,6 @@
 (function () {
     'use strict';
 
-    // Task-only compact filter presentation. Activity now renders its final
-    // compact header and cards directly from js/ui-feed.js with no DOM decorator.
     try {
         if (!document.querySelector('script[data-nfa-compact-panel-filters]')) {
             const script = document.createElement('script');
@@ -37,7 +35,7 @@
     try {
         if (!document.querySelector('script[data-nfa-realtime-feature-owners]')) {
             const script = document.createElement('script');
-            script.src = 'js/core/realtime-feature-owners.js?v=1';
+            script.src = 'js/core/realtime-feature-owners.js?v=4';
             script.defer = true;
             script.dataset.nfaRealtimeFeatureOwners = '1';
             document.head.appendChild(script);

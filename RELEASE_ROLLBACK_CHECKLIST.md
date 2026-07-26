@@ -69,6 +69,7 @@ Required commands:
 
 ```bash
 npm run validate:professionalization
+npm run validate:pwa-assets
 npm run validate:tailwind
 ```
 

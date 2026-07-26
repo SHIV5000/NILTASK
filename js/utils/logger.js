@@ -22,7 +22,6 @@ class Logger {
         this._pending   = [];
         this._timer     = null;
         this._inited    = false;
-        this._ip        = null;              // filled once at init (best-effort)
         this._meta      = this._deviceMeta();
         this._recentCritical = new Map();    // repeated warn/error suppression
         this._recentRtHealthy = new Map();   // healthy realtime lifecycle sampling
@@ -78,21 +77,16 @@ class Logger {
         // Periodic flush for long-running sessions
         this._timer = setInterval(() => this.flush(), FLUSH_MS);
 
-        // Best-effort public IP (client can't read it directly). Non-fatal: if the
-        // request is blocked (offline / CSP / ad-blocker) we simply log without it.
-        // Then emit ONE session-metadata row so every session has a device/os/ip
-        // record to join against — keeps per-row payloads small.
-        (async () => {
-            try {
-                const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
-                if (r.ok) this._ip = (await r.json())?.ip || null;
-            } catch { /* blocked — carry on without IP */ }
-            this.info('SESSION', 'session start', {
-                ...this._meta, ip: this._ip, ver: window.APP_VER || '?',
-                ua: (navigator.userAgent || '').slice(0, 200),
-            });
-            this.flush();
-        })();
+        // Emit one lightweight session-metadata row. Public IP lookup was removed:
+        // browser-side IP services are unreliable under CORS, CSP and ad blockers,
+        // and were creating avoidable console noise. Capture IP server-side only if
+        // it is genuinely needed for operations or security.
+        this.info('SESSION', 'session start', {
+            ...this._meta,
+            ver: window.APP_VER || '?',
+            ua: (navigator.userAgent || '').slice(0, 200),
+        });
+        this.flush();
     }
 
     _criticalFingerprint(level, category, message) {
@@ -155,7 +149,6 @@ class Logger {
             base._ver = window.APP_VER || '?';
             base._ua  = (navigator.userAgent || '').slice(0, 160);
             base._dev = `${this._meta.device}/${this._meta.os}/${this._meta.browser}${this._meta.pwa ? '/PWA' : ''}`;
-            if (this._ip) base._ip = this._ip;
             rowData = base;
         }
         const row = {

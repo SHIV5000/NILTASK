@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    const VERSION = 'v3';
+    const VERSION = 'v4';
     const STATE = {
         installed: false,
         installTimer: null,
@@ -39,7 +39,7 @@
 
         const tenantId = window.currentTenantId;
         const desktop = !window.isMobileView?.();
-        const names = ['scheduled-changes'];
+        const names = ['scheduled-changes', 'notifications-changes'];
         if (tenantId && desktop) names.push('taskflow-bc-' + tenantId);
 
         const manager = window.NILTASK_RealtimeManager;
@@ -69,25 +69,38 @@
             }
         }
 
-        // Clear only the known desktop compatibility reference. Mobile owns a
-        // separate topic and must remain untouched.
         if (tenantId && desktop) window._sharedBroadcast = null;
     }
 
+    async function migrateManagedOwners() {
+        try {
+            await window.NILTASK_RealtimeFeatureOwners?.reconcile?.();
+        } catch (e) {}
+        try {
+            window.dispatchEvent(new CustomEvent('niltask:subscriptions-started', {
+                detail: {
+                    userId: window.currentUser?.id || null,
+                    tenantId: window.currentTenantId || null
+                }
+            }));
+        } catch (e) {}
+    }
+
     function runOnce(original, context, args) {
+        const operation = async () => {
+            await disposeKnownDuplicates();
+            const result = await original.apply(context, args);
+            await migrateManagedOwners();
+            return result;
+        };
+
         const manager = window.NILTASK_RealtimeManager;
         if (manager?.coalesce) {
-            return manager.coalesce('desktop-subscription-start', async () => {
-                await disposeKnownDuplicates();
-                return original.apply(context, args);
-            });
+            return manager.coalesce('desktop-subscription-start', operation);
         }
 
         if (STATE.inFlight) return STATE.inFlight;
-        STATE.inFlight = (async () => {
-            await disposeKnownDuplicates();
-            return original.apply(context, args);
-        })().finally(() => {
+        STATE.inFlight = operation().finally(() => {
             STATE.inFlight = null;
         });
         return STATE.inFlight;

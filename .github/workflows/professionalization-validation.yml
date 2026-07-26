@@ -13,7 +13,7 @@ permissions:
 jobs:
   validate-runtime-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
 
     steps:
       - name: Check out repository
@@ -24,5 +24,11 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Install validation dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+
       - name: Validate professionalization contracts
         run: npm run validate:professionalization
+
+      - name: Build and validate local Tailwind CSS
+        run: npm run validate:tailwind

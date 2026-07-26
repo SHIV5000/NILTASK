@@ -173,6 +173,7 @@ refreshNotificationBadge.unreadService = true
 The managed desktop realtime table must show exactly one healthy row for each topic:
 
 ```text
+public:messages-<tenant>
 taskflow-bc-<tenant>
 scheduled-changes
 notifications-changes
@@ -180,6 +181,8 @@ tasks-changes
 assignees-changes
 trails-changes
 ```
+
+The corresponding owner table must include `desktop-message-reactions` and the six other named desktop owners.
 
 Mobile must currently satisfy:
 
@@ -205,6 +208,7 @@ mobile.js remains the active mobile unread renderer
 10. Switch tenant or school context: same-named rooms cannot share read markers.
 11. PWA icon badge equals the same global total.
 12. Task/assignee/trail changes do not create duplicate unread refreshes or duplicate Activity updates.
+13. Repeated subscription startup leaves exactly one `public:messages-<tenant>` channel.
 
 ## Release condition
 

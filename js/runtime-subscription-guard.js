@@ -1,10 +1,11 @@
 (function () {
     'use strict';
 
-    const VERSION = 'v1';
+    const VERSION = 'v2';
     const STATE = {
         installed: false,
-        installTimer: null
+        installTimer: null,
+        inFlight: null
     };
 
     function channelTopic(channel) {
@@ -32,15 +33,18 @@
         if (!sb) return;
 
         const tenantId = window.currentTenantId;
+        const desktop = !window.isMobileView?.();
         const names = ['scheduled-changes'];
-        if (tenantId && !window.isMobileView?.()) names.push('taskflow-bc-' + tenantId);
+        if (tenantId && desktop) names.push('taskflow-bc-' + tenantId);
 
         const channels = typeof sb.getChannels === 'function'
             ? Array.from(sb.getChannels() || [])
             : [];
+        const removed = new Set();
 
         for (const channel of channels) {
             if (names.some(name => topicMatches(channel, name))) {
+                removed.add(channel);
                 await removeChannelSafe(sb, channel);
             }
         }
@@ -50,10 +54,12 @@
         if (
             window._sharedBroadcast &&
             tenantId &&
-            !window.isMobileView?.() &&
+            desktop &&
             topicMatches(window._sharedBroadcast, 'taskflow-bc-' + tenantId)
         ) {
-            await removeChannelSafe(sb, window._sharedBroadcast);
+            if (!removed.has(window._sharedBroadcast)) {
+                await removeChannelSafe(sb, window._sharedBroadcast);
+            }
             window._sharedBroadcast = null;
         }
     }
@@ -66,9 +72,17 @@
             return true;
         }
 
-        const wrapped = async function (...args) {
-            await disposeKnownDuplicates();
-            return original.apply(this, args);
+        const wrapped = function (...args) {
+            // Re-auth/bootstrap code can request startup twice within the same tick.
+            // One shared promise prevents both calls from constructing parallel channels.
+            if (STATE.inFlight) return STATE.inFlight;
+            STATE.inFlight = (async () => {
+                await disposeKnownDuplicates();
+                return original.apply(this, args);
+            })().finally(() => {
+                STATE.inFlight = null;
+            });
+            return STATE.inFlight;
         };
         wrapped.__nfaSubscriptionGuard = true;
         wrapped.__nfaOriginal = original;

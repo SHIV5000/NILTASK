@@ -37,24 +37,37 @@
         }
     } catch (e) {}
 
+    // First shared runtime owner for Supabase channels. It provides topic cleanup,
+    // owner registration, operation coalescing and a diagnostic snapshot without
+    // yet replacing the legacy feature subscriptions.
+    try {
+        if (!document.querySelector('script[data-nfa-realtime-manager]')) {
+            const script = document.createElement('script');
+            script.src = 'js/core/realtime-manager.js?v=1';
+            script.defer = true;
+            script.dataset.nfaRealtimeManager = '1';
+            document.head.appendChild(script);
+        }
+    } catch (e) {}
+
     // Phase 0 containment: before repeated desktop subscription startup, remove
     // stale scheduled/shared channels so one event cannot retain duplicate handlers.
     try {
         if (!document.querySelector('script[data-nfa-subscription-guard]')) {
             const script = document.createElement('script');
-            script.src = 'js/runtime-subscription-guard.js?v=2';
+            script.src = 'js/runtime-subscription-guard.js?v=3';
             script.defer = true;
             script.dataset.nfaSubscriptionGuard = '1';
             document.head.appendChild(script);
         }
     } catch (e) {}
 
-    // One message-presentation boundary: stable event-key deduplication and one
-    // debounced sound path instead of an additional independent Web Audio chime.
+    // One notification-presentation boundary: message IDs and notification-toast
+    // signatures are deduplicated, and paired duplicate sounds are suppressed.
     try {
         if (!document.querySelector('script[data-nfa-notification-presentation]')) {
             const script = document.createElement('script');
-            script.src = 'js/notification-presentation-service.js?v=2';
+            script.src = 'js/notification-presentation-service.js?v=3';
             script.defer = true;
             script.dataset.nfaNotificationPresentation = '1';
             document.head.appendChild(script);

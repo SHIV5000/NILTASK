@@ -5,6 +5,7 @@
   "description": "Noted For Action — native shell (Capacitor remote-URL wrapper). The web app itself is served from Vercel; this only builds the Android/iOS apps.",
   "scripts": {
     "validate:professionalization": "node scripts/validate-professionalization.mjs",
+    "test:mobile-runtime": "node scripts/test-mobile-runtime-lifecycle.mjs",
     "validate:pwa-assets": "node scripts/validate-pwa-assets.mjs",
     "build:tailwind": "npx @tailwindcss/cli -i ./css/tailwind.input.css -o ./css/tailwind.generated.css --minify",
     "validate:tailwind": "npm run build:tailwind && node scripts/validate-tailwind-build.mjs",

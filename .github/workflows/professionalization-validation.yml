@@ -30,6 +30,9 @@ jobs:
       - name: Validate professionalization contracts
         run: npm run validate:professionalization
 
+      - name: Validate PWA manifest and icon assets
+        run: npm run validate:pwa-assets
+
       - name: Build and validate local Tailwind CSS
         run: npm run validate:tailwind
 

@@ -170,12 +170,24 @@ _clearBellBadge.unreadService = true
 refreshNotificationBadge.unreadService = true
 ```
 
+The managed desktop realtime table must show exactly one healthy row for each topic:
+
+```text
+taskflow-bc-<tenant>
+scheduled-changes
+notifications-changes
+tasks-changes
+assignees-changes
+trails-changes
+```
+
 Mobile must currently satisfy:
 
 ```text
 unread.passiveMobile = true
 no #chatsList unread observer
 no UnreadService app-badge write
+no desktop RealtimeManager feature owners
 mobile.js remains the active mobile unread renderer
 ```
 
@@ -192,6 +204,7 @@ mobile.js remains the active mobile unread renderer
 9. Logout and sign in as another user: no previous user's room or attention count remains.
 10. Switch tenant or school context: same-named rooms cannot share read markers.
 11. PWA icon badge equals the same global total.
+12. Task/assignee/trail changes do not create duplicate unread refreshes or duplicate Activity updates.
 
 ## Release condition
 

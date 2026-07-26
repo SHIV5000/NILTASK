@@ -44,12 +44,12 @@ Verified defects in the legacy `startSubscriptions()` path:
 Temporary Phase 0 containment added:
 
 - `js/runtime-subscription-guard.js` installs one marked compatibility adapter around `startSubscriptions()`.
-- Before each repeated startup, it removes existing `scheduled-changes` channels.
-- On desktop, it also removes the existing tenant `taskflow-bc-<tenant_id>` channel and clears the stale global reference.
-- Simultaneous startup requests are coalesced into one in-flight operation.
+- Before repeated desktop startup, it removes stale managed-topic copies.
+- Simultaneous desktop startup requests are coalesced into one in-flight operation.
 - Installation polling is bounded and stops after installation or timeout.
+- Mobile calls bypass this migration path and invoke the original startup directly.
 
-This is not the final architecture. During the Realtime Manager phase, channel ownership will move into a direct service and this compatibility guard will be deleted.
+The guard remains a migration bridge. It must be deleted after every desktop channel is directly constructed through permanent services.
 
 ### Notification presentation containment
 
@@ -70,9 +70,9 @@ Temporary Phase 0 containment added:
 - distinct later notifications of the same category are not globally muted;
 - message alert sound uses the existing debounced `playSound('message')` authority;
 - vibration, system-notification and room-level notification grouping remain available;
-- `window.NILTASK_presentNotificationRow()` is exposed for the future direct NotificationService callback migration.
+- `window.NILTASK_presentNotificationRow()` is exposed as the central row-presentation boundary.
 
-This is temporary. The final NotificationService must directly own normalization, event keys, toast/sound/push decisions and badge reconciliation without compatibility replacement.
+This remains temporary until a final `NotificationService` directly owns normalization, event keys, toast/sound/push decisions and badge reconciliation.
 
 ### Realtime Manager foundation
 
@@ -87,9 +87,44 @@ It currently provides:
 - topic-based duplicate cleanup;
 - named operation coalescing;
 - a diagnostic snapshot of browser channels, owners and in-flight starts;
-- full cleanup support for future logout/tenant-change handling.
+- full cleanup support for logout and tenant changes.
 
-The subscription guard now delegates duplicate-topic cleanup and startup coalescing to this manager when available. Existing feature queries and callbacks remain unchanged in this phase.
+### Managed desktop realtime feature owners
+
+Created `js/core/realtime-feature-owners.js`.
+
+After the legacy desktop startup finishes, it removes the legacy copies and recreates these topics under explicit `RealtimeManager` owners:
+
+- `desktop-shared-broadcast` → `taskflow-bc-<tenant_id>`;
+- `desktop-scheduled-messages` → `scheduled-changes`;
+- `desktop-notification-rows` → `notifications-changes`.
+
+Preserved shared-broadcast behaviour:
+
+- profile updates;
+- reaction add/remove;
+- group-photo updates;
+- profile-update broadcasts;
+- typing indicators;
+- existing `window._sharedBroadcast` send compatibility.
+
+Preserved scheduled-message behaviour:
+
+- sender-only sent-status handling;
+- scheduled-message toast and sound;
+- group-member notification dispatch;
+- badge refresh;
+- current-room message reload.
+
+Additional controls:
+
+- scheduled sent-status presentation uses a stable short-lived event key;
+- notification rows now route directly through `NILTASK_presentNotificationRow()` when available;
+- notification callbacks retain explicit current-user and tenant guards;
+- repeated startup replaces named owners instead of accumulating channels;
+- all three managed owners are destroyed by `SessionLifecycle` through `RealtimeManager`;
+- the feature-owner module is desktop/PWA-only and stops immediately on mobile;
+- the subscription guard performs no cleanup, topic inspection or coalescing on mobile.
 
 ### Central session lifecycle
 
@@ -128,8 +163,9 @@ NILTASK_printRuntimeSnapshot()
 
 The snapshot records:
 
-- current browser Supabase channel topics;
-- RealtimeManager owners and in-flight operations;
+- current browser Supabase channel topics and per-topic counts;
+- RealtimeManager named owners and in-flight operations;
+- managed desktop feature-owner identity and state;
 - Activity panel/open state;
 - loaded containment versions;
 - wrapper markers on critical public functions;
@@ -137,7 +173,15 @@ The snapshot records:
 - current user, tenant and room identifiers;
 - SessionLifecycle installation and cleanup state.
 
-This gives repeatable evidence for duplicate channels and wrapper ownership without adding visible UI.
+Acceptance target for desktop after startup:
+
+```text
+scheduled-changes       count = 1
+notifications-changes   count = 1
+taskflow-bc-<tenant>    count = 1
+```
+
+The owner table must contain the three named desktop owners above. Mobile must not contain those desktop owner records.
 
 ### Current branch and release state
 
@@ -148,8 +192,8 @@ This gives repeatable evidence for duplicate channels and wrapper ownership with
 
 ### Next work
 
-1. Verify logout with `NILTASK_printRuntimeSnapshot()` before and after cleanup in the Vercel preview.
-2. Move scheduled-message and shared-broadcast channel construction directly into RealtimeManager ownership.
-3. Route the legacy notification-row realtime callback directly through `NILTASK_presentNotificationRow()`.
-4. Preserve database-backed unread reconciliation as authoritative.
-5. Begin the single-owner Activity controller so both remaining body-wide presentation observers can be deleted.
+1. Verify the three managed topics and owners using `NILTASK_printRuntimeSnapshot()` in the Vercel preview.
+2. Verify scheduled-message and notification-row behaviour once each without repeated sound/toast.
+3. Preserve database-backed unread reconciliation as authoritative.
+4. Begin the single-owner Activity controller so both remaining body-wide presentation observers can be deleted.
+5. Move remaining desktop channels into direct RealtimeManager ownership in controlled groups.

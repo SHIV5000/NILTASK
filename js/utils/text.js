@@ -12,25 +12,12 @@
 (function () {
     'use strict';
 
-    // Activity Feed stabilizer: realtime remains immediate; fallback polling is
-    // 60 seconds, does not wrap openActivityFeed(), and no longer uses a body-wide
-    // observer merely to replace the original fallback timer.
-    try {
-        if (!document.querySelector('script[data-nfa-activity-stability]')) {
-            const script = document.createElement('script');
-            script.src = 'js/activity-feed-stability.js?v=5';
-            script.defer = true;
-            script.dataset.nfaActivityStability = '1';
-            document.head.appendChild(script);
-        }
-    } catch (e) {}
-
-    // Presentation-only compact filters: fixed Activity header selectors and the
-    // existing functional Task filter/sort selects instead of wide pill rows.
+    // Task-only compact filter presentation. Activity now renders its final
+    // compact header and cards directly from js/ui-feed.js with no DOM decorator.
     try {
         if (!document.querySelector('script[data-nfa-compact-panel-filters]')) {
             const script = document.createElement('script');
-            script.src = 'js/compact-panel-filters.js?v=4';
+            script.src = 'js/compact-panel-filters.js?v=5';
             script.defer = true;
             script.dataset.nfaCompactPanelFilters = '1';
             document.head.appendChild(script);
@@ -55,7 +42,7 @@
     try {
         if (!document.querySelector('script[data-nfa-realtime-feature-owners]')) {
             const script = document.createElement('script');
-            script.src = 'js/core/realtime-feature-owners.js?v=3';
+            script.src = 'js/core/realtime-feature-owners.js?v=1';
             script.defer = true;
             script.dataset.nfaRealtimeFeatureOwners = '1';
             document.head.appendChild(script);
@@ -92,7 +79,7 @@
     try {
         if (!document.querySelector('script[data-nfa-subscription-guard]')) {
             const script = document.createElement('script');
-            script.src = 'js/runtime-subscription-guard.js?v=6';
+            script.src = 'js/runtime-subscription-guard.js?v=4';
             script.defer = true;
             script.dataset.nfaSubscriptionGuard = '1';
             document.head.appendChild(script);

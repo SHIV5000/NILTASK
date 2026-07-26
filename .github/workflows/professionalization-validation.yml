@@ -30,6 +30,9 @@ jobs:
       - name: Validate professionalization contracts
         run: npm run validate:professionalization
 
+      - name: Test mobile runtime lifecycle
+        run: npm run test:mobile-runtime
+
       - name: Validate PWA manifest and icon assets
         run: npm run validate:pwa-assets
 

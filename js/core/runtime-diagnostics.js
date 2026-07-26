@@ -3,7 +3,7 @@
 
     if (window.NILTASK_runtimeSnapshot) return;
 
-    const VERSION = 'v6';
+    const VERSION = 'v7';
 
     function timerState(name) {
         const value = window[name];
@@ -43,6 +43,7 @@
 
     function managedTopicStatus(topicCounts, tenantId) {
         const expected = [
+            tenantId ? 'public:messages-' + tenantId : null,
             'scheduled-changes',
             'notifications-changes',
             'tasks-changes',
@@ -63,9 +64,7 @@
                     return Array.from(window.sb?.getChannels?.() || []).map(channel =>
                         String(channel?.topic || channel?.subTopic || '')
                     );
-                } catch (e) {
-                    return [];
-                }
+                } catch (e) { return []; }
             })(),
             owners: [],
             inFlight: []
@@ -121,10 +120,7 @@
                 activityUi: activityUiVersion,
                 mobile: window.NILTASK_MOBILE_VERSION || null
             },
-            realtime: {
-                ...realtime,
-                featureOwners
-            },
+            realtime: { ...realtime, featureOwners },
             functions: [
                 'startSubscriptions',
                 'logout',

@@ -100,7 +100,7 @@ Rules:
 Current preview generation:
 
 ```text
-taskflow-v206
+taskflow-v207
 ```
 
 Defined in:
@@ -196,7 +196,7 @@ version.json.v:          v208.3.3-recovery
 window.APP_VER:          v208.3.3-recovery
 HTML shell generation:   v208
 mobile component:        v208
-service-worker cache:    taskflow-v206
+service-worker cache:    taskflow-v207
 native package version:  1.0.3
 ```
 

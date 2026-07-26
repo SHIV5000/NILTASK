@@ -3,7 +3,7 @@
 
     if (window.NILTASK_runtimeSnapshot) return;
 
-    const VERSION = 'v1';
+    const VERSION = 'v2';
 
     function timerState(name) {
         const value = window[name];
@@ -25,7 +25,8 @@
                 subscriptionGuard: fn.__nfaSubscriptionGuard === true,
                 notificationPresentation: fn.__nfaPresentationService === true,
                 notificationToast: fn.__nfaNotificationToastBoundary === true,
-                notificationSound: fn.__nfaNotificationSoundBoundary === true
+                notificationSound: fn.__nfaNotificationSoundBoundary === true,
+                sessionLifecycle: fn.__nfaSessionLifecycle === true
             } : {}
         };
     }
@@ -46,6 +47,7 @@
             owners: [],
             inFlight: []
         };
+        const lifecycle = window.NILTASK_SessionLifecycle?.snapshot?.() || null;
 
         return {
             capturedAt: new Date().toISOString(),
@@ -59,7 +61,8 @@
             session: {
                 userId: window.currentUser?.id || null,
                 tenantId: window.currentTenantId || null,
-                roomId: window.currentRoom || null
+                roomId: window.currentRoom || null,
+                lifecycle
             },
             activity: {
                 open: Boolean(window._activityFeedOpen),
@@ -70,6 +73,7 @@
             },
             versions: {
                 realtimeManager: window.NILTASK_REALTIME_MANAGER_VERSION || null,
+                sessionLifecycle: window.NILTASK_SESSION_LIFECYCLE_VERSION || null,
                 subscriptionGuard: window.NILTASK_SUBSCRIPTION_GUARD_VERSION || null,
                 notificationPresentation: window.NILTASK_NOTIFICATION_PRESENTATION_VERSION || null,
                 activityUi: window.NILTASK_ACTIVITY_UI_VERSION || null,
@@ -78,6 +82,9 @@
             realtime,
             functions: [
                 'startSubscriptions',
+                'logout',
+                'loadTenantContext',
+                'NILTASK_cleanupSessionRuntime',
                 'openActivityFeed',
                 '_loadActivityFeed',
                 'refreshActivityFeed',
@@ -94,7 +101,8 @@
             ].map(timerState),
             observers: {
                 activityDecoratorExpected: Boolean(window.NILTASK_ACTIVITY_UI_VERSION),
-                compactFilterObserverExpected: Boolean(window.NILTASK_COMPACT_PANEL_FILTERS_VERSION)
+                compactFilterObserverExpected: Boolean(window.NILTASK_COMPACT_PANEL_FILTERS_VERSION),
+                note: 'Temporary presentation observers remain page-lifetime and are destroyed by logout/tenant-change reload.'
             }
         };
     }

@@ -68,15 +68,20 @@ const versionJson = parseJson('version.json');
 
 const indexHtml = read('index.html');
 const sharedJs = read('js/shared.js');
+const mainJs = read('js/main.js');
+const messagesJs = read('js/messages.js');
+const uiSettings = read('js/ui-settings.js');
 const uiFeed = read('js/ui-feed.js');
 const activityCompat = read('js/activity-v208.js');
 const textLoader = read('js/utils/text.js');
 const realtimeOwners = read('js/core/realtime-feature-owners.js');
+const subscriptionGuard = read('js/runtime-subscription-guard.js');
 const unreadService = read('js/core/unread-service.js');
 const feedCore = read('js/core/feed.js');
 const mobileDiagnostics = read('js/core/mobile-runtime-diagnostics.js');
 const serviceWorker = read('sw.js');
 const pwaNotes = read('PWA_RELEASE_NOTES.md');
+const releaseVersioning = read('RELEASE_VERSIONING.md');
 const tailwindInput = read('css/tailwind.input.css');
 const gitignore = read('.gitignore');
 const validationWorkflow = read('.github/workflows/professionalization-validation.yml');
@@ -151,6 +156,26 @@ for (const topic of managedTopicFragments) contains(realtimeOwners, topic, `Mana
 contains(realtimeOwners, 'desktop: !window.isMobileView?.()', 'Desktop realtime owners remain mobile-gated');
 contains(realtimeOwners, 'rt.register(OWNERS.messages, channel);', 'Managed message channel remains registered');
 
+// Reaction delivery parity and legacy-channel retirement. Database reactions are the
+// durable path; taskflow-bc remains the cross-platform path for reaction/typing/group
+// updates. The old mpgs channel may be created by legacy startup, but guard v7 must
+// remove it only after both managed replacements have reached joined state.
+contains(realtimeOwners, "event:'INSERT', schema:'public', table:'reactions'", 'Managed postgres reaction INSERT remains present');
+contains(realtimeOwners, "event:'DELETE', schema:'public', table:'reactions'", 'Managed postgres reaction DELETE remains present');
+contains(messagesJs, "isDelete:false, src:'w'", 'Web reaction add remains published to shared cross-platform channel');
+contains(messagesJs, "isDelete:true, src:'w'", 'Web reaction remove remains published to shared cross-platform channel');
+contains(mainJs, "window._sharedBroadcast?.send({ type: 'broadcast', event: 'typing'", 'Web typing remains published to shared cross-platform channel');
+contains(mainJs, "window._sharedBroadcast?.send({ type:'broadcast', event:'group_photo'", 'New-group photo/name remains published to shared cross-platform channel');
+contains(uiSettings, "window._sharedBroadcast?.send({ type:'broadcast', event:'group_photo'", 'Group settings remain published to shared cross-platform channel');
+contains(subscriptionGuard, "const VERSION = 'v7';", 'Subscription guard component version is v7');
+contains(subscriptionGuard, "channel.state === 'joined'", 'Legacy retirement waits for joined replacement channels');
+contains(subscriptionGuard, 'replacementChannelsReady(tenantId)', 'Legacy retirement verifies both managed replacements');
+contains(subscriptionGuard, "'mpgs-reactions-v1-' + tenantId", 'Legacy reaction topic remains explicitly identified');
+contains(subscriptionGuard, 'await manager.removeTopics([legacyTopic], { channel: window._reactionsBroadcast });', 'Legacy reaction channel is removed through RealtimeManager');
+contains(subscriptionGuard, 'window._reactionsBroadcast = null;', 'Legacy reaction channel reference is cleared');
+contains(subscriptionGuard, 'legacyReactionRetirementScheduled', 'Subscription-start event reports retirement scheduling');
+contains(textLoader, 'js/runtime-subscription-guard.js?v=7', 'Bootstrap loads subscription guard v7');
+
 contains(unreadService, 'STATE.total = STATE.roomTotal + clean(STATE.attention);', 'Unread total remains room plus attention');
 contains(unreadService, 'if (isMobileRuntime()) return;', 'Unread renderer remains passive on mobile');
 contains(unreadService, 'if (isMobileRuntime() || window.IS_NATIVE) return;', 'Unread app-badge writer remains passive on mobile/native');
@@ -173,7 +198,10 @@ for (const asset of dynamicAssets) {
 
 const cacheMatch = serviceWorker.match(/const CACHE = '([^']+)'/);
 check(Boolean(cacheMatch), 'Service-worker cache version is declared');
-if (cacheMatch) contains(pwaNotes, cacheMatch[1], 'PWA release notes match service-worker cache version');
+if (cacheMatch) {
+  contains(pwaNotes, cacheMatch[1], 'PWA release notes match service-worker cache version');
+  contains(releaseVersioning, cacheMatch[1], 'Release-version contract matches service-worker cache version');
+}
 contains(serviceWorker, "k !== 'share-inbox'", 'PWA activation preserves share-inbox');
 contains(serviceWorker, "fetch(e.request, { cache: 'no-store' })", 'PWA navigation remains network-first');
 contains(serviceWorker, "'/version.json'", 'PWA app shell includes version.json');

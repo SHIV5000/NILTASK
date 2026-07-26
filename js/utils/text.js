@@ -50,6 +50,19 @@
         }
     } catch (e) {}
 
+    // Central logout/account/tenant lifecycle. It stops Activity timers, Supabase
+    // channels, presence timers, logger flushes and device push identity before a
+    // session is discarded, then clears user-owned runtime state.
+    try {
+        if (!document.querySelector('script[data-nfa-session-lifecycle]')) {
+            const script = document.createElement('script');
+            script.src = 'js/core/session-lifecycle.js?v=1';
+            script.defer = true;
+            script.dataset.nfaSessionLifecycle = '1';
+            document.head.appendChild(script);
+        }
+    } catch (e) {}
+
     // Silent, on-demand diagnostics. Nothing is logged automatically; developers
     // can call NILTASK_printRuntimeSnapshot() when checking a preview.
     try {

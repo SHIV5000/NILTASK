@@ -3,7 +3,7 @@
 
     if (window.NILTASK_runtimeSnapshot) return;
 
-    const VERSION = 'v3';
+    const VERSION = 'v4';
 
     function timerState(name) {
         const value = window[name];
@@ -20,8 +20,9 @@
             name,
             available: typeof fn === 'function',
             markers: typeof fn === 'function' ? {
-                nfa207: fn.__nfa207 === true,
-                activityStable: fn.__nfaStable === true,
+                activityController: fn.__nfaActivityController === true,
+                legacyActivityDecorator: fn.__nfa207 === true,
+                legacyActivityStability: fn.__nfaStable === true,
                 subscriptionGuard: fn.__nfaSubscriptionGuard === true,
                 notificationPresentation: fn.__nfaPresentationService === true,
                 notificationToast: fn.__nfaNotificationToastBoundary === true,
@@ -59,6 +60,7 @@
 
         const lifecycle = window.NILTASK_SessionLifecycle?.snapshot?.() || null;
         const featureOwners = window.NILTASK_RealtimeFeatureOwners?.snapshot?.() || null;
+        const activityUiVersion = window.NILTASK_ACTIVITY_UI_VERSION || null;
 
         return {
             capturedAt: new Date().toISOString(),
@@ -79,8 +81,11 @@
                 open: Boolean(window._activityFeedOpen),
                 panelPresent: Boolean(document.getElementById('activityFeedPanel')),
                 listPresent: Boolean(document.getElementById('activityFeedList')),
-                stabilityVersion: window.NILTASK_ACTIVITY_STABILITY_VERSION || null,
-                compactFiltersVersion: window.NILTASK_COMPACT_PANEL_FILTERS_VERSION || null
+                controllerVersion: window.NILTASK_ACTIVITY_CONTROLLER_VERSION || null,
+                legacyStabilityLoaded: Boolean(window.NILTASK_ACTIVITY_STABILITY_VERSION),
+                legacyUiVersion: activityUiVersion,
+                legacyUiRetired: typeof activityUiVersion === 'string' && activityUiVersion.startsWith('retired-'),
+                compactTaskFiltersVersion: window.NILTASK_COMPACT_PANEL_FILTERS_VERSION || null
             },
             versions: {
                 realtimeManager: window.NILTASK_REALTIME_MANAGER_VERSION || null,
@@ -88,7 +93,8 @@
                 sessionLifecycle: window.NILTASK_SESSION_LIFECYCLE_VERSION || null,
                 subscriptionGuard: window.NILTASK_SUBSCRIPTION_GUARD_VERSION || null,
                 notificationPresentation: window.NILTASK_NOTIFICATION_PRESENTATION_VERSION || null,
-                activityUi: window.NILTASK_ACTIVITY_UI_VERSION || null,
+                activityController: window.NILTASK_ACTIVITY_CONTROLLER_VERSION || null,
+                activityUi: activityUiVersion,
                 mobile: window.NILTASK_MOBILE_VERSION || null
             },
             realtime: {
@@ -115,9 +121,10 @@
                 '_webTypingTimer'
             ].map(timerState),
             observers: {
-                activityDecoratorExpected: Boolean(window.NILTASK_ACTIVITY_UI_VERSION),
-                compactFilterObserverExpected: Boolean(window.NILTASK_COMPACT_PANEL_FILTERS_VERSION),
-                note: 'Temporary presentation observers remain page-lifetime and are destroyed by logout/tenant-change reload.'
+                documentWideActivityObserver: false,
+                documentWideCompactFilterObserver: false,
+                taskFilterObserverScope: window.NILTASK_CompactTaskFilters ? '#rightSidebar' : null,
+                note: 'Activity renders its final DOM directly. The remaining Task filter observer is feature-scoped to #rightSidebar.'
             }
         };
     }

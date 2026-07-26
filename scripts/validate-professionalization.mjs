@@ -56,11 +56,18 @@ function parseClassic(relative) {
   }
 }
 
+function matchValue(source, pattern, label) {
+  const match = source.match(pattern);
+  check(Boolean(match?.[1]), label);
+  return match?.[1] || null;
+}
+
 const packageJson = parseJson('package.json');
 parseJson('manifest.json');
-parseJson('version.json');
+const versionJson = parseJson('version.json');
 
 const indexHtml = read('index.html');
+const sharedJs = read('js/shared.js');
 const uiFeed = read('js/ui-feed.js');
 const activityCompat = read('js/activity-v208.js');
 const textLoader = read('js/utils/text.js');
@@ -73,6 +80,44 @@ const pwaNotes = read('PWA_RELEASE_NOTES.md');
 const tailwindInput = read('css/tailwind.input.css');
 const gitignore = read('.gitignore');
 const validationWorkflow = read('.github/workflows/professionalization-validation.yml');
+
+// Release identity. version.json is the remote cache-healing authority and APP_VER
+// is the running/logging identity; they must be identical. The HTML/mobile/component
+// v208 markers are generation identifiers and are deliberately checked separately.
+const appVersion = matchValue(sharedJs, /window\.APP_VER\s*=\s*['"]([^'"]+)['"]/, 'Runtime APP_VER is declared');
+check(Boolean(versionJson?.v), 'version.json release value is declared');
+check(appVersion === versionJson?.v, 'Runtime APP_VER matches version.json', `APP_VER=${appVersion}, version.json=${versionJson?.v}`);
+contains(sharedJs, "fetch('/version.json?ts=' + Date.now(), { cache: 'no-store' })", 'Version healer fetches release authority without cache');
+contains(sharedJs, "keys.filter(k => k !== 'share-inbox')", 'Version healer preserves share-inbox');
+contains(indexHtml, 'meta name="niltask-version" content="v208"', 'HTML shell generation marker remains present');
+contains(indexHtml, "window.NILTASK_APP_VERSION = 'v208'", 'HTML shell component version remains present');
+
+// Supabase public-client identity. The anon JWT payload must belong to the same
+// project ref as SUPABASE_URL; this catches accidental key transcription/replacement.
+const supabaseRef = matchValue(
+  sharedJs,
+  /export const SUPABASE_URL\s*=\s*['"]https:\/\/([^.]+)\.supabase\.co['"]/,
+  'Supabase project URL is declared'
+);
+const anonKey = matchValue(
+  sharedJs,
+  /export const SUPABASE_ANON_KEY\s*=\s*['"]([^'"]+)['"]/,
+  'Supabase anon key is declared'
+);
+let anonPayload = null;
+if (anonKey) {
+  try {
+    const parts = anonKey.split('.');
+    check(parts.length === 3, 'Supabase anon key has JWT structure');
+    anonPayload = JSON.parse(Buffer.from(parts[1] || '', 'base64url').toString('utf8'));
+  } catch (error) {
+    failures.push(`Supabase anon key payload could not be decoded: ${error.message}`);
+  }
+}
+if (anonPayload) {
+  check(anonPayload.ref === supabaseRef, 'Supabase anon key project ref matches SUPABASE_URL', `key ref=${anonPayload.ref}, URL ref=${supabaseRef}`);
+  check(anonPayload.role === 'anon', 'Supabase browser key retains anon role', `role=${anonPayload.role}`);
+}
 
 contains(uiFeed, 'const _AF_REFRESH_MS = 60000;', 'Activity fallback remains 60 seconds');
 contains(uiFeed, "window.NILTASK_ACTIVITY_CONTROLLER_VERSION = 'v1'", 'Source Activity controller marker remains present');
@@ -131,6 +176,7 @@ check(Boolean(cacheMatch), 'Service-worker cache version is declared');
 if (cacheMatch) contains(pwaNotes, cacheMatch[1], 'PWA release notes match service-worker cache version');
 contains(serviceWorker, "k !== 'share-inbox'", 'PWA activation preserves share-inbox');
 contains(serviceWorker, "fetch(e.request, { cache: 'no-store' })", 'PWA navigation remains network-first');
+contains(serviceWorker, "'/version.json'", 'PWA app shell includes version.json');
 
 check(
   packageJson?.scripts?.['validate:professionalization'] === 'node scripts/validate-professionalization.mjs',

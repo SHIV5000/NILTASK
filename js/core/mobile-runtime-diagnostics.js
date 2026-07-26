@@ -3,7 +3,7 @@
 
     if (window.NILTASK_mobileRuntimeSnapshot) return;
 
-    const VERSION = 'v2';
+    const VERSION = 'v3';
 
     function topicOf(channel) {
         const raw = String(channel?.topic || channel?.subTopic || '');
@@ -67,7 +67,17 @@
             unread: unread ? {
                 version: unread.version,
                 passiveMobile: unread.passiveMobile,
-                automaticOwnerExpected: false,
+                renderPassive: unread.mobileRenderPassive,
+                handoffInstalled: unread.mobileHandoffInstalled,
+                usesExistingQueries: unread.mobileUsesExistingQueries,
+                ownsPoll: unread.mobileOwnPoll,
+                roomObservations: unread.mobileRoomObservations,
+                attentionObservations: unread.mobileAttentionObservations,
+                lastReason: unread.mobileLastReason,
+                roomTotal: unread.roomTotal,
+                attention: unread.attention,
+                total: unread.total,
+                refreshedAt: unread.refreshedAt,
             } : null,
             lifecycle: lifecycle ? {
                 version: lifecycle.version,
@@ -85,7 +95,10 @@
                 oneMainChannel: mobileTopics.length === 1,
                 onePresenceChannel: presenceTopics.length === 1,
                 desktopOwnersAbsent: desktopFeatureOwners.length === 0,
-                sharedUnreadPassive: Boolean(unread?.passiveMobile),
+                sharedUnreadHandoffInstalled: Boolean(unread?.mobileHandoffInstalled),
+                sharedUnreadUsesExistingQueries: Boolean(unread?.mobileUsesExistingQueries),
+                sharedUnreadHasNoOwnPoll: unread ? unread.mobileOwnPoll === false : false,
+                sharedUnreadRenderPassive: Boolean(unread?.mobileRenderPassive),
                 stoppedRuntimeHasNoTrackedResources: lifecycle?.stopped
                     ? Object.values(lifecycle.tracked || {}).every(value => Number(value || 0) === 0)
                     : null,
@@ -94,9 +107,10 @@
                     : null,
             },
             limitations: [
+                'Unread handoff observes the shared helper calls already made by mobile.js; it creates no database poll or badge renderer.',
                 'Resource counts include mobile.js/mobile-tasks.js callsites tracked after the early bootstrap installed.',
                 'A lifecycle stop is destructive for the current page; restart intentionally uses a page reload.',
-                'Channel health reflects current Supabase client state; database fallback behaviour still requires authenticated smoke testing.',
+                'Channel and unread health still require authenticated long-session smoke testing on a real phone.',
             ],
         };
     }
@@ -106,6 +120,7 @@
         try { console.table(data.mainChannels); } catch (e) {}
         try { console.table(data.presenceChannels); } catch (e) {}
         try { console.table(data.desktopFeatureOwners); } catch (e) {}
+        try { if (data.unread) console.table([data.unread]); } catch (e) {}
         try { if (data.lifecycle?.tracked) console.table([data.lifecycle.tracked]); } catch (e) {}
         try { console.log('[NILTASK mobile runtime snapshot]', data); } catch (e) {}
         return data;

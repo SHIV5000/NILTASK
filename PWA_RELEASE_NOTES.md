@@ -3,7 +3,7 @@
 ## Current preview cache generation
 
 ```text
-taskflow-v207
+taskflow-v208
 ```
 
 Defined in `sw.js`.
@@ -12,7 +12,18 @@ Defined in `sw.js`.
 
 The professionalization branch loads runtime services through query-versioned URLs. Cache matching is query-sensitive, so an offline cache containing only an unversioned path cannot satisfy the exact bootstrap request.
 
-The v207 app shell updates the subscription guard to:
+The v208 app shell coordinates two lifecycle changes:
+
+```text
+/js/core/session-lifecycle.js?v=3
+/js/core/mobile-runtime-diagnostics.js?v=2
+```
+
+Session lifecycle v3 stops the explicit mobile runtime before general realtime teardown. This prevents a mobile channel `CLOSED` callback from recreating reconnect, fallback, typing or Activity work while logout, account switching or tenant switching is already underway.
+
+Mobile diagnostics v2 reports the lifecycle tracker’s actual timeout, interval, animation-frame, persistent-listener, observer and channel counts, together with stop reason, last cleanup and page-reload restart mode.
+
+The existing reaction safeguard remains protected offline through:
 
 ```text
 /js/runtime-subscription-guard.js?v=7
@@ -25,16 +36,14 @@ public:messages-<tenant>
 taskflow-bc-<tenant>
 ```
 
-This prevents duplicate reaction add/remove delivery while preserving durable postgres reaction events plus cross-platform typing, group-photo and reaction broadcasts.
-
 ## Protected offline runtime files
 
 - `js/compact-panel-filters.js?v=5`
 - `js/core/realtime-manager.js?v=1`
 - `js/core/realtime-feature-owners.js?v=5`
-- `js/core/session-lifecycle.js?v=2`
+- `js/core/session-lifecycle.js?v=3`
 - `js/core/runtime-diagnostics.js?v=7`
-- `js/core/mobile-runtime-diagnostics.js?v=1`
+- `js/core/mobile-runtime-diagnostics.js?v=2`
 - `js/runtime-subscription-guard.js?v=7`
 - `js/notification-presentation-service.js?v=3`
 - `js/core/unread-service.js?v=3`
@@ -45,24 +54,27 @@ This prevents duplicate reaction add/remove delivery while preserving durable po
 ## Expected update behaviour
 
 1. Browser detects changed `/sw.js`.
-2. New worker installs and opens `taskflow-v207`.
+2. New worker installs and opens `taskflow-v208`.
 3. Each app-shell asset is cached independently; one optional failure does not abort installation.
 4. `skipWaiting()` activates the worker.
 5. Old `taskflow-*` caches are deleted, while `share-inbox` is preserved.
 6. `controllerchange` reloads the page once so the new HTML/JS runtime is used.
 7. JS/CSS requests remain network-first when online and cache-fallback when offline.
-8. On desktop subscription startup, guard v7 waits for both replacement channels to reach `joined`, then removes the legacy reaction broadcast.
+8. On mobile logout/account/tenant cleanup, MobileRuntime stops before the shared channel teardown.
+9. On desktop subscription startup, guard v7 waits for both replacement channels to reach `joined`, then removes the legacy reaction broadcast.
 
 ## Smoke checks
 
 - Hard refresh preview once.
 - In DevTools → Application → Service Workers, confirm the active worker uses the latest `sw.js`.
-- In Cache Storage, confirm `taskflow-v207` exists.
-- Confirm `taskflow-v206` and older app-shell caches are removed after activation.
-- Confirm `/js/runtime-subscription-guard.js?v=7` exists in the cache.
+- In Cache Storage, confirm `taskflow-v208` exists.
+- Confirm `taskflow-v207` and older app-shell caches are removed after activation.
+- Confirm the exact v3/v2/v7 query-versioned runtime files exist in the cache.
+- On mobile, run `NILTASK_printMobileRuntimeSnapshot()` before logout and confirm one `mobile-rt-*` plus one `presence-*` channel.
+- Invoke session cleanup only in a controlled test/logout path; after stop, tracked resource counts and mobile channel counts must be zero.
+- Confirm restart mode is `page-reload`, not an unsafe same-page resurrection of stale module-local channel references.
 - Run `NILTASK_SubscriptionGuard.snapshot()` after desktop login.
-- Confirm `legacyReaction.state` reaches `retired`.
-- Confirm `legacyReaction.channelPresent` is `false`.
+- Confirm `legacyReaction.state` reaches `retired` and `channelPresent` is `false`.
 - Confirm the runtime channel list contains one `public:messages-<tenant>` and one `taskflow-bc-<tenant>`, with no `mpgs-reactions-v1-<tenant>`.
 - Add and remove one emoji from a second desktop session; the visible count must change by exactly one.
 - Confirm typing and group-photo updates still arrive between desktop and mobile sessions.
@@ -74,20 +86,22 @@ This prevents duplicate reaction add/remove delivery while preserving durable po
 
 ## Rollback
 
-If v207 causes reaction, typing, group-photo or PWA-update regression:
+If v208 causes mobile cleanup, reaction, typing, group-photo or PWA-update regression:
 
-1. Revert the coordinated commits:
+1. Revert the coordinated mobile lifecycle commits:
 
 ```text
-98d4104c0f313b831f2e996852f35ee35b65a2ba
-7ea95a8a773885df96d0a4fe7c52e02abc66369d
-43bfe5039c168f9fc86dea53a7f03b3d89b6c6b9
+b4e6792b5abd0bc76a4d69b4a180fec7311aaf97
+94b1ec25dd973caab0b71e02b7f53bb065efc43b
+271af47dece81cb38c2aa7a30e496cd22f3cb4da
+c86d65f7eaa2b223f1441471e9da8e705ee3449e
 ```
 
-2. Restore guard v6 behaviour, the prior loader URL and the prior app-shell generation together.
-3. For a corrective PWA release, use a new cache generation rather than reusing a broken cache name.
-4. Deploy the revert/correction.
-5. Keep the PR draft and do not merge.
-6. Clear the preview site's service worker/cache manually during diagnosis only when normal update convergence cannot be tested.
+2. Restore session lifecycle v2, mobile diagnostics v1 and the prior app-shell generation together.
+3. If the reaction safeguard also regresses, revert its coordinated v7 guard/loader/cache commits separately.
+4. For a corrective PWA release, use a new cache generation rather than reusing a broken cache name.
+5. Deploy the revert/correction.
+6. Keep the PR draft and do not merge.
+7. Clear the preview site's service worker/cache manually during diagnosis only when normal update convergence cannot be tested.
 
 Production remains unchanged until the owner explicitly approves the draft PR.

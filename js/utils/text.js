@@ -42,7 +42,7 @@
     try {
         if (!document.querySelector('script[data-nfa-subscription-guard]')) {
             const script = document.createElement('script');
-            script.src = 'js/runtime-subscription-guard.js?v=1';
+            script.src = 'js/runtime-subscription-guard.js?v=2';
             script.defer = true;
             script.dataset.nfaSubscriptionGuard = '1';
             document.head.appendChild(script);

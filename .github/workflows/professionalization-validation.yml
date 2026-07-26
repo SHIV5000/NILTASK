@@ -32,3 +32,12 @@ jobs:
 
       - name: Build and validate local Tailwind CSS
         run: npm run validate:tailwind
+
+      - name: Upload generated Tailwind CSS
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tailwind-generated-css
+          path: css/tailwind.generated.css
+          if-no-files-found: warn
+          retention-days: 3

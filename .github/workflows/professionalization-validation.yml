@@ -36,6 +36,9 @@ jobs:
       - name: Test mobile unread handoff
         run: npm run test:mobile-unread
 
+      - name: Validate mobile preview APK isolation
+        run: npm run validate:mobile-preview
+
       - name: Validate PWA manifest and icon assets
         run: npm run validate:pwa-assets
 

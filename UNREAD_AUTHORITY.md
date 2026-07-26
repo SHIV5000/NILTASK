@@ -44,12 +44,14 @@ Defined in `js/core/unread.js`.
 
 It:
 
-- reads `room_reads` for the current user;
+- reads `room_reads` for the current user and current tenant;
 - reads recent tenant-scoped messages;
 - ignores the current user's own messages;
 - enforces DM participation checks;
 - derives one count per room;
 - survives reload and realtime reconnects.
+
+Room identifiers are not globally unique across schools. The `room_reads` query must therefore remain scoped by both `user_id` and `tenant_id`; a same-named room in another tenant must never suppress this tenant's unread messages.
 
 ### `NFA_unreadCount(sb, uid)`
 
@@ -59,13 +61,14 @@ It:
 
 - reads unread notification rows for the current user;
 - excludes `message`, `reply` and `mention` types;
-- keeps the last known value if a transient network failure occurs.
+- keeps the last known value if a transient network failure occurs;
+- keeps that fallback separately per user, preventing a previous account's count from appearing after account change.
 
 ## `UnreadService`
 
 `js/core/unread-service.js` is the shared orchestration boundary.
 
-It owns:
+On desktop/PWA it owns:
 
 - coalesced refreshes of both authoritative queries;
 - stale user/tenant response rejection;
@@ -81,7 +84,7 @@ It owns:
 
 ## Compatibility functions
 
-The following legacy public functions are currently delegated to `UnreadService`:
+On desktop/PWA, the following legacy public functions are delegated to `UnreadService`:
 
 ```javascript
 window._setBellBadge
@@ -121,7 +124,15 @@ The mobile shell already uses the same two formulas, but still contains local fu
 - `_updateAppBadge()`;
 - its adaptive fallback schedule.
 
-Do not add a second mobile poll in `UnreadService`.
+`UnreadService` is deliberately passive on mobile until the dedicated migration. In mobile runtime it creates:
+
+- no automatic unread query;
+- no compatibility-function override;
+- no DOM observer;
+- no app-icon badge write;
+- no second polling cadence.
+
+This boundary prevents the shared service from racing the current mobile renderer or doubling its six-second visible-state reconciliation.
 
 The dedicated mobile migration must:
 
@@ -141,9 +152,10 @@ Use:
 NILTASK_printRuntimeSnapshot()
 ```
 
-The unread section must satisfy:
+Desktop/PWA must satisfy:
 
 ```text
+unread.passiveMobile = false
 unread.total = unread.roomTotal + unread.attention
 unread.total = unread.renderedBellCount
 unread.perRoom matches unread.windowPerRoom
@@ -158,6 +170,15 @@ _clearBellBadge.unreadService = true
 refreshNotificationBadge.unreadService = true
 ```
 
+Mobile must currently satisfy:
+
+```text
+unread.passiveMobile = true
+no #chatsList unread observer
+no UnreadService app-badge write
+mobile.js remains the active mobile unread renderer
+```
+
 ## Desktop smoke checks
 
 1. Reload with unread chats: room badges and global bell return from database state.
@@ -169,7 +190,8 @@ refreshNotificationBadge.unreadService = true
 7. Dismiss one notification: attention reconciles from the database.
 8. Disconnect and reconnect realtime: counts converge to database truth without accumulating.
 9. Logout and sign in as another user: no previous user's room or attention count remains.
-10. PWA icon badge equals the same global total.
+10. Switch tenant or school context: same-named rooms cannot share read markers.
+11. PWA icon badge equals the same global total.
 
 ## Release condition
 

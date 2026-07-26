@@ -24,9 +24,6 @@
         }
     } catch (e) {}
 
-    // First shared runtime owner for Supabase channels. It provides topic cleanup,
-    // owner registration, operation coalescing and a diagnostic snapshot without
-    // yet replacing every legacy feature subscription.
     try {
         if (!document.querySelector('script[data-nfa-realtime-manager]')) {
             const script = document.createElement('script');
@@ -37,8 +34,6 @@
         }
     } catch (e) {}
 
-    // Named owners for the three desktop topics that previously leaked or repeated
-    // presentation: shared broadcast, scheduled-message updates and notification rows.
     try {
         if (!document.querySelector('script[data-nfa-realtime-feature-owners]')) {
             const script = document.createElement('script');
@@ -49,9 +44,6 @@
         }
     } catch (e) {}
 
-    // Central logout/account/tenant lifecycle. It stops Activity timers, Supabase
-    // channels, presence timers, logger flushes and device push identity before a
-    // session is discarded, then clears user-owned runtime state.
     try {
         if (!document.querySelector('script[data-nfa-session-lifecycle]')) {
             const script = document.createElement('script');
@@ -62,8 +54,6 @@
         }
     } catch (e) {}
 
-    // Silent, on-demand diagnostics. Nothing is logged automatically; developers
-    // can call NILTASK_printRuntimeSnapshot() when checking a preview.
     try {
         if (!document.querySelector('script[data-nfa-runtime-diagnostics]')) {
             const script = document.createElement('script');
@@ -74,8 +64,6 @@
         }
     } catch (e) {}
 
-    // Phase 0 migration bridge: coalesce repeated legacy startup, remove stale
-    // copies, then hand the managed topics to RealtimeFeatureOwners.
     try {
         if (!document.querySelector('script[data-nfa-subscription-guard]')) {
             const script = document.createElement('script');
@@ -86,8 +74,6 @@
         }
     } catch (e) {}
 
-    // One notification-presentation boundary: message IDs and notification-toast
-    // signatures are deduplicated, and paired duplicate sounds are suppressed.
     try {
         if (!document.querySelector('script[data-nfa-notification-presentation]')) {
             const script = document.createElement('script');
@@ -98,13 +84,13 @@
         }
     } catch (e) {}
 
-    // One authoritative unread orchestrator. Durable per-room message unread comes
-    // from room_reads + messages; non-message attention comes from unread notification
-    // rows. The service combines them once for the bell, room badges and PWA app badge.
+    // Desktop/PWA unread authority. On mobile this script is deliberately passive:
+    // it adds no poll, no DOM observer and no app-badge writer until mobile.js is
+    // migrated to consume the shared service directly.
     try {
         if (!document.querySelector('script[data-nfa-unread-service]')) {
             const script = document.createElement('script');
-            script.src = 'js/core/unread-service.js?v=2';
+            script.src = 'js/core/unread-service.js?v=3';
             script.defer = true;
             script.dataset.nfaUnreadService = '1';
             document.head.appendChild(script);

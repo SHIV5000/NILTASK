@@ -325,7 +325,7 @@
     load('script[data-nfa-compact-panel-filters]', 'js/compact-panel-filters.js?v=5', 'nfaCompactPanelFilters');
     load('script[data-nfa-realtime-manager]', 'js/core/realtime-manager.js?v=1', 'nfaRealtimeManager');
     load('script[data-nfa-realtime-feature-owners]', 'js/core/realtime-feature-owners.js?v=5', 'nfaRealtimeFeatureOwners');
-    load('script[data-nfa-session-lifecycle]', 'js/core/session-lifecycle.js?v=3', 'nfaSessionLifecycle');
+    load('script[data-nfa-session-lifecycle]', 'js/core/session-lifecycle.js?v=4', 'nfaSessionLifecycle');
     load('script[data-nfa-runtime-diagnostics]', 'js/core/runtime-diagnostics.js?v=7', 'nfaRuntimeDiagnostics');
     load('script[data-nfa-mobile-runtime-diagnostics]', 'js/core/mobile-runtime-diagnostics.js?v=2', 'nfaMobileRuntimeDiagnostics');
     load('script[data-nfa-subscription-guard]', 'js/runtime-subscription-guard.js?v=7', 'nfaSubscriptionGuard');

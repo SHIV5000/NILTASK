@@ -3,11 +3,14 @@
 
     if (window.NILTASK_RealtimeFeatureOwners) return;
 
-    const VERSION = 'v3';
+    const VERSION = 'v4';
     const OWNERS = Object.freeze({
         shared: 'desktop-shared-broadcast',
         scheduled: 'desktop-scheduled-messages',
-        notifications: 'desktop-notification-rows'
+        notifications: 'desktop-notification-rows',
+        tasks: 'desktop-tasks',
+        assignees: 'desktop-task-assignees',
+        trails: 'desktop-task-trails'
     });
     const STATE = {
         inFlight: null,
@@ -79,7 +82,7 @@
         return channel;
     }
 
-    function createScheduledChannel(sb, rt, userId) {
+    function createScheduledChannel(sb, rt, userId, tenantId) {
         if (!userId) return null;
         const topic = 'scheduled-changes';
         const channel = sb.channel(topic)
@@ -88,6 +91,7 @@
             }, payload => {
                 const row = payload.new;
                 if (!row || row.status !== 'sent' || row.sender_id !== window.currentUser?.id) return;
+                if (row.tenant_id && tenantId && row.tenant_id !== tenantId) return;
 
                 const eventKey = 'scheduled-status:' + (row.id || '') + ':sent';
                 if (window.NILTASK_shouldPresentEvent && !window.NILTASK_shouldPresentEvent(eventKey, 10000)) return;
@@ -159,6 +163,37 @@
         return channel;
     }
 
+    function createTaskTableChannel(sb, rt, options) {
+        const { owner, topic, table, tenantId, refreshActivity } = options;
+        if (!tenantId) return null;
+
+        const handle = payload => {
+            const row = payload?.new || payload?.old || null;
+            if (row?.tenant_id && row.tenant_id !== window.currentTenantId) return;
+            window.debouncedLoadTasks?.();
+            if (refreshActivity && window._activityFeedOpen) window.refreshActivityFeed?.();
+        };
+
+        const channel = sb.channel(topic)
+            .on('postgres_changes', {
+                event: 'INSERT', schema: 'public', table,
+                filter: `tenant_id=eq.${tenantId}`
+            }, handle)
+            .on('postgres_changes', {
+                event: 'UPDATE', schema: 'public', table,
+                filter: `tenant_id=eq.${tenantId}`
+            }, handle)
+            // DELETE filters depend on replica identity. Listen without a server filter
+            // and retain the client tenant guard so deletes still refresh reliably.
+            .on('postgres_changes', {
+                event: 'DELETE', schema: 'public', table
+            }, handle);
+
+        rt.register(owner, channel);
+        channel.subscribe(status => logStatus(topic, status));
+        return channel;
+    }
+
     async function reconcile() {
         if (STATE.inFlight) return STATE.inFlight;
 
@@ -169,14 +204,29 @@
             if (!sb || !rt || !current.userId || !current.tenantId || !current.desktop) return false;
 
             const sharedTopic = 'taskflow-bc-' + current.tenantId;
-            await stopAndRemove(OWNERS.shared, [sharedTopic]);
-            await stopAndRemove(OWNERS.scheduled, ['scheduled-changes']);
-            await stopAndRemove(OWNERS.notifications, ['notifications-changes']);
+            await Promise.all([
+                stopAndRemove(OWNERS.shared, [sharedTopic]),
+                stopAndRemove(OWNERS.scheduled, ['scheduled-changes']),
+                stopAndRemove(OWNERS.notifications, ['notifications-changes']),
+                stopAndRemove(OWNERS.tasks, ['tasks-changes']),
+                stopAndRemove(OWNERS.assignees, ['assignees-changes']),
+                stopAndRemove(OWNERS.trails, ['trails-changes'])
+            ]);
             window._sharedBroadcast = null;
 
             createSharedChannel(sb, rt, current.tenantId);
-            createScheduledChannel(sb, rt, current.userId);
+            createScheduledChannel(sb, rt, current.userId, current.tenantId);
             createNotificationChannel(sb, rt, current.userId, current.tenantId);
+            createTaskTableChannel(sb, rt, {
+                owner: OWNERS.tasks, topic:'tasks-changes', table:'tasks', tenantId:current.tenantId
+            });
+            createTaskTableChannel(sb, rt, {
+                owner: OWNERS.assignees, topic:'assignees-changes', table:'task_assignees', tenantId:current.tenantId
+            });
+            createTaskTableChannel(sb, rt, {
+                owner: OWNERS.trails, topic:'trails-changes', table:'task_trails', tenantId:current.tenantId,
+                refreshActivity:true
+            });
 
             STATE.lastIdentity = current;
             window.NILTASK_REALTIME_FEATURE_OWNERS_VERSION = VERSION;
@@ -191,11 +241,7 @@
     async function stop() {
         const rt = manager();
         if (!rt) return;
-        await Promise.all([
-            rt.stopOwner(OWNERS.shared),
-            rt.stopOwner(OWNERS.scheduled),
-            rt.stopOwner(OWNERS.notifications)
-        ]);
+        await Promise.all(Object.values(OWNERS).map(owner => rt.stopOwner(owner)));
         window._sharedBroadcast = null;
         STATE.lastIdentity = null;
     }
@@ -207,18 +253,19 @@
             current.desktop && client() && manager() && current.userId && current.tenantId &&
             typeof window.startSubscriptions === 'function'
         );
-        if (ready) {
-            const channels = manager().listChannels();
-            const hasLegacyTopics = channels.some(channel => {
-                return manager().topicMatches(channel, 'scheduled-changes') ||
-                    manager().topicMatches(channel, 'notifications-changes') ||
-                    manager().topicMatches(channel, 'taskflow-bc-' + current.tenantId);
-            });
-            if (hasLegacyTopics) {
-                reconcile();
-                return true;
-            }
-            return false;
+        if (!ready) return false;
+
+        const managedTopics = [
+            'scheduled-changes', 'notifications-changes', 'tasks-changes',
+            'assignees-changes', 'trails-changes', 'taskflow-bc-' + current.tenantId
+        ];
+        const channels = manager().listChannels();
+        const hasTopics = channels.some(channel =>
+            managedTopics.some(topic => manager().topicMatches(channel, topic))
+        );
+        if (hasTopics) {
+            reconcile();
+            return true;
         }
         return false;
     }
@@ -247,7 +294,10 @@
         let attempts = 0;
         STATE.bootTimer = setInterval(() => {
             attempts += 1;
-            if (boot() || attempts >= 300) clearInterval(STATE.bootTimer);
+            if (boot() || attempts >= 300) {
+                clearInterval(STATE.bootTimer);
+                STATE.bootTimer = null;
+            }
         }, 100);
     }
 })();

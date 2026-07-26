@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    const VERSION = 'v1';
+    const VERSION = 'v2';
     const DEFAULT_TTL_MS = 10000;
     const recent = new Map();
     let installTimer = null;
@@ -72,7 +72,8 @@
             window.showSystemNotification?.(
                 title,
                 preview,
-                { tag: 'msg-' + (msg.id || msg.room_id || 'event'), room: msg.room_id }
+                // Preserve the existing room-level grouping/replacement behaviour.
+                { tag: 'msg-' + (msg.room_id || 'event'), room: msg.room_id }
             );
         };
 

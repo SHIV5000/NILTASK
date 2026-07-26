@@ -91,6 +91,29 @@ It currently provides:
 
 The subscription guard now delegates duplicate-topic cleanup and startup coalescing to this manager when available. Existing feature queries and callbacks remain unchanged in this phase.
 
+### On-demand runtime diagnostics
+
+Created `js/core/runtime-diagnostics.js`.
+
+It does not log or poll automatically. In a preview console, developers may call:
+
+```javascript
+NILTASK_runtimeSnapshot()
+NILTASK_printRuntimeSnapshot()
+```
+
+The snapshot records:
+
+- current browser Supabase channel topics;
+- RealtimeManager owners and in-flight operations;
+- Activity panel/open state;
+- loaded containment versions;
+- wrapper markers on critical public functions;
+- known Activity, presence and typing timers;
+- current user, tenant and room identifiers.
+
+This gives repeatable evidence for duplicate channels and wrapper ownership without adding visible UI.
+
 ### Current branch and release state
 
 - Branch: `agent/activity-feed-no-flicker`
@@ -100,9 +123,8 @@ The subscription guard now delegates duplicate-topic cleanup and startup coalesc
 
 ### Next work
 
-1. Verify the notification-row toast/sound boundary in the Vercel preview.
-2. Add a development-only runtime diagnostics view using `NILTASK_RealtimeManager.snapshot()`.
-3. Map and centralize logout/tenant-change cleanup for channels, timers and observers.
-4. Move the scheduled-message and shared-broadcast channel construction directly into RealtimeManager ownership.
-5. Preserve database-backed unread reconciliation as authoritative.
-6. Continue toward a single NotificationService and single-owner Activity controller.
+1. Verify the notification-row toast/sound boundary and runtime snapshot in the Vercel preview.
+2. Map and centralize logout/tenant-change cleanup for channels, timers and observers.
+3. Move the scheduled-message and shared-broadcast channel construction directly into RealtimeManager ownership.
+4. Preserve database-backed unread reconciliation as authoritative.
+5. Continue toward a single NotificationService and single-owner Activity controller.

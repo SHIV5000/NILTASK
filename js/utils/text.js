@@ -37,6 +37,18 @@
         }
     } catch (e) {}
 
+    // Phase 0 containment: before repeated desktop subscription startup, remove
+    // stale scheduled/shared channels so one event cannot retain duplicate handlers.
+    try {
+        if (!document.querySelector('script[data-nfa-subscription-guard]')) {
+            const script = document.createElement('script');
+            script.src = 'js/runtime-subscription-guard.js?v=1';
+            script.defer = true;
+            script.dataset.nfaSubscriptionGuard = '1';
+            document.head.appendChild(script);
+        }
+    } catch (e) {}
+
     function escapeHtml(str) {
         if (str === null || str === undefined) return '';
         return String(str)

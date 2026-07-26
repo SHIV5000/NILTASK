@@ -28,11 +28,11 @@ const requiredPatterns = [
   [/\.overflow-hidden\{[^}]*overflow:hidden/, 'overflow-hidden utility'],
   [/\.items-center\{[^}]*align-items:center/, 'items-center utility'],
   [/\.justify-center\{[^}]*justify-content:center/, 'justify-center utility'],
-  [/\.bg-indigo-600\{[^}]*background-color:/, 'indigo background utility'],
+  [/\.bg-indigo-50\{[^}]*background-color:/, 'indigo background utility'],
   [/\.text-xs\{[^}]*font-size:/, 'text-xs utility'],
   [/\.rounded-xl\{[^}]*border-radius:/, 'rounded-xl utility'],
   [/\.text-\\\[11px\\\]\{[^}]*font-size:11px/, 'arbitrary text size utility'],
-  [/\.md\\:flex/, 'responsive md:flex variant'],
+  [/\.hover\\:bg-gray-100:hover\{[^}]*background-color:/, 'hover background variant'],
 ];
 
 for (const [pattern, label] of requiredPatterns) {

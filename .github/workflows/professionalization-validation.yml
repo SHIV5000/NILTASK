@@ -33,6 +33,9 @@ jobs:
       - name: Test mobile runtime lifecycle
         run: npm run test:mobile-runtime
 
+      - name: Test mobile unread handoff
+        run: npm run test:mobile-unread
+
       - name: Validate PWA manifest and icon assets
         run: npm run validate:pwa-assets
 

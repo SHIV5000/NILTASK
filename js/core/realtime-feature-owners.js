@@ -3,7 +3,7 @@
 
     if (window.NILTASK_RealtimeFeatureOwners) return;
 
-    const VERSION = 'v2';
+    const VERSION = 'v3';
     const OWNERS = Object.freeze({
         shared: 'desktop-shared-broadcast',
         scheduled: 'desktop-scheduled-messages',
@@ -202,6 +202,7 @@
 
     function boot() {
         const current = identity();
+        if (!current.desktop) return true;
         const ready = Boolean(
             current.desktop && client() && manager() && current.userId && current.tenantId &&
             typeof window.startSubscriptions === 'function'

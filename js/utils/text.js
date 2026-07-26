@@ -67,7 +67,7 @@
     try {
         if (!document.querySelector('script[data-nfa-runtime-diagnostics]')) {
             const script = document.createElement('script');
-            script.src = 'js/core/runtime-diagnostics.js?v=4';
+            script.src = 'js/core/runtime-diagnostics.js?v=5';
             script.defer = true;
             script.dataset.nfaRuntimeDiagnostics = '1';
             document.head.appendChild(script);

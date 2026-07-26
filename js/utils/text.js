@@ -20,6 +20,7 @@
     load('script[data-nfa-realtime-feature-owners]', 'js/core/realtime-feature-owners.js?v=5', 'nfaRealtimeFeatureOwners');
     load('script[data-nfa-session-lifecycle]', 'js/core/session-lifecycle.js?v=2', 'nfaSessionLifecycle');
     load('script[data-nfa-runtime-diagnostics]', 'js/core/runtime-diagnostics.js?v=7', 'nfaRuntimeDiagnostics');
+    load('script[data-nfa-mobile-runtime-diagnostics]', 'js/core/mobile-runtime-diagnostics.js?v=1', 'nfaMobileRuntimeDiagnostics');
     load('script[data-nfa-subscription-guard]', 'js/runtime-subscription-guard.js?v=4', 'nfaSubscriptionGuard');
     load('script[data-nfa-notification-presentation]', 'js/notification-presentation-service.js?v=3', 'nfaNotificationPresentation');
 

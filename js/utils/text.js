@@ -39,13 +39,25 @@
 
     // First shared runtime owner for Supabase channels. It provides topic cleanup,
     // owner registration, operation coalescing and a diagnostic snapshot without
-    // yet replacing the legacy feature subscriptions.
+    // yet replacing every legacy feature subscription.
     try {
         if (!document.querySelector('script[data-nfa-realtime-manager]')) {
             const script = document.createElement('script');
             script.src = 'js/core/realtime-manager.js?v=1';
             script.defer = true;
             script.dataset.nfaRealtimeManager = '1';
+            document.head.appendChild(script);
+        }
+    } catch (e) {}
+
+    // Named owners for the three desktop topics that previously leaked or repeated
+    // presentation: shared broadcast, scheduled-message updates and notification rows.
+    try {
+        if (!document.querySelector('script[data-nfa-realtime-feature-owners]')) {
+            const script = document.createElement('script');
+            script.src = 'js/core/realtime-feature-owners.js?v=1';
+            script.defer = true;
+            script.dataset.nfaRealtimeFeatureOwners = '1';
             document.head.appendChild(script);
         }
     } catch (e) {}
@@ -75,12 +87,12 @@
         }
     } catch (e) {}
 
-    // Phase 0 containment: before repeated desktop subscription startup, remove
-    // stale scheduled/shared channels so one event cannot retain duplicate handlers.
+    // Phase 0 migration bridge: coalesce repeated legacy startup, remove stale
+    // copies, then hand the managed topics to RealtimeFeatureOwners.
     try {
         if (!document.querySelector('script[data-nfa-subscription-guard]')) {
             const script = document.createElement('script');
-            script.src = 'js/runtime-subscription-guard.js?v=3';
+            script.src = 'js/runtime-subscription-guard.js?v=4';
             script.defer = true;
             script.dataset.nfaSubscriptionGuard = '1';
             document.head.appendChild(script);

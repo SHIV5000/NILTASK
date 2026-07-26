@@ -3,7 +3,7 @@
 
     if (window.NILTASK_RealtimeFeatureOwners) return;
 
-    const VERSION = 'v1';
+    const VERSION = 'v2';
     const OWNERS = Object.freeze({
         shared: 'desktop-shared-broadcast',
         scheduled: 'desktop-scheduled-messages',
@@ -166,7 +166,7 @@
             const sb = client();
             const rt = manager();
             const current = identity();
-            if (!sb || !rt || !current.userId || !current.tenantId) return false;
+            if (!sb || !rt || !current.userId || !current.tenantId || !current.desktop) return false;
 
             const sharedTopic = 'taskflow-bc-' + current.tenantId;
             await stopAndRemove(OWNERS.shared, [sharedTopic]);
@@ -203,7 +203,7 @@
     function boot() {
         const current = identity();
         const ready = Boolean(
-            client() && manager() && current.userId && current.tenantId &&
+            current.desktop && client() && manager() && current.userId && current.tenantId &&
             typeof window.startSubscriptions === 'function'
         );
         if (ready) {

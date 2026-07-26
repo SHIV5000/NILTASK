@@ -2,8 +2,9 @@
   "name": "noted-for-action",
   "version": "1.0.3",
   "private": true,
-  "description": "Noted For Action \u2014 native shell (Capacitor remote-URL wrapper). The web app itself is served from Vercel; this only builds the Android/iOS apps.",
+  "description": "Noted For Action — native shell (Capacitor remote-URL wrapper). The web app itself is served from Vercel; this only builds the Android/iOS apps.",
   "scripts": {
+    "validate:professionalization": "node scripts/validate-professionalization.mjs",
     "cap:add:android": "cap add android",
     "cap:sync": "cap sync",
     "android:apk": "cap sync android && cd android && ./gradlew assembleRelease",

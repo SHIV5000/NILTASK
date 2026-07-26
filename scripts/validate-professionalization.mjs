@@ -188,9 +188,9 @@ contains(textLoader, "topic.startsWith('mobile-rt-') || topic.startsWith('presen
 contains(textLoader, "restartMode: 'page-reload'", 'Mobile runtime advertises reload-only restart');
 contains(textLoader, 'window.location.reload();', 'Mobile runtime restart reloads the page');
 contains(textLoader, 'window.NILTASK_MOBILE_RUNTIME_VERSION = VERSION;', 'Mobile runtime version marker is exported');
-contains(textLoader, 'js/core/session-lifecycle.js?v=3', 'Bootstrap loads session lifecycle v3');
+contains(textLoader, 'js/core/session-lifecycle.js?v=4', 'Bootstrap loads session lifecycle v4');
 contains(textLoader, 'js/core/mobile-runtime-diagnostics.js?v=2', 'Bootstrap loads mobile diagnostics v2');
-contains(sessionLifecycle, "const VERSION = 'v3';", 'Session lifecycle component version is v3');
+contains(sessionLifecycle, "const VERSION = 'v4';", 'Session lifecycle component version is v4');
 contains(sessionLifecycle, 'await withTimeout(stopMobileRuntime(reason), 1500);', 'Session cleanup stops mobile runtime');
 const mobileStopIndex = sessionLifecycle.indexOf('await withTimeout(stopMobileRuntime(reason), 1500);');
 const realtimeStopIndex = sessionLifecycle.indexOf('await withTimeout(stopRealtimeRuntime(), 1800);');
@@ -199,6 +199,10 @@ check(
   'Mobile runtime stops before general realtime teardown'
 );
 contains(sessionLifecycle, 'mobileRuntime: window.NILTASK_MobileRuntime?.snapshot?.() || null', 'Session snapshot includes mobile lifecycle state');
+contains(sessionLifecycle, "requestRuntimeReload('tenant-change');", 'Tenant changes reload stopped runtime');
+contains(sessionLifecycle, ".finally(() => requestRuntimeReload('user-change'))", 'Account changes reload after cleanup');
+contains(sessionLifecycle, "requestRuntimeReload('signed-in-after-cleanup');", 'Same-page sign-in reloads a stopped runtime');
+contains(sessionLifecycle, 'reloadingForIdentityChange: STATE.reloadingForIdentityChange', 'Session snapshot reports identity reload state');
 
 contains(unreadService, 'STATE.total = STATE.roomTotal + clean(STATE.attention);', 'Unread total remains room plus attention');
 contains(unreadService, 'if (isMobileRuntime()) return;', 'Unread renderer remains passive on mobile');

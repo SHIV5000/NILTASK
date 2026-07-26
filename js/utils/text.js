@@ -54,7 +54,7 @@
     try {
         if (!document.querySelector('script[data-nfa-notification-presentation]')) {
             const script = document.createElement('script');
-            script.src = 'js/notification-presentation-service.js?v=1';
+            script.src = 'js/notification-presentation-service.js?v=2';
             script.defer = true;
             script.dataset.nfaNotificationPresentation = '1';
             document.head.appendChild(script);

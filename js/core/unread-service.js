@@ -3,7 +3,7 @@
 
     if (window.NILTASK_UnreadService) return;
 
-    const VERSION = 'v2';
+    const VERSION = 'v3';
     const STATE = {
         perRoom: {},
         roomTotal: 0,
@@ -40,6 +40,14 @@
         userId: window.currentUser?.id || null,
         tenantId: window.currentTenantId || null,
     });
+
+    function isMobileRuntime() {
+        try {
+            if (typeof window.isMobileView === 'function') return Boolean(window.isMobileView());
+        } catch (e) {}
+        return Boolean(document.getElementById('mobileApp')) || Boolean(window.__mobThemeLock) || window.innerWidth <= 768;
+    }
+
     const snapshot = () => ({
         version: VERSION,
         userId: STATE.userId,
@@ -52,10 +60,11 @@
         inFlight: Boolean(STATE.inFlight),
         pending: STATE.pending,
         installed: STATE.listenersInstalled,
+        passiveMobile: isMobileRuntime(),
     });
 
     function installStyles() {
-        if (document.getElementById('niltask-unread-service-style')) return;
+        if (isMobileRuntime() || document.getElementById('niltask-unread-service-style')) return;
         const style = document.createElement('style');
         style.id = 'niltask-unread-service-style';
         style.textContent = `
@@ -68,6 +77,7 @@
     }
 
     function renderBell(total) {
+        if (isMobileRuntime()) return;
         const count = clean(total);
         window._bellCount = count;
         const button = document.querySelector('.topbar-icon-btn [class*="ti-bell"]')?.closest('.topbar-icon-btn');
@@ -91,7 +101,9 @@
     }
 
     async function renderAppBadge(total) {
-        if (window.IS_NATIVE) return;
+        // Mobile currently owns its badge inside mobile.js. Stay passive until the
+        // dedicated mobile handoff so two renderers never race the OS badge.
+        if (isMobileRuntime() || window.IS_NATIVE) return;
         try {
             const count = clean(total);
             if (count && typeof navigator.setAppBadge === 'function') await navigator.setAppBadge(count);
@@ -100,6 +112,7 @@
     }
 
     function renderRoomBadges() {
+        if (isMobileRuntime()) return;
         const list = document.getElementById('chatsList');
         if (!list) return;
         list.querySelectorAll('.channel-item[data-room]').forEach(row => {
@@ -121,11 +134,13 @@
     }
 
     function scheduleRoomRender() {
+        if (isMobileRuntime()) return;
         clearTimeout(STATE.sidebarRenderTimer);
         STATE.sidebarRenderTimer = setTimeout(renderRoomBadges, 0);
     }
 
     function ensureSidebarObserver() {
+        if (isMobileRuntime()) return false;
         const target = document.getElementById('chatsList');
         if (!target) return false;
         if (STATE.sidebarTarget === target && STATE.sidebarObserver) return true;
@@ -140,11 +155,13 @@
     function publish(reason) {
         STATE.roomTotal = sumRooms(STATE.perRoom);
         STATE.total = STATE.roomTotal + clean(STATE.attention);
-        window.unreadCounts = { ...STATE.perRoom };
-        renderBell(STATE.total);
-        renderAppBadge(STATE.total);
-        ensureSidebarObserver();
-        scheduleRoomRender();
+        if (!isMobileRuntime()) {
+            window.unreadCounts = { ...STATE.perRoom };
+            renderBell(STATE.total);
+            renderAppBadge(STATE.total);
+            ensureSidebarObserver();
+            scheduleRoomRender();
+        }
         try {
             window.dispatchEvent(new CustomEvent('niltask:unread-updated', {
                 detail: { ...snapshot(), reason: reason || 'update' }
@@ -225,6 +242,7 @@
     }
 
     function ownCompatibilityFunctions() {
+        if (isMobileRuntime()) return;
         window._setBellBadge = function () {
             refreshSoon('legacy-set-badge', 80);
             return STATE.total;
@@ -254,17 +272,19 @@
 
     function installListenersOnce() {
         if (STATE.listenersInstalled) return;
-        installStyles();
-        document.addEventListener('click', event => {
-            const row = event.target?.closest?.('.channel-item[data-room]');
-            if (row?.dataset?.room) markRoomRead(row.dataset.room, 'desktop-room-click');
-        }, true);
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') refreshSoon('visibility', 150);
-        });
-        window.addEventListener('online', () => refreshSoon('online', 150));
-        window.addEventListener('niltask:subscriptions-started', () => refreshSoon('subscriptions-started', 300));
         window.addEventListener('niltask:session-cleaned', () => reset('session-cleaned'));
+        if (!isMobileRuntime()) {
+            installStyles();
+            document.addEventListener('click', event => {
+                const row = event.target?.closest?.('.channel-item[data-room]');
+                if (row?.dataset?.room) markRoomRead(row.dataset.room, 'desktop-room-click');
+            }, true);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') refreshSoon('visibility', 150);
+            });
+            window.addEventListener('online', () => refreshSoon('online', 150));
+            window.addEventListener('niltask:subscriptions-started', () => refreshSoon('subscriptions-started', 300));
+        }
         STATE.listenersInstalled = true;
         window.NILTASK_UNREAD_SERVICE_VERSION = VERSION;
     }
@@ -272,6 +292,11 @@
     function boot() {
         if (STATE.disposed) return true;
         installListenersOnce();
+        if (isMobileRuntime()) {
+            // No automatic query, compatibility override, DOM observer or OS badge
+            // on mobile until mobile.js is migrated to consume this service directly.
+            return document.readyState === 'complete';
+        }
         ownCompatibilityFunctions();
         ensureSidebarObserver();
         const current = identity();

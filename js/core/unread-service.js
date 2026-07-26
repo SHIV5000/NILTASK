@@ -20,11 +20,19 @@
         sidebarTarget: null,
         sidebarRenderTimer: null,
         listenersInstalled: false,
-        mobileHandoffInstalled: false,
+        disposed: false,
+        mobileHandoff: false,
+        mobileAdaptersInstalled: false,
+        mobileEventConsumedAt: null,
+        mobileRefreshCount: 0,
+        mobileCoalescedCalls: 0,
         mobileRoomObservations: 0,
         mobileAttentionObservations: 0,
         mobileLastReason: null,
-        disposed: false,
+    };
+    const QUERY = {
+        computeRoomUnread: null,
+        unreadCount: null,
     };
 
     const clean = value => {
@@ -52,6 +60,18 @@
         return Boolean(document.getElementById('mobileApp')) || Boolean(window.__mobThemeLock) || window.innerWidth <= 768;
     }
 
+    function captureQueries() {
+        const compute = window.NFA_computeRoomUnread;
+        const attention = window.NFA_unreadCount;
+        if (!QUERY.computeRoomUnread && typeof compute === 'function' && !compute.__nfaUnreadServiceMobileAdapter) {
+            QUERY.computeRoomUnread = compute;
+        }
+        if (!QUERY.unreadCount && typeof attention === 'function' && !attention.__nfaUnreadServiceMobileAdapter) {
+            QUERY.unreadCount = attention;
+        }
+        return Boolean(QUERY.computeRoomUnread && QUERY.unreadCount);
+    }
+
     const snapshot = () => ({
         version: VERSION,
         userId: STATE.userId,
@@ -64,14 +84,23 @@
         inFlight: Boolean(STATE.inFlight),
         pending: STATE.pending,
         installed: STATE.listenersInstalled,
-        passiveMobile: isMobileRuntime() && !STATE.mobileHandoffInstalled,
+        passiveMobile: isMobileRuntime() && !STATE.mobileHandoff,
+        mobileHandoff: STATE.mobileHandoff,
+        mobileHandoffInstalled: STATE.mobileAdaptersInstalled,
+        mobileAdaptersInstalled: STATE.mobileAdaptersInstalled,
         mobileRenderPassive: isMobileRuntime(),
-        mobileHandoffInstalled: STATE.mobileHandoffInstalled,
+        mobileEventConsumedAt: STATE.mobileEventConsumedAt,
+        mobileRefreshCount: STATE.mobileRefreshCount,
+        mobileCoalescedCalls: STATE.mobileCoalescedCalls,
         mobileRoomObservations: STATE.mobileRoomObservations,
         mobileAttentionObservations: STATE.mobileAttentionObservations,
         mobileLastReason: STATE.mobileLastReason,
-        mobileUsesExistingQueries: STATE.mobileHandoffInstalled,
+        mobileUsesExistingQueries: false,
+        mobileUsesSharedRefresh: STATE.mobileHandoff,
         mobileOwnPoll: false,
+        mobileOwnsPolling: false,
+        mobileOwnsRendering: false,
+        mobileOwnsAppBadge: false,
     });
 
     function installStyles() {
@@ -112,8 +141,8 @@
     }
 
     async function renderAppBadge(total) {
-        // Mobile rendering remains owned by mobile.js. The handoff observes the same
-        // query results but never writes the OS badge, so there is still one renderer.
+        // Mobile keeps its existing OS-badge renderer during this handoff. The shared
+        // service owns the query result only, so there is still exactly one writer.
         if (isMobileRuntime() || window.IS_NATIVE) return;
         try {
             const count = clean(total);
@@ -190,96 +219,24 @@
         STATE.tenantId = null;
         STATE.refreshedAt = null;
         STATE.pending = false;
-        STATE.mobileLastReason = reason || 'reset';
         return publish(reason || 'reset');
     }
 
-    function acceptIdentity(userId, tenantId) {
-        const current = identity();
-        if (userId && current.userId && userId !== current.userId) return false;
-        if (tenantId && current.tenantId && tenantId !== current.tenantId) return false;
-        STATE.userId = userId || current.userId || STATE.userId;
-        STATE.tenantId = tenantId || current.tenantId || STATE.tenantId;
-        return true;
-    }
-
-    function ingestMobileRooms(result, opts, reason) {
-        if (!isMobileRuntime()) return snapshot();
-        const userId = opts?.uid || null;
-        const tenantId = opts?.tid || null;
-        if (!acceptIdentity(userId, tenantId)) return snapshot();
-        STATE.perRoom = normalize(result?.perRoom);
-        STATE.refreshedAt = new Date().toISOString();
-        STATE.mobileRoomObservations += 1;
-        STATE.mobileLastReason = reason || 'mobile-room-query';
-        return publish(STATE.mobileLastReason);
-    }
-
-    function ingestMobileAttention(value, userId, reason) {
-        if (!isMobileRuntime()) return snapshot();
-        if (!acceptIdentity(userId || null, window.currentTenantId || null)) return snapshot();
-        STATE.attention = clean(value);
-        STATE.refreshedAt = new Date().toISOString();
-        STATE.mobileAttentionObservations += 1;
-        STATE.mobileLastReason = reason || 'mobile-attention-query';
-        return publish(STATE.mobileLastReason);
-    }
-
-    function installMobileHandoff() {
-        if (!isMobileRuntime()) return false;
-        const roomHelper = window.NFA_computeRoomUnread;
-        const attentionHelper = window.NFA_unreadCount;
-        if (typeof roomHelper !== 'function' || typeof attentionHelper !== 'function') return false;
-
-        if (roomHelper.__nfaMobileUnreadHandoff !== true) {
-            const wrappedRooms = async function (...args) {
-                const result = await roomHelper.apply(this, args);
-                try { ingestMobileRooms(result, args[1], 'mobile-existing-room-query'); } catch (e) {}
-                return result;
-            };
-            wrappedRooms.__nfaMobileUnreadHandoff = true;
-            wrappedRooms.__nfaOriginal = roomHelper;
-            window.NFA_computeRoomUnread = wrappedRooms;
-        }
-
-        if (attentionHelper.__nfaMobileUnreadHandoff !== true) {
-            const wrappedAttention = async function (...args) {
-                const result = await attentionHelper.apply(this, args);
-                try { ingestMobileAttention(result, args[1], 'mobile-existing-attention-query'); } catch (e) {}
-                return result;
-            };
-            wrappedAttention.__nfaMobileUnreadHandoff = true;
-            wrappedAttention.__nfaOriginal = attentionHelper;
-            window.NFA_unreadCount = wrappedAttention;
-        }
-
-        STATE.mobileHandoffInstalled =
-            window.NFA_computeRoomUnread?.__nfaMobileUnreadHandoff === true &&
-            window.NFA_unreadCount?.__nfaMobileUnreadHandoff === true;
-        if (STATE.mobileHandoffInstalled && Object.keys(window.unreadCounts || {}).length) {
-            STATE.perRoom = normalize(window.unreadCounts);
-            STATE.mobileLastReason = 'mobile-window-seed';
-            publish(STATE.mobileLastReason);
-        }
-        return STATE.mobileHandoffInstalled;
-    }
-
     async function refresh(reason) {
-        if (STATE.disposed || isMobileRuntime()) return snapshot();
+        if (STATE.disposed) return snapshot();
         if (STATE.inFlight) {
-            STATE.pending = true;
+            if (STATE.mobileHandoff) STATE.mobileCoalescedCalls += 1;
+            else STATE.pending = true;
             return STATE.inFlight;
         }
         const sb = window.sb;
         const current = identity();
-        if (!sb || !current.userId || !current.tenantId ||
-            typeof window.NFA_computeRoomUnread !== 'function' ||
-            typeof window.NFA_unreadCount !== 'function') return snapshot();
+        if (!sb || !current.userId || !current.tenantId || !captureQueries()) return snapshot();
 
         STATE.inFlight = (async () => {
             const [rooms, attention] = await Promise.all([
-                window.NFA_computeRoomUnread(sb, { uid:current.userId, tid:current.tenantId, window:500 }),
-                window.NFA_unreadCount(sb, current.userId),
+                QUERY.computeRoomUnread(sb, { uid:current.userId, tid:current.tenantId, window:500 }),
+                QUERY.unreadCount(sb, current.userId),
             ]);
             const latest = identity();
             if (latest.userId !== current.userId || latest.tenantId !== current.tenantId) return snapshot();
@@ -288,6 +245,7 @@
             STATE.perRoom = normalize(rooms?.perRoom);
             STATE.attention = clean(attention);
             STATE.refreshedAt = new Date().toISOString();
+            if (STATE.mobileHandoff) STATE.mobileRefreshCount += 1;
             return publish(reason || 'refresh');
         })().catch(error => {
             try { window.logger?.logError?.(error, { feature:'unread-service', reason }); } catch (e) {}
@@ -303,7 +261,6 @@
     }
 
     function refreshSoon(reason, delay) {
-        if (isMobileRuntime()) return snapshot();
         clearTimeout(STATE.refreshTimer);
         STATE.refreshTimer = setTimeout(() => refresh(reason || 'scheduled'), delay == null ? 250 : delay);
     }
@@ -322,6 +279,49 @@
         publish(reason || 'room-opened');
         refreshSoon('room-read-reconcile', 1200);
         return snapshot();
+    }
+
+    async function mobileComputeAdapter() {
+        STATE.mobileRoomObservations += 1;
+        STATE.mobileLastReason = 'mobile-room-adapter';
+        const result = await refresh(STATE.mobileLastReason);
+        return { perRoom:{ ...result.perRoom }, total:result.roomTotal };
+    }
+
+    async function mobileAttentionAdapter() {
+        STATE.mobileAttentionObservations += 1;
+        STATE.mobileLastReason = 'mobile-attention-adapter';
+        const result = await refresh(STATE.mobileLastReason);
+        return result.attention;
+    }
+
+    mobileComputeAdapter.__nfaUnreadServiceMobileAdapter = true;
+    mobileAttentionAdapter.__nfaUnreadServiceMobileAdapter = true;
+
+    function consumeMobileUpdate(event) {
+        if (!STATE.mobileHandoff || !event?.detail) return;
+        STATE.mobileEventConsumedAt = new Date().toISOString();
+        // The module-local mobile renderer receives the same snapshot through the two
+        // compatibility adapters. Keep a public read-only copy for diagnostics and
+        // future direct rendering without writing window.unreadCounts prematurely.
+        window.NILTASK_MobileUnreadState = Object.freeze({ ...event.detail, perRoom:{ ...(event.detail.perRoom || {}) } });
+    }
+
+    function activateMobileHandoff() {
+        if (!isMobileRuntime() || STATE.disposed || !captureQueries()) return false;
+        if (!STATE.mobileAdaptersInstalled) {
+            window.NFA_computeRoomUnread = mobileComputeAdapter;
+            window.NFA_unreadCount = mobileAttentionAdapter;
+            STATE.mobileAdaptersInstalled = true;
+        }
+        STATE.mobileHandoff = true;
+        STATE.mobileLastReason = 'mobile-handoff-ready';
+        try {
+            window.dispatchEvent(new CustomEvent('niltask:mobile-unread-handoff-ready', {
+                detail: { version:VERSION, pollingOwner:'mobile-fallback', renderingOwner:'mobile.js' }
+            }));
+        } catch (e) {}
+        return true;
     }
 
     function ownCompatibilityFunctions() {
@@ -356,6 +356,7 @@
     function installListenersOnce() {
         if (STATE.listenersInstalled) return;
         window.addEventListener('niltask:session-cleaned', () => reset('session-cleaned'));
+        window.addEventListener('niltask:unread-updated', consumeMobileUpdate);
         if (!isMobileRuntime()) {
             installStyles();
             document.addEventListener('click', event => {
@@ -376,9 +377,10 @@
         if (STATE.disposed) return true;
         installListenersOnce();
         if (isMobileRuntime()) {
-            // Observe the query helpers already called by mobile.js. This creates no
-            // timer, database request, DOM renderer or OS-badge writer of its own.
-            return installMobileHandoff();
+            // Query ownership transfers to UnreadService, but cadence, DOM rendering,
+            // open-room zeroing, live provisional increments and OS badge writes stay
+            // in mobile.js. Therefore no automatic query or second poll is introduced.
+            return activateMobileHandoff() && document.readyState === 'complete';
         }
         ownCompatibilityFunctions();
         ensureSidebarObserver();
@@ -397,6 +399,12 @@
         try { STATE.sidebarObserver?.disconnect(); } catch (e) {}
         STATE.sidebarObserver = null;
         STATE.sidebarTarget = null;
+        if (STATE.mobileAdaptersInstalled) {
+            if (QUERY.computeRoomUnread) window.NFA_computeRoomUnread = QUERY.computeRoomUnread;
+            if (QUERY.unreadCount) window.NFA_unreadCount = QUERY.unreadCount;
+        }
+        STATE.mobileAdaptersInstalled = false;
+        STATE.mobileHandoff = false;
     }
 
     window.NILTASK_UnreadService = Object.freeze({
@@ -405,12 +413,10 @@
         refreshSoon,
         markRoomRead,
         adoptWindow,
-        ingestMobileRooms,
-        ingestMobileAttention,
-        installMobileHandoff,
         reset,
         render: () => publish('manual-render'),
         snapshot,
+        activateMobileHandoff,
         dispose,
     });
 

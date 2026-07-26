@@ -3,7 +3,7 @@
 
     if (window.NILTASK_SessionLifecycle) return;
 
-    const VERSION = 'v2';
+    const VERSION = 'v3';
     const STATE = {
         cleanupPromise: null,
         installTimer: null,
@@ -52,6 +52,12 @@
         try { window._activityFeedOpen = false; } catch (e) {}
         try { document.getElementById('activityFeedPanel')?.remove(); } catch (e) {}
         try { document.querySelectorAll('.nfa-af-snapshot').forEach(node => node.remove()); } catch (e) {}
+    }
+
+    async function stopMobileRuntime(reason) {
+        const runtime = window.NILTASK_MobileRuntime;
+        if (!runtime?.stop) return false;
+        try { return await runtime.stop(reason); } catch (e) { return false; }
     }
 
     async function stopRealtimeRuntime() {
@@ -198,6 +204,10 @@
         STATE.cleanupPromise = (async () => {
             try {
                 closeActivityRuntime();
+                // Stop mobile-owned timers/listeners/observers before removing channels.
+                // This blocks the mobile CLOSED callback from scheduling a reconnect
+                // while logout, account change or tenant change is already underway.
+                await withTimeout(stopMobileRuntime(reason), 1500);
                 if (settings.detachPush) await withTimeout(detachPushIdentity(), 1500);
                 await withTimeout(stopRealtimeRuntime(), 1800);
                 if (settings.clearSwAuth) await withTimeout(clearServiceWorkerAuth(), 1300);
@@ -335,7 +345,8 @@
                 cleanupInFlight: Boolean(STATE.cleanupPromise),
                 logoutInstalled: STATE.logoutInstalled,
                 tenantLoaderInstalled: STATE.tenantLoaderInstalled,
-                authBoundaryInstalled: Boolean(STATE.authSubscription)
+                authBoundaryInstalled: Boolean(STATE.authSubscription),
+                mobileRuntime: window.NILTASK_MobileRuntime?.snapshot?.() || null
             };
         }
     });

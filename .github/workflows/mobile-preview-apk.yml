@@ -2,6 +2,14 @@ name: Build Mobile Preview APK
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/mobile-preview-apk.yml'
+      - 'capacitor.config.json'
+      - 'package.json'
+      - 'www/**'
   push:
     branches:
       - agent/activity-feed-no-flicker

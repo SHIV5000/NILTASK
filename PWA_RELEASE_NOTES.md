@@ -12,7 +12,7 @@ Defined in `sw.js`.
 
 The professionalization branch loads runtime services through query-versioned URLs. Cache matching is query-sensitive, so an offline cache containing only an unversioned path cannot satisfy the exact bootstrap request.
 
-The v210 app shell coordinates the explicit mobile lifecycle and zero-poll unread handoff through:
+The v210 app shell coordinates the explicit mobile lifecycle and shared unread-query handoff through:
 
 ```text
 /js/core/session-lifecycle.js?v=4
@@ -22,16 +22,16 @@ The v210 app shell coordinates the explicit mobile lifecycle and zero-poll unrea
 
 Session lifecycle v4 stops the explicit mobile runtime before general realtime teardown and reloads after tenant/account changes or a later sign-in on a stopped page.
 
-Unread service v4 installs a mobile handoff around the shared helpers already called by `mobile.js`:
+Unread service v4 captures the authoritative room and attention helpers before installing two mobile compatibility adapters:
 
 ```text
 NFA_computeRoomUnread
 NFA_unreadCount
 ```
 
-It observes those existing results, maintains a shared diagnostic snapshot and dispatches the normal unread update event. It does **not** start another database query, fallback poll, DOM renderer or OS-badge writer on mobile. `mobile.js` remains the sole mobile poll and badge renderer.
+The existing mobile fallback/realtime paths still call those two names at their existing cadence. The adapters coalesce overlapping calls through one `UnreadService.refresh()` operation, which executes one room query and one attention query. It does **not** create another timer, fallback poll, DOM renderer or OS-badge writer. `mobile.js` remains the sole owner of cadence, live provisional increments, open-room zeroing, surgical row rendering and the mobile app badge.
 
-Mobile diagnostics v3 reports lifecycle resource ownership plus unread handoff installation, query reuse, observation counts, render passivity and the no-own-poll invariant.
+Mobile diagnostics v3 reports shared-refresh ownership, adapter/coalescing counts, unread-event consumption, render passivity and the no-own-poll/no-own-badge invariants.
 
 The existing reaction safeguard remains protected offline through:
 
@@ -65,11 +65,12 @@ Guard v7 removes the duplicate desktop `mpgs-reactions-v1-<tenant>` channel only
 5. Old `taskflow-*` caches are deleted, while `share-inbox` is preserved.
 6. `controllerchange` reloads the page once so the new HTML/JS runtime is used.
 7. JS/CSS requests remain network-first when online and cache-fallback when offline.
-8. Mobile unread queries continue through the existing mobile realtime/fallback path only.
-9. UnreadService observes the returned room and attention counts without issuing another query.
-10. MobileRuntime stops before shared channel teardown during logout/account/tenant cleanup.
-11. A later sign-in reloads rather than resurrecting stale module-local channels.
-12. On desktop, guard v7 retires the legacy reaction channel after both replacements join.
+8. Mobile unread cadence remains the existing mobile realtime/fallback cadence only.
+9. The paired mobile compatibility calls coalesce through one shared query operation.
+10. The shared service dispatches `niltask:unread-updated` but does not replace the live mobile count floor or mobile renderer.
+11. MobileRuntime stops before shared channel teardown during logout/account/tenant cleanup.
+12. A later sign-in reloads rather than resurrecting stale module-local channels.
+13. On desktop, guard v7 retires the legacy reaction channel after both replacements join.
 
 ## Smoke checks
 
@@ -78,12 +79,14 @@ Guard v7 removes the duplicate desktop `mpgs-reactions-v1-<tenant>` channel only
 - Confirm the exact v4/v3/v7 query-versioned runtime files exist in the cache.
 - Run `NILTASK_printMobileRuntimeSnapshot()` on mobile.
 - Confirm `acceptance.sharedUnreadHandoffInstalled` is `true`.
-- Confirm `acceptance.sharedUnreadUsesExistingQueries` is `true`.
+- Confirm `acceptance.sharedUnreadUsesOneRefresh` is `true`.
+- Confirm `acceptance.sharedUnreadBypassesIndependentQueries` is `true`.
 - Confirm `acceptance.sharedUnreadHasNoOwnPoll` is `true`.
-- Confirm `acceptance.sharedUnreadRenderPassive` is `true`.
-- Trigger the existing mobile unread fallback/realtime path and confirm room/attention observation counts advance.
+- Confirm `acceptance.sharedUnreadHasNoOwnRenderer` is `true`.
+- Confirm `acceptance.sharedUnreadHasNoOwnAppBadge` is `true`.
+- Trigger the existing mobile unread fallback/realtime path and confirm adapter calls advance while `refreshCount` advances once for a paired call and `coalescedCalls` advances.
 - Confirm visible room badges, bell and OS badge remain correct and change only once.
-- Confirm no extra unread requests appear beyond the requests already made by `mobile.js`.
+- Confirm no extra unread requests appear beyond one room query plus one attention query for each existing mobile refresh trigger.
 - Sign out and sign in again; confirm one controlled reload and no prior-user unread callback.
 - Reload while offline after one successful online load.
 - Confirm `share-inbox` survives activation and no controller-change reload loop occurs.

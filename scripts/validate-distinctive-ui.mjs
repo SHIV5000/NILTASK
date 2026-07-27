@@ -84,7 +84,7 @@ for (const marker of [
 
 for (const marker of [
   'createTask',
-  'renderTasks'
+  'loadTasks'
 ]) requireText(tasks, marker, 'task runtime');
 
 for (const marker of [

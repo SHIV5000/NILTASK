@@ -1,1 +1,35 @@
-{}
+{
+  "name": "noted-for-action",
+  "version": "1.0.3",
+  "private": true,
+  "description": "Noted For Action — native shell (Capacitor remote-URL wrapper). The web app itself is served from Vercel; this only builds the Android/iOS apps.",
+  "scripts": {
+    "validate:professionalization": "node scripts/validate-professionalization.mjs",
+    "test:mobile-runtime": "node scripts/test-mobile-runtime-lifecycle.mjs",
+    "test:mobile-unread": "node scripts/test-mobile-unread-handoff.mjs",
+    "validate:chat-parity": "node scripts/validate-chat-parity.mjs",
+    "test:chat-parity": "node scripts/test-chat-parity-service.mjs",
+    "validate:mobile-preview": "node scripts/validate-mobile-preview-apk.mjs",
+    "validate:pwa-assets": "node scripts/validate-pwa-assets.mjs",
+    "validate:distinctive-ui": "node scripts/validate-distinctive-ui.mjs",
+    "build:tailwind": "npx @tailwindcss/cli -i ./css/tailwind.input.css -o ./css/tailwind.generated.css --minify",
+    "validate:tailwind": "npm run build:tailwind && node scripts/validate-tailwind-build.mjs",
+    "cap:add:android": "cap add android",
+    "cap:sync": "cap sync",
+    "android:apk": "cap sync android && cd android && ./gradlew assembleRelease",
+    "android:apk:debug": "cap sync android && cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/app": "^6.0.1",
+    "@capacitor/cli": "^6.1.2",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/push-notifications": "^6.0.2",
+    "@capacitor/splash-screen": "^6.0.2",
+    "@capacitor/status-bar": "^6.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.0",
+    "tailwindcss": "4.3.0"
+  }
+}

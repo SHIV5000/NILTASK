@@ -3,7 +3,7 @@
 
     if (window.NILTASK_ChatParity) return;
 
-    const VERSION = 'v1';
+    const VERSION = 'v2';
     const OWNER = 'cross-platform-chat-parity';
     const INSTALL_LIMIT = 300;
     const TYPING_TTL = 3200;
@@ -91,20 +91,18 @@
             const button = app.querySelector(selector);
             if (button && button.offsetParent !== null) return button.dataset.room || null;
         }
-        const fallback = app.querySelector(selectors.join(','));
-        return fallback?.dataset?.room || null;
+        return app.querySelector(selectors.join(','))?.dataset?.room || null;
     }
 
     function activeRoom() {
         return isMobile() ? activeMobileRoom() : (window.currentRoom || null);
     }
 
-    function typingTarget(eventTarget) {
-        if (!eventTarget) return false;
-        if (eventTarget.closest?.('.m-ce')) return true;
-        if (window.quillEditor?.root && eventTarget === window.quillEditor.root) return true;
-        if (eventTarget.closest?.('.ql-editor') && eventTarget.closest?.('#messageInput,#editor,#composerArea,.chat-area')) return true;
-        return false;
+    function typingTarget(target) {
+        if (!target) return false;
+        if (target.closest?.('.m-ce')) return true;
+        if (window.quillEditor?.root && target === window.quillEditor.root) return true;
+        return Boolean(target.closest?.('.ql-editor'));
     }
 
     function typingBar() {
@@ -187,13 +185,11 @@
     }
 
     function onInput(event) {
-        if (STATE.disposed || !typingTarget(event.target)) return;
-        sendTyping(true);
+        if (!STATE.disposed && typingTarget(event.target)) sendTyping(true);
     }
 
     function onFocusOut(event) {
-        if (STATE.disposed || !typingTarget(event.target)) return;
-        sendTyping(false);
+        if (!STATE.disposed && typingTarget(event.target)) sendTyping(false);
     }
 
     function mobileReactionKey() {
@@ -226,12 +222,7 @@
             const reaction = normalizedReaction(raw);
             if (!reaction.value) continue;
             const key = `${reaction.type}|${reaction.value}`;
-            const item = grouped.get(key) || {
-                type: reaction.type,
-                value: reaction.value,
-                count: 0,
-                mine: false
-            };
+            const item = grouped.get(key) || { type:reaction.type, value:reaction.value, count:0, mine:false };
             item.count += reaction.count || 1;
             if (reaction.user_id === STATE.userId) item.mine = true;
             grouped.set(key, item);
@@ -254,8 +245,8 @@
         const html = mobileChipsHtml(messageId, list);
         const existing = row.querySelector('.m-chips');
         if (existing) {
-            if (html) existing.outerHTML = html;
-            else existing.remove();
+            if (html && existing.outerHTML !== html) existing.outerHTML = html;
+            else if (!html) existing.remove();
         } else if (html) {
             const text = row.querySelector('.m-btext');
             if (text) text.insertAdjacentHTML('afterend', html);
@@ -268,29 +259,23 @@
         const groups = new Map();
         for (const raw of list || []) {
             const reaction = normalizedReaction(raw);
-            const item = groups.get(reaction.value) || {
-                value: reaction.value,
-                type: reaction.type,
-                count: 0,
-                mine: false
-            };
+            const item = groups.get(reaction.value) || { value:reaction.value, type:reaction.type, count:0, mine:false };
             item.count += reaction.count || 1;
             if (reaction.user_id === STATE.userId) item.mine = true;
             groups.set(reaction.value, item);
         }
+        const colorClasses = {
+            'Thank You':'bg-green-50 text-green-700 border-green-200',
+            'Noted':'bg-blue-50 text-blue-700 border-blue-200',
+            'Copied':'bg-purple-50 text-purple-700 border-purple-200',
+            'Yes Sir':'bg-orange-50 text-orange-700 border-orange-200',
+            'Yes Madam':'bg-pink-50 text-pink-700 border-pink-200'
+        };
         return Array.from(groups.values()).map(item => {
             if (item.type === 'emoji') {
-                const mineClass = item.mine ? ' mine' : '';
                 const click = item.mine ? ` onclick="window.applyReaction('${attr(messageId)}','${attr(item.value)}','emoji')"` : '';
-                return `<button class="e-chip active${mineClass}" data-emoji="${attr(item.value)}"${click} style="${item.mine ? 'cursor:pointer;' : 'cursor:default;'}">${esc(item.value)} <span class="e-cnt">${item.count}</span>${item.mine ? '<span class="chip-remove">✕</span>' : ''}</button>`;
+                return `<button class="e-chip active${item.mine ? ' mine' : ''}" data-emoji="${attr(item.value)}"${click} style="${item.mine ? 'cursor:pointer;' : 'cursor:default;'}">${esc(item.value)} <span class="e-cnt">${item.count}</span>${item.mine ? '<span class="chip-remove">✕</span>' : ''}</button>`;
             }
-            const colorClasses = {
-                'Thank You':'bg-green-50 text-green-700 border-green-200',
-                'Noted':'bg-blue-50 text-blue-700 border-blue-200',
-                'Copied':'bg-purple-50 text-purple-700 border-purple-200',
-                'Yes Sir':'bg-orange-50 text-orange-700 border-orange-200',
-                'Yes Madam':'bg-pink-50 text-pink-700 border-pink-200'
-            };
             const classes = colorClasses[item.value] || 'bg-blue-50 text-blue-700 border-blue-200';
             const click = item.mine ? ` onclick="window.applyReaction('${attr(messageId)}','${attr(item.value)}','tag')"` : '';
             return `<span class="${classes}${item.mine ? ' mine' : ''} px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ml-1" data-tag="${attr(item.value)}"${click} style="${item.mine ? 'cursor:pointer;' : 'cursor:default;'}">${esc(item.value)}${item.mine ? '<span class="chip-remove">✕</span>' : ''}</span>`;
@@ -321,7 +306,7 @@
         const shell = document.getElementById('chatShellContainer');
         if (!shell) return;
         const grouped = rootReplies();
-        let decorated = 0;
+        let changed = 0;
         for (const [parentId, replies] of grouped.entries()) {
             const wrap = document.getElementById(`rw-${parentId}`);
             if (!wrap) continue;
@@ -332,19 +317,23 @@
                 row.id = `row-${reply.id}`;
                 row.dataset.replyId = reply.id;
                 const body = row.querySelector('.reply-body') || row;
-                let footer = row.querySelector(`#footer-${CSS.escape(String(reply.id))}`);
-                if (!footer) {
+                let footer = document.getElementById(`footer-${reply.id}`);
+                if (!footer || !row.contains(footer)) {
                     footer = document.createElement('div');
                     footer.className = 'b-footer reply-reaction-footer';
                     footer.id = `footer-${reply.id}`;
                     body.appendChild(footer);
+                    changed += 1;
                 }
                 const list = window.reactionsCache?.[reply.id] || [];
-                footer.innerHTML = `${desktopReactionHtml(reply.id, list)}<div class="relative inline-block group/reaction"><button class="e-add" title="Add reaction" onclick="window._showReactionPicker('${attr(reply.id)}', this)"><i class="ti ti-mood-smile"></i></button></div>`;
-                decorated += 1;
+                const desired = `${desktopReactionHtml(reply.id, list)}<div class="relative inline-block group/reaction"><button class="e-add" title="Add reaction" onclick="window._showReactionPicker('${attr(reply.id)}', this)"><i class="ti ti-mood-smile"></i></button></div>`;
+                if (footer.innerHTML !== desired) {
+                    footer.innerHTML = desired;
+                    changed += 1;
+                }
             });
         }
-        STATE.replyRowsDecorated += decorated;
+        STATE.replyRowsDecorated += changed;
     }
 
     async function fetchReactionMap(ids) {
@@ -440,11 +429,7 @@
         const html = cacheableAreaHtml(area, context);
         if (!html) return;
         try {
-            localStorage.setItem(offlineCacheKey(context), JSON.stringify({
-                html,
-                savedAt: Date.now(),
-                room: context.room
-            }));
+            localStorage.setItem(offlineCacheKey(context), JSON.stringify({ html, savedAt:Date.now(), room:context.room }));
             STATE.offlineSaves += 1;
         } catch (e) {}
     }
@@ -465,8 +450,7 @@
 
     function processMobileAreas() {
         if (!isMobile()) return;
-        const areas = document.querySelectorAll('#mMsgArea,#mDMArea,#mThreadArea');
-        areas.forEach(area => {
+        document.querySelectorAll('#mMsgArea,#mDMArea,#mThreadArea').forEach(area => {
             if (!navigator.onLine) restoreMobileArea(area);
             if (area.querySelector('.m-bubble-row')) saveMobileArea(area);
         });
@@ -485,13 +469,13 @@
     function installObservers() {
         const mobileApp = document.getElementById('mobileApp');
         if (mobileApp && !STATE.mobileObserver) {
-            STATE.mobileObserver = new MutationObserver(() => scheduleMobileCacheSave());
+            STATE.mobileObserver = new MutationObserver(scheduleMobileCacheSave);
             STATE.mobileObserver.observe(mobileApp, { childList:true, subtree:true });
             processMobileAreas();
         }
         const shell = document.getElementById('chatShellContainer');
         if (shell && !STATE.desktopObserver) {
-            STATE.desktopObserver = new MutationObserver(() => scheduleDesktopDecoration());
+            STATE.desktopObserver = new MutationObserver(scheduleDesktopDecoration);
             STATE.desktopObserver.observe(shell, { childList:true, subtree:true });
             decorateDesktopReplies();
         }
@@ -504,9 +488,8 @@
         if (manager?.stopOwner) {
             try { await manager.stopOwner(OWNER); } catch (e) {}
         } else if (STATE.channel) {
-            try { await window.sb?.removeChannel?.(STATE.channel); } catch (e) {
-                try { await STATE.channel.unsubscribe?.(); } catch (e2) {}
-            }
+            try { await window.sb?.removeChannel?.(STATE.channel); }
+            catch (e) { try { await STATE.channel.unsubscribe?.(); } catch (e2) {} }
         }
         STATE.channel = null;
         STATE.channelStatus = null;
@@ -533,8 +516,7 @@
         const channel = window.sb.channel(STATE.topic, { config:{ broadcast:{ self:false } } })
             .on('broadcast', { event:'typing' }, event => receiveTyping(event?.payload))
             .on('postgres_changes', {
-                event:'INSERT', schema:'public', table:'reactions',
-                filter:`tenant_id=eq.${STATE.tenantId}`
+                event:'INSERT', schema:'public', table:'reactions', filter:`tenant_id=eq.${STATE.tenantId}`
             }, event => queueReactionSync(event?.new?.message_id))
             .on('postgres_changes', {
                 event:'DELETE', schema:'public', table:'reactions'

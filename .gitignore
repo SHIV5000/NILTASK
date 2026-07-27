@@ -6,3 +6,4 @@ ios/App/build/
 ios/App/Pods/
 .DS_Store
 *.log
+css/tailwind.generated.css

@@ -1,10 +1,12 @@
 // js/utils/logger.js — self-hosted logger: localStorage buffer + Supabase sync
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../shared.js';
 
-const MAX_LOCAL   = 1000;  // localStorage ring-buffer size
-const BATCH_LIMIT = 10;    // flush info/debug after 10 entries (was 50)
-const FLUSH_MS    = 15000; // also flush every 15s (was 30s)
-const STORAGE_KEY = 'niltask_logs';
+const MAX_LOCAL       = 1000;  // localStorage ring-buffer size
+const BATCH_LIMIT     = 30;    // batch routine info/debug rows before flushing
+const FLUSH_MS        = 60000; // routine background flush every 60 seconds
+const DEDUPE_MS       = 30000; // suppress identical warn/error rows for 30 seconds
+const RT_SAMPLE_MS    = 60000; // one healthy lifecycle status per channel/minute
+const STORAGE_KEY     = 'niltask_logs';
 
 // Unique per page-load — groups all logs from one browser session
 const SESSION_ID = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
@@ -20,8 +22,9 @@ class Logger {
         this._pending   = [];
         this._timer     = null;
         this._inited    = false;
-        this._ip        = null;              // filled once at init (best-effort)
         this._meta      = this._deviceMeta();
+        this._recentCritical = new Map();    // repeated warn/error suppression
+        this._recentRtHealthy = new Map();   // healthy realtime lifecycle sampling
     }
 
     // ── Parse device / OS / browser from the user-agent (best-effort) ──────
@@ -74,25 +77,47 @@ class Logger {
         // Periodic flush for long-running sessions
         this._timer = setInterval(() => this.flush(), FLUSH_MS);
 
-        // Best-effort public IP (client can't read it directly). Non-fatal: if the
-        // request is blocked (offline / CSP / ad-blocker) we simply log without it.
-        // Then emit ONE session-metadata row so every session has a device/os/ip
-        // record to join against — keeps per-row payloads small.
-        (async () => {
-            try {
-                const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
-                if (r.ok) this._ip = (await r.json())?.ip || null;
-            } catch { /* blocked — carry on without IP */ }
-            this.info('SESSION', 'session start', {
-                ...this._meta, ip: this._ip, ver: window.APP_VER || '?',
-                ua: (navigator.userAgent || '').slice(0, 200),
-            });
-            this.flush();
-        })();
+        // Emit one lightweight session-metadata row. Public IP lookup was removed:
+        // browser-side IP services are unreliable under CORS, CSP and ad blockers,
+        // and were creating avoidable console noise. Capture IP server-side only if
+        // it is genuinely needed for operations or security.
+        this.info('SESSION', 'session start', {
+            ...this._meta,
+            ver: window.APP_VER || '?',
+            ua: (navigator.userAgent || '').slice(0, 200),
+        });
+        this.flush();
+    }
+
+    _criticalFingerprint(level, category, message) {
+        return `${level}|${category}|${String(message || '').slice(0, 500)}`;
+    }
+
+    _isRepeatedCritical(level, category, message) {
+        if (level !== 'warn' && level !== 'error') return false;
+        const now = Date.now();
+        const key = this._criticalFingerprint(level, category, message);
+        const previous = this._recentCritical.get(key) || 0;
+        this._recentCritical.set(key, now);
+
+        // Keep the map bounded during long-running browser sessions.
+        if (this._recentCritical.size > 250) {
+            for (const [k, ts] of this._recentCritical) {
+                if (now - ts > DEDUPE_MS * 2) this._recentCritical.delete(k);
+            }
+            while (this._recentCritical.size > 250) {
+                this._recentCritical.delete(this._recentCritical.keys().next().value);
+            }
+        }
+        return previous > 0 && now - previous < DEDUPE_MS;
     }
 
     // ── Core log method ────────────────────────────────────────────
     _log(level, category, message, data = null) {
+        // One real record is enough for a burst of identical failures. This also
+        // covers global-error capture and mirrored console.warn/console.error.
+        if (this._isRepeatedCritical(level, category, message)) return;
+
         const entry = {
             timestamp: new Date().toISOString(),
             level,
@@ -124,7 +149,6 @@ class Logger {
             base._ver = window.APP_VER || '?';
             base._ua  = (navigator.userAgent || '').slice(0, 160);
             base._dev = `${this._meta.device}/${this._meta.os}/${this._meta.browser}${this._meta.pwa ? '/PWA' : ''}`;
-            if (this._ip) base._ip = this._ip;
             rowData = base;
         }
         const row = {
@@ -139,7 +163,7 @@ class Logger {
         };
 
         if (level === 'error' || level === 'warn') {
-            // Immediate insert — never batch errors
+            // Immediate insert — genuine errors are never delayed.
             this._sb.from('app_logs').insert(row).then(
                 ({ error }) => { if (error) console.error('[Logger] immediate insert failed:', error.message, error.code); },
                 (e) => console.error('[Logger] immediate insert exception:', e?.message)
@@ -214,11 +238,20 @@ class Logger {
     logReact(op, data)  { this.info('REACT', op, data); }
     logReply(op, data)  { this.info('REPLY', op, data); }
     logNotif(op, data)  { this.info('NOTIF', op, data); }
-    // Realtime channel lifecycle — WARN on the failure states so reconnect storms
-    // land in the server logs (immediate insert), INFO on healthy transitions.
+    // Realtime channel lifecycle — never sample failures. Healthy repeated states
+    // are recorded at most once per channel/status per minute.
     logRt(channel, status, data) {
         const bad = status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED';
-        this._log(bad ? 'warn' : 'info', 'RT', `${channel}=${status}`, data);
+        if (bad) {
+            this._log('warn', 'RT', `${channel}=${status}`, data);
+            return;
+        }
+        const now = Date.now();
+        const key = `${channel}|${status}`;
+        const previous = this._recentRtHealthy.get(key) || 0;
+        if (now - previous < RT_SAMPLE_MS) return;
+        this._recentRtHealthy.set(key, now);
+        this._log('info', 'RT', `${channel}=${status}`, data);
     }
     // Uniform Supabase result logger — call after any insert/select/upsert/delete
     // to surface SILENT failures (e.g. RLS-blocked notification inserts). No-op on

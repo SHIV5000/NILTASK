@@ -22,10 +22,8 @@
     // Normalize a DB timestamp to a correct epoch. If the column is `timestamp`
     // (no timezone) rather than `timestamptz`, PostgREST returns it WITHOUT a 'Z',
     // and `new Date(str)` then parses it as LOCAL time — shifting it by the local
-    // offset (e.g. −5:30 in IST). That made group message times land BEFORE the
-    // room_reads marker, so `t > seen` was false and group unread was never counted
-    // (DMs survived via the server notification path). Append 'Z' when no tz marker
-    // is present so the value is read as UTC, matching how it was written.
+    // offset (e.g. −5:30 in IST). Append 'Z' when no tz marker is present so the
+    // value is read as UTC, matching how it was written.
     function tsMs(ts) {
         if (!ts) return 0;
         if (typeof ts === 'string') {
@@ -40,7 +38,9 @@
      * Compute per-room message unread from room_reads + recent messages.
      * @param {object} opts { uid, tid, rooms?:Set<string>, window?:number }
      *   rooms  — optional allow-list of room ids to count (others ignored so
-     *            non-member groups don't inflate the total). If omitted, all.
+     *            non-member DMs don't inflate the total). Groups remain tenant-
+     *            scoped by the messages query and are not dropped merely because
+     *            a caller's room cache is temporarily incomplete.
      *   window — how many recent messages to scan (default 500).
      * @returns {Promise<{perRoom:Object, total:number}>}
      */
@@ -50,7 +50,13 @@
         if (!uid || !tid) return { perRoom, total: 0 };
         try {
             const [reads, msgs] = await Promise.all([
-                sb.from('room_reads').select('room_id,last_read_at').eq('user_id', uid),
+                // room ids are not globally unique across schools. Scope durable read
+                // markers by BOTH user and tenant so a same-named room in another
+                // school cannot suppress this tenant's unread messages.
+                sb.from('room_reads')
+                    .select('room_id,last_read_at')
+                    .eq('user_id', uid)
+                    .eq('tenant_id', tid),
                 sb.from('messages')
                     .select('id,room_id,created_at,sender_id')
                     .eq('tenant_id', tid).is('deleted_at', null)
@@ -59,22 +65,15 @@
             const marker = {};
             (reads.data || []).forEach(r => { marker[r.room_id] = tsMs(r.last_read_at); });
             (msgs.data || []).forEach(m => {
-                if (m.sender_id === uid) return;                       // my own messages aren't unread
+                if (m.sender_id === uid) return;
                 const rid = m.room_id || '';
                 if (rid.startsWith('dm_')) {
-                    // DM: only mine, and only if I'm a participant (privacy). The `rooms`
-                    // allow-list (if given) may also gate DMs.
                     const parts = rid.replace('dm_', '').split('_');
                     if (!parts.includes(uid)) return;
                     if (rooms && !rooms.has(rid)) return;
-                } else {
-                    // GROUP: always count (the query is already tenant-scoped). Do NOT
-                    // gate groups by the caller's allow-list — a group missing from that
-                    // set (not yet in _customGroups, or added mid-session) was the reason
-                    // group badges/bell never updated while DMs did.
                 }
                 const t = tsMs(m.created_at);
-                const seen = marker[rid] || 0;                        // no marker → never opened → all unread
+                const seen = marker[rid] || 0;
                 if (t > seen) perRoom[rid] = (perRoom[rid] || 0) + 1;
             });
         } catch (e) { /* offline / RLS — return what we have */ }

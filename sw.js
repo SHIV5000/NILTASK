@@ -2,7 +2,7 @@
  * TaskFlow Service Worker — enables PWA install prompt on Android/Chrome
  * Caches core app shell for offline-capable experience
  */
-const CACHE   = 'taskflow-v204';
+const CACHE = 'taskflow-v211';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -10,6 +10,7 @@ const PRECACHE = [
   '/css/theme.css',
   '/css/mobile.css',
   '/js/shared.js',
+  '/js/shared.js?v=208',
   '/js/auth.js',
   '/js/rbac.js',
   '/js/ui-core.js',
@@ -20,6 +21,8 @@ const PRECACHE = [
   '/js/tasks.js',
   '/js/notifications.js',
   '/js/mobile.js',
+  '/js/mobile-tasks.js?v=207',
+  '/js/activity-v208.js?v=207',
   '/js/main.js',
   '/js/native.js',
   '/js/utils/logger.js',
@@ -28,6 +31,20 @@ const PRECACHE = [
   '/js/core/reactions.js',
   '/js/core/unread.js',
   '/js/db.js',
+
+  // Exact query-versioned URLs loaded dynamically by runtime bootstrap files.
+  // Cache matching is query-sensitive, so the exact request URL is required.
+  '/js/compact-panel-filters.js?v=5',
+  '/js/core/realtime-manager.js?v=1',
+  '/js/core/realtime-feature-owners.js?v=5',
+  '/js/core/session-lifecycle.js?v=4',
+  '/js/core/runtime-diagnostics.js?v=7',
+  '/js/core/mobile-runtime-diagnostics.js?v=3',
+  '/js/runtime-subscription-guard.js?v=7',
+  '/js/notification-presentation-service.js?v=3',
+  '/js/core/unread-service.js?v=4',
+  '/js/core/chat-parity-service.js?v=2',
+
   '/manifest.json',
   '/version.json',
   '/favicon.svg',
@@ -74,7 +91,7 @@ function _swGetAuth() {
         try {
           const g = r.result.transaction('kv', 'readonly').objectStore('kv').get('auth');
           g.onsuccess = () => res(g.result || null);
-          g.onerror   = () => res(null);
+          g.onerror = () => res(null);
         } catch(e) { res(null); }
       };
       r.onerror = () => res(null);
@@ -90,7 +107,8 @@ function _swGetKV(key) {
       r.onsuccess = () => {
         try {
           const g = r.result.transaction('kv', 'readonly').objectStore('kv').get(key);
-          g.onsuccess = () => res(g.result); g.onerror = () => res(null);
+          g.onsuccess = () => res(g.result);
+          g.onerror = () => res(null);
         } catch(e) { res(null); }
       };
       r.onerror = () => res(null);
@@ -127,15 +145,11 @@ self.addEventListener('push', e => {
   const data = e.data?.json() || {};
   const tag = data.tag || 'taskflow';
   e.waitUntil((async () => {
-    // Do Not Disturb — suppress background notifications entirely.
     try { if (await _swGetKV('dnd')) return; } catch (e) {}
-    // If the app is open AND visible, let the in-app handler show it (avoids a
-    // duplicate with the page's own notification). Only show from here otherwise.
     try {
       const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       if (wins.some(c => c.visibilityState === 'visible')) return;
     } catch (e) {}
-    // Stack per chat: fold repeats into one notification with a running count.
     let count = 1;
     try {
       const existing = await self.registration.getNotifications({ tag });
@@ -143,20 +157,17 @@ self.addEventListener('push', e => {
     } catch(e) {}
     const body = count > 1 ? (count + ' new messages') : (data.body || 'New message');
     try { if (self.navigator?.setAppBadge) await self.navigator.setAppBadge(); } catch(e) {}
-    // WhatsApp-like prominence within PWA limits: DMs and @mentions are "important"
-    // — keep them on the shade until the user acts (requireInteraction) and give a
-    // stronger vibration, like a personal message. Group chatter auto-dismisses.
     const important = tag.endsWith(':mention') || data.priority === 'high'
                    || String(data.room || '').startsWith('dm_');
     await self.registration.showNotification(data.title || 'Noted For Action', {
       body,
-      icon:    '/icons/notif.png',
-      badge:   '/icons/badge-96.png',
+      icon: '/icons/notif.png',
+      badge: '/icons/badge-96.png',
       vibrate: important ? [250, 120, 250, 120, 250] : [200, 100, 200],
       tag,
       renotify: true,
-      requireInteraction: important,   // DM/mention stays until tapped (like WhatsApp)
-      data:    { url: data.url || '/', room: data.room, count },
+      requireInteraction: important,
+      data: { url: data.url || '/', room: data.room, count },
       actions: [{ action: 'reply', type: 'text', title: 'Reply', placeholder: 'Message…' }]
     });
   })());
@@ -165,15 +176,13 @@ self.addEventListener('push', e => {
 // ── Notification click / quick-reply ───────────────────────
 self.addEventListener('notificationclick', e => {
   const room = e.notification.data?.room;
-  const url  = e.notification.data?.url || '/';
+  const url = e.notification.data?.url || '/';
 
-  // Inline reply from the notification shade (Android).
   if (e.action === 'reply' && e.reply) {
     e.notification.close();
     e.waitUntil((async () => {
       const ok = await _swSendReply(room, e.reply);
       if (!ok) {
-        // Couldn't post (e.g. token expired) — open the chat so the user can send.
         const list = await clients.matchAll({ type:'window', includeUncontrolled:true });
         if (list[0]) { list[0].postMessage({ type:'open-room', room }); list[0].focus(); }
         else await clients.openWindow(url);
@@ -194,19 +203,16 @@ self.addEventListener('notificationclick', e => {
 
 // Fetch — network first, cache fallback
 self.addEventListener('fetch', e => {
-  // Web Share Target (POST): the OS share sheet posts shared text + files here.
-  // Stash them in a Cache the page can read, then redirect into the app so it can
-  // let the user pick a chat to send them into.
   if (e.request.method === 'POST' && new URL(e.request.url).pathname === '/share-target') {
     e.respondWith((async () => {
       try {
-        const form  = await e.request.formData();
+        const form = await e.request.formData();
         const title = form.get('share_title') || '';
-        const text  = form.get('share_text')  || '';
-        const url   = form.get('share_url')   || '';
+        const text = form.get('share_text') || '';
+        const url = form.get('share_url') || '';
         const files = form.getAll('share_files') || [];
         const cache = await caches.open('share-inbox');
-        for (const k of await cache.keys()) await cache.delete(k);   // clear any prior share
+        for (const k of await cache.keys()) await cache.delete(k);
         await cache.put('/__share-meta', new Response(
           JSON.stringify({ title, text, url, count: files.length }),
           { headers: { 'Content-Type': 'application/json' } }
@@ -222,19 +228,16 @@ self.addEventListener('fetch', e => {
           }));
           i++;
         }
-      } catch (err) { /* fall through to the app anyway */ }
+      } catch (err) {}
       return Response.redirect('/?sharetarget=1', 303);
     })());
     return;
   }
 
-  // Only handle GET, skip Supabase API calls and external CDNs
   if (e.request.method !== 'GET') return;
   if (e.request.url.includes('supabase.co')) return;
   if (e.request.url.includes('googleapis.com')) return;
 
-  // Navigation requests: always go to network (bypass HTTP cache) so a fresh
-  // build is never masked by a stale disk-cached HTML; fall back to cache offline.
   if (e.request.mode === 'navigate') {
     e.respondWith(
       fetch(e.request, { cache: 'no-store' })
@@ -245,21 +248,20 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // JS/CSS: NETWORK-FIRST (cache fallback only when offline). Prevents a stale
-  // cached JS from being served against fresh HTML — the version skew that could
-  // blank the app until it caught up. Online devices always run the freshest code.
   const isCode = e.request.url.includes('/css/') || e.request.url.includes('/js/');
   if (isCode) {
     e.respondWith(
       fetch(e.request).then(res => {
-        if (res.ok) { const clone = res.clone(); caches.open(CACHE).then(c => c.put(e.request, clone)); }
+        if (res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+        }
         return res;
       }).catch(() => caches.match(e.request))
     );
     return;
   }
 
-  // Other GETs: network-first, cache fallback.
   e.respondWith(
     fetch(e.request)
       .then(res => {

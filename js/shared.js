@@ -11,9 +11,10 @@ export const sb = window.sb || createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // Supabase/Auth client instance.
 window.sb = sb;
 
-// Single source of truth for the running build — stamped onto every warn/error
-// log row so the Live Log Monitor can tell which version a remote device runs.
-window.APP_VER = 'v208.3.1';
+// Authoritative running RELEASE identifier. This must exactly match version.json:
+// the cache-healing check below compares them directly, and logger rows use APP_VER
+// to identify the deployed release. Component/UI generation markers may differ.
+window.APP_VER = 'v208.3.3-recovery';
 
 try {
     const DARKISH = ['dark', 'sober-dark', 'midnight'];

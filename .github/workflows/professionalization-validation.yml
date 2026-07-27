@@ -48,6 +48,9 @@ jobs:
       - name: Validate PWA manifest and icon assets
         run: npm run validate:pwa-assets
 
+      - name: Validate distinctive UI feature mapping
+        run: npm run validate:distinctive-ui
+
       - name: Build and validate local Tailwind CSS
         run: npm run validate:tailwind
 

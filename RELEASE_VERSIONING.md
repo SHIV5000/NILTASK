@@ -81,6 +81,7 @@ NILTASK_ACTIVITY_CONTROLLER_VERSION
 NILTASK_ACTIVITY_UI_VERSION
 NILTASK_REALTIME_FEATURE_OWNERS_VERSION
 NILTASK_UNREAD_SERVICE_VERSION
+NILTASK_CHAT_PARITY_VERSION
 query strings such as ?v=5 or ?v=208.3
 ```
 
@@ -100,7 +101,7 @@ Rules:
 Current preview generation:
 
 ```text
-taskflow-v210
+taskflow-v211
 ```
 
 Defined in:
@@ -196,7 +197,7 @@ version.json.v:          v208.3.3-recovery
 window.APP_VER:          v208.3.3-recovery
 HTML shell generation:   v208
 mobile component:        v208
-service-worker cache:    taskflow-v210
+service-worker cache:    taskflow-v211
 native package version:  1.0.3
 ```
 

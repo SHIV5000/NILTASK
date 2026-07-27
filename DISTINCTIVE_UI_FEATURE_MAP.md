@@ -60,7 +60,7 @@ The product name shown to users is **Noted For Action**. Internal identifiers su
 - The action rail remains a fixed compact navigation strip.
 - The Workstreams panel is user-resizable from **220 px to 420 px**.
 - The Tasks/Activity/Action Pulse panel is user-resizable from **250 px to 520 px**.
-- The conversation panel automatically uses the remaining width and keeps a safe minimum.
+- The conversation panel is not given a redundant third handle: it automatically expands or contracts between the two user-resizable side panels and retains a safe minimum reading width.
 - The visible separators between Workstreams/conversation and conversation/right panel are draggable by mouse, stylus or touch pointer.
 - Widths are saved only in the presentation-specific keys `nfa_v2_left_width` and `nfa_v2_right_width`.
 - Double-clicking either separator restores the adaptive laptop/desktop default.

@@ -181,6 +181,14 @@
     max-width: 720px;
   }
 
+  .nfa-center-task-manage {
+    max-width: 960px;
+  }
+
+  .nfa-center-task-manage .nfa-manage-task-trigger {
+    display: none !important;
+  }
+
   .nfa-center-task-card .nt-task-body {
     padding: 20px !important;
   }

@@ -1,11 +1,10 @@
 /**
- * Activity layout compatibility entrypoint.
+ * Runtime compatibility entrypoint.
  *
  * Desktop Activity markup, filters, refresh ownership and card styling live
- * directly in js/ui-feed.js. This file contains only the structural sidebar
- * rule required by the existing main-app shell: when Activity is open, the
- * full-height Task shell must leave the flex layout so Activity can occupy the
- * complete right sidebar. No function wrappers or MutationObservers are used.
+ * directly in js/ui-feed.js. This file contains the structural sidebar rule
+ * required by the existing main-app shell and loads the cross-device chat
+ * parity service. It creates no Activity function wrappers or MutationObservers.
  */
 (function () {
     'use strict';
@@ -28,6 +27,14 @@
             }
         `;
         document.head.appendChild(style);
+    }
+
+    if (!document.querySelector('script[data-nfa-chat-parity]')) {
+        const script = document.createElement('script');
+        script.src = 'js/core/chat-parity-service.js?v=2';
+        script.defer = true;
+        script.dataset.nfaChatParity = '1';
+        document.head.appendChild(script);
     }
 
     window.NILTASK_ACTIVITY_UI_VERSION = 'source-owned-layout-v2';

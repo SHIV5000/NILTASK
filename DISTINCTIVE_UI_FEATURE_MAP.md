@@ -2,88 +2,95 @@
 
 ## Purpose
 
-This branch presents the complete authenticated web, PWA and mobile application through a distinctive workstream/accountability interface before any production merge.
+This branch applies the approved workstream/accountability visual structure to the existing application while retaining the existing functional DOM, data owners, permissions, realtime owners, database calls, storage contracts and native bridge.
 
-The approved simulation is represented by:
+The product name shown to users is **Noted For Action**. Internal identifiers such as the repository name, production package ID `in.niltask.app`, existing storage keys, log prefixes and database artefact names remain stable where changing them would create migration or compatibility risk.
 
-- a plum action rail;
-- a workstream navigation panel;
-- a timeline-based conversation surface;
-- an action-pulse context panel;
-- a floating mobile action dock;
-- cut-corner Noted For Action brand marks;
-- plum, saffron and blue-grey visual tokens.
+## Change boundary
 
-## Safety architecture
+### Changed
 
-The redesign is implemented as a **presentation adapter**, not as a replacement application.
+- `css/mobile.css`: earlier additive presentation compatibility layer.
+- `css/distinctive-ui-v2.css`: simulation-matched desktop and mobile visual structure.
+- `css/distinctive-ui-compact.css`: compact laptop spacing, responsive density and visible resize grips.
+- `js/distinctive-ui-v2.js`: presentation adapter, action-rail routing and user panel-width preferences.
+- `scripts/validate-distinctive-ui.mjs`: feature, selector, branding and resize-contract validation.
+- `package.json`: exposes `npm run validate:distinctive-ui`.
+- `.github/workflows/professionalization-validation.yml`: runs the new validation with all existing gates.
+- preview workflow files: isolated Noted For Action Preview APK naming and branch URL.
 
-- `js/main.js` remains the owner of the authenticated desktop DOM and all desktop actions.
-- `js/mobile.js` remains the owner of the mobile shell, navigation stack, messages, offline queue and realtime behaviour.
-- `js/tasks.js` and `js/mobile-tasks.js` remain the task owners.
-- Existing IDs, classes and public `window.*` actions remain in place.
-- `js/distinctive-ui-v2.js` adds visual wrappers/classes and routes the new rail controls to existing public actions.
-- `css/distinctive-ui-v2.css` provides the simulation-matched appearance.
-- The adapter contains no Supabase query, insert, update, delete, storage mutation or session ownership.
+### Intentionally unchanged
 
-## Desktop mapping
+- `js/main.js`
+- `js/mobile.js`
+- `js/messages.js`
+- `js/tasks.js`
+- `js/mobile-tasks.js`
+- `js/notifications.js`
+- all Supabase queries, migrations and RLS assumptions
+- all realtime channel ownership and cleanup
+- all offline queue and message/task behaviour
+- production package ID and production URL
 
-| Existing feature | Existing owner | Distinctive presentation |
+`js/native.js` retains its existing native behaviour and appends the presentation-adapter loader after the native bridge.
+
+## Desktop feature mapping
+
+| Functional area | Existing functional owner | Presentation mapping |
 |---|---|---|
-| School identity and account controls | `js/main.js` | Workstream header and action rail |
-| Departments/groups | `loadChatsList` | Workstream cards |
-| Direct messages/staff | `loadChatsList` | Direct workstream cards |
-| Current room title and members | `js/main.js` | Conversation header |
-| Message search | `js/main.js` | Header search field |
-| Messages and replies | `messages.js` / `main.js` | Single timeline with diamond nodes |
-| Sent and received identity | Existing bubble classes | Accent-edge timeline cards |
-| Emoji reactions and text tags | Existing message handlers | Compact metadata pills |
-| Reply, bookmark, reminder and task actions | Existing message handlers | Timeline-card action row |
-| Attachments and rich composer | Existing Quill/file handlers | Rounded workstream composer |
-| Typing indicator | Existing chat parity service | Preserved below timeline |
-| Scheduled messages | Existing top panel | Action rail: Later |
-| Bookmarks | Existing top panel | Action rail: Saved |
-| Activity and notifications | Existing feed/notification owners | Action rail: Pulse |
-| Task panel and task trail | `tasks.js` | Action-pulse context panel |
-| Task filtering and sorting | `tasks.js` | Context-panel controls |
-| Settings and profile | Existing settings owner | Action rail: Settings/profile |
-| Theme and logout | Existing controls | Preserved in workstream header |
-| Modals, sheets and dropdowns | Existing owners | Distinctive rounded surfaces |
+| Authentication and login | `js/auth.js`, `#root` | Login remains visible and functional. Common fields, buttons and surfaces inherit the Noted For Action geometry. |
+| Action rail | Presentation adapter calling existing public actions | Stream, Tasks, Pulse, Later, Saved and Settings route to the existing sidebar, task, Activity, scheduled-message, bookmark and settings actions. |
+| Groups and direct messages | `js/main.js`, existing sidebar rows | Existing rows become workstream cards. Click, unread, context-menu and search handlers remain on the same nodes. |
+| Conversation header | Existing room/header DOM | The header uses the institutional workspace treatment while room title, members, mute and search retain their identifiers and handlers. |
+| Messages | `renderMessages`, `js/messages.js` | Existing message rows and bubbles become timeline work entries. Stable message IDs, menus and sender data remain intact. |
+| Replies and threads | Existing reply/thread handlers | Thread links, nested replies and stable row/footer IDs retain their original handlers. |
+| Reactions and text tags | Reaction runtime and cache | Existing chips and pickers retain their data and handlers; only presentation changes. |
+| Attachments and previews | Existing upload/open/download handlers | File/image cards inherit the visual system. No bucket, URL or metadata handling changes. |
+| Composer and formatting | Quill and existing send handlers | Toolbar, mentions, attachments, schedule and send actions remain intact inside the compact composer shell. |
+| Tasks | `js/tasks.js` | Task cards, status and priority surfaces use the action-first design. Creation, assignment, acknowledgement, progress, review, delegation, transfer, evidence and trail behaviour are unchanged. |
+| Activity | `js/ui-feed.js`, `js/activity-v208.js` | The feed uses the resizable right panel and compact cards without changing refresh, filtering, clearing or navigation. |
+| Notifications | `js/notifications.js` | Unread and attention states receive the new styling while count, clear and navigation behaviour remains unchanged. |
+| Scheduled messages | Existing schedule module | Scheduling and delivery logic is unchanged. |
+| Reminders | Existing reminder module | Due-time and notification logic is unchanged. |
+| Bookmarks | Existing bookmark module | Save, remove and navigation handlers remain unchanged. |
+| Profile/settings | `js/ui-settings.js` | Existing forms and theme/profile workflows retain their structure and behaviour. |
 
-## Mobile mapping
+## Desktop panel sizing contract
 
-| Existing feature | Existing owner | Distinctive presentation |
+- The action rail remains a fixed compact navigation strip.
+- The Workstreams panel is user-resizable from **220 px to 420 px**.
+- The Tasks/Activity/Action Pulse panel is user-resizable from **250 px to 520 px**.
+- The conversation panel automatically uses the remaining width and keeps a safe minimum.
+- The visible separators between Workstreams/conversation and conversation/right panel are draggable by mouse, stylus or touch pointer.
+- Widths are saved only in the presentation-specific keys `nfa_v2_left_width` and `nfa_v2_right_width`.
+- Double-clicking either separator restores the adaptive laptop/desktop default.
+- Compact defaults are automatically selected for narrower screens or screen heights up to 900 px.
+- At phone/tablet widths the existing mobile shell remains authoritative.
+
+## Mobile feature mapping
+
+| Functional area | Existing functional owner | Presentation mapping |
 |---|---|---|
-| Authenticated top bar | `mobile.js` | Cut-corner Noted For Action mark |
-| Home/groups/direct messages | `mobile.js` | Workstream cards |
-| Bottom navigation | `mobile.js` | Floating five-part action dock |
-| Group/DM/thread headers | `mobile.js` | Compact workspace headers |
-| Messages and replies | `_bubbleHTML` / chat parity | Timeline cards with diamond nodes |
-| Sent/received identity | Existing `snt`/`rcv` classes | Accent-edge timeline cards |
-| Reactions, tags and thread links | Existing handlers | Metadata pills |
-| Composer, attachment and formatting | Existing handlers | Floating rounded composer |
-| Tasks and task details | `mobile-tasks.js` | Distinctive action cards |
-| Activity and notifications | Existing mobile feed owners | Distinctive pulse cards |
-| Offline cached reopen and queued send | Existing cache/queue owners | No change to behaviour |
-| Realtime, typing and unread | Existing runtime owners | No change to behaviour |
-| Sheets, modals and menus | Existing mobile owners | Distinctive rounded sheets |
-| Native push and hardware back | `native.js` | Native bridge preserved; adapter loader appended after the bridge |
+| Mobile lifecycle | `initMobileApp`, MobileRuntime and SessionLifecycle | Lifecycle JavaScript is unchanged. `#mobileApp`, `#mStage` and `.mScr` are presentation targets only. |
+| Top bar and identity | `#mSB`, existing presence handlers | Brand mark and workspace treatment are added without replacing user, school, search, presence or notification controls. |
+| Bottom navigation | `#mNav`, `.mn-btn` | Existing tabs become the floating action dock. Tab order, badges and callbacks remain unchanged. |
+| Group/DM lists | `.m-row`, `_navTo` | Rows become workstream cards. Click, unread, avatar, presence and preview behaviour remains unchanged. |
+| Conversations | `_bubbleHTML`, realtime insert | Mobile entries use timeline styling while stable row IDs, reactions, menus, replies and live insert remain intact. |
+| Threads/replies | Existing thread screen | Parent cards, reply links and caches remain unchanged. |
+| Typing/presence | ChatParity and presence handlers | Runtime ownership remains unchanged. |
+| Reactions/tags | Existing picker and reconciliation | Values, data attributes and listeners remain unchanged. |
+| Composer | `.m-composer`, `.m-ce-wrap`, `.m-sendbtn` | Keyboard, formatting, mentions, attachments, offline queue and send logic remain unchanged. |
+| Mobile tasks | `js/mobile-tasks.js` | Task state transitions, permissions and evidence handling remain unchanged. |
+| Activity/notifications | Existing `.af-*` and `.nf-*` owners | Refresh, clear, open and badge logic remains unchanged. |
+| Offline/background | Existing IndexedDB, queues and runtime owners | No queue, restore, timer, subscription or resume ownership changes. |
 
-## Functional owners explicitly unchanged
+## Branding contract
 
-- Supabase client and database calls
-- authentication and tenant selection
-- RLS expectations
-- realtime subscription ownership
-- unread authority
-- cross-device chat parity
-- offline message and user caches
-- queued sending
-- account and tenant lifecycle cleanup
-- push-token registration
-- native package IDs and production URL
+User-facing product naming resolves to **Noted For Action** in the document title, PWA manifest, Capacitor app name, native placeholder and visible application chrome.
 
-## Required validation
+Internal technical names are not mass-renamed where doing so could break package installation, caches, database scripts, diagnostics or compatibility logic.
+
+## Validation gates
 
 ```text
 npm run validate:professionalization
@@ -97,17 +104,6 @@ npm run validate:distinctive-ui
 npm run validate:tailwind
 ```
 
-## Owner review before merge
+## Approval boundary
 
-- authenticated desktop workstreams and direct messages;
-- desktop messages, replies, reactions, tags and files;
-- desktop composer, schedules, bookmarks, Activity and task panel;
-- authenticated mobile groups, direct messages and threads;
-- mobile composer, reactions, tags, files, tasks and Activity;
-- offline reopen and queued send;
-- background/resume and account/tenant switching;
-- light and dark modes;
-- small laptop widths, phone widths, keyboard and large text;
-- installed-PWA update convergence.
-
-PR #205 must remain draft until the owner accepts the appearance and the focused authenticated tests pass.
+This branch and draft pull request are for preview and review only. They must not be merged into `main` until authenticated desktop and mobile testing confirms visual acceptance and functional parity.

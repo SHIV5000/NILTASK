@@ -40,6 +40,7 @@ for (const marker of [
   'nfa-workstream-heading',
   'nfa-context-heading',
   'nfa-desktop-shell',
+  'nfa-conversation',
   'nfa-timeline',
   'nfa-mobile-brand-mark',
   'nfa-mobile-dock'
@@ -50,6 +51,8 @@ for (const marker of [
   'decorateDesktop',
   'decorateMobile',
   'nfaActionRail',
+  "classList.add('nfa-conversation')",
+  "classList.add('nfa-timeline')",
   "call('openActivityFeed')",
   "call('openTopPanel', 'scheduled')",
   "call('openTopPanel', 'bookmarks')",
@@ -57,13 +60,14 @@ for (const marker of [
   "call('toggleRightSidebar')"
 ]) requireText(adapter, marker, 'v2 presentation adapter');
 
-// Desktop presentation mapping. These selectors sit on the existing functional DOM.
+// Desktop presentation mapping. The adapter attaches the new classes to the
+// original functional DOM; the original identifiers remain in main.js.
 for (const selector of [
   '#leftSidebar',
   '#chatsList',
   '.channel-item',
-  '.chat-area',
-  '#messagesContainer',
+  '.nfa-conversation',
+  '.nfa-timeline',
   '.row-sent',
   '.row-rcvd',
   '.bubble',
@@ -77,6 +81,14 @@ for (const selector of [
   '.modal-content',
   '.top-panel-dropdown'
 ]) requireText(v2Css, selector, 'desktop v2 CSS mapping');
+
+for (const originalSelector of [
+  'id="leftSidebar"',
+  'class="flex-1 flex flex-col relative min-w-0 chat-area"',
+  'id="messagesContainer"',
+  'id="rightSidebar"',
+  'id="sendBtn"'
+]) requireText(main, originalSelector, 'original desktop DOM contract');
 
 // Mobile presentation mapping. All current screens continue to be rendered by mobile.js.
 for (const selector of [

@@ -12,16 +12,25 @@
   window.__NFA_DISTINCTIVE_V2__ = true;
 
   const CSS_ID = 'nfa-distinctive-v2-css';
+  const COMPACT_CSS_ID = 'nfa-distinctive-compact-css';
   const RAIL_ID = 'nfaActionRail';
+  const LEFT_KEY = 'nfa_v2_left_width';
+  const RIGHT_KEY = 'nfa_v2_right_width';
   let scheduled = false;
+  let activeDrag = null;
+
+  function ensureStylesheet(id, href) {
+    if (document.getElementById(id)) return;
+    const link = document.createElement('link');
+    link.id = id;
+    link.rel = 'stylesheet';
+    link.href = href;
+    document.head.appendChild(link);
+  }
 
   function ensureCss() {
-    if (document.getElementById(CSS_ID)) return;
-    const link = document.createElement('link');
-    link.id = CSS_ID;
-    link.rel = 'stylesheet';
-    link.href = './css/distinctive-ui-v2.css?v=212';
-    document.head.appendChild(link);
+    ensureStylesheet(CSS_ID, './css/distinctive-ui-v2.css?v=212');
+    ensureStylesheet(COMPACT_CSS_ID, './css/distinctive-ui-compact.css?v=213');
   }
 
   function call(name, ...args) {
@@ -89,6 +98,133 @@
     shell.insertBefore(rail, leftSidebar);
   }
 
+  function adaptiveDefaults() {
+    const compact = window.innerWidth <= 1550 || window.innerHeight <= 900;
+    if (window.innerWidth <= 1100) return { left: 220, right: 255 };
+    if (compact) return { left: 250, right: 285 };
+    return { left: 290, right: 320 };
+  }
+
+  function safeNumber(value) {
+    const number = Number.parseFloat(value);
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function savedWidth(key) {
+    try { return safeNumber(localStorage.getItem(key)); }
+    catch (e) { return null; }
+  }
+
+  function storeWidth(key, value) {
+    try { localStorage.setItem(key, String(Math.round(value))); }
+    catch (e) {}
+  }
+
+  function setPanelWidth(side, value, persist) {
+    const body = document.body;
+    if (!body) return;
+    const minimum = side === 'left' ? 220 : 250;
+    const absoluteMaximum = side === 'left' ? 420 : 520;
+    const width = Math.max(minimum, Math.min(absoluteMaximum, Math.round(value)));
+    body.style.setProperty(side === 'left' ? '--nfa-left-panel-width' : '--nfa-right-panel-width', `${width}px`);
+    if (persist) storeWidth(side === 'left' ? LEFT_KEY : RIGHT_KEY, width);
+  }
+
+  function currentPanelWidth(side) {
+    const element = document.getElementById(side === 'left' ? 'leftSidebar' : 'rightSidebar');
+    return element?.getBoundingClientRect().width || adaptiveDefaults()[side];
+  }
+
+  function maximumPanelWidth(side) {
+    const shell = document.querySelector('.nfa-desktop-shell');
+    if (!shell) return side === 'left' ? 420 : 520;
+    const railWidth = document.getElementById(RAIL_ID)?.getBoundingClientRect().width || 0;
+    const opposite = side === 'left' ? document.getElementById('rightSidebar') : document.getElementById('leftSidebar');
+    const oppositeVisible = opposite && getComputedStyle(opposite).display !== 'none';
+    const oppositeWidth = oppositeVisible ? opposite.getBoundingClientRect().width : 0;
+    const centerMinimum = window.innerWidth <= 1250 ? 430 : 520;
+    const available = shell.clientWidth - railWidth - oppositeWidth - centerMinimum - 24;
+    const hardMaximum = side === 'left' ? 420 : 520;
+    const minimum = side === 'left' ? 220 : 250;
+    return Math.max(minimum, Math.min(hardMaximum, available));
+  }
+
+  function applyInitialPanelWidths(forceAdaptive) {
+    const defaults = adaptiveDefaults();
+    const left = forceAdaptive ? defaults.left : (savedWidth(LEFT_KEY) ?? defaults.left);
+    const right = forceAdaptive ? defaults.right : (savedWidth(RIGHT_KEY) ?? defaults.right);
+    setPanelWidth('left', Math.min(left, maximumPanelWidth('left')), forceAdaptive);
+    setPanelWidth('right', Math.min(right, maximumPanelWidth('right')), forceAdaptive);
+    document.body?.classList.add('nfa-user-resizable');
+  }
+
+  function stopLegacyMouseResize(event) {
+    event.stopImmediatePropagation();
+  }
+
+  function beginPanelDrag(side, event) {
+    if (event.button !== undefined && event.button !== 0) return;
+    const panel = document.getElementById(side === 'left' ? 'leftSidebar' : 'rightSidebar');
+    const handle = document.getElementById(side === 'left' ? 'leftResizer' : 'rightResizer');
+    if (!panel || !handle) return;
+    event.preventDefault();
+    activeDrag = { side, panel, handle, pointerId: event.pointerId };
+    try { handle.setPointerCapture(event.pointerId); } catch (e) {}
+    document.body.classList.add('nfa-panel-dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }
+
+  function movePanelDrag(event) {
+    if (!activeDrag) return;
+    const { side, panel } = activeDrag;
+    const rect = panel.getBoundingClientRect();
+    const rawWidth = side === 'left' ? event.clientX - rect.left : rect.right - event.clientX;
+    const minimum = side === 'left' ? 220 : 250;
+    const width = Math.max(minimum, Math.min(maximumPanelWidth(side), rawWidth));
+    setPanelWidth(side, width, false);
+  }
+
+  function endPanelDrag() {
+    if (!activeDrag) return;
+    const side = activeDrag.side;
+    storeWidth(side === 'left' ? LEFT_KEY : RIGHT_KEY, currentPanelWidth(side));
+    activeDrag = null;
+    document.body.classList.remove('nfa-panel-dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
+
+  function attachPanelHandle(side) {
+    const id = side === 'left' ? 'leftResizer' : 'rightResizer';
+    const handle = document.getElementById(id);
+    if (!handle || handle.dataset.nfaResizeReady === '1') return;
+    handle.dataset.nfaResizeReady = '1';
+    handle.title = `Drag to resize ${side} panel · Double-click to reset`;
+    handle.setAttribute('role', 'separator');
+    handle.setAttribute('aria-orientation', 'vertical');
+    handle.addEventListener('mousedown', stopLegacyMouseResize, true);
+    handle.addEventListener('pointerdown', event => beginPanelDrag(side, event));
+    handle.addEventListener('dblclick', event => {
+      event.preventDefault();
+      const defaults = adaptiveDefaults();
+      setPanelWidth(side, defaults[side], true);
+    });
+  }
+
+  function ensurePanelResizing() {
+    if (!document.getElementById('leftSidebar')) return;
+    if (!document.body.dataset.nfaPanelSizingReady) {
+      document.body.dataset.nfaPanelSizingReady = '1';
+      applyInitialPanelWidths(false);
+      window.addEventListener('pointermove', movePanelDrag, { passive: true });
+      window.addEventListener('pointerup', endPanelDrag, { passive: true });
+      window.addEventListener('pointercancel', endPanelDrag, { passive: true });
+    }
+    attachPanelHandle('left');
+    attachPanelHandle('right');
+  }
+
   function decorateDesktop() {
     const left = document.getElementById('leftSidebar');
     const root = document.getElementById('root');
@@ -133,6 +269,7 @@
     }
 
     normalizeLabels(chats);
+    ensurePanelResizing();
   }
 
   function normalizeLabels(scope) {
@@ -183,7 +320,15 @@
 
   ensureCss();
   new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
-  window.addEventListener('resize', schedule, { passive: true });
+  window.addEventListener('resize', () => {
+    if (document.body?.dataset.nfaPanelSizingReady && !activeDrag) {
+      const left = Math.min(currentPanelWidth('left'), maximumPanelWidth('left'));
+      const right = Math.min(currentPanelWidth('right'), maximumPanelWidth('right'));
+      setPanelWidth('left', left, false);
+      setPanelWidth('right', right, false);
+    }
+    schedule();
+  }, { passive: true });
   window.addEventListener('pageshow', schedule, { passive: true });
   document.addEventListener('DOMContentLoaded', schedule, { once: true });
   setInterval(schedule, 1600);

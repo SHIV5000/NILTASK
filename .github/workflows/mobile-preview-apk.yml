@@ -9,14 +9,24 @@ on:
       - '.github/workflows/mobile-preview-apk.yml'
       - 'capacitor.config.json'
       - 'package.json'
+      - 'index.html'
+      - 'manifest.json'
+      - 'sw.js'
+      - 'css/**'
+      - 'js/**'
       - 'www/**'
   push:
     branches:
-      - agent/activity-feed-no-flicker
+      - 'agent/**'
     paths:
       - '.github/workflows/mobile-preview-apk.yml'
       - 'capacitor.config.json'
       - 'package.json'
+      - 'index.html'
+      - 'manifest.json'
+      - 'sw.js'
+      - 'css/**'
+      - 'js/**'
       - 'www/**'
 
 permissions:
@@ -28,7 +38,8 @@ jobs:
     timeout-minutes: 30
 
     env:
-      PREVIEW_URL: https://niltask-git-agent-activity-feed-no-flicker-shiv5000s-projects.vercel.app
+      PREVIEW_URL: https://niltask-git-agent-noted-for-action-di-72bf14-shiv5000s-projects.vercel.app
+      ARTIFACT_BASENAME: Noted-For-Action-Preview-PR205
 
     steps:
       - name: Check out repository
@@ -56,7 +67,7 @@ jobs:
           const path = 'capacitor.config.json';
           const config = JSON.parse(fs.readFileSync(path, 'utf8'));
           config.appId = 'in.niltask.preview';
-          config.appName = 'NILTASK Preview';
+          config.appName = 'Noted For Action Preview';
           config.server = {
             ...(config.server || {}),
             url: process.env.PREVIEW_URL,
@@ -65,6 +76,7 @@ jobs:
           };
           fs.writeFileSync(path, JSON.stringify(config, null, 2) + '\n');
           console.log('Preview package:', config.appId);
+          console.log('Preview app name:', config.appName);
           console.log('Preview URL:', config.server.url);
           NODE
 
@@ -85,15 +97,15 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/NILTASK-Preview-PR204.apk
-          sha256sum dist/NILTASK-Preview-PR204.apk > dist/NILTASK-Preview-PR204.apk.sha256
+          cp android/app/build/outputs/apk/debug/app-debug.apk "dist/${ARTIFACT_BASENAME}.apk"
+          sha256sum "dist/${ARTIFACT_BASENAME}.apk" > "dist/${ARTIFACT_BASENAME}.apk.sha256"
 
       - name: Upload preview APK
         uses: actions/upload-artifact@v4
         with:
-          name: NILTASK-Preview-PR204
+          name: Noted-For-Action-Preview-PR205
           path: |
-            dist/NILTASK-Preview-PR204.apk
-            dist/NILTASK-Preview-PR204.apk.sha256
+            dist/Noted-For-Action-Preview-PR205.apk
+            dist/Noted-For-Action-Preview-PR205.apk.sha256
           if-no-files-found: error
           retention-days: 7

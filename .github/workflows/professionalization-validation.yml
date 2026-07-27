@@ -36,6 +36,12 @@ jobs:
       - name: Test mobile unread handoff
         run: npm run test:mobile-unread
 
+      - name: Validate cross-device chat parity
+        run: npm run validate:chat-parity
+
+      - name: Test cross-device chat parity
+        run: npm run test:chat-parity
+
       - name: Validate mobile preview APK isolation
         run: npm run validate:mobile-preview
 

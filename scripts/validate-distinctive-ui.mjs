@@ -13,6 +13,7 @@ const requireText = (source, needle, label) => {
 
 const legacyCss = read('css/mobile.css');
 const v2Css = read('css/distinctive-ui-v2.css');
+const compactCss = read('css/distinctive-ui-compact.css');
 const adapter = read('js/distinctive-ui-v2.js');
 const nativeBridge = read('js/native.js');
 const index = read('index.html');
@@ -32,7 +33,7 @@ if (capacitor.appId !== 'in.niltask.app') fail('production package ID changed un
 requireText(index, '<title>Noted For Action</title>', 'index.html');
 requireText(nativePlaceholder, '<title>Noted For Action</title>', 'www/index.html');
 requireText(legacyCss, 'content: "Noted For Action"', 'legacy presentation branding');
-requireText(nativeBridge, './js/distinctive-ui-v2.js?v=212', 'presentation adapter loader');
+requireText(nativeBridge, './js/distinctive-ui-v2.js?v=213', 'presentation adapter loader');
 
 // Simulation-matched structural layer must be present without replacing existing owners.
 for (const marker of [
@@ -47,6 +48,16 @@ for (const marker of [
 ]) requireText(v2Css, marker, 'v2 presentation CSS');
 
 for (const marker of [
+  '--nfa-left-panel-width',
+  '--nfa-right-panel-width',
+  '#leftResizer',
+  '#rightResizer',
+  'cursor: col-resize',
+  'max-height: 900px',
+  '#activityFeedPanel'
+]) requireText(compactCss, marker, 'compact/resizable CSS');
+
+for (const marker of [
   'createRail',
   'decorateDesktop',
   'decorateMobile',
@@ -57,7 +68,14 @@ for (const marker of [
   "call('openTopPanel', 'scheduled')",
   "call('openTopPanel', 'bookmarks')",
   "call('openSettings')",
-  "call('toggleRightSidebar')"
+  "call('toggleRightSidebar')",
+  'nfa_v2_left_width',
+  'nfa_v2_right_width',
+  'beginPanelDrag',
+  'movePanelDrag',
+  'maximumPanelWidth',
+  'Double-click to reset',
+  './css/distinctive-ui-compact.css?v=213'
 ]) requireText(adapter, marker, 'v2 presentation adapter');
 
 // Desktop presentation mapping. The adapter attaches the new classes to the
@@ -87,7 +105,9 @@ for (const originalSelector of [
   'class="flex-1 flex flex-col relative min-w-0 chat-area"',
   'id="messagesContainer"',
   'id="rightSidebar"',
-  'id="sendBtn"'
+  'id="sendBtn"',
+  'id="leftResizer"',
+  'id="rightResizer"'
 ]) requireText(main, originalSelector, 'original desktop DOM contract');
 
 // Mobile presentation mapping. All current screens continue to be rendered by mobile.js.
@@ -110,7 +130,8 @@ for (const selector of [
 ]) requireText(v2Css, selector, 'mobile v2 CSS mapping');
 
 // Behavioural owners must remain present. The visual adapter may call their public
-// actions, but it must never query or mutate backend/session data itself.
+// actions and store only its two panel-width preferences; it must never query or
+// mutate backend/session/task/message data itself.
 for (const marker of [
   'startSubscriptions',
   'renderMessages',
@@ -136,15 +157,24 @@ requireText(notifications.toLowerCase(), 'notification', 'notification runtime')
 for (const forbidden of [
   'supabase.from(',
   'sb.from(',
-  'localStorage.',
   'sessionStorage.',
   'indexedDB.',
   "fetch('/rest/",
   '.insert(',
   '.update(',
-  '.delete('
+  '.delete(',
+  'currentTenantId',
+  'currentRoom',
+  'unreadCounts'
 ]) {
-  if (adapter.includes(forbidden)) fail(`presentation adapter unexpectedly contains data token ${forbidden}`);
+  if (adapter.includes(forbidden)) fail(`presentation adapter unexpectedly contains data/runtime token ${forbidden}`);
+}
+
+const storageCalls = [...adapter.matchAll(/localStorage\.(getItem|setItem)\(([^)]*)\)/g)].map(match => match[0]);
+for (const call of storageCalls) {
+  if (!call.includes('key') && !call.includes('LEFT_KEY') && !call.includes('RIGHT_KEY')) {
+    fail(`presentation adapter has an unapproved localStorage call: ${call}`);
+  }
 }
 
 for (const forbidden of [
@@ -156,9 +186,11 @@ for (const forbidden of [
   'sessionStorage.',
   'fetch('
 ]) {
-  if (v2Css.includes(forbidden)) fail(`presentation CSS unexpectedly contains behaviour token ${forbidden}`);
+  if (v2Css.includes(forbidden) || compactCss.includes(forbidden)) {
+    fail(`presentation CSS unexpectedly contains behaviour token ${forbidden}`);
+  }
 }
 
 if (!process.exitCode) {
-  console.log('Distinctive UI v2 validated: simulation structure, branding, desktop/mobile mappings and runtime owners are intact.');
+  console.log('Distinctive UI v2 validated: structure, compact responsiveness, saved drag resizing, branding and runtime owners are intact.');
 }

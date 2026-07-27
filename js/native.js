@@ -118,13 +118,22 @@
   }, 3000);
 })();
 
-// Presentation adapter is intentionally loaded for web, PWA and native. It only
-// decorates the existing DOM and routes new visual controls to existing actions.
+// Presentation adapters are intentionally loaded for web, PWA and native. They
+// decorate the existing DOM and route visual controls to existing app owners.
 (function () {
-  if (document.querySelector('script[data-nfa-distinctive-v2]')) return;
-  var s = document.createElement('script');
-  s.src = './js/distinctive-ui-v2.js?v=213';
-  s.defer = true;
-  s.dataset.nfaDistinctiveV2 = '1';
-  document.head.appendChild(s);
+  if (!document.querySelector('script[data-nfa-distinctive-v2]')) {
+    var distinctive = document.createElement('script');
+    distinctive.src = './js/distinctive-ui-v2.js?v=213';
+    distinctive.defer = true;
+    distinctive.dataset.nfaDistinctiveV2 = '1';
+    document.head.appendChild(distinctive);
+  }
+
+  if (!document.querySelector('script[data-nfa-center-workspace-v3]')) {
+    var workspace = document.createElement('script');
+    workspace.src = './js/center-workspace-v3.js?v=214';
+    workspace.defer = true;
+    workspace.dataset.nfaCenterWorkspaceV3 = '1';
+    document.head.appendChild(workspace);
+  }
 })();

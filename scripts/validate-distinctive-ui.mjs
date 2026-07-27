@@ -11,7 +11,10 @@ const requireText = (source, needle, label) => {
   if (!source.includes(needle)) fail(`${label} is missing ${JSON.stringify(needle)}`);
 };
 
-const css = read('css/mobile.css');
+const legacyCss = read('css/mobile.css');
+const v2Css = read('css/distinctive-ui-v2.css');
+const adapter = read('js/distinctive-ui-v2.js');
+const nativeBridge = read('js/native.js');
 const index = read('index.html');
 const mobile = read('js/mobile.js');
 const main = read('js/main.js');
@@ -28,24 +31,52 @@ if (capacitor.appName !== 'Noted For Action') fail('Capacitor appName must be No
 if (capacitor.appId !== 'in.niltask.app') fail('production package ID changed unexpectedly');
 requireText(index, '<title>Noted For Action</title>', 'index.html');
 requireText(nativePlaceholder, '<title>Noted For Action</title>', 'www/index.html');
-requireText(css, 'content: "Noted For Action"', 'presentation branding');
+requireText(legacyCss, 'content: "Noted For Action"', 'legacy presentation branding');
+requireText(nativeBridge, './js/distinctive-ui-v2.js?v=212', 'presentation adapter loader');
+
+// Simulation-matched structural layer must be present without replacing existing owners.
+for (const marker of [
+  'nfa-action-rail',
+  'nfa-workstream-heading',
+  'nfa-context-heading',
+  'nfa-desktop-shell',
+  'nfa-timeline',
+  'nfa-mobile-brand-mark',
+  'nfa-mobile-dock'
+]) requireText(v2Css, marker, 'v2 presentation CSS');
+
+for (const marker of [
+  'createRail',
+  'decorateDesktop',
+  'decorateMobile',
+  'nfaActionRail',
+  "call('openActivityFeed')",
+  "call('openTopPanel', 'scheduled')",
+  "call('openTopPanel', 'bookmarks')",
+  "call('openSettings')",
+  "call('toggleRightSidebar')"
+]) requireText(adapter, marker, 'v2 presentation adapter');
 
 // Desktop presentation mapping. These selectors sit on the existing functional DOM.
 for (const selector of [
-  '.left-sidebar',
-  '.right-sidebar',
+  '#leftSidebar',
+  '#chatsList',
   '.channel-item',
   '.chat-area',
+  '#messagesContainer',
+  '.row-sent',
+  '.row-rcvd',
   '.bubble',
-  '.input-container',
-  '.quill-wrapper',
+  '#sendBtn',
+  '#rightSidebar',
+  '#tasksPanel',
   '.jira-card',
   '.task-card',
   '.af-card',
   '.nf-row',
   '.modal-content',
   '.top-panel-dropdown'
-]) requireText(css, selector, 'desktop CSS mapping');
+]) requireText(v2Css, selector, 'desktop v2 CSS mapping');
 
 // Mobile presentation mapping. All current screens continue to be rendered by mobile.js.
 for (const selector of [
@@ -57,16 +88,17 @@ for (const selector of [
   '.m-hdr',
   '.m-row',
   '.m-msgs',
+  '.m-bubble-row',
   '.m-bubble',
   '.m-composer',
   '.m-sendbtn',
   '.af-card',
   '.nf-row',
   '#mSheetInner'
-]) requireText(css, selector, 'mobile CSS mapping');
+]) requireText(v2Css, selector, 'mobile v2 CSS mapping');
 
-// Behavioural owners must remain present. This validator does not replace the existing
-// professionalization/chat/mobile tests; it adds a presentation-to-feature contract.
+// Behavioural owners must remain present. The visual adapter may call their public
+// actions, but it must never query or mutate backend/session data itself.
 for (const marker of [
   'startSubscriptions',
   'renderMessages',
@@ -87,11 +119,22 @@ for (const marker of [
   'loadTasks'
 ]) requireText(tasks, marker, 'task runtime');
 
-for (const marker of [
-  'notification'
-]) requireText(notifications.toLowerCase(), marker, 'notification runtime');
+requireText(notifications.toLowerCase(), 'notification', 'notification runtime');
 
-// The distinctive layer must stay presentation-only.
+for (const forbidden of [
+  'supabase.from(',
+  'sb.from(',
+  'localStorage.',
+  'sessionStorage.',
+  'indexedDB.',
+  "fetch('/rest/",
+  '.insert(',
+  '.update(',
+  '.delete('
+]) {
+  if (adapter.includes(forbidden)) fail(`presentation adapter unexpectedly contains data token ${forbidden}`);
+}
+
 for (const forbidden of [
   'supabase.from(',
   'sb.from(',
@@ -101,9 +144,9 @@ for (const forbidden of [
   'sessionStorage.',
   'fetch('
 ]) {
-  if (css.includes(forbidden)) fail(`presentation CSS unexpectedly contains behaviour token ${forbidden}`);
+  if (v2Css.includes(forbidden)) fail(`presentation CSS unexpectedly contains behaviour token ${forbidden}`);
 }
 
 if (!process.exitCode) {
-  console.log('Distinctive UI mapping validated: branding, desktop, mobile and behavioural owners are intact.');
+  console.log('Distinctive UI v2 validated: simulation structure, branding, desktop/mobile mappings and runtime owners are intact.');
 }

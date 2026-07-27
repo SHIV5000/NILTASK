@@ -14,12 +14,15 @@ const requireText = (source, needle, label) => {
 const legacyCss = read('css/mobile.css');
 const v2Css = read('css/distinctive-ui-v2.css');
 const compactCss = read('css/distinctive-ui-compact.css');
+const centerCss = read('css/center-workspace-v3.css');
 const adapter = read('js/distinctive-ui-v2.js');
+const centerAdapter = read('js/center-workspace-v3.js');
 const nativeBridge = read('js/native.js');
 const index = read('index.html');
 const mobile = read('js/mobile.js');
 const main = read('js/main.js');
 const tasks = read('js/tasks.js');
+const panels = read('js/ui-panels.js');
 const notifications = read('js/notifications.js');
 const manifest = JSON.parse(read('manifest.json'));
 const capacitor = JSON.parse(read('capacitor.config.json'));
@@ -33,7 +36,8 @@ if (capacitor.appId !== 'in.niltask.app') fail('production package ID changed un
 requireText(index, '<title>Noted For Action</title>', 'index.html');
 requireText(nativePlaceholder, '<title>Noted For Action</title>', 'www/index.html');
 requireText(legacyCss, 'content: "Noted For Action"', 'legacy presentation branding');
-requireText(nativeBridge, './js/distinctive-ui-v2.js?v=213', 'presentation adapter loader');
+requireText(nativeBridge, './js/distinctive-ui-v2.js?v=213', 'distinctive presentation loader');
+requireText(nativeBridge, './js/center-workspace-v3.js?v=214', 'centre workspace loader');
 
 // Simulation-matched structural layer must be present without replacing existing owners.
 for (const marker of [
@@ -77,6 +81,42 @@ for (const marker of [
   'Double-click to reset',
   './css/distinctive-ui-compact.css?v=213'
 ]) requireText(adapter, marker, 'v2 presentation adapter');
+
+// Centre-workspace contract: route existing owners into the middle without data duplication.
+for (const marker of [
+  'nfaCenterWorkspace',
+  'nfaOpenTaskCenter',
+  'Task Overview',
+  'Manage Task',
+  'Controls, assignees, files and complete trail',
+  'summaryClone',
+  'manageClone',
+  'mountTopPanel',
+  "type === 'bookmarks'",
+  "type === 'scheduled'",
+  "wrapFunction('goToMessage'",
+  "wrapFunction('goToTask'",
+  "wrapFunction('openTaskFromNotification'",
+  'mountTaskActionLayer',
+  '#chatsList [data-room]',
+  './css/center-workspace-v3.css?v=214'
+]) requireText(centerAdapter, marker, 'centre workspace adapter');
+
+for (const marker of [
+  '.nfa-center-workspace',
+  '.nfa-center-task-summary',
+  '.nfa-center-task-manage',
+  '.nfa-center-panel-content.top-panel-dropdown',
+  '#nfaCenterWorkspace #ntTaskActionLayer',
+  '#rightSidebar .nt-task-expanded',
+  '.nfa-manage-task-trigger',
+  '.row-rcvd',
+  '.row-sent',
+  'justify-content: flex-start',
+  'justify-content: flex-end',
+  'margin-right: auto',
+  'margin-left: auto'
+]) requireText(centerCss, marker, 'centre workspace CSS');
 
 // Desktop presentation mapping. The adapter attaches the new classes to the
 // original functional DOM; the original identifiers remain in main.js.
@@ -129,9 +169,8 @@ for (const selector of [
   '#mSheetInner'
 ]) requireText(v2Css, selector, 'mobile v2 CSS mapping');
 
-// Behavioural owners must remain present. The visual adapter may call their public
-// actions and store only its two panel-width preferences; it must never query or
-// mutate backend/session/task/message data itself.
+// Behavioural owners must remain present. The adapters may call public actions and
+// store only the approved panel-width preferences; they must never own app data.
 for (const marker of [
   'startSubscriptions',
   'renderMessages',
@@ -149,12 +188,22 @@ for (const marker of [
 
 for (const marker of [
   'createTask',
-  'loadTasks'
+  'loadTasks',
+  'toggleTaskDetails',
+  'openTaskActionLayer',
+  'renderTaskTrail',
+  'openTaskFromNotification'
 ]) requireText(tasks, marker, 'task runtime');
+
+for (const marker of [
+  'openTopPanel',
+  "type==='scheduled'",
+  "type==='bookmarks'"
+]) requireText(panels, marker, 'bookmark/schedule runtime');
 
 requireText(notifications.toLowerCase(), 'notification', 'notification runtime');
 
-for (const forbidden of [
+const forbiddenRuntimeTokens = [
   'supabase.from(',
   'sb.from(',
   'sessionStorage.',
@@ -166,8 +215,11 @@ for (const forbidden of [
   'currentTenantId',
   'currentRoom',
   'unreadCounts'
-]) {
-  if (adapter.includes(forbidden)) fail(`presentation adapter unexpectedly contains data/runtime token ${forbidden}`);
+];
+
+for (const forbidden of forbiddenRuntimeTokens) {
+  if (adapter.includes(forbidden)) fail(`v2 adapter unexpectedly contains data/runtime token ${forbidden}`);
+  if (centerAdapter.includes(forbidden)) fail(`centre adapter unexpectedly contains data/runtime token ${forbidden}`);
 }
 
 const storageCalls = [...adapter.matchAll(/localStorage\.(getItem|setItem)\(([^)]*)\)/g)].map(match => match[0]);
@@ -176,6 +228,7 @@ for (const call of storageCalls) {
     fail(`presentation adapter has an unapproved localStorage call: ${call}`);
   }
 }
+if (centerAdapter.includes('localStorage.')) fail('centre workspace adapter must not own storage');
 
 for (const forbidden of [
   'supabase.from(',
@@ -186,11 +239,11 @@ for (const forbidden of [
   'sessionStorage.',
   'fetch('
 ]) {
-  if (v2Css.includes(forbidden) || compactCss.includes(forbidden)) {
+  if (v2Css.includes(forbidden) || compactCss.includes(forbidden) || centerCss.includes(forbidden)) {
     fail(`presentation CSS unexpectedly contains behaviour token ${forbidden}`);
   }
 }
 
 if (!process.exitCode) {
-  console.log('Distinctive UI v2 validated: structure, compact responsiveness, saved drag resizing, branding and runtime owners are intact.');
+  console.log('Distinctive UI validated: structure, resizing, centre routing, task management, bookmarks, schedules, sender/receiver alignment and runtime owners are intact.');
 }

@@ -117,3 +117,14 @@
     if (uid && uid !== _pollUid && _lastToken) { _pollUid = uid; _tokenSaved = null; saveToken(_lastToken); }
   }, 3000);
 })();
+
+// Presentation adapter is intentionally loaded for web, PWA and native. It only
+// decorates the existing DOM and routes new visual controls to existing actions.
+(function () {
+  if (document.querySelector('script[data-nfa-distinctive-v2]')) return;
+  var s = document.createElement('script');
+  s.src = './js/distinctive-ui-v2.js?v=212';
+  s.defer = true;
+  s.dataset.nfaDistinctiveV2 = '1';
+  document.head.appendChild(s);
+})();

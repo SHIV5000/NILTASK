@@ -166,6 +166,10 @@
     padding: 9px 12px !important;
   }
 
+  body.nfa-desktop-active #rightSidebar .nt-task-action-row:has(> .nfa-manage-task-trigger:first-child) > .nfa-manage-task-trigger:last-child {
+    display: none !important;
+  }
+
   .nfa-center-task-card.nt-task-card {
     width: min(960px, 100%);
     margin: 0 auto !important;

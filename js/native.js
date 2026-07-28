@@ -136,4 +136,12 @@
     workspace.dataset.nfaCenterWorkspaceV3 = '1';
     document.head.appendChild(workspace);
   }
+
+  if (!document.querySelector('script[data-nfa-desktop-workspace-v4]')) {
+    var desktopV4 = document.createElement('script');
+    desktopV4.type = 'module';
+    desktopV4.src = './js/desktop-workspace-v4.js?v=215';
+    desktopV4.dataset.nfaDesktopWorkspaceV4 = '1';
+    document.head.appendChild(desktopV4);
+  }
 })();

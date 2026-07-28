@@ -10,6 +10,7 @@ const requireText = (source, needle, label) => {
 };
 
 const js = read('js/desktop-workspace-v4.js');
+const loader = read('js/desktop-workspace-loader-v4.js');
 const css = read('css/desktop-workspace-v4.css');
 const native = read('js/native.js');
 const center = read('js/center-workspace-v3.js');
@@ -18,8 +19,10 @@ const tasks = read('js/tasks.js');
 const panels = read('js/ui-panels.js');
 const feed = read('js/ui-feed.js');
 
-requireText(native, './js/desktop-workspace-v4.js?v=215', 'desktop v4 loader');
-requireText(native, "desktopV4.type = 'module'", 'desktop v4 module loader');
+requireText(native, './js/desktop-workspace-loader-v4.js?v=215', 'desktop v4 loader bootstrap');
+requireText(loader, 'window.IS_NATIVE || window.innerWidth <= 768', 'mobile/native exclusion');
+requireText(loader, "import('./desktop-workspace-v4.js?v=215')", 'conditional desktop import');
+requireText(loader, "window.addEventListener('resize', loadDesktopWorkspace", 'desktop resize activation');
 requireText(js, "import { sb } from './shared.js'", 'scoped data client import');
 requireText(js, 'const isDesktop', 'desktop-only boundary');
 
@@ -158,4 +161,4 @@ for (const forbidden of ['addEventListener(', 'onclick=', 'localStorage.', 'sess
 }
 
 if (failed) process.exit(1);
-console.log('Desktop workspace v4 validated: all 16 requested web/desktop contracts are mapped and existing owners remain intact.');
+console.log('Desktop workspace v4 validated: all 16 requested web/desktop contracts are mapped, mobile/native is excluded, and existing owners remain intact.');

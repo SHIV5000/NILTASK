@@ -117,3 +117,31 @@
     if (uid && uid !== _pollUid && _lastToken) { _pollUid = uid; _tokenSaved = null; saveToken(_lastToken); }
   }, 3000);
 })();
+
+// Desktop redesign loader. It is deliberately imported only after all existing
+// deferred/module owners have executed, and never on mobile or inside Capacitor.
+(function () {
+  'use strict';
+
+  function loadDesktopSpeedFirst() {
+    if (window.IS_NATIVE || window.innerWidth < 769) return;
+
+    if (!document.getElementById('nfa-desktop-speed-first-css')) {
+      var link = document.createElement('link');
+      link.id = 'nfa-desktop-speed-first-css';
+      link.rel = 'stylesheet';
+      link.href = './css/desktop-speed-first.css?v=1';
+      document.head.appendChild(link);
+    }
+
+    import('./desktop-speed-first.js?v=1').catch(function (error) {
+      console.error('[desktop-speed-first] load failed', error);
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadDesktopSpeedFirst, { once: true });
+  } else {
+    loadDesktopSpeedFirst();
+  }
+})();

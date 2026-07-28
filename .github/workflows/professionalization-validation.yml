@@ -51,6 +51,9 @@ jobs:
       - name: Validate distinctive UI feature mapping
         run: npm run validate:distinctive-ui
 
+      - name: Validate desktop workspace v4 contracts
+        run: npm run validate:desktop-workspace-v4
+
       - name: Build and validate local Tailwind CSS
         run: npm run validate:tailwind
 

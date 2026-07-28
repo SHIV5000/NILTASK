@@ -1,0 +1,286 @@
+/* Noted For Action — desktop workspace refinements v4. */
+
+@media (min-width: 769px) {
+  /* Remove duplicate heading/create row; the original top controls remain authoritative. */
+  #nfaWorkstreamHeading { display: none !important; }
+
+  /* Cleaner Task Hub heading. */
+  #nfaContextHeading {
+    padding: 12px 14px 9px !important;
+  }
+  #nfaContextHeading > span,
+  #nfaContextHeading > small { display: none !important; }
+  #nfaContextHeading > strong {
+    margin: 0 !important;
+    font-size: 16px !important;
+    line-height: 1.2 !important;
+  }
+
+  /* Rail badge for all unread Activity Hub items. */
+  .nfa-rail-item[data-nfa-action="activity"] { position: relative; }
+  .nfa-activity-unread-badge {
+    position: absolute;
+    top: 4px;
+    right: 7px;
+    min-width: 18px;
+    height: 18px;
+    display: none;
+    place-items: center;
+    padding: 0 5px;
+    border: 2px solid #2b1b39;
+    border-radius: 999px;
+    color: #fff;
+    background: #ef4444;
+    font-size: 8px;
+    line-height: 1;
+    font-weight: 950;
+    box-shadow: 0 4px 10px rgba(0,0,0,.24);
+  }
+  .nfa-activity-unread-badge.nfa-show { display: grid; }
+
+  /* Message cards: clearly left/right, up to 70% of the centre workspace. */
+  body.nfa-desktop-active .nfa-timeline .row-rcvd .bubble,
+  body.nfa-desktop-active .nfa-timeline .row-sent .bubble {
+    width: auto !important;
+    min-width: min(250px, 100%) !important;
+    max-width: 70% !important;
+  }
+  body.nfa-desktop-active .nfa-timeline .b-text {
+    color: var(--nfa-muted, var(--text-secondary)) !important;
+    font-size: 14px !important;
+    line-height: 1.56 !important;
+    font-weight: 500 !important;
+  }
+
+  /* Timeline marker only belongs to a real message bubble. */
+  body.nfa-desktop-active .nfa-timeline .row-sent:not(:has(.bubble)),
+  body.nfa-desktop-active .nfa-timeline .row-rcvd:not(:has(.bubble)) {
+    display: none !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  body.nfa-desktop-active .nfa-timeline .row-sent:not(:has(.bubble))::before,
+  body.nfa-desktop-active .nfa-timeline .row-rcvd:not(:has(.bubble))::before {
+    content: none !important;
+    display: none !important;
+  }
+
+  /* Centre Task Hub list. */
+  .nfa-center-task-hub {
+    width: min(1060px, 100%);
+    margin: 0 auto;
+  }
+  .nfa-center-task-hub-toolbar {
+    position: sticky;
+    top: -18px;
+    z-index: 8;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: -4px 0 14px;
+    padding: 10px 12px;
+    border: 1px solid var(--nfa-line, var(--border-color));
+    border-radius: 15px;
+    background: color-mix(in srgb, var(--nfa-surface, #fff) 94%, transparent);
+    backdrop-filter: blur(14px);
+  }
+  .nfa-center-task-hub-toolbar strong { font-size: 13px; }
+  .nfa-center-task-hub-toolbar span {
+    color: var(--nfa-muted, var(--text-secondary));
+    font-size: 10px;
+  }
+  .nfa-center-task-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr));
+    gap: 14px;
+    align-items: start;
+  }
+  .nfa-center-task-list .nt-task-card {
+    margin: 0 !important;
+    cursor: pointer;
+    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+  }
+  .nfa-center-task-list .nt-task-card:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--nfa-brand) 34%, var(--nfa-line)) !important;
+    box-shadow: 0 12px 26px rgba(31,39,61,.11) !important;
+  }
+  .nfa-center-task-list .nt-task-expanded { display: none !important; }
+  .nfa-center-task-list .nt-task-action-row {
+    margin-top: 13px !important;
+  }
+  .nfa-open-task-button { width: 100%; }
+
+  /* Centre bookmark/schedule cards. */
+  .nfa-center-collection {
+    width: min(940px, 100%);
+    margin: 0 auto;
+  }
+  .nfa-center-collection-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .nfa-center-collection-toolbar p {
+    margin: 0;
+    color: var(--nfa-muted, var(--text-secondary));
+    font-size: 11px;
+  }
+  .nfa-collection-clear {
+    min-height: 36px;
+    padding: 0 12px;
+    border: 1px solid color-mix(in srgb, #ef4444 30%, var(--nfa-line));
+    border-radius: 11px;
+    color: #b91c1c;
+    background: color-mix(in srgb, #ef4444 7%, var(--nfa-surface));
+    font-size: 10px;
+    font-weight: 850;
+  }
+  .nfa-collection-grid {
+    display: grid;
+    gap: 11px;
+  }
+  .nfa-collection-card {
+    position: relative;
+    display: grid;
+    grid-template-columns: 42px minmax(0,1fr) auto;
+    gap: 12px;
+    align-items: start;
+    padding: 14px 46px 14px 14px;
+    border: 1px solid var(--nfa-line, var(--border-color));
+    border-radius: 17px;
+    background: var(--nfa-surface, var(--bg-body));
+    box-shadow: 0 5px 16px rgba(31,39,61,.05);
+    transition: transform .16s ease, box-shadow .16s ease;
+  }
+  .nfa-collection-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 24px rgba(31,39,61,.09);
+  }
+  .nfa-collection-icon {
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 13px;
+    color: #fff;
+    background: linear-gradient(145deg, var(--nfa-brand), var(--nfa-brand-2));
+  }
+  .nfa-collection-card h4 {
+    margin: 0;
+    color: var(--nfa-ink, var(--text-primary));
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  .nfa-collection-card p {
+    margin: 5px 0 0;
+    color: var(--nfa-muted, var(--text-secondary));
+    font-size: 10px;
+    line-height: 1.5;
+  }
+  .nfa-collection-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 7px;
+    padding: 5px 8px;
+    border-radius: 999px;
+    color: var(--nfa-brand);
+    background: color-mix(in srgb, var(--nfa-brand) 9%, transparent);
+    font-size: 8px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+  .nfa-collection-open {
+    align-self: center;
+    min-height: 36px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 11px;
+    color: #fff;
+    background: var(--nfa-brand);
+    font-size: 10px;
+    font-weight: 850;
+  }
+  .nfa-collection-remove {
+    position: absolute;
+    top: 9px;
+    right: 9px;
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    color: #b91c1c;
+    background: color-mix(in srgb, #ef4444 9%, var(--nfa-surface));
+    font-size: 11px;
+  }
+
+  /* Universal photo treatment. */
+  .nfa-universal-avatar {
+    overflow: hidden !important;
+    padding: 0 !important;
+    background: transparent !important;
+    background-image: none !important;
+  }
+  .nfa-universal-avatar > img {
+    width: 100% !important;
+    height: 100% !important;
+    display: block !important;
+    object-fit: cover !important;
+    border-radius: inherit !important;
+  }
+
+  /* Three-second exact-item focus. */
+  .nfa-focus-target {
+    position: relative;
+    z-index: 5;
+    animation: nfaExactFocus 3s ease-out both;
+  }
+  @keyframes nfaExactFocus {
+    0%, 20% {
+      outline: 4px solid color-mix(in srgb, var(--nfa-signal) 86%, transparent);
+      outline-offset: 5px;
+      box-shadow: 0 0 0 10px color-mix(in srgb, var(--nfa-signal) 18%, transparent), 0 16px 36px rgba(31,39,61,.18);
+    }
+    100% {
+      outline-color: transparent;
+      outline-offset: 2px;
+      box-shadow: 0 5px 16px rgba(31,39,61,.05);
+    }
+  }
+
+  /* Smooth but lightweight movement. */
+  html, body,
+  #messagesContainer,
+  #chatShellContainer,
+  #activityFeedList,
+  #tasksPanel,
+  #nfaCenterWorkspaceBody,
+  #chatsList {
+    scroll-behavior: smooth;
+  }
+  .nfa-rail-item,
+  .channel-item,
+  .bubble,
+  .nt-task-card,
+  .nfa-af-card,
+  button {
+    transition-duration: .16s !important;
+    transition-timing-function: ease-out !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html, body, * {
+    scroll-behavior: auto !important;
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+}

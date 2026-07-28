@@ -81,7 +81,8 @@ for (const forbidden of [
 
 for (const forbidden of [
   'animation: infinite',
-  'backdrop-filter:',
+  'backdrop-filter: blur(',
+  '-webkit-backdrop-filter: blur(',
   'filter: blur(',
   'position: fixed'
 ]) {

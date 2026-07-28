@@ -12,6 +12,7 @@
     "validate:mobile-preview": "node scripts/validate-mobile-preview-apk.mjs",
     "validate:pwa-assets": "node scripts/validate-pwa-assets.mjs",
     "validate:distinctive-ui": "node scripts/validate-distinctive-ui.mjs",
+    "validate:desktop-workspace-v4": "node scripts/validate-desktop-workspace-v4.mjs",
     "build:tailwind": "npx @tailwindcss/cli -i ./css/tailwind.input.css -o ./css/tailwind.generated.css --minify",
     "validate:tailwind": "npm run build:tailwind && node scripts/validate-tailwind-build.mjs",
     "cap:add:android": "cap add android",

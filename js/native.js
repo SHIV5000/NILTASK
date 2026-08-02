@@ -118,27 +118,64 @@
   }, 3000);
 })();
 
-// Desktop redesign loader. It is deliberately imported only after all existing
-// deferred/module owners have executed, and never on mobile or inside Capacitor.
+// Desktop Phase 1 loader. It is imported only after existing module owners have
+// executed, and never on phone, coarse-pointer tablet or inside Capacitor.
 (function () {
   'use strict';
 
-  function loadDesktopSpeedFirst() {
-    if (window.IS_NATIVE || window.innerWidth < 769) return;
-
-    if (!document.getElementById('nfa-desktop-speed-first-css')) {
-      var link = document.createElement('link');
-      link.id = 'nfa-desktop-speed-first-css';
-      link.rel = 'stylesheet';
-      link.href = './css/desktop-speed-first.css?v=1';
-      document.head.appendChild(link);
-    }
-
-    import('./desktop-speed-first.js?v=1').catch(function (error) {
-      console.error('[desktop-speed-first] load failed', error);
-    });
+  function isDesktopCandidate() {
+    var coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    return !window.IS_NATIVE && window.innerWidth >= 769 && !window.isMobileView?.() && !coarse;
   }
 
+  function addLink(id, rel, href, crossOrigin) {
+    if (document.getElementById(id)) return;
+    var link = document.createElement('link');
+    link.id = id;
+    link.rel = rel;
+    link.href = href;
+    if (crossOrigin) link.crossOrigin = 'anonymous';
+    document.head.appendChild(link);
+  }
+
+  function prepareDesktopAssets() {
+    if (!isDesktopCandidate()) return;
+    addLink('nfa-supabase-preconnect', 'preconnect', 'https://apfymygzwkzjhhgmtkaj.supabase.co', true);
+    addLink('nfa-fonts-preconnect', 'preconnect', 'https://fonts.googleapis.com');
+    addLink('nfa-fonts-static-preconnect', 'preconnect', 'https://fonts.gstatic.com', true);
+    addLink('nfa-desktop-speed-first-css', 'stylesheet', './css/desktop-speed-first.css?v=2');
+    addLink('nfa-desktop-phase1-hardening-css', 'stylesheet', './css/desktop-phase1-hardening.css?v=1');
+    addLink('nfa-desktop-speed-first-preload', 'modulepreload', './desktop-speed-first.js?v=2');
+    addLink('nfa-desktop-phase1-hardening-preload', 'modulepreload', './desktop-phase1-hardening.js?v=1');
+
+    var splash = document.getElementById('bootSplash');
+    if (splash) splash.style.transition = 'opacity .12s ease-out';
+    var hide = window._hideSplash;
+    if (typeof hide === 'function' && !hide.__nfaPhase1PrepaintWrapped) {
+      var fastHide = function () {
+        var node = document.getElementById('bootSplash');
+        if (!node || node.dataset.hiding) return;
+        node.dataset.hiding = '1';
+        node.style.transition = 'opacity .12s ease-out';
+        node.style.opacity = '0';
+        setTimeout(function () { node.remove(); }, 150);
+      };
+      fastHide.__nfaPhase1PrepaintWrapped = true;
+      fastHide.__nfaPhase1PrepaintOwner = hide;
+      window._hideSplash = fastHide;
+    }
+  }
+
+  function loadDesktopSpeedFirst() {
+    if (!isDesktopCandidate()) return;
+    import('./desktop-speed-first.js?v=2')
+      .then(function () { return import('./desktop-phase1-hardening.js?v=1'); })
+      .catch(function (error) {
+        console.error('[desktop-speed-first] load failed', error);
+      });
+  }
+
+  prepareDesktopAssets();
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', loadDesktopSpeedFirst, { once: true });
   } else {

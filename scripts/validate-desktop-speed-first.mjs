@@ -17,9 +17,11 @@ function requireText(source, text, label) {
 const controller = read('js/desktop-speed-first.js');
 const hardening = read('js/desktop-phase1-hardening.js');
 const polish = read('js/desktop-phase1-polish-v2.js');
+const trailFix = read('js/desktop-phase1-trail-fix-v3.js');
 const css = read('css/desktop-speed-first.css');
 const hardeningCss = read('css/desktop-phase1-hardening.css');
 const polishCss = read('css/desktop-phase1-polish-v2.css');
+const trailFixCss = read('css/desktop-phase1-trail-fix-v3.css');
 const native = read('js/native.js');
 const main = read('js/main.js');
 const mobile = read('js/mobile.js');
@@ -28,6 +30,7 @@ for (const [label, source] of [
   ['desktop controller', controller],
   ['Phase 1 hardening', hardening],
   ['Phase 1 polish v2', polish],
+  ['Phase 1 trail fix v3', trailFix],
   ['desktop loader', native]
 ]) {
   try { new Function(source); }
@@ -109,6 +112,18 @@ for (const marker of [
 ]) requireText(polish, marker, 'Phase 1 polish v2');
 
 for (const marker of [
+  'RICH_PREFIX',
+  '[NFA_RICH]',
+  'sanitizeRichHtml',
+  "wrapRenderer('renderProfessionalTrail')",
+  "wrapRenderer('renderCompactTrail')",
+  'repairRenderedTrail',
+  'nfa-trail-rich-v3',
+  'window.loadTasksForPanel = wrapped',
+  'requestAnimationFrame(() => repairRenderedTrail(document))'
+]) requireText(trailFix, marker, 'Phase 1 trail fix v3');
+
+for (const marker of [
   '@media (min-width: 769px) and (pointer: fine)',
   '#nfaTaskActionCancel.nfa-phase1-cancel',
   '.nfa-phase1-rich-toolbar',
@@ -138,6 +153,15 @@ for (const marker of [
 ]) requireText(polishCss, marker, 'Phase 1 polish v2 CSS');
 
 for (const marker of [
+  '.nfa-trail-rich-v3',
+  '.nfa-phase1-rich-output',
+  '.nt-task-trail .text-gray-500',
+  'font-size: 11.5px',
+  'list-style: disc',
+  'overflow-wrap: anywhere'
+]) requireText(trailFixCss, marker, 'Phase 1 trail fix v3 CSS');
+
+for (const marker of [
   'window.innerWidth >= 769',
   'window.IS_NATIVE',
   "'(pointer: coarse)'",
@@ -146,9 +170,11 @@ for (const marker of [
   './css/desktop-speed-first.css?v=2',
   './css/desktop-phase1-hardening.css?v=1',
   './css/desktop-phase1-polish-v2.css?v=1',
+  './css/desktop-phase1-trail-fix-v3.css?v=1',
   "import('./desktop-speed-first.js?v=2')",
   "import('./desktop-phase1-hardening.js?v=1')",
   "import('./desktop-phase1-polish-v2.js?v=1')",
+  "import('./desktop-phase1-trail-fix-v3.js?v=1')",
   "document.addEventListener('DOMContentLoaded'",
   'opacity .12s ease-out'
 ]) requireText(native, marker, 'desktop-only loader');
@@ -197,6 +223,21 @@ for (const forbidden of [
 }
 
 for (const forbidden of [
+  'setInterval(',
+  'new MutationObserver',
+  'requestIdleCallback',
+  "from('task_trails')",
+  "from('tasks')",
+  "from('messages')",
+  "from('profiles')",
+  'nfaCenterWorkspace',
+  'desktop-unified-task-composer',
+  'openTaskModal ='
+]) {
+  if (trailFix.includes(forbidden)) fail(`Phase 1 trail fix v3 contains forbidden workflow/performance/data token ${forbidden}`);
+}
+
+for (const forbidden of [
   'animation: infinite',
   'backdrop-filter: blur(',
   '-webkit-backdrop-filter: blur(',
@@ -221,4 +262,4 @@ for (const mobileOwner of ['initMobileApp', '_initRealtime', '_navTo']) {
 }
 
 if (failed) process.exit(1);
-console.log('Desktop speed-first Phase 1 validated: legacy task drawer, authenticated message roles, rail Reminder, expandable Task Hub, modern scrolling/menus, item-level Activity read state and mobile/native isolation.');
+console.log('Desktop speed-first Phase 1 validated: legacy task drawer, authenticated message roles, rail Reminder, expandable Task Hub, modern scrolling/menus, item-level Activity read state, rich trail decoding and mobile/native isolation.');

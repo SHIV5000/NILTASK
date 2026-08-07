@@ -51,7 +51,9 @@
   };
   requestAnimationFrame(installLensActivityBridge);
 
-  import('./desktop-task-messages-v6.js?v=1').catch(error => {
-    console.error('[desktop-task-messages-v6] load failed', error);
-  });
+  import('./desktop-task-messages-v6.js?v=1')
+    .then(() => import('./desktop-task-messages-v6-hotfix-v7.js?v=1'))
+    .catch(error => {
+      console.error('[desktop-task-messages-v7] load failed', error);
+    });
 })();

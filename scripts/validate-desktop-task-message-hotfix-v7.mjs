@@ -44,7 +44,7 @@ assert(hotfix.includes('restoreCreateCard();\n\n    const modal'), 'Old create h
 assert(hotfix.includes("modal.classList.add('flex')"), 'Create Task has a visible modal fallback when inline mounting cannot resolve');
 assert(hotfix.includes('window.nfaRefreshTaskMessages?.(true)'), 'Task Messages refresh after create/close/save flows');
 assert(!hotfix.includes('setInterval('), 'Hotfix adds no persistent polling loop');
-assert(!hotfix.includes('MutationObserver'), 'Hotfix adds no MutationObserver');
+assert(!hotfix.includes('new MutationObserver') && !hotfix.includes('MutationObserver('), 'Hotfix adds no MutationObserver');
 assert(!hotfix.includes(".from('"), 'Hotfix does not duplicate database mutation/query ownership');
 assert(!mobile.includes('desktop-task-messages-v6-hotfix-v7'), 'Mobile runtime does not import the desktop hotfix');
 

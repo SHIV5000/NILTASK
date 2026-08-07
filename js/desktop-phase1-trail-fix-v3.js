@@ -172,3 +172,29 @@
 
   requestAnimationFrame(installWhenReady);
 })();
+
+// Load the approved fast Task Hub only after the trail owner above is installed.
+// This file is itself imported only by the fine-pointer desktop loader.
+(function () {
+  'use strict';
+
+  const coarse = window.matchMedia?.('(pointer: coarse)').matches;
+  if (
+    window.IS_NATIVE ||
+    window.innerWidth < 769 ||
+    window.isMobileView?.() ||
+    coarse
+  ) return;
+
+  if (!document.getElementById('nfa-desktop-fast-task-hub-v4-css')) {
+    const link = document.createElement('link');
+    link.id = 'nfa-desktop-fast-task-hub-v4-css';
+    link.rel = 'stylesheet';
+    link.href = './css/desktop-fast-task-hub-v4.css?v=1';
+    document.head.appendChild(link);
+  }
+
+  import('./desktop-fast-task-hub-v4.js?v=1').catch(error => {
+    console.error('[desktop-fast-task-hub-v4] load failed', error);
+  });
+})();

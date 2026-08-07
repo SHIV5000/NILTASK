@@ -198,3 +198,9 @@
     console.error('[desktop-fast-task-hub-v4] load failed', error);
   });
 })();
+
+// The wide-screen Activity dock is deliberately chained after all existing
+// desktop Activity unread hardening owners have installed.
+import('./desktop-wide-activity-dock-v5.js?v=1').catch(error => {
+  console.error('[desktop-activity-dock] load failed', error);
+});

@@ -18,7 +18,7 @@ try{new Function(js);check(true,'Desktop Workspace v8 syntax is valid');}catch(e
  ['state.navSeq','single-flight navigation token'],
  ['Loading sender…','non-Unknown temporary sender identity'],
  ['designation(message.sender_id','message designation hydration'],
- ['data.nfaReplyId','reply-level navigation identity'],
+ ['dataset.nfaReplyId','reply-level navigation identity'],
  ['openInlineTaskCreate','inline three-dot task creation'],
  ["closest('.rbac-create-task')",'capture owner for Create Task'],
  ['nfa-v8-lens-summary','Task Lens summary dashboard'],

@@ -279,6 +279,9 @@
     const closeOwner = window.closeActivityFeed;
     if (typeof openOwner !== 'function' || typeof closeOwner !== 'function') return false;
     if (openOwner.__nfaWideActivityDockV5 && closeOwner.__nfaWideActivityDockV5) return true;
+    // Wait for the Phase 1 unread guard so auto-opening the permanent dock can
+    // never inherit the legacy "mark every notification read on open" path.
+    if (!openOwner.__nfaPhase1HardeningWrapped) return false;
 
     state.openOwner = openOwner;
     state.closeOwner = closeOwner;

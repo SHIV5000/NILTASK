@@ -11,7 +11,7 @@
     "test:chat-parity": "node scripts/test-chat-parity-service.mjs",
     "validate:mobile-preview": "node scripts/validate-mobile-preview-apk.mjs",
     "validate:pwa-assets": "node scripts/validate-pwa-assets.mjs",
-    "validate:desktop-speed-first": "node scripts/validate-desktop-speed-first.mjs",
+    "validate:desktop-speed-first": "node scripts/validate-desktop-speed-first.mjs && node scripts/validate-desktop-fast-task-hub-v4.mjs",
     "build:tailwind": "npx @tailwindcss/cli -i ./css/tailwind.input.css -o ./css/tailwind.generated.css --minify",
     "validate:tailwind": "npm run build:tailwind && node scripts/validate-tailwind-build.mjs",
     "cap:add:android": "cap add android",

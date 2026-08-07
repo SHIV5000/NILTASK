@@ -21,6 +21,7 @@ assert(dock.includes('!window.IS_NATIVE'), 'Capacitor/native is excluded');
 assert(dock.includes('nfa_activity_dock_visible_v1:'), 'Visibility preference is stored per tenant/user');
 assert(dock.includes('window.openActivityFeed'), 'Existing Activity open owner is wrapped');
 assert(dock.includes('window.closeActivityFeed'), 'Existing Activity close owner is wrapped');
+assert(dock.includes('__nfaPhase1HardeningWrapped'), 'Persistent dock waits for the unread-preserving Activity owner');
 assert(dock.includes('openDock({ persist: false })'), 'Wide desktop opens Activity by default without rewriting preference');
 assert(dock.includes("action === 'tasks'"), 'Task navigation temporarily releases the right panel');
 assert(dock.includes("action === 'chat'"), 'Chat navigation restores the preferred Activity dock');

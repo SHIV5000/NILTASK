@@ -146,9 +146,11 @@
     addLink('nfa-desktop-speed-first-css', 'stylesheet', './css/desktop-speed-first.css?v=2');
     addLink('nfa-desktop-phase1-hardening-css', 'stylesheet', './css/desktop-phase1-hardening.css?v=1');
     addLink('nfa-desktop-phase1-polish-v2-css', 'stylesheet', './css/desktop-phase1-polish-v2.css?v=1');
+    addLink('nfa-desktop-phase1-trail-fix-v3-css', 'stylesheet', './css/desktop-phase1-trail-fix-v3.css?v=1');
     addLink('nfa-desktop-speed-first-preload', 'modulepreload', './desktop-speed-first.js?v=2');
     addLink('nfa-desktop-phase1-hardening-preload', 'modulepreload', './desktop-phase1-hardening.js?v=1');
     addLink('nfa-desktop-phase1-polish-v2-preload', 'modulepreload', './desktop-phase1-polish-v2.js?v=1');
+    addLink('nfa-desktop-phase1-trail-fix-v3-preload', 'modulepreload', './desktop-phase1-trail-fix-v3.js?v=1');
 
     var splash = document.getElementById('bootSplash');
     if (splash) splash.style.transition = 'opacity .12s ease-out';
@@ -173,6 +175,7 @@
     import('./desktop-speed-first.js?v=2')
       .then(function () { return import('./desktop-phase1-hardening.js?v=1'); })
       .then(function () { return import('./desktop-phase1-polish-v2.js?v=1'); })
+      .then(function () { return import('./desktop-phase1-trail-fix-v3.js?v=1'); })
       .catch(function (error) {
         console.error('[desktop-speed-first] load failed', error);
       });

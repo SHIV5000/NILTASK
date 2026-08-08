@@ -1,6 +1,6 @@
 {
   "name": "Noted For Action",
-  "short_name": "Noted For Action",
+  "short_name": "NILTASK",
   "description": "Noted For Action — Chat + Task = Accountability for schools.",
   "id": "/",
   "start_url": "/",
@@ -8,7 +8,7 @@
   "display": "standalone",
   "background_color": "#312e81",
   "theme_color": "#4F46E5",
-  "orientation": "portrait-primary",
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icons/icon-192.png",

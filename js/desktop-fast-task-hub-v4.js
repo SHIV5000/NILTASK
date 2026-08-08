@@ -39,6 +39,7 @@
   import('./desktop-workspace-v8.js?v=1')
     .then(() => import('./desktop-task-composer-v11.js?v=1'))
     .then(() => import('./desktop-task-pdf-v11.js?v=1'))
+    .then(() => import('./desktop-task-pdf-click-v11.js?v=1'))
     .catch(error => {
       console.error('[desktop-workspace] load failed', error);
     });

@@ -4,11 +4,14 @@ let failed=false;
 const check=(ok,msg)=>{console.log(`${ok?'✓':'✖'} ${msg}`);if(!ok)failed=true;};
 const js=read('js/desktop-workspace-v8.js');
 const css=read('css/desktop-workspace-v8.css');
+const v9=read('js/desktop-task-composer-v9.js');
+const v9css=read('css/desktop-task-composer-v9.css');
 const loader=read('js/desktop-fast-task-hub-v4.js');
 const mobile=read('js/mobile.js');
 const native=read('js/native.js');
 const tasks=read('js/tasks.js');
 try{new Function(js);check(true,'Desktop Workspace v8 syntax is valid');}catch(e){check(false,`Desktop Workspace v8 syntax invalid: ${e.message}`);}
+try{new Function(v9);check(true,'Desktop Task Composer v9 syntax is valid');}catch(e){check(false,`Desktop Task Composer v9 syntax invalid: ${e.message}`);}
 [
  ['__NFA_DESKTOP_WORKSPACE_V8__','single v8 runtime guard'],
  ['navigateToMessage','universal message navigator'],
@@ -40,7 +43,6 @@ try{new Function(js);check(true,'Desktop Workspace v8 syntax is valid');}catch(e
  ['installProfileOwner','profile save refresh owner'],
  ['ensureUsersLoaded?.(true)','profile refresh reloads authoritative user/avatar data'],
  ['setAvatar','message avatars hydrate from fresh profile data'],
- ['state.openReplies.add','task actions open the authoritative Replies trail'],
 ].forEach(([m,l])=>check(js.includes(m),l));
 [
  ['#nfaConversationModeV8','Chat/Tasks toggle styles'],
@@ -55,22 +57,61 @@ try{new Function(js);check(true,'Desktop Workspace v8 syntax is valid');}catch(e
  ['.nfa-v8-task-pill','TASK pill is styled'],
  ['box-shadow:0 3px 0','Task/assignee controls have a 3D press surface'],
  ['#messagesContainer .reply-item','Replies use compact desktop spacing'],
- ['.nfa-v8-person-name','assignee text sizing is explicitly styled'],
- ['.nfa-v8-inline-create-card label','Create Task labels are compact'],
 ].forEach(([m,l])=>check(css.includes(m),l));
+[
+ ['__NFA_DESKTOP_TASK_COMPOSER_V9__','single v9 task-composer guard'],
+ ["closest('#messagesContainer .nfa-has-task-v8 .act-btn')",'Task Message Reply capture enters task mode'],
+ ["/^Reply\\b/i",'Task Reply is the only task-mode entry; no Normal Reply branch'],
+ ['Replying here is a formal task update.','task-mode Reply is explicitly a formal update'],
+ ['availableActions','role/status action resolver lives in composer'],
+ ['openTaskUpdateAction','existing Update owner is reused'],
+ ['openTaskUploadAction','existing Upload owner is reused'],
+ ['openTaskDelegateAction','existing Delegate owner is reused'],
+ ['openTaskExtensionRequest','existing Extension owner is reused'],
+ ['openTaskReturnAction','existing Return owner is reused'],
+ ['openTaskTransferAction','existing Transfer owner is reused'],
+ ['openTaskDeadlineAction','existing Deadline owner is reused'],
+ ['openTaskCancelAction','existing Cancel owner is reused'],
+ ['window.taskAction?.','existing direct task-action owner is reused'],
+ ['nfaNavigateToMessage?.(messageId,{taskId})','post-action return uses universal navigator'],
+ ['ensureRepliesOpen(messageId)','post-action Replies remain open'],
+ ["window.THEME_LIST=[{id:'light'",'desktop theme list is explicitly two-theme'],
+ ["{id:'dark',label:'Dark'",'Dark is the only alternate theme'],
+ ['<svg class="nfa-v9-icon"','task/navigation controls use crisp SVG icons'],
+ ['upgradeWorkspaceIcons','existing primary desktop icons are upgraded in place'],
+].forEach(([m,l])=>check(v9.includes(m),l));
+[
+ ['#nfaTaskComposerV9','main chat task composer is styled'],
+ ['.nfa-task-message-v8 .nfa-v8-action-strip','task-bubble action strip is removed from working UI'],
+ ['.nfa-task-message-v8 .nfa-v8-person-actions','assignee action buttons are removed from task bubble'],
+ ['.nfa-v9-composer-panel','existing task forms mount in main composer'],
+ ['html[data-theme="dark"]','new desktop dark theme exists'],
+ ['--bg-body:#0d1117','GitHub-like dark canvas'],
+ ['--bg-sidebar:#010409','GitHub-like dark navigation surface'],
+ ['--border-color:#30363d','GitHub-like dark borders'],
+ ['--accent:#2f81f7','GitHub-like blue dark accent'],
+ ['.nfa-v9-icon','SVG icon sizing is explicit'],
+ ['box-shadow:0 3px 0','composer actions retain 3D press affordance'],
+].forEach(([m,l])=>check(v9css.includes(m),l));
 check(tasks.includes('Original-message compilation is handled once by the database trail trigger.'),'authoritative task trails compile to original-message Replies');
 check(tasks.includes("addTaskTrail(\n                taskId,\n                'UPDATE'"),'progress updates use authoritative task trail owner');
 check(tasks.includes("addTaskTrail(\n                taskId,\n                'FILE'"),'file uploads use authoritative task trail owner');
 check(!js.includes('Task timeline'),'duplicate Task timeline UI is removed');
 check(!js.includes("out.push(['timeline'"),'duplicate Timeline action is removed');
-check(loader.includes("import('./desktop-workspace-v8.js?v=1')"),'loader imports only Workspace v8');
-check(loader.includes('./css/desktop-workspace-v8.css?v=1'),'loader installs Workspace v8 CSS');
-check(!loader.includes('desktop-task-messages-v6.js'),'v6 runtime is retired from loader');
-check(!loader.includes('hotfix-v7'),'v7 patch runtime is retired from loader');
+check(!v9.includes('Normal Reply'),'Task mode has no Normal Reply choice');
+check(!v9.includes(".from('task_trails').insert"),'v9 does not duplicate task-trail mutation ownership');
+check(!v9.includes(".from('messages').insert"),'v9 does not duplicate message/reply mutation ownership');
+check(!v9.includes('setInterval('),'v9 adds no polling loop');
+check(!v9.includes('MutationObserver'),'v9 adds no MutationObserver');
+check(loader.includes("import('./desktop-workspace-v8.js?v=1')"),'loader starts Workspace v8');
+check(loader.includes("import('./desktop-task-composer-v9.js?v=1')"),'loader starts Composer v9 after Workspace v8');
+check(loader.includes('./css/desktop-task-composer-v9.css?v=1'),'loader installs Composer v9 / Dark CSS');
+check(!loader.includes('desktop-task-messages-v6.js'),'v6 runtime remains retired');
+check(!loader.includes('hotfix-v7'),'v7 patch runtime remains retired');
 check(!js.includes('setInterval('),'v8 adds no polling loop');
 check(!js.includes('MutationObserver'),'v8 adds no MutationObserver');
 check(!js.includes('Teacher'),'v8 never hardcodes Teacher into message identity');
-check(!mobile.includes('desktop-workspace-v8'),'mobile runtime does not import v8');
-check(!native.includes('desktop-workspace-v8'),'native bridge does not directly import v8');
-if(failed){console.error('\nDesktop Workspace v8 validation failed.');process.exit(1);}
-console.log('\nDesktop Workspace v8 replies-first validation passed.');
+check(!mobile.includes('desktop-task-composer-v9'),'mobile runtime does not import v9');
+check(!native.includes('desktop-task-composer-v9'),'native bridge does not directly import v9');
+if(failed){console.error('\nDesktop Workspace v8 + Task Composer v9 validation failed.');process.exit(1);}
+console.log('\nDesktop Workspace v8 + Task Composer v9 validation passed.');

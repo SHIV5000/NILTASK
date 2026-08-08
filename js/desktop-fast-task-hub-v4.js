@@ -1,15 +1,15 @@
 /*
  * Stable desktop compatibility entry.
  *
- * The old Task Hub / v6 / hotfix chain is retired. This loader now starts the
- * single authoritative Desktop Workspace v8 controller: Task Messages, central
- * Task Lens, sender identity hydration and universal single-scroll navigation.
+ * Workspace v8 remains the canonical Task Message / Task Lens / navigation owner.
+ * Composer v9 owns only task-context input and the two-theme desktop presentation:
+ * Indigo Light + GitHub-inspired Dark. Mobile/native/coarse-pointer runtimes stay out.
  */
 (function () {
   'use strict';
 
-  if (window.__NFA_DESKTOP_WORKSPACE_LOADER_V8__) return;
-  window.__NFA_DESKTOP_WORKSPACE_LOADER_V8__ = true;
+  if (window.__NFA_DESKTOP_WORKSPACE_LOADER_V9__) return;
+  window.__NFA_DESKTOP_WORKSPACE_LOADER_V9__ = true;
 
   const coarse = window.matchMedia?.('(pointer: coarse)').matches;
   if (
@@ -27,7 +27,17 @@
     document.head.appendChild(link);
   }
 
-  import('./desktop-workspace-v8.js?v=1').catch(error => {
-    console.error('[desktop-workspace-v8] load failed', error);
-  });
+  if (!document.getElementById('nfa-desktop-task-composer-v9-css')) {
+    const link = document.createElement('link');
+    link.id = 'nfa-desktop-task-composer-v9-css';
+    link.rel = 'stylesheet';
+    link.href = './css/desktop-task-composer-v9.css?v=1';
+    document.head.appendChild(link);
+  }
+
+  import('./desktop-workspace-v8.js?v=1')
+    .then(() => import('./desktop-task-composer-v9.js?v=1'))
+    .catch(error => {
+      console.error('[desktop-workspace] load failed', error);
+    });
 })();

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#312e81" />
+  <title>NILTASK PWA Push Test</title>
+  <style>
+    :root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:light dark}
+    *{box-sizing:border-box}
+    body{margin:0;background:#f6f7fb;color:#111827}
+    main{max-width:760px;margin:0 auto;padding:24px 16px 48px}
+    h1{font-size:1.7rem;margin:0 0 6px;color:#312e81}
+    .sub{color:#4b5563;margin:0 0 20px}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:18px;margin:14px 0;box-shadow:0 8px 24px rgba(0,0,0,.05)}
+    .row{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px solid #eef0f3}
+    .row:last-child{border-bottom:0}
+    .label{font-weight:700}.detail{font-size:.84rem;color:#6b7280;margin-top:3px;word-break:break-word}
+    .pill{flex:0 0 auto;border-radius:999px;padding:5px 9px;font-size:.78rem;font-weight:800;background:#e5e7eb;color:#374151}
+    .ok{background:#dcfce7;color:#166534}.bad{background:#fee2e2;color:#991b1b}.warn{background:#fef3c7;color:#92400e}
+    button,a.btn{width:100%;display:block;border:0;border-radius:13px;padding:13px 15px;margin-top:10px;font-size:1rem;font-weight:800;text-align:center;text-decoration:none;cursor:pointer}
+    button.primary{background:#4f46e5;color:#fff}button.secondary,a.btn{background:#eef2ff;color:#3730a3}button:disabled{opacity:.55;cursor:not-allowed}
+    .notice{padding:12px;border-radius:12px;background:#eef2ff;color:#312e81;line-height:1.45}.notice.warnbox{background:#fff7ed;color:#9a3412}
+    ol{padding-left:22px;line-height:1.55}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em}
+    #log{white-space:pre-wrap;background:#111827;color:#e5e7eb;border-radius:12px;padding:12px;min-height:80px;font-size:.8rem;overflow:auto}
+    @media(prefers-color-scheme:dark){body{background:#0b1020;color:#f9fafb}.card{background:#111827;border-color:#273244}.sub,.detail{color:#aab3c2}.row{border-color:#273244}h1{color:#c7d2fe}.notice{background:#1e1b4b;color:#e0e7ff}.notice.warnbox{background:#431407;color:#fed7aa}}
+  </style>
+</head>
+<body>
+<main>
+  <h1>NILTASK PWA Push Test</h1>
+  <p class="sub">Isolated diagnostics only — this page does not change normal NILTASK screens or message behaviour.</p>
+
+  <section class="card">
+    <div class="notice">Goal: prove that this browser has a real Web Push subscription that the NILTASK server can use even when the PWA is closed.</div>
+    <button id="refreshBtn" class="secondary">Refresh Diagnostics</button>
+    <button id="enableBtn" class="primary">Enable / Re-register Web Push</button>
+    <a class="btn" href="/">Open NILTASK</a>
+  </section>
+
+  <section class="card">
+    <h2>Diagnostics</h2>
+    <div id="checks"></div>
+  </section>
+
+  <section id="fcmWarning" class="card" hidden>
+    <div class="notice warnbox"><strong>Native APK token detected.</strong><br>This NILTASK server intentionally skips Web Push for users who already have a native FCM token, to prevent duplicate notifications. For a clean PWA test, use a NILTASK account that is not registered in the native APK.</div>
+  </section>
+
+  <section class="card">
+    <h2>Closed-app test</h2>
+    <ol>
+      <li>Get every important diagnostic above to <strong>PASS</strong>.</li>
+      <li>Close this page and close the installed PWA.</li>
+      <li>From another NILTASK account/device, send a DM or group message to this test user.</li>
+      <li>If the Android system notification arrives while the PWA is closed, Web Push is proven.</li>
+      <li>Repeat once with the phone screen locked.</li>
+    </ol>
+    <p class="detail">This deliberately uses NILTASK's real <code>push_subscriptions → send-push → service worker</code> route, so it tests the production architecture rather than a fake local notification.</p>
+  </section>
+
+  <section class="card">
+    <h2>Technical log</h2>
+    <div id="log">Waiting…</div>
+  </section>
+</main>
+<script type="module" src="/js/push-test.js"></script>
+</body>
+</html>

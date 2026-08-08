@@ -7,12 +7,13 @@ const workspaceCss=read('css/desktop-workspace-v8.css');
 const composer=read('js/desktop-task-composer-v11.js');
 const composerCss=read('css/desktop-task-composer-v11.css');
 const pdf=read('js/desktop-task-pdf-v11.js');
+const pdfClick=read('js/desktop-task-pdf-click-v11.js');
 const loader=read('js/desktop-fast-task-hub-v4.js');
 const tasks=read('js/tasks.js');
 const mobile=read('js/mobile.js');
 const native=read('js/native.js');
 
-for(const [src,label] of [[workspace,'Workspace v8'],[composer,'Task Composer v11'],[pdf,'Task PDF v11']]){
+for(const [src,label] of [[workspace,'Workspace v8'],[composer,'Task Composer v11'],[pdf,'Task PDF v11'],[pdfClick,'Task PDF click owner v11']]){
   try{new Function(src);check(true,`${label} syntax is valid`);}catch(e){check(false,`${label} syntax invalid: ${e.message}`);}
 }
 
@@ -112,12 +113,19 @@ check(!composer.includes('MutationObserver'),'Composer v11 adds no MutationObser
 ].forEach(([m,l])=>check(pdf.includes(m),l));
 check(!pdf.includes(".insert("),'professional PDF is read-only');
 check(!pdf.includes('setInterval('),'professional PDF adds no polling');
+[
+ ['__NFA_DESKTOP_TASK_PDF_CLICK_V11__','single PDF click capture guard'],
+ ["closest?.('[data-v8-task-pdf]')",'PDF button is captured before legacy target handler'],
+ ['stopImmediatePropagation','legacy line-dump PDF handler is suppressed'],
+ ['nfaDownloadTaskTrailPdf?.(taskId)','captured PDF click routes to professional owner'],
+].forEach(([m,l])=>check(pdfClick.includes(m),l));
 
 check(tasks.includes("addTaskTrail(\n                taskId,\n                'UPDATE'"),'existing task UPDATE owner remains available elsewhere');
 check(tasks.includes("addTaskTrail(\n                taskId,\n                'FILE'"),'existing task FILE owner remains available elsewhere');
 check(loader.includes("import('./desktop-workspace-v8.js?v=1')"),'loader starts Workspace v8');
 check(loader.includes("import('./desktop-task-composer-v11.js?v=1')"),'loader starts Composer v11');
 check(loader.includes("import('./desktop-task-pdf-v11.js?v=1')"),'loader starts professional PDF v11');
+check(loader.includes("import('./desktop-task-pdf-click-v11.js?v=1')"),'loader starts PDF click owner after professional PDF');
 check(loader.includes('./css/desktop-task-composer-v11.css?v=1'),'loader installs Composer v11 CSS');
 check(!loader.includes('desktop-task-composer-v10'),'Composer v10 is retired from loader');
 check(!loader.includes('desktop-task-composer-v9'),'Composer v9 remains retired from loader');

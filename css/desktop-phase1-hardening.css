@@ -1,0 +1,136 @@
+/* Noted For Action — desktop Phase 1 legacy-workflow hardening. */
+@media (min-width: 769px) and (pointer: fine) {
+  #ntTaskActionLayer .nt-action-backdrop {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(15, 23, 42, .42) !important;
+  }
+
+  #ntTaskActionLayer .nt-action-panel {
+    animation-duration: .13s !important;
+  }
+
+  #ntTaskActionLayer .nt-action-footer {
+    position: sticky;
+    z-index: 4;
+    bottom: 0;
+    flex: 0 0 auto;
+    background: var(--bg-body, #fff);
+    box-shadow: 0 -8px 18px rgba(15, 23, 42, .06);
+  }
+
+  #nfaTaskActionCancel.nfa-phase1-cancel {
+    display: inline-flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    color: var(--text-primary, #334155) !important;
+  }
+
+  .nfa-phase1-rich-editor {
+    overflow: hidden;
+    border: 1px solid var(--border-color, #cbd5e1);
+    border-radius: 13px;
+    background: var(--bg-body, #fff);
+  }
+
+  .nfa-phase1-rich-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 7px;
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+    background: var(--bg-sidebar, #f8fafc);
+  }
+
+  .nfa-phase1-rich-toolbar button {
+    min-width: 32px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 8px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-primary, #334155);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .12s ease, border-color .12s ease, transform .12s ease;
+  }
+
+  .nfa-phase1-rich-toolbar button:hover,
+  .nfa-phase1-rich-toolbar button:focus-visible {
+    border-color: color-mix(in srgb, var(--accent, #4f46e5) 28%, transparent);
+    background: color-mix(in srgb, var(--accent, #4f46e5) 9%, transparent);
+    outline: 0;
+  }
+
+  .nfa-phase1-rich-toolbar button:active {
+    transform: scale(.96);
+  }
+
+  .nfa-phase1-rich-surface {
+    min-height: 128px;
+    max-height: min(300px, 42vh);
+    overflow-y: auto;
+    padding: 12px 13px;
+    color: var(--text-primary, #111827);
+    font-size: 12px;
+    line-height: 1.55;
+    outline: 0;
+    scroll-behavior: smooth;
+    overscroll-behavior: contain;
+  }
+
+  .nfa-phase1-rich-surface:empty::before {
+    content: attr(data-placeholder);
+    color: var(--text-secondary, #94a3b8);
+    font-style: italic;
+    pointer-events: none;
+  }
+
+  .nfa-phase1-rich-surface ul,
+  .nfa-phase1-rich-output ul {
+    margin: .35em 0 .35em 1.25em;
+    padding: 0;
+    list-style: disc;
+  }
+
+  .nfa-phase1-rich-output {
+    color: var(--text-primary, #111827);
+    font-size: inherit;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+  }
+
+  .nfa-phase1-rich-output p,
+  .nfa-phase1-rich-output div {
+    margin: 0 0 .35em;
+  }
+
+  .nfa-phase1-rich-output p:last-child,
+  .nfa-phase1-rich-output div:last-child {
+    margin-bottom: 0;
+  }
+
+  #tasksPanel .nt-task-card {
+    content-visibility: auto;
+    contain-intrinsic-size: 260px;
+  }
+
+  #activityFeedList,
+  #tasksPanel,
+  .nt-task-trail,
+  .nfa-phase1-rich-surface {
+    scrollbar-gutter: stable;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ntTaskActionLayer .nt-action-panel,
+  .nfa-phase1-rich-toolbar button {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -1,0 +1,58 @@
+/* Noted For Action — Phase 1 task-trail readability correction. */
+@media (min-width: 769px) and (pointer: fine) {
+  #tasksPanel .nfa-trail-rich-v3,
+  #tasksPanel .nfa-phase1-rich-output {
+    color: var(--text-primary, #172033);
+    font-size: 12.5px;
+    line-height: 1.62;
+    overflow-wrap: anywhere;
+  }
+
+  #tasksPanel .nfa-trail-rich-v3 p,
+  #tasksPanel .nfa-trail-rich-v3 div,
+  #tasksPanel .nfa-phase1-rich-output p,
+  #tasksPanel .nfa-phase1-rich-output div {
+    margin: 0 0 .38em;
+  }
+
+  #tasksPanel .nfa-trail-rich-v3 p:last-child,
+  #tasksPanel .nfa-trail-rich-v3 div:last-child,
+  #tasksPanel .nfa-phase1-rich-output p:last-child,
+  #tasksPanel .nfa-phase1-rich-output div:last-child {
+    margin-bottom: 0;
+  }
+
+  #tasksPanel .nfa-trail-rich-v3 ul,
+  #tasksPanel .nfa-trail-rich-v3 ol,
+  #tasksPanel .nfa-phase1-rich-output ul,
+  #tasksPanel .nfa-phase1-rich-output ol {
+    margin: .35em 0 .35em 1.35em;
+    padding: 0;
+  }
+
+  #tasksPanel .nfa-trail-rich-v3 ul,
+  #tasksPanel .nfa-phase1-rich-output ul {
+    list-style: disc;
+  }
+
+  #tasksPanel .nfa-trail-rich-v3 ol,
+  #tasksPanel .nfa-phase1-rich-output ol {
+    list-style: decimal;
+  }
+
+  #tasksPanel .nt-task-trail .text-gray-500,
+  #tasksPanel .nt-task-trail .text-gray-400,
+  #tasksPanel [id^="trail-"] .text-gray-500,
+  #tasksPanel [id^="trail-"] .text-gray-400 {
+    color: var(--text-secondary, #64748b) !important;
+    font-size: 11.5px !important;
+    line-height: 1.48 !important;
+    font-weight: 500 !important;
+  }
+
+  #tasksPanel .nt-task-trail [class*="text-[10px]"],
+  #tasksPanel [id^="trail-"] [class*="text-[10px]"] {
+    font-size: 11.5px !important;
+    line-height: 1.48 !important;
+  }
+}

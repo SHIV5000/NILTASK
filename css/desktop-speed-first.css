@@ -1,0 +1,379 @@
+/*
+ * Noted For Action — speed-first desktop shell, Phase 1.
+ *
+ * CSS-only visual restructuring over the existing desktop DOM. No mobile rules,
+ * animation loops, observers, filters, backdrop effects or data ownership.
+ */
+
+@media (min-width: 769px) {
+  :root {
+    --nfa-rail-width: 74px;
+    --nfa-plum-950: #21172c;
+    --nfa-plum-900: #30203f;
+    --nfa-plum-700: #5b2d8b;
+    --nfa-saffron: #e9a33b;
+    --nfa-saffron-soft: #fff2dc;
+    --nfa-shell-bg: #eef1f6;
+    --nfa-card-bg: var(--bg-sidebar, #ffffff);
+    --nfa-line: var(--border-color, #dfe4ec);
+    --nfa-muted: var(--text-secondary, #697181);
+  }
+
+  #root > .nfa-speed-shell {
+    min-width: 0;
+    background: var(--nfa-shell-bg) !important;
+  }
+
+  #nfaDesktopRail {
+    width: var(--nfa-rail-width);
+    min-width: var(--nfa-rail-width);
+    height: 100%;
+    padding: 11px 7px 9px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    color: #ddd4e7;
+    background: linear-gradient(180deg, var(--nfa-plum-900), var(--nfa-plum-950));
+    border-right: 1px solid rgba(255, 255, 255, .08);
+    z-index: 24;
+  }
+
+  #nfaDesktopRail .nfa-rail-mark {
+    width: 43px;
+    height: 43px;
+    margin: 0 auto 5px;
+    display: grid;
+    place-items: center;
+    color: #2b1b09;
+    background: var(--nfa-saffron);
+    font-size: 15px;
+    font-weight: 950;
+    clip-path: polygon(0 0, 74% 0, 100% 26%, 100% 100%, 26% 100%, 0 74%);
+  }
+
+  #nfaDesktopRail .nfa-rail-button {
+    position: relative;
+    width: 100%;
+    min-height: 51px;
+    padding: 7px 2px;
+    border: 0;
+    border-radius: 13px;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 4px;
+    color: inherit;
+    background: transparent;
+    font-size: 7.5px;
+    line-height: 1.05;
+    font-weight: 800;
+    text-align: center;
+  }
+
+  #nfaDesktopRail .nfa-rail-button i {
+    font-size: 17px;
+  }
+
+  #nfaDesktopRail .nfa-rail-button:hover,
+  #nfaDesktopRail .nfa-rail-button:focus-visible {
+    color: #fff;
+    background: rgba(255, 255, 255, .08);
+  }
+
+  #nfaDesktopRail .nfa-rail-button.nfa-active {
+    color: #fff;
+    background: rgba(255, 255, 255, .12);
+    box-shadow: inset 3px 0 0 var(--nfa-saffron);
+  }
+
+  #nfaDesktopRail .nfa-rail-spacer {
+    flex: 1;
+  }
+
+  #nfaDesktopRail .nfa-rail-profile {
+    width: 39px;
+    height: 39px;
+    margin: 3px auto 0;
+    border: 2px solid rgba(255, 255, 255, .25);
+    border-radius: 50%;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    background: var(--nfa-plum-700);
+    font-size: 10px;
+    font-weight: 900;
+  }
+
+  #nfaDesktopRail .nfa-rail-profile img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  #leftSidebar.nfa-departments-panel {
+    min-width: 210px;
+    max-width: 420px;
+    background: var(--bg-body, #f7f8fb) !important;
+    box-shadow: none !important;
+  }
+
+  #leftSidebar.nfa-departments-panel > div:first-child {
+    padding: 9px 12px 0 !important;
+    background: var(--bg-sidebar, #fff) !important;
+  }
+
+  #leftSidebar.nfa-departments-panel > div:first-child > div:first-child {
+    font-size: 9px !important;
+    margin-bottom: 1px !important;
+  }
+
+  #leftSidebar.nfa-departments-panel > div:first-child > div:nth-child(2) {
+    font-size: 14px !important;
+    margin-bottom: 7px !important;
+  }
+
+  #leftSidebar.nfa-departments-panel > div:first-child > div:last-child {
+    padding-bottom: 6px !important;
+  }
+
+  #nfaDepartmentsHeading {
+    padding: 10px 12px 7px;
+    border-bottom: 1px solid var(--nfa-line);
+    background: var(--bg-body, #f7f8fb);
+  }
+
+  #nfaDepartmentsHeading strong {
+    display: block;
+    color: var(--text-primary, #172033);
+    font-size: 12px;
+    letter-spacing: .08em;
+    font-weight: 900;
+  }
+
+  #nfaDepartmentsHeading span {
+    display: block;
+    margin-top: 2px;
+    color: var(--nfa-muted);
+    font-size: 8px;
+  }
+
+  #chatsList {
+    padding: 5px 7px 9px !important;
+  }
+
+  #chatsList .channel-item {
+    min-height: 48px;
+    margin: 2px 0;
+    border: 1px solid transparent;
+    border-radius: 13px !important;
+  }
+
+  #chatsList .channel-item:hover,
+  #chatsList .channel-item.active,
+  #chatsList .channel-item.selected {
+    border-color: var(--nfa-line);
+    background: var(--bg-sidebar, #fff) !important;
+  }
+
+  #leftResizer,
+  #rightResizer {
+    width: 7px !important;
+    min-width: 7px !important;
+    cursor: col-resize;
+    position: relative;
+    background: var(--bg-body, #f7f8fb);
+  }
+
+  #leftResizer::after,
+  #rightResizer::after {
+    content: "";
+    position: absolute;
+    inset: 0 2px;
+    background: transparent;
+  }
+
+  #leftResizer:hover::after,
+  #rightResizer:hover::after {
+    background: var(--nfa-saffron);
+  }
+
+  .chat-area.nfa-speed-chat {
+    min-width: 0;
+    background: var(--bg-sidebar, #fff);
+  }
+
+  .chat-area.nfa-speed-chat > div:first-child {
+    min-height: 54px;
+    padding: 8px 13px !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .chat-area.nfa-speed-chat #roomTitleDisplay {
+    font-size: 13px !important;
+  }
+
+  .chat-area.nfa-speed-chat .topbar-icon-btn {
+    min-width: 34px;
+  }
+
+  .chat-area.nfa-speed-chat #topBarScheduleBtn,
+  .chat-area.nfa-speed-chat [onclick*="openTopPanel('bookmarks')"],
+  .chat-area.nfa-speed-chat [onclick*="openActivityFeed()"],
+  .chat-area.nfa-speed-chat [onclick*="toggleRightSidebar()"] {
+    display: none !important;
+  }
+
+  #messagesContainer {
+    padding: 14px 20px 18px !important;
+    scroll-behavior: smooth;
+  }
+
+  #messagesContainer .chat-shell {
+    width: 100%;
+  }
+
+  #messagesContainer .row-sent,
+  #messagesContainer .row-rcvd {
+    width: 100%;
+  }
+
+  #messagesContainer .row-sent {
+    justify-content: flex-end !important;
+  }
+
+  #messagesContainer .row-rcvd {
+    justify-content: flex-start !important;
+  }
+
+  #messagesContainer .row-sent .bubble,
+  #messagesContainer .row-rcvd .bubble,
+  #messagesContainer .bubble.sent,
+  #messagesContainer .bubble.rcvd {
+    width: auto !important;
+    max-width: 70% !important;
+  }
+
+  #messagesContainer .bubble {
+    border-radius: 15px !important;
+    box-shadow: 0 2px 8px rgba(31, 39, 61, .05) !important;
+  }
+
+  #messagesContainer .bubble.sent {
+    border-left: 4px solid var(--nfa-plum-700) !important;
+  }
+
+  #messagesContainer .bubble.rcvd {
+    border-left: 4px solid var(--nfa-saffron) !important;
+  }
+
+  #messagesContainer .msg-text,
+  #messagesContainer .message-text,
+  #messagesContainer .bubble p {
+    color: #626976;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .chat-area.nfa-speed-chat #webTypingBar + div {
+    padding: 8px 12px 10px !important;
+  }
+
+  #rightSidebar.nfa-task-hub-panel {
+    min-width: 230px;
+    max-width: 520px;
+    box-shadow: none !important;
+    background: var(--bg-body, #f7f8fb) !important;
+  }
+
+  #nfaTaskHubHeading {
+    flex: 0 0 auto;
+    padding: 11px 12px 9px;
+    border-bottom: 1px solid var(--nfa-line);
+    background: var(--bg-sidebar, #fff);
+  }
+
+  #nfaTaskHubHeading strong {
+    display: block;
+    color: var(--text-primary, #172033);
+    font-size: 13px;
+    font-weight: 900;
+  }
+
+  #nfaTaskHubHeading span {
+    display: block;
+    margin-top: 2px;
+    color: var(--nfa-muted);
+    font-size: 8px;
+  }
+
+  #rightSidebar.nfa-task-hub-panel > .w-full.h-full {
+    min-height: 0;
+    flex: 1;
+  }
+
+  #rightSidebarFilters .filter-pill {
+    min-height: 25px;
+    padding: 4px 8px;
+  }
+
+  #tasksPanel {
+    padding: 9px !important;
+  }
+
+  #tasksPanel .nt-task-card {
+    margin-bottom: 9px;
+    border-width: 1px;
+    border-radius: 14px;
+    box-shadow: none;
+    transition: border-color .12s ease, transform .12s ease;
+  }
+
+  #tasksPanel .nt-task-card:hover {
+    transform: translateY(-1px);
+    box-shadow: none;
+  }
+
+  #tasksPanel .nt-task-body {
+    padding: 11px;
+  }
+
+  @media (max-width: 1250px), (max-height: 800px) {
+    :root {
+      --nfa-rail-width: 66px;
+    }
+
+    #nfaDesktopRail {
+      padding-left: 5px;
+      padding-right: 5px;
+    }
+
+    #nfaDesktopRail .nfa-rail-button {
+      min-height: 47px;
+      font-size: 7px;
+    }
+
+    #leftSidebar.nfa-departments-panel {
+      max-width: 340px;
+    }
+
+    #rightSidebar.nfa-task-hub-panel {
+      max-width: 380px;
+    }
+
+    #messagesContainer {
+      padding-left: 13px !important;
+      padding-right: 13px !important;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #messagesContainer,
+    #tasksPanel .nt-task-card {
+      scroll-behavior: auto !important;
+      transition: none !important;
+    }
+  }
+}

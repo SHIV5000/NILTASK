@@ -1,0 +1,261 @@
+/* Noted For Action — desktop fast Task Hub v4. */
+@media (min-width: 769px) and (pointer: fine) {
+  #nfaFocusedTaskBar {
+    display: none;
+    position: sticky;
+    top: 0;
+    z-index: 235;
+    min-height: 54px;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border-color, #dfe4ec);
+    background:
+      linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--accent, #4f46e5) 8%, var(--bg-sidebar, #fff)),
+        var(--bg-sidebar, #fff)
+      );
+    box-shadow: 0 8px 18px rgba(15, 23, 42, .07);
+  }
+
+  #nfaFocusedTaskBar.nfa-open {
+    display: flex;
+  }
+
+  .nfa-focused-task-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  #nfaFocusedTaskEyebrow {
+    color: var(--accent, #4f46e5);
+    font-size: 8.5px;
+    line-height: 1.2;
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+
+  #nfaFocusedTaskTitle {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-primary, #172033);
+    font-size: 13px;
+    line-height: 1.35;
+    font-weight: 800;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #nfaFocusedTaskClose {
+    min-width: 94px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1px solid color-mix(in srgb, var(--accent, #4f46e5) 28%, var(--border-color, #dfe4ec));
+    border-radius: 10px;
+    background: var(--bg-sidebar, #fff);
+    color: var(--accent, #4f46e5);
+    box-shadow:
+      0 6px 15px rgba(15, 23, 42, .08),
+      inset 0 1px 0 rgba(255, 255, 255, .7);
+    font-size: 9.5px;
+    font-weight: 800;
+    cursor: pointer;
+    transition:
+      transform .15s ease,
+      border-color .15s ease,
+      box-shadow .15s ease;
+  }
+
+  #nfaFocusedTaskClose:hover,
+  #nfaFocusedTaskClose:focus-visible {
+    transform: translateY(-1px);
+    border-color: var(--accent, #4f46e5);
+    box-shadow:
+      0 9px 20px rgba(79, 70, 229, .14),
+      inset 0 1px 0 rgba(255, 255, 255, .78);
+    outline: 0;
+  }
+
+  #rightSidebar.nfa-task-focused #rightSidebarFilters,
+  #rightSidebar.nfa-task-focused #dateRangeFilter,
+  #rightSidebar.nfa-task-create-mode #rightSidebarFilters,
+  #rightSidebar.nfa-task-create-mode #dateRangeFilter {
+    display: none !important;
+  }
+
+  #rightSidebar.nfa-task-focused #nfaTaskHubExpandToggle,
+  #rightSidebar.nfa-task-create-mode #nfaTaskHubExpandToggle {
+    display: none !important;
+  }
+
+  #tasksPanel .nfa-task-focus-hidden {
+    display: none !important;
+  }
+
+  #rightSidebar.nfa-task-focused #tasksPanel {
+    padding: 16px 24px 28px !important;
+    scroll-padding-top: 12px;
+  }
+
+  #rightSidebar.nfa-task-focused #tasksPanel .nfa-task-focus-card {
+    width: min(100%, 1040px) !important;
+    max-width: 1040px !important;
+    margin: 0 auto !important;
+    border-color: color-mix(in srgb, var(--accent, #4f46e5) 42%, var(--border-color, #dbe2ea)) !important;
+    box-shadow:
+      0 4px 11px rgba(15, 23, 42, .07),
+      0 20px 46px rgba(15, 23, 42, .13) !important;
+    transform: none !important;
+  }
+
+  #rightSidebar.nfa-task-focused .nfa-task-focus-card .nt-task-expanded {
+    display: block !important;
+    border-top-color: color-mix(in srgb, var(--accent, #4f46e5) 18%, var(--border-color, #e5e7eb));
+  }
+
+  #rightSidebar.nfa-task-focused .nfa-task-focus-card [onclick*="toggleTaskDetails"] {
+    display: none !important;
+  }
+
+  #rightSidebar.nfa-task-focused .nfa-task-focus-card .nt-task-action-row {
+    position: sticky;
+    top: 0;
+    z-index: 16;
+    padding: 9px;
+    margin: 14px -4px 0;
+    border: 1px solid color-mix(in srgb, var(--accent, #4f46e5) 14%, var(--border-color, #dfe4ec));
+    border-radius: 13px;
+    background: color-mix(in srgb, var(--bg-sidebar, #fff) 94%, transparent);
+    box-shadow: 0 8px 18px rgba(15, 23, 42, .07);
+  }
+
+  #nfaTaskInlineHost {
+    display: none;
+    flex: 0 0 auto;
+    max-height: min(48vh, 520px);
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    padding: 8px;
+    border-top: 1px solid var(--border-color, #dfe4ec);
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--accent, #4f46e5) 5%, var(--bg-body, #f8fafc)),
+        var(--bg-sidebar, #fff)
+      );
+    box-shadow: 0 -14px 32px rgba(15, 23, 42, .12);
+  }
+
+  #nfaTaskInlineHost.nfa-open {
+    display: block;
+  }
+
+  #ntTaskActionLayer.nfa-inline-action-layer {
+    pointer-events: none !important;
+    background: transparent !important;
+  }
+
+  #ntTaskActionLayer.nfa-inline-action-layer .nt-action-backdrop {
+    display: none !important;
+  }
+
+  #nfaTaskInlineHost .nt-action-panel.nfa-inline-action-panel {
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
+    display: flex !important;
+    border: 1px solid color-mix(in srgb, var(--accent, #4f46e5) 17%, var(--border-color, #dce1ea)) !important;
+    border-radius: 15px !important;
+    background: var(--bg-sidebar, #fff) !important;
+    box-shadow:
+      0 13px 30px rgba(15, 23, 42, .12),
+      inset 0 1px 0 rgba(255, 255, 255, .65) !important;
+    animation: nfaInlineTaskActionIn .16s cubic-bezier(.2, .75, .25, 1) !important;
+    pointer-events: auto !important;
+  }
+
+  #nfaTaskInlineHost .nt-action-panel-header {
+    min-height: 46px;
+    padding: 9px 12px !important;
+  }
+
+  #nfaTaskInlineHost .nt-action-panel-body {
+    max-height: min(30vh, 330px);
+    padding: 12px !important;
+    overflow-y: auto;
+  }
+
+  #nfaTaskInlineHost .nt-action-footer {
+    padding: 10px 12px !important;
+  }
+
+  #nfaTaskInlineHost .nt-action-panel-close {
+    display: none !important;
+  }
+
+  #rightSidebar.nfa-task-create-mode #tasksPanel {
+    display: none !important;
+  }
+
+  #nfaTaskInlineHost.nfa-create-open {
+    flex: 1 1 auto;
+    max-height: none;
+    padding: 16px 24px 28px;
+    overflow-y: auto;
+  }
+
+  #nfaTaskInlineHost .nfa-inline-task-create-card {
+    width: min(100%, 760px) !important;
+    max-width: 760px !important;
+    margin: 0 auto !important;
+    padding: 20px !important;
+    border: 1px solid color-mix(in srgb, var(--accent, #4f46e5) 22%, var(--border-color, #dce1ea)) !important;
+    border-radius: 17px !important;
+    background: var(--bg-sidebar, #fff) !important;
+    box-shadow:
+      0 4px 10px rgba(15, 23, 42, .06),
+      0 18px 44px rgba(15, 23, 42, .12) !important;
+  }
+
+  #nfaTaskInlineHost .nfa-inline-task-create-card #assigneeCheckboxList {
+    max-height: min(260px, 30vh) !important;
+    scroll-behavior: smooth;
+    scrollbar-gutter: stable;
+  }
+
+  .b-name {
+    min-height: 1em;
+  }
+
+  @keyframes nfaInlineTaskActionIn {
+    from {
+      opacity: 0;
+      transform: translateY(7px) scale(.992);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #nfaFocusedTaskClose,
+  #nfaTaskInlineHost .nt-action-panel.nfa-inline-action-panel {
+    transition: none !important;
+    animation: none !important;
+  }
+}

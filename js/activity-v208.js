@@ -70,6 +70,17 @@
         document.head.appendChild(roleParity);
     }
 
+    if (
+        mobileRuntime &&
+        !document.querySelector('script[data-nfa-mobile-final-ui]')
+    ) {
+        const finalUi = document.createElement('script');
+        finalUi.src = 'js/mobile-final-ui-v211.js?v=1';
+        finalUi.async = false;
+        finalUi.dataset.nfaMobileFinalUi = '1';
+        document.head.appendChild(finalUi);
+    }
+
     window.NILTASK_ACTIVITY_UI_VERSION =
-        'source-owned-layout-v2-mobile-workflow-v209-role-parity-v210';
+        'source-owned-layout-v2-mobile-workflow-v209-role-parity-v210-final-ui-v211';
 })();

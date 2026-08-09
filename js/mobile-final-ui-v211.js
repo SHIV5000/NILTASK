@@ -56,9 +56,7 @@
       }
       #mobileApp.nfa-final-phone #mStage{grid-column:1;grid-row:2}
       #mobileApp.nfa-final-tablet #mStage{grid-column:3;grid-row:2}
-      #mobileApp.nfa-final-ui-v211 #mNav{
-        position:relative!important;inset:auto!important;z-index:31!important;box-shadow:none!important;
-      }
+      #mobileApp.nfa-final-ui-v211 #mNav{position:relative!important;inset:auto!important;z-index:31!important;box-shadow:none!important}
       #mobileApp.nfa-final-phone #mNav{
         grid-column:1;grid-row:3;width:auto!important;height:auto!important;display:grid!important;
         grid-template-columns:repeat(5,minmax(0,1fr))!important;background:var(--bg-body,#fff)!important;
@@ -90,11 +88,7 @@
       #mobileApp.nfa-final-tablet #mNav .mn-lbl{font-size:8px!important;font-weight:900!important}
       #mobileApp.nfa-final-tablet #mNav .mn-btn.active{background:rgba(255,255,255,.14)!important;color:#fff!important}
       #mobileApp.nfa-final-ui-v211 #mSBInfo{display:none!important}
-      #mobileApp.nfa-final-ui-v211 #mSBAdmin,
-      #mobileApp.nfa-final-ui-v211 #mSBLens,
-      #mobileApp.nfa-final-ui-v211 #mSBTheme,
-      #mobileApp.nfa-final-ui-v211 #mSBDnd,
-      #mobileApp.nfa-final-ui-v211 #mSB>button[title="Sign out"]{display:none!important}
+      #mobileApp.nfa-final-ui-v211 #mSBAdmin,#mobileApp.nfa-final-ui-v211 #mSBLens,#mobileApp.nfa-final-ui-v211 #mSBTheme,#mobileApp.nfa-final-ui-v211 #mSBDnd,#mobileApp.nfa-final-ui-v211 #mSB>button[title="Sign out"]{display:none!important}
       #mobileApp.nfa-final-ui-v211 #mSBBell{
         margin-left:auto!important;width:36px!important;height:36px!important;min-width:36px!important;border:0!important;border-radius:50%!important;
         background:var(--bg-sidebar,#f2f4f7)!important;color:var(--text-primary,#344054)!important;display:grid!important;place-items:center!important;
@@ -111,15 +105,8 @@
       #mobileApp.nfa-final-ui-v211 .m-htitle{font-size:13px!important;font-weight:850!important;color:var(--text-primary,#101828)!important}
       #mobileApp.nfa-final-ui-v211 .m-hsubtitle{font-size:9px!important}
       #mobileApp.nfa-final-ui-v211 .m-back{width:32px!important;height:32px!important;min-width:32px!important;background:#eef2ff!important;color:#4338ca!important;border-radius:50%!important}
-      #mobileApp.nfa-final-ui-v211 .m-sl{
-        margin:8px 2px 7px!important;padding:0!important;font-size:9px!important;color:var(--text-secondary,#667085)!important;
-        text-transform:uppercase!important;letter-spacing:.08em!important;font-weight:900!important;
-      }
-      #mobileApp.nfa-final-ui-v211 .m-row{
-        display:flex!important;align-items:center!important;gap:10px!important;margin:0 0 9px!important;padding:11px!important;
-        border:1px solid var(--border-color,#e4e7ec)!important;border-radius:14px!important;background:var(--card-bg,#fff)!important;
-        box-shadow:0 2px 7px rgba(16,24,40,.035)!important;min-height:62px!important;
-      }
+      #mobileApp.nfa-final-ui-v211 .m-sl{margin:8px 2px 7px!important;padding:0!important;font-size:9px!important;color:var(--text-secondary,#667085)!important;text-transform:uppercase!important;letter-spacing:.08em!important;font-weight:900!important}
+      #mobileApp.nfa-final-ui-v211 .m-row{display:flex!important;align-items:center!important;gap:10px!important;margin:0 0 9px!important;padding:11px!important;border:1px solid var(--border-color,#e4e7ec)!important;border-radius:14px!important;background:var(--card-bg,#fff)!important;box-shadow:0 2px 7px rgba(16,24,40,.035)!important;min-height:62px!important}
       #mobileApp.nfa-final-ui-v211 .m-ri{min-width:0!important;flex:1!important;cursor:pointer!important}
       #mobileApp.nfa-final-ui-v211 .m-rn{font-size:11px!important;font-weight:850!important;color:var(--text-primary,#101828)!important}
       #mobileApp.nfa-final-ui-v211 .m-rs{font-size:8.5px!important;color:var(--text-secondary,#667085)!important;margin-top:3px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
@@ -144,10 +131,7 @@
       #mobileApp.nfa-final-ui-v211 .nfa-inline-thread{margin:2px 10px 10px 35px!important;padding-left:8px!important}
       #mobileApp.nfa-final-ui-v211 .nfa-inline-card{border-radius:12px!important;padding:8px 9px!important;background:var(--card-bg,#fff)!important}
       #mobileApp.nfa-final-ui-v211 .nfa-inline-head{font-size:8px!important}.nfa-final-ui-v211 .nfa-inline-text{font-size:9.5px!important}
-      #mobileApp.nfa-final-ui-v211 .m-composer{
-        flex-wrap:wrap!important;align-items:flex-end!important;gap:6px!important;padding:7px 8px 8px!important;
-        background:var(--bg-body,#fff)!important;border-top:1px solid var(--border-color,#e4e7ec)!important;box-shadow:none!important;
-      }
+      #mobileApp.nfa-final-ui-v211 .m-composer{flex-wrap:wrap!important;align-items:flex-end!important;gap:6px!important;padding:7px 8px 8px!important;background:var(--bg-body,#fff)!important;border-top:1px solid var(--border-color,#e4e7ec)!important;box-shadow:none!important}
       #mobileApp.nfa-final-ui-v211 .m-composer.nfa-task-mode{border-top:2px solid #a5b4fc!important;background:color-mix(in srgb,#eef2ff 34%,var(--bg-body,#fff))!important}
       #mobileApp.nfa-final-ui-v211 .nfa-task-context{flex:0 0 100%!important;padding:2px 2px 6px!important;margin:0 0 1px!important}
       #mobileApp.nfa-final-ui-v211 .nfa-task-context-head{font-size:9px!important;color:#3730a3!important}.nfa-final-ui-v211 .nfa-task-context-head button{font-size:17px!important}
@@ -193,6 +177,10 @@
     document.head.appendChild(style);
   }
 
+  function setText(node, value) {
+    if (node && node.textContent !== value) node.textContent = value;
+  }
+
   function ensureBrand() {
     const bar = $('#mSB');
     if (!bar) return;
@@ -206,8 +194,7 @@
     const title = $('#mStage .m-hdr .m-htitle')?.textContent?.trim();
     const s = screen();
     const fallback = ({home:'Chats',tasks:'Tasks',activity:'Activity Feed',remind:'Reminders',settings:'Settings',dashboard:'Dashboard',marks:'Bookmarks'})[s] || 'NILTASK';
-    const sub = $('#nfaFinalSubtitle');
-    if (sub) sub.textContent = title || fallback;
+    setText($('#nfaFinalSubtitle'), title || fallback);
   }
 
   function exec(editor, cmd, value=null) {
@@ -260,8 +247,8 @@
       const txt = (label.textContent || '').replace(/\s+/g,' ').trim().toUpperCase();
       if (txt.startsWith('DEPARTMENTS')) {
         const span = $('span', label);
-        if (span) span.textContent = 'GROUPS';
-        else if (!label.querySelector('button')) label.textContent = 'GROUPS';
+        if (span) setText(span, 'GROUPS');
+        else if (!label.querySelector('button')) setText(label, 'GROUPS');
       }
     });
     captureTabletDirectory(root);
@@ -269,27 +256,29 @@
 
   function cleanClone(node) {
     node.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
-    node.querySelectorAll('button').forEach(btn => {
-      if (!btn.closest('.m-row')) btn.remove();
-    });
+    node.querySelectorAll('button').forEach(btn => { if (!btn.closest('.m-row')) btn.remove(); });
     return node;
   }
 
   function captureTabletDirectory(root) {
     const holder = document.createElement('div');
-    let currentSection = '';
     [...root.children].forEach(child => {
       if (child.classList?.contains('nfa-chat-tools')) return;
       if (child.classList?.contains('m-sl')) {
         const txt = (child.textContent || '').replace(/Manage/ig,'').trim();
-        currentSection = /DIRECT MESSAGES/i.test(txt) ? 'DIRECT MESSAGES' : 'GROUPS';
-        const h = document.createElement('div'); h.className='nfa-side-section'; h.textContent=currentSection; holder.appendChild(h);
+        const h = document.createElement('div');
+        h.className='nfa-side-section';
+        h.textContent=/DIRECT MESSAGES/i.test(txt) ? 'DIRECT MESSAGES' : 'GROUPS';
+        holder.appendChild(h);
         return;
       }
       if (child.classList?.contains('m-row')) holder.appendChild(cleanClone(child.cloneNode(true)));
     });
-    if (holder.querySelector('.m-row')) directoryHtml = holder.innerHTML;
-    renderTabletDirectory();
+    const next = holder.querySelector('.m-row') ? holder.innerHTML : '';
+    if (next && next !== directoryHtml) {
+      directoryHtml = next;
+      renderTabletDirectory();
+    }
   }
 
   function ensureTabletDirectoryNode() {
@@ -312,16 +301,22 @@
 
   function renderTabletDirectory() {
     const side = ensureTabletDirectoryNode(); if (!side) return;
-    if (directoryHtml) side.innerHTML = directoryHtml;
-    else if (!side.children.length) side.innerHTML='<div class="nfa-side-section">CHATS</div><div class="nfa-side-empty">Open Chat once to load your Groups and Direct Messages here.</div>';
+    if (directoryHtml) {
+      if (side.dataset.snapshot !== directoryHtml) {
+        side.innerHTML = directoryHtml;
+        side.dataset.snapshot = directoryHtml;
+      }
+    } else if (!side.children.length) {
+      side.innerHTML='<div class="nfa-side-section">CHATS</div><div class="nfa-side-empty">Open Chat once to load your Groups and Direct Messages here.</div>';
+      side.dataset.snapshot='empty';
+    }
   }
 
   function ensureTabletWelcome() {
     const frame = $('#mStage > .mScr');
     if (!frame || screen() !== 'home' || !isTablet()) return;
-    let welcome = $('.nfa-tablet-welcome', frame);
-    if (!welcome) {
-      welcome=document.createElement('div');welcome.className='nfa-tablet-welcome';
+    if (!$('.nfa-tablet-welcome', frame)) {
+      const welcome=document.createElement('div');welcome.className='nfa-tablet-welcome';
       welcome.innerHTML='<div><b>Select a conversation</b><span>Choose a Group or Direct Message from the chat directory.</span></div>';
       frame.appendChild(welcome);
     }
@@ -330,7 +325,7 @@
   function patchTaskDashboard() {
     if (screen() !== 'tasks') return;
     const root = $('#mStage > .mScr .mScr-inner'); if (!root) return;
-    const h = $('.m-hdr .m-htitle', root); if (h) h.textContent='Tasks';
+    setText($('.m-hdr .m-htitle', root),'Tasks');
     let title = $('.nfa-final-task-title', root);
     if (!title) {
       title=document.createElement('div'); title.className='nfa-final-task-title'; title.textContent='Task Dashboard';
@@ -344,17 +339,17 @@
       title.after(filters);
     }
     const active = window._taskFilter || 'all';
-    const defs=[['all','All'],['forme','Allotted to Me'],['byme','Allotted by Me'],['pending','Pending'],['done','Completed']];
-    filters.innerHTML=defs.map(([k,l])=>`<button type="button" class="nfa-final-task-filter ${active===k?'on':''}" data-nfa-final-task-filter="${k}">${l}</button>`).join('');
+    if (filters.dataset.active !== active) {
+      const defs=[['all','All'],['forme','Allotted to Me'],['byme','Allotted by Me'],['pending','Pending'],['done','Completed']];
+      filters.innerHTML=defs.map(([k,l])=>`<button type="button" class="nfa-final-task-filter ${active===k?'on':''}" data-nfa-final-task-filter="${k}">${l}</button>`).join('');
+      filters.dataset.active=active;
+    }
   }
 
   function patchScreenLabels() {
     const s=screen();
-    if (s==='remind') {
-      const h=$('#mStage .m-hdr .m-htitle'); if(h)h.textContent='Reminders';
-    } else if (s==='settings') {
-      const h=$('#mStage .m-hdr .m-htitle'); if(h)h.textContent='Settings';
-    }
+    if (s==='remind') setText($('#mStage .m-hdr .m-htitle'),'Reminders');
+    else if (s==='settings') setText($('#mStage .m-hdr .m-htitle'),'Settings');
   }
 
   function applyLayout() {
@@ -363,11 +358,10 @@
     app.classList.add('nfa-final-ui-v211');
     app.classList.toggle('nfa-final-tablet',isTablet());
     app.classList.toggle('nfa-final-phone',!isTablet());
-    // Chat screens are immersive in the legacy shell. The approved UI keeps the
-    // top brand and primary navigation visible, so v211 owns those display values.
     const sb=$('#mSB'), nav=$('#mNav');
-    if(sb) sb.style.setProperty('display','flex','important');
-    if(nav) nav.style.setProperty('display',isTablet()?'flex':'grid','important');
+    if(sb && sb.style.getPropertyValue('display')!=='flex') sb.style.setProperty('display','flex','important');
+    const navDisplay=isTablet()?'flex':'grid';
+    if(nav && nav.style.getPropertyValue('display')!==navDisplay) nav.style.setProperty('display',navDisplay,'important');
     renderTabletDirectory();
   }
 
@@ -380,7 +374,7 @@
 
   function onClick(e) {
     const f=e.target.closest('[data-nfa-final-task-filter]');
-    if(f){e.preventDefault();e.stopImmediatePropagation();window._mobTaskFilter?.(f.dataset.nfaFinalTaskFilter);return;}
+    if(f){e.preventDefault();e.stopImmediatePropagation();window._mobTaskFilter?.(f.dataset.nfaFinalTaskFilter);}
   }
 
   function start() {

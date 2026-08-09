@@ -4,7 +4,7 @@
  * Desktop Activity markup, filters, refresh ownership and card styling live
  * directly in js/ui-feed.js. This file contains the structural sidebar rule
  * required by the existing main-app shell and loads the cross-device chat
- * parity service. It creates no Activity function wrappers or MutationObservers.
+ * parity services.
  */
 (function () {
     'use strict';
@@ -37,5 +37,13 @@
         document.head.appendChild(script);
     }
 
-    window.NILTASK_ACTIVITY_UI_VERSION = 'source-owned-layout-v2';
+    if (!document.querySelector('script[data-nfa-mobile-workflow-parity]')) {
+        const workflow = document.createElement('script');
+        workflow.src = 'js/mobile-workflow-parity-v209.js?v=1';
+        workflow.async = false;
+        workflow.dataset.nfaMobileWorkflowParity = '1';
+        document.head.appendChild(workflow);
+    }
+
+    window.NILTASK_ACTIVITY_UI_VERSION = 'source-owned-layout-v2-mobile-workflow-v209';
 })();

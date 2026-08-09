@@ -32,6 +32,7 @@
   const users = () => window.globalUsersCache || [];
   const nowIso = () => new Date().toISOString();
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const jsEsc = (s) => String(s ?? '').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
   const strip = (html) => {
     const d = document.createElement('div');
     d.innerHTML = html || '';
@@ -135,6 +136,11 @@
     if (t.startsWith('video/')||/\.(mp4|mov|avi|mkv|webm)$/.test(n)) return {icon:'🎬',label:'Video'};
     return {icon:'📎',label:'File'};
   }
+  function attachmentCard(name,path,type='') {
+    const k=fileKind(name,type), p=esc(path), nm=esc(name||'File');
+    return `<div class="nfa-attach-card" data-nfa-open-path="${p}">
+      <span class="nfa-attach-ic">${k.icon}</span><span class="nfa-attach-copy"><b>${nm}</b><span>${k.label} · Tap to open</span></span><span>↗</span></div>`;
+  }
   async function hydrateAttachmentThumbs(root=document) {
     const imgs=$$('img[data-nfa-imgpath]:not([data-nfa-hydrated])',root);
     for (const img of imgs) {
@@ -155,12 +161,18 @@
     } catch(e) { toast('Could not open file: '+(e?.message||'unknown error'),'err'); }
   }
 
+  function effectiveAssigneeStatus(a) {
+    if (!a) return 'pending_ack';
+    if (a.status==='pending_ack' && (a.state==='acknowledged' || a.acked===true)) return 'acknowledged';
+    return a.status || 'pending_ack';
+  }
+
   function taskSummaryStatus(task, assignees=[]) {
     const active=assignees.filter(a=>!['transferred','cancelled'].includes(a.status));
-    if (active.length && active.every(a=>a.status==='accepted')) return 'Completed';
-    if (active.some(a=>a.status==='submitted')) return 'Pending Review';
-    if (active.some(a=>['in_progress','needs_review','acknowledged'].includes(a.status))) return 'In Progress';
-    if (active.some(a=>a.status==='pending_ack')) return 'Pending';
+    if (active.length && active.every(a=>effectiveAssigneeStatus(a)==='accepted')) return 'Completed';
+    if (active.some(a=>effectiveAssigneeStatus(a)==='submitted')) return 'Pending Review';
+    if (active.some(a=>['in_progress','needs_review','acknowledged'].includes(effectiveAssigneeStatus(a)))) return 'In Progress';
+    if (active.some(a=>effectiveAssigneeStatus(a)==='pending_ack')) return 'Pending';
     const s=String(task.status||'').toLowerCase();
     if (s==='accepted'||s==='completed') return 'Completed';
     if (s==='cancelled') return 'Cancelled';
@@ -193,6 +205,22 @@
     } catch(e){ toast('Task not found','err'); return null; }
   }
 
+  function roomContext() {
+    const scr=stageScreen();
+    const frame=$('#mStage > .mScr');
+    if (!frame) return {};
+    if (scr==='groupChat') {
+      const title=$('.m-htitle',frame)?.textContent?.trim()||'Group';
+      const room=$('.m-thread-link[data-room], [data-room]',frame)?.dataset?.room || $('.m-ri[data-room]',frame)?.dataset?.room || '';
+      return {screen:scr,room,name:title,color:''};
+    }
+    if (scr==='dm') {
+      const title=$('.m-htitle',frame)?.textContent?.trim()||'Direct Message';
+      const any=$('[data-room^="dm_"]',frame);
+      return {screen:scr,room:any?.dataset?.room||'',name:title,uid:any?.dataset?.uid||''};
+    }
+    return {screen:scr};
+  }
   function roomFromRow(row) {
     const frame=row.closest('.mScr');
     const screen=frame?.dataset?.screen||'';
@@ -271,6 +299,18 @@
     if (!m) return null;
     return {name:m[1].trim(),path:m[2].trim(),note:(m[3]||'').trim()};
   }
+  function parseSecureTaskFileHtml(text) {
+    try {
+      const d=document.createElement('div');d.innerHTML=text||'';
+      const a=d.querySelector('a[href^="https://secure-file.local/"]');if(!a)return null;
+      const href=a.getAttribute('href')||'';let path='';
+      try{path=decodeURIComponent(new URL(href).pathname.replace(/^\//,''));}catch{path=href.replace(/^https:\/\/secure-file\.local\//,'');}
+      const name=(a.textContent||'File').replace(/^📎\s*/,'').trim()||path.split('/').pop()||'File';
+      const noteP=[...d.querySelectorAll('p')].find(p=>/File uploaded/i.test(p.textContent||''));
+      let noteHtml='';if(noteP){const c=noteP.cloneNode(true);const st=c.querySelector('strong');if(st&&/File uploaded/i.test(st.textContent||''))st.remove();noteHtml=c.innerHTML.replace(/^\s*[—-]\s*/,'').trim();}
+      return {name,path,noteHtml};
+    } catch { return null; }
+  }
   async function loadInlineReplies(task,container) {
     if (!container||container.dataset.loading==='1') return;
     container.dataset.loading='1';
@@ -279,11 +319,12 @@
       const {data,error}=await sb().from('messages').select('id,text,sender_id,created_at').eq('tenant_id',tid()).eq('parent_message_id',task.original_message_id).is('deleted_at',null).order('created_at',{ascending:true});
       if (error) throw error;
       const rows=(data||[]).map(r=>{
-        const f=parseTaskFileText(r.text); const initial=esc((uname(r.sender_id)||'?').slice(0,1).toUpperCase());
+        const sf=parseSecureTaskFileHtml(r.text), f=sf||parseTaskFileText(r.text); const initial=esc((uname(r.sender_id)||'?').slice(0,1).toUpperCase());
         let body='';
         if (f) {
           const k=fileKind(f.name), visual=k.image?`<img class="nfa-attach-thumb" data-nfa-imgpath="${esc(f.path)}" alt="">`:`<span class="nfa-attach-ic">${k.icon}</span>`;
-          body=`${f.note?`<div class="nfa-inline-text">${esc(f.note)}</div>`:''}<div class="nfa-attach-card" data-nfa-open-path="${esc(f.path)}">${visual}<span class="nfa-attach-copy"><b>${esc(f.name)}</b><span>${k.label} · Tap to open</span></span><span>↗</span></div>`;
+          const note=sf?.noteHtml?safeTaskReplyHtml(sf.noteHtml):(f.note?esc(f.note):'');
+          body=`${note?`<div class="nfa-inline-text">${note}</div>`:''}<div class="nfa-attach-card" data-nfa-open-path="${esc(f.path)}">${visual}<span class="nfa-attach-copy"><b>${esc(f.name)}</b><span>${k.label} · Tap to open</span></span><span>↗</span></div>`;
         } else {
           body=`<div class="nfa-inline-text">${safeTaskReplyHtml(r.text)}</div>`;
         }
@@ -389,12 +430,14 @@
     const t=taskMode.task, me=(t.assignees||[]).find(a=>a.assignee_id===uid()&&!['accepted','transferred','cancelled'].includes(a.status));
     const creator=t.assigned_by===uid(), defs=[];
     if(me){
-      if(me.status==='pending_ack')defs.push(['ack','Acknowledge']);
-      if(['in_progress','needs_review','acknowledged'].includes(me.status)){defs.push(['delegate','Delegate'],['transfer','Transfer'],['extension','Extension'],['submit','Submit']);}
+      const ms=effectiveAssigneeStatus(me);
+      if(ms==='pending_ack')defs.push(['ack','Acknowledge']);
+      if(ms==='acknowledged')defs.push(['start','Start Work']);
+      if(['in_progress','needs_review'].includes(ms)){defs.push(['delegate','Delegate'],['transfer','Transfer'],['extension','Extension'],['submit','Submit']);}
     }
     if(creator){
-      if((t.assignees||[]).some(a=>a.status==='submitted'))defs.push(['accept','Accept'],['return','Return']);
-      if((t.assignees||[]).some(a=>!['accepted','transferred','cancelled'].includes(a.status)))defs.push(['remind','Remind'],['deadline','Deadline'],['cancel','Cancel']);
+      if((t.assignees||[]).some(a=>effectiveAssigneeStatus(a)==='submitted'))defs.push(['accept','Accept'],['return','Return']);
+      if((t.assignees||[]).some(a=>!['accepted','transferred','cancelled'].includes(effectiveAssigneeStatus(a))))defs.push(['transferCreator','Transfer'],['remind','Remind'],['deadline','Deadline'],['cancel','Cancel']);
       if(taskMode.extra?.extensions?.length)defs.push(['extApprove','Approve Ext'],['extDecline','Decline Ext']);
     }
     return defs;
@@ -406,6 +449,10 @@
     const chips=defs.map(([k,l])=>`<button class="nfa-task-chip ${taskMode.special===k?'on':''}" data-nfa-special="${k}">${esc(l)}</button>`).join('');
     let extra=''; const s=taskMode.special,t=taskMode.task,aa=t.assignees||[];
     if(s==='delegate'||s==='transfer') extra=`<div class="nfa-task-extra on"><select id="nfaTaskPerson"><option value="">Select staff member…</option>${staffOptions([uid()])}</select></div>`;
+    else if(s==='transferCreator'){
+      const active=aa.filter(a=>!['accepted','transferred','cancelled'].includes(effectiveAssigneeStatus(a)));
+      extra=`<div class="nfa-task-extra on"><select id="nfaTaskFrom"><option value="">Transfer from…</option>${active.map(a=>`<option value="${a.assignee_id}">${esc(uname(a.assignee_id))}</option>`).join('')}</select><select id="nfaTaskPerson"><option value="">Transfer to…</option>${staffOptions([])}</select></div>`;
+    }
     else if(s==='extension'||s==='deadline') extra=`<div class="nfa-task-extra on"><input id="nfaTaskDate" type="date"></div>`;
     else if(['accept','return','remind'].includes(s)){
       const eligible=s==='accept'||s==='return'?aa.filter(a=>a.status==='submitted'):aa.filter(a=>!['accepted','transferred','cancelled'].includes(a.status));
@@ -415,7 +462,7 @@
     }
     ctx.innerHTML=`<div class="nfa-task-context-head"><span>↩ Task reply · ${esc(t.title||'Task')}</span><button type="button" data-nfa-exit-task>×</button></div>${defs.length?`<div class="nfa-task-actionbar">${chips}</div>`:''}${extra}`;
     let ph='Reply / update this task…';
-    if(s==='delegate')ph='Add delegation instructions…';else if(s==='transfer')ph='Add transfer reason…';else if(s==='extension')ph='Reason / details for extension…';else if(s==='submit')ph='Optional submission note…';else if(s==='return')ph='Reason for returning this task…';else if(s==='cancel')ph='Reason for cancelling this task…';else if(s==='extApprove'||s==='extDecline')ph='Optional decision note…';
+    if(s==='delegate')ph='Add delegation instructions…';else if(s==='transfer'||s==='transferCreator')ph='Add transfer reason…';else if(s==='extension')ph='Reason / details for extension…';else if(s==='submit')ph='Optional submission note…';else if(s==='return')ph='Reason for returning this task…';else if(s==='cancel')ph='Reason for cancelling this task…';else if(s==='extApprove'||s==='extDecline')ph='Optional decision note…';
     taskMode.editor.setAttribute('data-placeholder',ph);
   }
 
@@ -444,8 +491,11 @@
     const rich=(editor.innerHTML||'').trim(), plain=strip(rich);
     try{
       if(s==='ack'){
-        const {error}=await sb().from('task_assignees').update({status:'in_progress',state:'in_progress',acked:true}).eq('tenant_id',tid()).eq('task_id',t.id).eq('assignee_id',uid());if(error)throw error;
+        const {error}=await sb().from('task_assignees').update({status:'pending_ack',state:'acknowledged',acked:true}).eq('tenant_id',tid()).eq('task_id',t.id).eq('assignee_id',uid());if(error)throw error;
         await addTrail(t,'ACKNOWLEDGE','Acknowledged the task');toast('Task acknowledged ✓');
+      } else if(s==='start'){
+        const {error}=await sb().from('task_assignees').update({status:'in_progress',state:'in_progress',acked:true}).eq('tenant_id',tid()).eq('task_id',t.id).eq('assignee_id',uid());if(error)throw error;
+        await addTrail(t,'START','Work started');toast('Work started ✓');
       } else if(s==='delegate'){
         const to=$('#nfaTaskPerson')?.value;if(!to)throw new Error('Select a staff member');
         const {data:exists}=await sb().from('task_assignees').select('assignee_id').eq('tenant_id',tid()).eq('task_id',t.id).eq('assignee_id',to).maybeSingle();
@@ -458,6 +508,12 @@
         const {data:exists}=await sb().from('task_assignees').select('assignee_id').eq('tenant_id',tid()).eq('task_id',t.id).eq('assignee_id',to).maybeSingle();
         if(!exists){const {error}=await sb().from('task_assignees').insert({task_id:t.id,assignee_id:to,tenant_id:tid(),status:'pending_ack',state:'pending'});if(error)throw error;}
         await addTrail(t,'TRANSFER',`Transferred to ${uname(to)} — ${plain}`);toast('Task transferred ✓');
+      } else if(s==='transferCreator'){
+        const from=$('#nfaTaskFrom')?.value,to=$('#nfaTaskPerson')?.value;if(!from||!to)throw new Error('Select both staff members');if(from===to)throw new Error('Choose a different replacement');if(!plain)throw new Error('Transfer reason is required');
+        await sb().from('task_assignees').delete().eq('tenant_id',tid()).eq('task_id',t.id).eq('assignee_id',from);
+        const {data:exists}=await sb().from('task_assignees').select('assignee_id').eq('tenant_id',tid()).eq('task_id',t.id).eq('assignee_id',to).maybeSingle();
+        if(!exists){const {error}=await sb().from('task_assignees').insert({task_id:t.id,assignee_id:to,tenant_id:tid(),status:'pending_ack',state:'pending'});if(error)throw error;}
+        await addTrail(t,'TRANSFER',`Transferred from ${uname(from)} to ${uname(to)} — ${plain}`);toast('Task transferred ✓');
       } else if(s==='extension'){
         const date=$('#nfaTaskDate')?.value;if(!date)throw new Error('Select requested deadline');if(!plain)throw new Error('Reason is required');
         const {error}=await sb().rpc('request_task_extension',{p_task_id:t.id,p_requested_deadline:date,p_reason:plain,p_tenant_id:tid()});if(error)throw error;toast('Extension requested ✓');
@@ -507,7 +563,7 @@
     const btn=$('[data-action="ctSaveTask"]');if(!btn)return;
     const title=$('.m-sheet-title');if(title&&/convert to task/i.test(title.textContent||''))title.textContent='Create Task';
     if(!$('#ctRequireProof')){
-      const wrap=document.createElement('label');wrap.style.cssText='display:flex;align-items:center;gap:8px;padding:4px 2px 2px;font-size:13px;font-weight:700;color:var(--text-secondary);';wrap.innerHTML='<input id="ctRequireProof" type="checkbox" style="accent-color:#6366f1;"> Require proof / file before submit';
+      const assigneeLabel=$('.m-label',btn.closest('#mSheetInner')||document);const wrap=document.createElement('label');wrap.style.cssText='display:flex;align-items:center;gap:8px;padding:4px 2px 2px;font-size:13px;font-weight:700;color:var(--text-secondary);';wrap.innerHTML='<input id="ctRequireProof" type="checkbox" style="accent-color:#6366f1;"> Require proof / file before submit';
       btn.parentElement?.insertBefore(wrap,btn);
     }
   }

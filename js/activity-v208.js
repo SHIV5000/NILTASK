@@ -4,7 +4,9 @@
  * Desktop Activity markup, filters, refresh ownership and card styling live
  * directly in js/ui-feed.js. This file contains the structural sidebar rule
  * required by the existing main-app shell and loads the cross-device chat
- * parity services.
+ * parity service. The mobile/tablet workflow layer is loaded only on the
+ * mobile/native/coarse-pointer runtime boundary so the finalized desktop
+ * Workspace v8 + Task Composer v11 stays isolated and speed-first.
  */
 (function () {
     'use strict';
@@ -37,7 +39,19 @@
         document.head.appendChild(script);
     }
 
-    if (!document.querySelector('script[data-nfa-mobile-workflow-parity]')) {
+    const mobileRuntime =
+        window.IS_NATIVE === true ||
+        window.innerWidth <= 768 ||
+        (
+            window.matchMedia &&
+            window.matchMedia('(pointer: coarse)').matches &&
+            window.innerWidth <= 1366
+        );
+
+    if (
+        mobileRuntime &&
+        !document.querySelector('script[data-nfa-mobile-workflow-parity]')
+    ) {
         const workflow = document.createElement('script');
         workflow.src = 'js/mobile-workflow-parity-v209.js?v=2';
         workflow.async = false;
@@ -45,5 +59,6 @@
         document.head.appendChild(workflow);
     }
 
-    window.NILTASK_ACTIVITY_UI_VERSION = 'source-owned-layout-v2-mobile-workflow-v209';
+    window.NILTASK_ACTIVITY_UI_VERSION =
+        'source-owned-layout-v2-mobile-workflow-v209-boundary-safe';
 })();

@@ -88,6 +88,10 @@
     }
   }
 
+  function setText(el, text) {
+    if (el && el.textContent !== text) el.textContent = text;
+  }
+
   function chip(bar, key, label) {
     let button = bar.querySelector(`[data-nfa-special="${key}"]`);
     if (!button) {
@@ -96,25 +100,15 @@
       button.dataset.nfaSpecial = key;
       bar.appendChild(button);
     }
-    button.textContent = label;
+    setText(button, label);
     return button;
-  }
-
-  function orderAssigneeChips(bar, keys) {
-    const firstCreator = bar.querySelector('[data-nfa-special="accept"], [data-nfa-special="return"], [data-nfa-special="transferCreator"], [data-nfa-special="remind"], [data-nfa-special="deadline"], [data-nfa-special="cancel"], [data-nfa-special="extApprove"], [data-nfa-special="extDecline"]');
-    keys.forEach(key => {
-      const el = bar.querySelector(`[data-nfa-special="${key}"]`);
-      if (!el) return;
-      if (firstCreator) bar.insertBefore(el, firstCreator);
-      else bar.appendChild(el);
-    });
   }
 
   async function syncTaskMode() {
     const ctx = $('.nfa-task-context');
     if (!ctx || !current?.taskId) return;
 
-    const state = await getTaskState(current.taskId, true);
+    const state = await getTaskState(current.taskId);
     if (!state || !$('.nfa-task-context')) return;
     current.state = state;
 
@@ -144,34 +138,25 @@
         chip(bar, 'ack', 'Acknowledge');
         chip(bar, 'extension', 'Request Extension');
         ['start','delegate','submit'].forEach(k => bar.querySelector(`[data-nfa-special="${k}"]`)?.remove());
-        orderAssigneeChips(bar, ['ack','extension']);
       } else if (ms === 'acknowledged') {
         chip(bar, 'start', 'Start Work');
         chip(bar, 'extension', 'Request Extension');
         ['ack','delegate','submit'].forEach(k => bar.querySelector(`[data-nfa-special="${k}"]`)?.remove());
-        orderAssigneeChips(bar, ['start','extension']);
       } else if (ms === 'in_progress' || ms === 'needs_review') {
         chip(bar, 'delegate', 'Delegate');
         chip(bar, 'extension', 'Request Extension');
         chip(bar, 'submit', ms === 'needs_review' ? 'Resubmit' : 'Submit');
         ['ack','start'].forEach(k => bar.querySelector(`[data-nfa-special="${k}"]`)?.remove());
-        orderAssigneeChips(bar, ['delegate','extension','submit']);
       }
     }
 
     if (state.creator) {
-      const approve = bar.querySelector('[data-nfa-special="accept"]');
-      if (approve) approve.textContent = 'Approve';
-      const remind = bar.querySelector('[data-nfa-special="remind"]');
-      if (remind) remind.textContent = 'Remind Pending';
-      const deadline = bar.querySelector('[data-nfa-special="deadline"]');
-      if (deadline) deadline.textContent = 'Change Deadline';
-      const cancel = bar.querySelector('[data-nfa-special="cancel"]');
-      if (cancel) cancel.textContent = 'Cancel Task';
-      const extApprove = bar.querySelector('[data-nfa-special="extApprove"]');
-      if (extApprove) extApprove.textContent = 'Approve Extension';
-      const extDecline = bar.querySelector('[data-nfa-special="extDecline"]');
-      if (extDecline) extDecline.textContent = 'Decline Extension';
+      setText(bar.querySelector('[data-nfa-special="accept"]'), 'Approve');
+      setText(bar.querySelector('[data-nfa-special="remind"]'), 'Remind Pending');
+      setText(bar.querySelector('[data-nfa-special="deadline"]'), 'Change Deadline');
+      setText(bar.querySelector('[data-nfa-special="cancel"]'), 'Cancel Task');
+      setText(bar.querySelector('[data-nfa-special="extApprove"]'), 'Approve Extension');
+      setText(bar.querySelector('[data-nfa-special="extDecline"]'), 'Decline Extension');
     }
   }
 
@@ -207,12 +192,12 @@
     syncTimer = setTimeout(() => {
       patchVisibleRows();
       if ($('.nfa-task-context') && current?.taskId) syncTaskMode();
-    }, 60);
+    }, 90);
   }
 
   function defaultTaskSendBlocked() {
     const state = current?.state;
-    if (!state) return false;
+    if (!state || state.loading) return true;
     if (state.readOnly || (!state.creator && !state.me)) return true;
     if (state.creator) return false;
     return state.myStatus === 'pending_ack' || state.myStatus === 'acknowledged';
@@ -234,8 +219,18 @@
 
     const reply = e.target?.closest?.('[data-nfa-task-reply]');
     if (reply) {
-      current = { taskId: reply.dataset.nfaTaskReply, messageId: reply.dataset.mid, state: null };
-      getTaskState(current.taskId, true).then(state => { if (current?.taskId === reply.dataset.nfaTaskReply) current.state = state; });
+      current = {
+        taskId: reply.dataset.nfaTaskReply,
+        messageId: reply.dataset.mid,
+        state: { loading:true }
+      };
+      const taskId = current.taskId;
+      getTaskState(taskId, true).then(state => {
+        if (current?.taskId === taskId) {
+          current.state = state || { loading:false };
+          scheduleSync();
+        }
+      });
       setTimeout(syncTaskMode, 0);
       return;
     }
@@ -250,15 +245,27 @@
       if (!activeSpecial && defaultTaskSendBlocked()) {
         e.preventDefault();
         e.stopImmediatePropagation();
-        const s = current?.state?.myStatus;
+        const state = current?.state;
+        const s = state?.myStatus;
         toast(
-          s === 'pending_ack'
-            ? 'Acknowledge the task first, or request an extension.'
-            : s === 'acknowledged'
-              ? 'Start Work first, or request an extension.'
-              : 'This task is read-only for your role.',
+          state?.loading
+            ? 'Checking task permissions…'
+            : s === 'pending_ack'
+              ? 'Acknowledge the task first, or request an extension.'
+              : s === 'acknowledged'
+                ? 'Start Work first, or request an extension.'
+                : 'This task is read-only for your role.',
           'err'
         );
+        return;
+      }
+
+      if (send && current?.taskId) {
+        const taskId = current.taskId;
+        setTimeout(() => {
+          taskCache.delete(taskId);
+          scheduleSync();
+        }, 700);
       }
     }
   }

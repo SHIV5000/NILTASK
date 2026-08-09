@@ -64,7 +64,7 @@
         !document.querySelector('script[data-nfa-mobile-role-parity]')
     ) {
         const roleParity = document.createElement('script');
-        roleParity.src = 'js/mobile-role-parity-v210.js?v=1';
+        roleParity.src = 'js/mobile-role-parity-v210.js?v=2';
         roleParity.async = false;
         roleParity.dataset.nfaMobileRoleParity = '1';
         document.head.appendChild(roleParity);

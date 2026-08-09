@@ -39,7 +39,7 @@
 
     if (!document.querySelector('script[data-nfa-mobile-workflow-parity]')) {
         const workflow = document.createElement('script');
-        workflow.src = 'js/mobile-workflow-parity-v209.js?v=1';
+        workflow.src = 'js/mobile-workflow-parity-v209.js?v=2';
         workflow.async = false;
         workflow.dataset.nfaMobileWorkflowParity = '1';
         document.head.appendChild(workflow);

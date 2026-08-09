@@ -75,7 +75,7 @@
         !document.querySelector('script[data-nfa-mobile-final-ui]')
     ) {
         const finalUi = document.createElement('script');
-        finalUi.src = 'js/mobile-final-ui-v211.js?v=1';
+        finalUi.src = 'js/mobile-final-ui-v211.js?v=2';
         finalUi.async = false;
         finalUi.dataset.nfaMobileFinalUi = '1';
         document.head.appendChild(finalUi);

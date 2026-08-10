@@ -89,6 +89,17 @@
         document.head.appendChild(finalUi);
     }
 
+    if (
+        mobileRuntime &&
+        !document.querySelector('script[data-nfa-mobile-acceptance]')
+    ) {
+        const acceptance = document.createElement('script');
+        acceptance.src = 'js/mobile-final-acceptance-v213.js?v=1';
+        acceptance.async = false;
+        acceptance.dataset.nfaMobileAcceptance = '1';
+        document.head.appendChild(acceptance);
+    }
+
     window.NILTASK_ACTIVITY_UI_VERSION =
-        'source-owned-layout-v2-mobile-workflow-v209-role-parity-v210-final-ui-v212';
+        'source-owned-layout-v2-mobile-workflow-v209-role-parity-v210-final-ui-v212-acceptance-v213';
 })();

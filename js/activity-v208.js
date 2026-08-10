@@ -116,12 +116,12 @@
         !document.querySelector('script[data-nfa-mobile-acceptance-v215]')
     ) {
         const acceptance215 = document.createElement('script');
-        acceptance215.src = 'js/mobile-final-acceptance-v215.js?v=1';
+        acceptance215.src = 'js/mobile-final-acceptance-v215.js?v=2';
         acceptance215.async = false;
         acceptance215.dataset.nfaMobileAcceptanceV215 = '1';
         document.head.appendChild(acceptance215);
     }
 
     window.NILTASK_ACTIVITY_UI_VERSION =
-        'source-owned-layout-v2-mobile-workflow-v209-role-parity-v210-final-ui-v212-acceptance-v213-v214-v215';
+        'source-owned-layout-v2-mobile-workflow-v209-role-parity-v210-final-ui-v212-acceptance-v213-v214-v215.1-route-safe';
 })();

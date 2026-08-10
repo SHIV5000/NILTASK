@@ -21,6 +21,11 @@ function markApprovedTasks(){
   const approved=frame?.querySelector('.nfa-v214-task-screen');
   if(!approved)return false;
 
+  // The old pre-paint guard exposes only nmt-owned task screens. Mark the approved
+  // frame as owned so it is visible without requiring a legacy render first.
+  if(!frame.classList.contains('nmt-owned'))frame.classList.add('nmt-owned');
+  frame.dataset.nfaTaskOwner='v216';
+
   // mobile-tasks.js observer treats presence of .nmt-screen as "already owned" and
   // returns without repainting. Reuse that guard instead of fighting its observer.
   if(!approved.classList.contains('nmt-screen'))approved.classList.add('nmt-screen');

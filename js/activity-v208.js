@@ -100,6 +100,17 @@
         document.head.appendChild(acceptance);
     }
 
+    if (
+        mobileRuntime &&
+        !document.querySelector('script[data-nfa-mobile-acceptance-v214]')
+    ) {
+        const acceptance214 = document.createElement('script');
+        acceptance214.src = 'js/mobile-final-acceptance-v214.js?v=1';
+        acceptance214.async = false;
+        acceptance214.dataset.nfaMobileAcceptanceV214 = '1';
+        document.head.appendChild(acceptance214);
+    }
+
     window.NILTASK_ACTIVITY_UI_VERSION =
-        'source-owned-layout-v2-mobile-workflow-v209-role-parity-v210-final-ui-v212-acceptance-v213';
+        'source-owned-layout-v2-mobile-workflow-v209-role-parity-v210-final-ui-v212-acceptance-v213-v214';
 })();

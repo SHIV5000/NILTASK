@@ -31,6 +31,14 @@
         document.head.appendChild(style);
     }
 
+    if (!document.querySelector('script[data-nfa-universal-brand]')) {
+        const brand = document.createElement('script');
+        brand.src = 'js/universal-brand-noted-for-action-v1.js?v=1';
+        brand.defer = true;
+        brand.dataset.nfaUniversalBrand = '1';
+        document.head.appendChild(brand);
+    }
+
     if (!document.querySelector('script[data-nfa-chat-parity]')) {
         const script = document.createElement('script');
         script.src = 'js/core/chat-parity-service.js?v=2';
@@ -75,12 +83,12 @@
         !document.querySelector('script[data-nfa-mobile-final-ui]')
     ) {
         const finalUi = document.createElement('script');
-        finalUi.src = 'js/mobile-final-ui-v211.js?v=2';
+        finalUi.src = 'js/mobile-final-ui-v212.js?v=1';
         finalUi.async = false;
         finalUi.dataset.nfaMobileFinalUi = '1';
         document.head.appendChild(finalUi);
     }
 
     window.NILTASK_ACTIVITY_UI_VERSION =
-        'source-owned-layout-v2-mobile-workflow-v209-role-parity-v210-final-ui-v211';
+        'source-owned-layout-v2-mobile-workflow-v209-role-parity-v210-final-ui-v212';
 })();

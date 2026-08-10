@@ -2,151 +2,26 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#4F46E5">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="NILTASK">
-  <title>Install NILTASK</title>
+  <meta name="apple-mobile-web-app-title" content="Noted For Action">
+  <title>Install Noted For Action</title>
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <style>
-    *{box-sizing:border-box} :root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:dark light;--bg:#0b1020;--card:#111827;--card2:#172033;--border:#2a3650;--text:#f8fafc;--muted:#a7b0c0;--accent:#4f46e5;--accent2:#6366f1;--ok:#22c55e;--warn:#f59e0b}
-    [data-theme="light"]{--bg:#f5f7fb;--card:#fff;--card2:#f3f4f6;--border:#dbe1ea;--text:#111827;--muted:#667085;--accent:#4f46e5;--accent2:#4338ca}
-    body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);display:grid;place-items:center;padding:20px}
-    main{width:min(100%,520px)} .card{background:var(--card);border:1px solid var(--border);border-radius:22px;padding:24px;box-shadow:0 18px 55px rgba(0,0,0,.22)}
-    .top{text-align:center}.logo{width:78px;height:78px;margin:0 auto 12px;border-radius:22px;display:grid;place-items:center;background:linear-gradient(145deg,var(--accent),#7c3aed);font-size:38px;box-shadow:0 12px 28px rgba(79,70,229,.28)}
-    h1{margin:0;font-size:30px}.sub{color:var(--muted);margin:7px 0 4px;line-height:1.5}.platform{display:inline-flex;align-items:center;gap:6px;margin-top:10px;padding:6px 10px;border-radius:999px;background:var(--card2);color:var(--muted);font-size:12px;font-weight:750}
-    button,.linkbtn{width:100%;border:0;border-radius:14px;padding:15px 16px;margin-top:12px;font:inherit;font-weight:800;cursor:pointer;text-decoration:none;text-align:center;display:block}.primary{background:var(--accent);color:#fff}.primary:hover{background:var(--accent2)}.secondary,.linkbtn{background:var(--card2);color:var(--text);border:1px solid var(--border)}button:disabled{opacity:.55;cursor:not-allowed}
-    .status{margin-top:16px;border-radius:14px;padding:13px 14px;background:var(--card2);border:1px solid var(--border);line-height:1.45;font-size:14px}.status.ok{border-color:rgba(34,197,94,.45);color:#86efac}.status.warn{border-color:rgba(245,158,11,.45);color:#fcd34d}
-    .guide{display:none;margin-top:18px;text-align:left}.guide.show{display:block}.guide h2{font-size:17px;margin:0 0 10px}.step{display:flex;gap:12px;padding:11px 0;border-top:1px solid var(--border)}.step:first-of-type{border-top:0}.n{flex:0 0 30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--accent);color:#fff;font-weight:900;font-size:13px}.step strong{display:block;font-size:14px}.step p{margin:3px 0 0;color:var(--muted);font-size:13px;line-height:1.45}
-    .note{margin-top:18px;padding-top:16px;border-top:1px solid var(--border);color:var(--muted);font-size:13px;line-height:1.5}.note strong{color:var(--text)}
-    .theme{position:fixed;right:14px;top:14px;width:44px;height:44px;padding:0;margin:0;border-radius:50%;background:var(--card);color:var(--text);border:1px solid var(--border)}
-    @media(max-width:540px){body{padding:12px}.card{padding:22px 17px;border-radius:18px}h1{font-size:25px}.logo{width:68px;height:68px;font-size:34px}}
+    *{box-sizing:border-box}:root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:dark light;--bg:#0b1020;--card:#111827;--card2:#172033;--border:#2a3650;--text:#f8fafc;--muted:#a7b0c0;--accent:#4f46e5;--accent2:#6366f1;--ok:#22c55e;--warn:#f59e0b}[data-theme="light"]{--bg:#f5f7fb;--card:#fff;--card2:#f3f4f6;--border:#dbe1ea;--text:#111827;--muted:#667085;--accent:#4f46e5;--accent2:#4338ca}body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);display:grid;place-items:center;padding:20px}main{width:min(100%,520px)}.card{background:var(--card);border:1px solid var(--border);border-radius:22px;padding:24px;box-shadow:0 18px 55px rgba(0,0,0,.22)}.top{text-align:center}.logo{width:78px;height:78px;margin:0 auto 12px;border-radius:22px;display:grid;place-items:center;background:linear-gradient(145deg,var(--accent),#7c3aed);font-size:34px;font-weight:900;color:#fff;box-shadow:0 12px 28px rgba(79,70,229,.28)}h1{margin:0;font-size:29px}.sub{color:var(--muted);margin:7px 0 4px;line-height:1.5}.platform{display:inline-flex;align-items:center;gap:6px;margin-top:10px;padding:6px 10px;border-radius:999px;background:var(--card2);color:var(--muted);font-size:12px;font-weight:750}button,.linkbtn{width:100%;border:0;border-radius:14px;padding:15px 16px;margin-top:12px;font:inherit;font-weight:800;cursor:pointer;text-decoration:none;text-align:center;display:block}.primary{background:var(--accent);color:#fff}.primary:hover{background:var(--accent2)}.secondary,.linkbtn{background:var(--card2);color:var(--text);border:1px solid var(--border)}button:disabled{opacity:.55;cursor:not-allowed}.status{margin-top:16px;border-radius:14px;padding:13px 14px;background:var(--card2);border:1px solid var(--border);line-height:1.45;font-size:14px}.status.ok{border-color:rgba(34,197,94,.45);color:#86efac}.status.warn{border-color:rgba(245,158,11,.45);color:#fcd34d}.guide{display:none;margin-top:18px;text-align:left}.guide.show{display:block}.guide h2{font-size:17px;margin:0 0 10px}.step{display:flex;gap:12px;padding:11px 0;border-top:1px solid var(--border)}.step:first-of-type{border-top:0}.n{flex:0 0 30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--accent);color:#fff;font-weight:900;font-size:13px}.step strong{display:block;font-size:14px}.step p{margin:3px 0 0;color:var(--muted);font-size:13px;line-height:1.45}.note{margin-top:18px;padding-top:16px;border-top:1px solid var(--border);color:var(--muted);font-size:13px;line-height:1.5}.note strong{color:var(--text)}.theme{position:fixed;right:14px;top:14px;width:44px;height:44px;padding:0;margin:0;border-radius:50%;background:var(--card);color:var(--text);border:1px solid var(--border)}@media(max-width:540px){body{padding:12px}.card{padding:22px 17px;border-radius:18px}h1{font-size:24px}.logo{width:68px;height:68px;font-size:30px}}
   </style>
 </head>
 <body>
 <button class="theme" id="themeBtn" aria-label="Toggle theme">◐</button>
-<main>
-  <section class="card">
-    <div class="top">
-      <div class="logo">📝</div>
-      <h1>NILTASK</h1>
-      <p class="sub">One installable app for Android, iPhone/iPad, Windows and Mac.</p>
-      <span class="platform" id="platformLabel">Detecting this device…</span>
-    </div>
-
-    <button id="installBtn" class="primary" hidden>Install NILTASK</button>
-    <a id="openBtn" class="linkbtn" href="/">Open NILTASK</a>
-    <div id="status" class="status">Checking the best installation method for this device…</div>
-
-    <div id="iosGuide" class="guide">
-      <h2>Install on iPhone / iPad</h2>
-      <div class="step"><div class="n">1</div><div><strong>Open this page in Safari</strong><p>Use Safari for the clearest Home Screen installation flow.</p></div></div>
-      <div class="step"><div class="n">2</div><div><strong>Tap Share</strong><p>Tap the Share button in Safari.</p></div></div>
-      <div class="step"><div class="n">3</div><div><strong>Choose “Add to Home Screen”</strong><p>Confirm Add. Then launch NILTASK from its Home Screen icon.</p></div></div>
-      <div class="step"><div class="n">4</div><div><strong>Enable notifications after login</strong><p>Open the installed app, sign in, and allow notifications when NILTASK asks.</p></div></div>
-    </div>
-
-    <div id="manualGuide" class="guide">
-      <h2 id="manualTitle">Install manually</h2>
-      <div class="step"><div class="n">1</div><div><strong>Open the browser menu</strong><p id="menuText">Open your browser menu.</p></div></div>
-      <div class="step"><div class="n">2</div><div><strong>Choose Install App</strong><p>Depending on the browser it may say “Install NILTASK”, “Install app” or “Add to Home screen”.</p></div></div>
-      <div class="step"><div class="n">3</div><div><strong>Confirm installation</strong><p>NILTASK will then open in its own app window and update automatically from the website.</p></div></div>
-    </div>
-
-    <div class="note"><strong>Push notifications:</strong> supported through NILTASK Web Push. After installation and login, allow notification permission. The same server-to-Service-Worker route is used across supported PWA platforms.</div>
-  </section>
-</main>
+<main><section class="card"><div class="top"><div class="logo">N</div><h1>Noted For Action</h1><p class="sub">One installable app for Android, iPhone/iPad, Windows and Mac.</p><span class="platform" id="platformLabel">Detecting this device…</span></div>
+<button id="installBtn" class="primary" hidden>Install Noted For Action</button><a id="openBtn" class="linkbtn" href="/">Open Noted For Action</a><div id="status" class="status">Checking the best installation method for this device…</div>
+<div id="iosGuide" class="guide"><h2>Install on iPhone / iPad</h2><div class="step"><div class="n">1</div><div><strong>Open this page in Safari</strong><p>Use Safari for the clearest Home Screen installation flow.</p></div></div><div class="step"><div class="n">2</div><div><strong>Tap Share</strong><p>Tap the Share button in Safari.</p></div></div><div class="step"><div class="n">3</div><div><strong>Choose “Add to Home Screen”</strong><p>Confirm Add, then launch Noted For Action from its Home Screen icon.</p></div></div><div class="step"><div class="n">4</div><div><strong>Enable notifications after login</strong><p>Open the installed app, sign in, and allow notifications when requested.</p></div></div></div>
+<div id="manualGuide" class="guide"><h2>Install manually</h2><div class="step"><div class="n">1</div><div><strong>Open the browser menu</strong><p id="menuText">Open your browser menu.</p></div></div><div class="step"><div class="n">2</div><div><strong>Choose Install App</strong><p>Depending on the browser it may say “Install Noted For Action”, “Install app” or “Add to Home screen”.</p></div></div><div class="step"><div class="n">3</div><div><strong>Confirm installation</strong><p>Noted For Action will open in its own app window and update automatically from the website.</p></div></div></div>
+<div class="note"><strong>Push notifications:</strong> supported through Noted For Action Web Push. After installation and login, allow notification permission.</div></section></main>
 <script>
-(() => {
-  const ua = navigator.userAgent || '';
-  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const isAndroid = /Android/i.test(ua);
-  const isWindows = /Windows/i.test(ua);
-  const isMac = /Macintosh|Mac OS X/i.test(ua) && !isIOS;
-  const standalone = matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-  const installBtn = document.getElementById('installBtn');
-  const status = document.getElementById('status');
-  const iosGuide = document.getElementById('iosGuide');
-  const manualGuide = document.getElementById('manualGuide');
-  const platformLabel = document.getElementById('platformLabel');
-  const menuText = document.getElementById('menuText');
-  let deferredPrompt = null;
-
-  const platform = isIOS ? 'iPhone / iPad' : isAndroid ? 'Android' : isWindows ? 'Windows' : isMac ? 'Mac' : 'Desktop / Tablet';
-  platformLabel.textContent = platform;
-
-  function setStatus(text, kind='') {
-    status.textContent = text;
-    status.className = 'status' + (kind ? ' ' + kind : '');
-  }
-
-  function track(method) {
-    fetch('https://apfymygzwkzjhhgmtkaj.supabase.co/functions/v1/track-install', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({user_id:null,tenant_id:null,os_name:platform,install_method:method,is_first_open:true})
-    }).catch(() => {});
-  }
-
-  if (standalone) {
-    installBtn.hidden = true;
-    setStatus('✅ NILTASK is already installed on this device.', 'ok');
-    track('already_installed_visit');
-  } else if (isIOS) {
-    iosGuide.classList.add('show');
-    setStatus('On iPhone/iPad, install NILTASK from Safari using Add to Home Screen.');
-    track('ios_install_visit');
-  } else {
-    manualGuide.classList.add('show');
-    menuText.textContent = isAndroid ? 'In Chrome, tap the three-dot menu.' : 'In Chrome or Edge, open the browser menu or use the install icon in the address bar.';
-    setStatus('Waiting for your browser’s install option…');
-    track((isAndroid ? 'android' : 'desktop') + '_install_visit');
-  }
-
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    if (!standalone && !isIOS) {
-      installBtn.hidden = false;
-      setStatus('NILTASK is ready to install on this device.', 'ok');
-    }
-  });
-
-  installBtn.addEventListener('click', async () => {
-    if (!deferredPrompt) {
-      manualGuide.classList.add('show');
-      setStatus('Use the browser menu and choose Install App.', 'warn');
-      return;
-    }
-    installBtn.disabled = true;
-    deferredPrompt.prompt();
-    const choice = await deferredPrompt.userChoice.catch(() => null);
-    if (choice?.outcome === 'accepted') {
-      setStatus('Installing NILTASK…', 'ok');
-      track('pwa_prompt_accepted');
-    } else {
-      setStatus('Installation was not completed. You can try again from the browser menu.');
-      installBtn.disabled = false;
-    }
-    deferredPrompt = null;
-  });
-
-  window.addEventListener('appinstalled', () => {
-    installBtn.hidden = true;
-    setStatus('✅ NILTASK installed successfully. Open it from your apps/home screen.', 'ok');
-    track('pwa_installed');
-  });
-
-  const themeBtn = document.getElementById('themeBtn');
-  const savedTheme = localStorage.getItem('installTheme');
-  if (savedTheme === 'light') document.documentElement.setAttribute('data-theme','light');
-  themeBtn.addEventListener('click', () => {
-    const light = document.documentElement.getAttribute('data-theme') === 'light';
-    document.documentElement.setAttribute('data-theme', light ? 'dark' : 'light');
-    localStorage.setItem('installTheme', light ? 'dark' : 'light');
-  });
-})();
+(()=>{const ua=navigator.userAgent||'',isIOS=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1),isAndroid=/Android/i.test(ua),isWindows=/Windows/i.test(ua),isMac=/Macintosh|Mac OS X/i.test(ua)&&!isIOS,standalone=matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true,installBtn=document.getElementById('installBtn'),status=document.getElementById('status'),iosGuide=document.getElementById('iosGuide'),manualGuide=document.getElementById('manualGuide'),platformLabel=document.getElementById('platformLabel'),menuText=document.getElementById('menuText');let deferredPrompt=null;const platform=isIOS?'iPhone / iPad':isAndroid?'Android':isWindows?'Windows':isMac?'Mac':'Desktop / Tablet';platformLabel.textContent=platform;function setStatus(text,kind=''){status.textContent=text;status.className='status'+(kind?' '+kind:'')}function track(method){fetch('https://apfymygzwkzjhhgmtkaj.supabase.co/functions/v1/track-install',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:null,tenant_id:null,os_name:platform,install_method:method,is_first_open:true})}).catch(()=>{})}if(standalone){installBtn.hidden=true;setStatus('✅ Noted For Action is already installed on this device.','ok');track('already_installed_visit')}else if(isIOS){iosGuide.classList.add('show');setStatus('On iPhone/iPad, install Noted For Action from Safari using Add to Home Screen.');track('ios_install_visit')}else{manualGuide.classList.add('show');menuText.textContent=isAndroid?'In Chrome, tap the three-dot menu.':'In Chrome or Edge, open the browser menu or use the install icon in the address bar.';setStatus('Waiting for your browser’s install option…');track((isAndroid?'android':'desktop')+'_install_visit')}window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;if(!standalone&&!isIOS){installBtn.hidden=false;setStatus('Noted For Action is ready to install on this device.','ok')}});installBtn.addEventListener('click',async()=>{if(!deferredPrompt){manualGuide.classList.add('show');setStatus('Use the browser menu and choose Install App.','warn');return}installBtn.disabled=true;deferredPrompt.prompt();const choice=await deferredPrompt.userChoice.catch(()=>null);if(choice?.outcome==='accepted'){setStatus('Installing Noted For Action…','ok');track('pwa_prompt_accepted')}else{setStatus('Installation was not completed. You can try again from the browser menu.');installBtn.disabled=false}deferredPrompt=null});window.addEventListener('appinstalled',()=>{installBtn.hidden=true;setStatus('✅ Noted For Action installed successfully. Open it from your apps/home screen.','ok');track('pwa_installed')});const themeBtn=document.getElementById('themeBtn'),savedTheme=localStorage.getItem('installTheme');if(savedTheme==='light')document.documentElement.setAttribute('data-theme','light');themeBtn.addEventListener('click',()=>{const light=document.documentElement.getAttribute('data-theme')==='light';document.documentElement.setAttribute('data-theme',light?'dark':'light');localStorage.setItem('installTheme',light?'dark':'light')})})();
 </script>
-</body>
-</html>
+</body></html>

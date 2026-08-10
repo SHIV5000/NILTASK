@@ -122,6 +122,17 @@
         document.head.appendChild(acceptance215);
     }
 
+    if (
+        mobileRuntime &&
+        !document.querySelector('script[data-nfa-mobile-task-owner-v216]')
+    ) {
+        const taskOwner = document.createElement('script');
+        taskOwner.src = 'js/mobile-task-owner-v216.js?v=2';
+        taskOwner.async = false;
+        taskOwner.dataset.nfaMobileTaskOwnerV216 = '1';
+        document.head.appendChild(taskOwner);
+    }
+
     window.NILTASK_ACTIVITY_UI_VERSION =
-        'source-owned-layout-v2-mobile-workflow-v209-role-parity-v210-final-ui-v212-acceptance-v213-v214-v215.1-route-safe';
+        'source-owned-layout-v2-mobile-workflow-v209-role-parity-v210-final-ui-v212-acceptance-v213-v214-v215.1-task-owner-v216';
 })();

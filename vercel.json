@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm run build:tailwind",
+  "buildCommand": "npm run build:tailwind && cp css/tailwind.generated.css css/app-utilities-v13.css",
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [

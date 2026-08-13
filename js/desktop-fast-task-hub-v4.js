@@ -2,11 +2,11 @@
  * Stable desktop compatibility entry.
  *
  * Workspace v8 remains the canonical Task Message / Task Lens / sender / navigation owner.
- * Composer v11 binds Task Reply to the existing chat composer: formatting, emoji,
- * paperclip and Send remain the single input surface. Role parity v12 restores the
- * full role/state control set in that same composer. WEB v13 owns the visible build
- * identifier and final no-flicker task-action quarantine. Professional PDF v11 owns
- * read-only Task Trail export. Mobile/native/coarse-pointer runtimes stay out.
+ * Composer v11 binds Task Reply to the existing chat composer. Role parity v12.1
+ * restores the full role/state control set without redraw loops. WEB v13 keeps the
+ * legacy action layer quarantined; WEB v14 makes the main composer the single text
+ * input for Deadline/Transfer/Delegate/Return/Extension/Cancel and owns read-only
+ * no-role presentation. Professional PDF v11 owns Task Trail export.
  */
 (function () {
   'use strict';
@@ -40,8 +40,9 @@
 
   import('./desktop-workspace-v8.js?v=1')
     .then(() => import('./desktop-task-composer-v11.js?v=1'))
-    .then(() => import('./desktop-role-parity-v12.js?v=1'))
+    .then(() => import('./desktop-role-parity-v12.js?v=2'))
     .then(() => import('./desktop-web-v13.js?v=1'))
+    .then(() => import('./desktop-web-v14.js?v=1'))
     .then(() => import('./desktop-task-pdf-v11.js?v=1'))
     .then(() => import('./desktop-task-pdf-click-v11.js?v=1'))
     .catch(error => {

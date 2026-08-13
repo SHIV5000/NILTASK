@@ -1,14 +1,14 @@
-/* NILTASK desktop role parity v12
- * Restores the full authoritative role/state task control set inside the
- * existing chat-native Task Reply composer without changing its one-composer UI.
- * Fine-pointer desktop only. Existing task mutation owners remain authoritative.
+/* Noted For Action — Desktop role parity v12.1
+ * Full role/state controls in the existing Task Reply composer.
+ * v12.1 is mutation-idempotent: it reconciles controls instead of deleting and
+ * recreating them, eliminating the former observer-driven redraw/flicker loop.
  */
 (function () {
   'use strict';
 
   if (window.__NFA_DESKTOP_ROLE_PARITY_V12__) return;
   window.__NFA_DESKTOP_ROLE_PARITY_V12__ = true;
-  window.NILTASK_DESKTOP_ROLE_PARITY_VERSION = 'v12';
+  window.NILTASK_DESKTOP_ROLE_PARITY_VERSION = 'v12.1';
 
   const $ = (s, r=document) => r.querySelector(s);
   const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
@@ -45,9 +45,6 @@
     if (a.status === 'pending_ack' && (a.state === 'acknowledged' || a.acked === true)) return 'acknowledged';
     return String(a.status || 'pending_ack').toLowerCase();
   }
-  function closedStatus(status) {
-    return ['accepted','cancelled','transferred'].includes(String(status || '').toLowerCase());
-  }
   function userName(id) {
     const u=(window.globalUsersCache||[]).find(x=>x.id===id);
     return u?.full_name || u?.email?.split('@')[0] || 'Staff member';
@@ -79,7 +76,8 @@
         submitted:active.filter(a=>effectiveStatus(a)==='submitted'),
         pending:active.filter(a=>effectiveStatus(a)==='pending_ack'),
         extensions:extensions||[],
-        readOnly:String(task.status||'').toLowerCase()==='cancelled' || (active.length>0 && active.every(a=>effectiveStatus(a)==='accepted'))
+        readOnly:String(task.status||'').toLowerCase()==='cancelled' ||
+          (active.length>0 && active.every(a=>effectiveStatus(a)==='accepted'))
       };
       cache.set(taskId,{at:Date.now(),value});
       return value;
@@ -90,6 +88,8 @@
   }
 
   function resolveTaskId() {
+    const composerState=window.nfaTaskComposerV11State;
+    if (composerState?.taskId) return String(composerState.taskId);
     const context=$('.nfa-v11-task-mode .nfa-v11-context-copy');
     if (!context) return '';
     const title=$('strong',context)?.textContent?.trim()||'';
@@ -98,26 +98,23 @@
       $('.nfa-v8-task-title',section)?.textContent?.trim()===title
     );
     if (matches.length===1) return matches[0].dataset.v8TaskMessage||'';
-    if (matches.length>1) {
-      const visible=matches.find(section=>{
-        const r=section.getBoundingClientRect();
-        return r.bottom>0 && r.top<window.innerHeight;
-      });
-      if (visible) return visible.dataset.v8TaskMessage||'';
-    }
-    return currentTaskId;
+    const visible=matches.find(section=>{
+      const r=section.getBoundingClientRect();
+      return r.bottom>0 && r.top<window.innerHeight;
+    });
+    return visible?.dataset.v8TaskMessage || currentTaskId;
   }
 
   function actionRow() {
     return $('.nfa-v11-task-mode .nfa-v11-special-row');
   }
-  function specialHost() {
-    return $('.nfa-v11-task-mode [data-v11-special-panel]');
-  }
   function setText(el,text) {
     const span=el?.querySelector('span');
-    if (span) span.textContent=text;
-    else if (el) el.textContent=text;
+    if (span) {
+      if (span.textContent !== text) span.textContent=text;
+    } else if (el && el.textContent !== text) {
+      el.textContent=text;
+    }
   }
   function customButton(key,label) {
     const row=actionRow(); if(!row)return null;
@@ -126,14 +123,19 @@
       b=document.createElement('button');
       b.type='button';
       b.dataset.v12Action=key;
+      b.textContent=label;
       row.appendChild(b);
+    } else if (b.textContent!==label) {
+      b.textContent=label;
     }
-    b.textContent=label;
     return b;
   }
-  function removeCustom(...keys) {
+  function reconcileButtons(wanted) {
     const row=actionRow(); if(!row)return;
-    keys.forEach(key=>row.querySelector(`[data-v12-action="${key}"]`)?.remove());
+    row.querySelectorAll('[data-v12-action]').forEach(button=>{
+      if(!wanted.has(button.dataset.v12Action)) button.remove();
+    });
+    wanted.forEach((label,key)=>customButton(key,label));
   }
   function ensureSelect(kind, items, placeholder) {
     const row=actionRow(); if(!row)return null;
@@ -146,140 +148,114 @@
       row.appendChild(label);
     }
     const select=$('select',label);
-    const before=select.value;
-    select.innerHTML=`<option value="">${placeholder}</option>`+items.map(i=>`<option value="${i.id}">${i.label}</option>`).join('');
-    if(items.some(i=>i.id===before))select.value=before;
-    else if(items.length===1)select.value=items[0].id;
+    const signature=JSON.stringify(items.map(i=>[String(i.id),String(i.label)]));
+    if(select.dataset.v12Items!==signature || select.dataset.v12Placeholder!==placeholder){
+      const previous=select.value;
+      select.replaceChildren();
+      const empty=document.createElement('option');
+      empty.value=''; empty.textContent=placeholder; select.appendChild(empty);
+      items.forEach(item=>{
+        const option=document.createElement('option');
+        option.value=String(item.id); option.textContent=String(item.label); select.appendChild(option);
+      });
+      if(items.some(i=>String(i.id)===previous)) select.value=previous;
+      else if(items.length===1) select.value=String(items[0].id);
+      select.dataset.v12Items=signature;
+      select.dataset.v12Placeholder=placeholder;
+    }
     return select;
   }
-  function removeSelect(kind){actionRow()?.querySelector(`[data-v12-select-wrap="${kind}"]`)?.remove();}
-
-  function cleanLegacyLayer() {
-    const layer=$('#ntTaskActionLayer');
-    if(!layer)return;
-    layer.classList.remove('nt-open');
-    layer.setAttribute('aria-hidden','true');
-    try{layer.inert=true;}catch{}
-    layer.style.setProperty('display','none','important');
-    layer.style.setProperty('visibility','hidden','important');
-    layer.style.setProperty('pointer-events','none','important');
-    document.body.style.overflow='';
+  function reconcileSelect(kind, needed, items=[], placeholder='Select…') {
+    const existing=actionRow()?.querySelector(`[data-v12-select-wrap="${kind}"]`);
+    if(!needed){ existing?.remove(); return null; }
+    return ensureSelect(kind,items,placeholder);
   }
-  function adoptLegacyPanel(attempt=0) {
-    const layer=$('#ntTaskActionLayer');
-    const panel=layer?.querySelector('.nt-action-panel');
-    const host=specialHost();
-    cleanLegacyLayer();
-    if(!panel||!host){
-      if(attempt<16)requestAnimationFrame(()=>adoptLegacyPanel(attempt+1));
+
+  function renderRoleControls(state) {
+    const row=actionRow(); if(!row||!state)return;
+
+    const v11Ext=row.querySelector('[data-v11-special="extension"]');
+    if(v11Ext)setText(v11Ext,'Request Extension');
+    const v11Submit=row.querySelector('[data-v11-special="submit"]');
+    if(v11Submit)setText(v11Submit,state.myStatus==='needs_review'?'Resubmit':'Submit');
+
+    const wanted=new Map();
+    if(!state.readOnly && state.mine){
+      if(state.myStatus==='pending_ack'){
+        wanted.set('ack','Acknowledge');
+        if(!v11Ext)wanted.set('extension','Request Extension');
+      } else if(state.myStatus==='acknowledged'){
+        wanted.set('start','Start Work');
+        if(!v11Ext)wanted.set('extension','Request Extension');
+      }
+    }
+    if(!state.readOnly && state.creator){
+      if(state.pending.length)wanted.set('remind','Remind Pending');
+      wanted.set('deadline','Change Deadline');
+      wanted.set('cancel','Cancel Task');
+      if(state.submitted.length){
+        wanted.set('approve','Approve');
+        wanted.set('return','Return');
+      }
+      if(state.extensions.length){
+        wanted.set('extApprove','Approve Extension');
+        wanted.set('extDecline','Decline Extension');
+      }
+    }
+    reconcileButtons(wanted);
+    reconcileSelect(
+      'review',
+      !state.readOnly && state.creator && state.submitted.length>0,
+      state.submitted.map(a=>({id:a.assignee_id,label:userName(a.assignee_id)})),
+      'Select submitted assignee…'
+    );
+    reconcileSelect(
+      'extension',
+      !state.readOnly && state.creator && state.extensions.length>0,
+      state.extensions.map(r=>({id:r.id,label:`${userName(r.assignee_id)} · ${String(r.requested_deadline||'').slice(0,10)}`})),
+      'Select extension request…'
+    );
+
+    window.NFA_WebTaskComposerBridge?.applyAccess?.(state);
+  }
+
+  async function sync(force=false) {
+    if(!isDesktop())return;
+    const context=$('.nfa-v11-task-mode .nfa-v11-context-line');
+    if(!context){
+      currentTaskId=''; currentState=null;
+      window.NFA_WebTaskComposerBridge?.clearAccess?.();
       return;
     }
-    panel.classList.add('nfa-v11-inline-panel');
-    panel.setAttribute('role','region');
-    panel.setAttribute('aria-modal','false');
-    host.hidden=false;
-    host.replaceChildren(panel);
-    panel.querySelectorAll('i').forEach(i=>i.style.display='none');
-    requestAnimationFrame(()=>panel.querySelector('textarea,input,select,[contenteditable="true"]')?.focus?.({preventScroll:true}));
-    panel.querySelector('.nt-action-footer button:last-child')?.addEventListener('click',()=>setTimeout(refreshAfterAction,900),{once:true});
+    const resolved=resolveTaskId();
+    if(resolved && resolved!==currentTaskId){currentTaskId=resolved;force=true;}
+    if(!currentTaskId)return;
+    const state=await getState(currentTaskId,force);
+    if(!state||!$('.nfa-v11-task-mode .nfa-v11-context-line'))return;
+    currentState=state;
+    renderRoleControls(state);
   }
-  function openInline(owner,args) {
-    if(typeof owner!=='function')return toast('This task action is unavailable.',true);
-    try{owner.apply(window,args||[]);adoptLegacyPanel();}
-    catch(e){toast(e?.message||'Task action failed',true);}
+  function scheduleSync(force=false){
+    clearTimeout(syncTimer);
+    syncTimer=setTimeout(()=>sync(force),60);
   }
 
   async function refreshAfterAction() {
     if(currentTaskId)cache.delete(currentTaskId);
     try{await window.nfaRefreshTaskMessages?.(true);}catch{}
     try{await window.loadTasksForPanel?.();}catch{}
-    setTimeout(sync,120);
+    scheduleSync(true);
   }
-
-  function renderRoleControls(state) {
-    const row=actionRow(); if(!row||!state)return;
-
-    // Relabel Composer v11 controls to the authoritative role wording.
-    const v11Ext=row.querySelector('[data-v11-special="extension"]');
-    if(v11Ext)setText(v11Ext,'Request Extension');
-    const v11Submit=row.querySelector('[data-v11-special="submit"]');
-    if(v11Submit)setText(v11Submit,state.myStatus==='needs_review'?'Resubmit':'Submit');
-
-    removeCustom('ack','start','remind','deadline','cancel','approve','return','extApprove','extDecline');
-    removeSelect('review');removeSelect('extension');
-
-    if(state.readOnly)return;
-
-    if(state.mine){
-      if(state.myStatus==='pending_ack'){
-        customButton('ack','Acknowledge');
-        if(!v11Ext)customButton('extension','Request Extension');
-      }else if(state.myStatus==='acknowledged'){
-        customButton('start','Start Work');
-        if(!v11Ext)customButton('extension','Request Extension');
-      }
-    }
-
-    if(state.creator){
-      if(state.pending.length)customButton('remind','Remind Pending');
-      customButton('deadline','Change Deadline');
-      customButton('cancel','Cancel Task');
-
-      if(state.submitted.length){
-        ensureSelect('review',state.submitted.map(a=>({id:a.assignee_id,label:userName(a.assignee_id)})),'Select submitted assignee…');
-        customButton('approve','Approve');
-        customButton('return','Return');
-      }
-      if(state.extensions.length){
-        ensureSelect('extension',state.extensions.map(r=>({id:r.id,label:`${userName(r.assignee_id)} · ${String(r.requested_deadline||'').slice(0,10)}`})),'Select extension request…');
-        customButton('extApprove','Approve Extension');
-        customButton('extDecline','Decline Extension');
-      }
-    }
-  }
-
-  async function sync() {
-    if(!isDesktop())return;
-    const context=$('.nfa-v11-task-mode .nfa-v11-context-line');
-    if(!context){currentTaskId='';currentState=null;return;}
-    const resolved=resolveTaskId();
-    if(resolved)currentTaskId=resolved;
-    if(!currentTaskId)return;
-    const state=await getState(currentTaskId);
-    if(!state||!$('.nfa-v11-task-mode .nfa-v11-context-line'))return;
-    currentState=state;
-    renderRoleControls(state);
-  }
-  function scheduleSync(){clearTimeout(syncTimer);syncTimer=setTimeout(sync,80);}
-
   async function directTaskAction(action, assigneeId) {
     if(typeof window.taskAction!=='function')return toast('Task action is unavailable.',true);
-    try{
-      await window.taskAction(currentTaskId,assigneeId,action);
-      await refreshAfterAction();
-    }catch(e){toast(e?.message||'Task action failed',true);}
+    try{await window.taskAction(currentTaskId,assigneeId,action);await refreshAfterAction();}
+    catch(e){toast(e?.message||'Task action failed',true);}
   }
-
-  async function decideExtension(requestId, approve) {
-    if(!requestId)return toast('Select an extension request.',true);
-    if(approve){
-      if(typeof window.respondTaskExtension==='function'){
-        try{await window.respondTaskExtension(requestId,true);await refreshAfterAction();return;}catch(e){return toast(e?.message||'Extension decision failed',true);}
-      }
-    }
-    const host=specialHost();if(!host)return;
-    host.hidden=false;
-    host.innerHTML=`<div class="nt-action-panel nfa-v11-inline-panel" role="region"><div class="nt-action-panel-header"><div class="nt-action-panel-title">Decline Extension</div></div><div class="nt-action-panel-body"><div class="nt-action-field"><label class="nt-action-label">Reason</label><textarea class="nt-action-input" data-v12-decline-reason placeholder="Reason for declining this extension request…"></textarea></div></div><div class="nt-action-footer"><button type="button" class="nt-task-button nt-task-button-secondary" data-v12-inline-cancel>Cancel</button><button type="button" class="nt-task-button nt-task-button-primary" data-v12-inline-decline>Decline</button></div></div>`;
-    $('[data-v12-inline-cancel]',host)?.addEventListener('click',()=>{host.hidden=true;host.replaceChildren();},{once:true});
-    $('[data-v12-inline-decline]',host)?.addEventListener('click',async()=>{
-      const reason=$('[data-v12-decline-reason]',host)?.value?.trim()||'';
-      if(!reason)return toast('Decline reason is required.',true);
-      try{
-        const {error}=await sb().rpc('respond_task_extension',{p_request_id:requestId,p_approve:false,p_decision_reason:reason,p_tenant_id:tid()});
-        if(error)throw error;
-        host.hidden=true;host.replaceChildren();toast('Extension declined.');await refreshAfterAction();
-      }catch(e){toast(e?.message||'Extension decision failed',true);}
-    });
+  function bridgeLegacy(key, owner, args, placeholder) {
+    const bridge=window.NFA_WebTaskComposerBridge;
+    if(bridge?.startLegacyAction)return bridge.startLegacyAction({key,owner,args,placeholder});
+    if(typeof owner==='function')owner.apply(window,args||[]);
+    else toast('This task action is unavailable.',true);
   }
 
   async function handleRoleAction(button) {
@@ -287,22 +263,46 @@
     const action=button.dataset.v12Action;
     if(action==='ack')return directTaskAction('ack',uid());
     if(action==='start')return directTaskAction('start',uid());
-    if(action==='extension')return openInline(window.openTaskExtensionRequest,[currentTaskId,uid()]);
+    if(action==='extension')return bridgeLegacy('extension',window.openTaskExtensionRequest,[currentTaskId,uid()],'Reason / details for extension…');
     if(action==='remind'){
       if(typeof window.remindAllTaskPending!=='function')return toast('Reminder action is unavailable.',true);
       try{await window.remindAllTaskPending(currentTaskId);await refreshAfterAction();}catch(e){toast(e?.message||'Reminder failed',true);}return;
     }
-    if(action==='deadline')return openInline(window.openTaskDeadlineAction,[currentTaskId]);
-    if(action==='cancel')return openInline(window.openTaskCancelAction,[currentTaskId]);
+    if(action==='deadline')return bridgeLegacy('deadline',window.openTaskDeadlineAction,[currentTaskId],'Reason for changing the deadline…');
+    if(action==='cancel')return bridgeLegacy('cancel',window.openTaskCancelAction,[currentTaskId],'Reason for cancelling this task…');
     if(action==='approve'||action==='return'){
       const target=$('[data-v12-select="review"]')?.value||currentState.submitted?.[0]?.assignee_id||'';
       if(!target)return toast('Select a submitted assignee.',true);
       if(action==='approve')return directTaskAction('accept',target);
-      return openInline(window.openTaskReturnAction,[currentTaskId,target]);
+      return bridgeLegacy('return',window.openTaskReturnAction,[currentTaskId,target],'Reason for returning this task…');
     }
     if(action==='extApprove'||action==='extDecline'){
       const request=$('[data-v12-select="extension"]')?.value||currentState.extensions?.[0]?.id||'';
-      return decideExtension(request,action==='extApprove');
+      if(!request)return toast('Select an extension request.',true);
+      if(action==='extApprove'){
+        if(typeof window.respondTaskExtension!=='function')return toast('Extension action is unavailable.',true);
+        try{await window.respondTaskExtension(request,true);await refreshAfterAction();}catch(e){toast(e?.message||'Extension decision failed',true);}return;
+      }
+      const bridge=window.NFA_WebTaskComposerBridge;
+      if(bridge?.startDirectAction){
+        return bridge.startDirectAction({
+          key:'extDecline',
+          placeholder:'Reason for declining this extension…',
+          requireText:true,
+          commit:async text=>{
+            const {error}=await sb().rpc('respond_task_extension',{
+              p_request_id:request,
+              p_approve:false,
+              p_decision_reason:text,
+              p_tenant_id:tid()
+            });
+            if(error)throw error;
+            toast('Extension declined.');
+            await refreshAfterAction();
+          }
+        });
+      }
+      toast('Composer action bridge is unavailable.',true);
     }
   }
 
@@ -320,23 +320,32 @@
     style.textContent=`
       .nfa-v11-special-row [data-v12-action]{white-space:nowrap}
       .nfa-v11-special-row [data-v12-action="cancel"]{color:#b91c1c;border-color:rgba(185,28,28,.25)}
-      .nfa-v11-special-row [data-v12-action="approve"],
-      .nfa-v11-special-row [data-v12-action="extApprove"]{color:#15803d;border-color:rgba(21,128,61,.25)}
-      .nfa-v11-special-row [data-v12-action="return"],
-      .nfa-v11-special-row [data-v12-action="extDecline"]{color:#b45309;border-color:rgba(180,83,9,.25)}
+      .nfa-v11-special-row [data-v12-action="approve"],.nfa-v11-special-row [data-v12-action="extApprove"]{color:#15803d;border-color:rgba(21,128,61,.25)}
+      .nfa-v11-special-row [data-v12-action="return"],.nfa-v11-special-row [data-v12-action="extDecline"]{color:#b45309;border-color:rgba(180,83,9,.25)}
     `;
     document.head.appendChild(style);
   }
 
+  function relevantMutation(mutation) {
+    const nodes=[...mutation.addedNodes,...mutation.removedNodes];
+    return nodes.some(node=>node.nodeType===1 && (
+      node.id==='nfaTaskComposerV11' ||
+      node.matches?.('.nfa-v11-context-line') ||
+      node.querySelector?.('#nfaTaskComposerV11,.nfa-v11-context-line')
+    ));
+  }
   function start() {
     if(!isDesktop())return;
     installCss();
     document.addEventListener('click',onClick,true);
-    observer=new MutationObserver(scheduleSync);
+    observer=new MutationObserver(mutations=>{
+      if(mutations.some(relevantMutation))scheduleSync(true);
+    });
     observer.observe(document.body,{childList:true,subtree:true});
-    window.addEventListener('focus',scheduleSync);
-    scheduleSync();
-    console.log('[NFA] desktop role parity v12 active');
+    window.addEventListener('focus',()=>scheduleSync(true));
+    window.nfaDesktopRoleParityRefresh=()=>{if(currentTaskId)cache.delete(currentTaskId);scheduleSync(true);};
+    scheduleSync(true);
+    console.log('[NFA] desktop role parity v12.1 active');
   }
 
   start();

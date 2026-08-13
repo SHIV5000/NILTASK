@@ -133,6 +133,9 @@
         document.head.appendChild(taskOwner);
     }
 
-    window.NILTASK_ACTIVITY_UI_VERSION =
-        'source-owned-layout-v2-mobile-workflow-v209-role-parity-v210-final-ui-v212-acceptance-v213-v214-v215.1-task-owner-v216';
+    // Keep the established Activity ownership contract stable for validators and
+    // downstream code. Mobile release detail is exposed separately.
+    window.NILTASK_ACTIVITY_UI_VERSION = 'source-owned-layout-v2';
+    window.NFA_MOBILE_LAYER_VERSION =
+        'workflow-v209-role-v210-ui-v212-acceptance-v213-v214-v215.1-task-owner-v216';
 })();

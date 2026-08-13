@@ -2,11 +2,12 @@
  * TaskFlow Service Worker — enables PWA install prompt on Android/Chrome
  * Caches core app shell for offline-capable experience
  */
-const CACHE = 'taskflow-v211';
+const CACHE = 'taskflow-v217';
 const PRECACHE = [
   '/',
   '/index.html',
   '/offline.html',
+  '/css/tailwind.generated.css?v=13',
   '/css/theme.css',
   '/css/mobile.css',
   '/js/shared.js',
@@ -21,8 +22,7 @@ const PRECACHE = [
   '/js/tasks.js',
   '/js/notifications.js',
   '/js/mobile.js',
-  '/js/mobile-tasks.js?v=207',
-  '/js/activity-v208.js?v=207',
+  '/js/activity-v208.js?v=213',
   '/js/main.js',
   '/js/native.js',
   '/js/utils/logger.js',
@@ -44,6 +44,7 @@ const PRECACHE = [
   '/js/notification-presentation-service.js?v=3',
   '/js/core/unread-service.js?v=4',
   '/js/core/chat-parity-service.js?v=2',
+  '/js/desktop-web-v13.js?v=1',
 
   '/manifest.json',
   '/version.json',
@@ -201,7 +202,24 @@ self.addEventListener('notificationclick', e => {
   })());
 });
 
-// Fetch — network first, cache fallback
+function _swOfflineResponse(message = 'Noted For Action is temporarily offline.') {
+  return new Response(message, {
+    status: 503,
+    statusText: 'Offline',
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+  });
+}
+
+async function _swCachePut(request, response) {
+  if (!response?.ok) return;
+  try {
+    const cache = await caches.open(CACHE);
+    await cache.put(request, response.clone());
+  } catch (_) {}
+}
+
+// Fetch — network first, cache fallback. Every respondWith branch is guaranteed
+// to resolve to an actual Response; a cache miss can never resolve as undefined.
 self.addEventListener('fetch', e => {
   if (e.request.method === 'POST' && new URL(e.request.url).pathname === '/share-target') {
     e.respondWith((async () => {
@@ -239,38 +257,61 @@ self.addEventListener('fetch', e => {
   if (e.request.url.includes('googleapis.com')) return;
 
   if (e.request.mode === 'navigate') {
-    e.respondWith(
-      fetch(e.request, { cache: 'no-store' })
-        .catch(() => caches.match(e.request))
-        .then(r => r || caches.match('/index.html'))
-        .then(r => r || caches.match('/offline.html'))
-    );
+    e.respondWith((async () => {
+      try {
+        const network = await fetch(e.request, { cache: 'no-store' });
+        if (network) return network;
+      } catch (_) {}
+
+      try {
+        const exact = await caches.match(e.request);
+        if (exact) return exact;
+        const shell = await caches.match('/index.html');
+        if (shell) return shell;
+        const offline = await caches.match('/offline.html');
+        if (offline) return offline;
+      } catch (_) {}
+
+      return _swOfflineResponse('Noted For Action cannot load this page while offline.');
+    })());
     return;
   }
 
   const isCode = e.request.url.includes('/css/') || e.request.url.includes('/js/');
   if (isCode) {
-    e.respondWith(
-      fetch(e.request).then(res => {
-        if (res.ok) {
-          const clone = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone));
+    e.respondWith((async () => {
+      try {
+        const network = await fetch(e.request);
+        if (network) {
+          _swCachePut(e.request, network);
+          return network;
         }
-        return res;
-      }).catch(() => caches.match(e.request))
-    );
+      } catch (_) {}
+
+      try {
+        const cached = await caches.match(e.request);
+        if (cached) return cached;
+      } catch (_) {}
+
+      return _swOfflineResponse('Code asset unavailable while offline.');
+    })());
     return;
   }
 
-  e.respondWith(
-    fetch(e.request)
-      .then(res => {
-        if (res.ok) {
-          const clone = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone));
-        }
-        return res;
-      })
-      .catch(() => caches.match(e.request))
-  );
+  e.respondWith((async () => {
+    try {
+      const network = await fetch(e.request);
+      if (network) {
+        _swCachePut(e.request, network);
+        return network;
+      }
+    } catch (_) {}
+
+    try {
+      const cached = await caches.match(e.request);
+      if (cached) return cached;
+    } catch (_) {}
+
+    return _swOfflineResponse('Resource unavailable while offline.');
+  })());
 });

@@ -50,7 +50,7 @@ excludes(service, 'document.body', 'Chat parity creates no body-wide observer');
 
 contains(entry, "js/core/chat-parity-service.js?v=2", 'Runtime entrypoint loads ChatParity v2');
 contains(entry, "script[data-nfa-chat-parity]", 'Runtime entrypoint prevents duplicate loading');
-contains(sw, "const CACHE = 'taskflow-v211';", 'PWA cache generation is v211');
+contains(sw, "const CACHE = 'taskflow-v217';", 'PWA cache generation is v217');
 contains(sw, "'/js/core/chat-parity-service.js?v=2'", 'PWA precaches exact ChatParity URL');
 
 if (failures.length) {

@@ -6,7 +6,7 @@
  * required by the existing main-app shell and loads the cross-device chat
  * parity service. The mobile/tablet workflow layers are loaded only on the
  * mobile/native/coarse-pointer runtime boundary so the finalized desktop
- * Workspace v8 + Task Composer v11 stays isolated and speed-first.
+ * Workspace + Composer chain stays isolated and speed-first.
  */
 (function () {
     'use strict';
@@ -122,20 +122,23 @@
         document.head.appendChild(acceptance215);
     }
 
+    // PWA v216's route observer is deliberately retired. The legacy mobile Tasks
+    // renderer is already a compatibility shim, so v217 only needs the pre-paint
+    // nmt-owned marker and does not add the hidden legacy .nmt-screen class.
     if (
         mobileRuntime &&
-        !document.querySelector('script[data-nfa-mobile-task-owner-v216]')
+        !document.querySelector('script[data-nfa-mobile-pwa-v217]')
     ) {
-        const taskOwner = document.createElement('script');
-        taskOwner.src = 'js/mobile-task-owner-v216.js?v=2';
-        taskOwner.async = false;
-        taskOwner.dataset.nfaMobileTaskOwnerV216 = '1';
-        document.head.appendChild(taskOwner);
+        const pwa217 = document.createElement('script');
+        pwa217.src = 'js/mobile-pwa-v217.js?v=1';
+        pwa217.async = false;
+        pwa217.dataset.nfaMobilePwaV217 = '1';
+        document.head.appendChild(pwa217);
     }
 
     // Keep the established Activity ownership contract stable for validators and
     // downstream code. Mobile release detail is exposed separately.
     window.NILTASK_ACTIVITY_UI_VERSION = 'source-owned-layout-v2';
     window.NFA_MOBILE_LAYER_VERSION =
-        'workflow-v209-role-v210-ui-v212-acceptance-v213-v214-v215.1-task-owner-v216';
+        'workflow-v209-role-v210-ui-v212-acceptance-v213-v214-v215.1-pwa-v217';
 })();
